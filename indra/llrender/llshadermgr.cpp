@@ -636,13 +636,24 @@ GLuint LLShaderMgr::loadShaderFile(const std::string& filename, S32 & shader_lev
         extra_code_text[extra_code_count++] = strdup("#define HAS_DIFFUSE_LOOKUP\n");
 
         const bool use_bindless_heap = LLVKLoader::isBindlessActiveVk() && texture_index_channels <= 4;
+        const bool use_drawdata      = use_bindless_heap && LLVKLoader::isBindlessDrawDataActiveVk();
 
         if (use_bindless_heap)
         {
             extra_code_text[extra_code_count++] =
-                strdup("layout(set=2, binding=0) uniform sampler2D ayaTexHeap[];\n");
-            extra_code_text[extra_code_count++] =
-                strdup("layout(set=1, binding=54, std140) uniform AyaTexSlotsBlock { uvec4 ayaTexSlots; };\n");
+                strdup("layout(set=2, binding=1) uniform sampler2D ayaTexHeap[];\n");
+            if (use_drawdata)
+            {
+                extra_code_text[extra_code_count++] =
+                    strdup("layout(set=2, binding=0, std430) readonly buffer AyaDrawDataBlock { uvec4 aya_tex_slots[]; };\n");
+                extra_code_text[extra_code_count++] =
+                    strdup("layout(location=19) flat in int aya_draw_id;\n");
+            }
+            else
+            {
+                extra_code_text[extra_code_count++] =
+                    strdup("layout(set=1, binding=54, std140) uniform AyaTexSlotsBlock { uvec4 ayaTexSlots; };\n");
+            }
 
             if (texture_index_channels > 1)
             {
@@ -652,7 +663,20 @@ GLuint LLShaderMgr::loadShaderFile(const std::string& filename, S32 & shader_lev
 
             extra_code_text[extra_code_count++] = strdup("vec4 diffuseLookup(vec2 texcoord)\n");
             extra_code_text[extra_code_count++] = strdup("{\n");
-            if (texture_index_channels == 1)
+            if (use_drawdata)
+            {
+                if (texture_index_channels == 1)
+                {
+                    extra_code_text[extra_code_count++] =
+                        strdup("\treturn texture(ayaTexHeap[nonuniformEXT(aya_tex_slots[aya_draw_id].x)], texcoord);\n");
+                }
+                else
+                {
+                    extra_code_text[extra_code_count++] =
+                        strdup("\treturn texture(ayaTexHeap[nonuniformEXT(aya_tex_slots[aya_draw_id][vary_texture_index])], texcoord);\n");
+                }
+            }
+            else if (texture_index_channels == 1)
             {
                 extra_code_text[extra_code_count++] =
                     strdup("\treturn texture(ayaTexHeap[nonuniformEXT(ayaTexSlots.x)], texcoord);\n");

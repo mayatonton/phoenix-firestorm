@@ -4031,6 +4031,11 @@ LLDrawInfo::LLDrawInfo(U16 start, U16 end, U32 count, U32 offset,
 LLDrawInfo::~LLDrawInfo()
 {
     clearVkSetMemoPins();
+    if (mVkDrawDataSlot != 0xFFFFFFFFu)
+    {
+        LLVKLoader::drawDataReleaseSlotDeferred(mVkDrawDataSlot);
+        mVkDrawDataSlot = 0xFFFFFFFFu;
+    }
     if (gDebugGL)
     {
         gPipeline.checkReferences(this);

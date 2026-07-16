@@ -2750,8 +2750,11 @@ bool LLGLSLShader::createVkPipeline(U32 perProgramUBOSize, bool needsSharedWater
         if (LLVKLoader::isBindlessActiveVk() && mFeatures.mIndexedTextureChannels <= 4)
         {
             mVkUsesBindlessHeap = true;
-            add_ubo(54, VK_SHADER_STAGE_FRAGMENT_BIT, nullptr,
-                    VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER_DYNAMIC);
+            if (!LLVKLoader::isBindlessDrawDataActiveVk())
+            {
+                add_ubo(54, VK_SHADER_STAGE_FRAGMENT_BIT, nullptr,
+                        VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER_DYNAMIC);
+            }
         }
         else
         {
@@ -3227,7 +3230,14 @@ void LLGLSLShader::populateAndBindUniversalDescriptorSet()
                 slots[i] = LLImageGL::sDefaultGLTexture->getVkHeapSlot();
             }
         }
-        LLVKLoader::writeBindlessTexSlots(slots);
+        if (LLVKLoader::isBindlessDrawDataActiveVk())
+        {
+            LLVKLoader::setCurrentDrawDataID(LLVKLoader::drawDataWriteScratch(slots));
+        }
+        else
+        {
+            LLVKLoader::writeBindlessTexSlots(slots);
+        }
     }
 
     VkImageView fallback_view = LLVKLoader::getDefaultFallbackVkImageView();

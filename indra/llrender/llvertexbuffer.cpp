@@ -689,7 +689,7 @@ void LLVertexBuffer::drawRange(U32 mode, U32 start, U32 end, U32 count, U32 indi
                     LLVKLoader::pushModelviewOnce(cmd,
                                                   LLGLSLShader::sCurBoundShaderPtr->mVkPipelineLayout,
                                                   LLVKLoader::getCurrentModelviewMatrix());
-                    vkCmdDrawIndexed(cmd, count, 1, indices_offset, 0, 0);
+                    vkCmdDrawIndexed(cmd, count, 1, indices_offset, 0, LLVKLoader::getCurrentDrawDataID());
                     ++sVkDrawCallCount;
                     vk_fired = true;
                 }
@@ -778,7 +778,7 @@ void LLVertexBuffer::drawRangeFast(U32 mode, U32 start, U32 end, U32 count, U32 
                         LLVKLoader::pushModelviewOnce(cmd,
                                                       LLGLSLShader::sCurBoundShaderPtr->mVkPipelineLayout,
                                                       LLVKLoader::getCurrentModelviewMatrix());
-                        vkCmdDrawIndexed(cmd, count, 1, indices_offset, 0, 0);
+                        vkCmdDrawIndexed(cmd, count, 1, indices_offset, 0, LLVKLoader::getCurrentDrawDataID());
                         ++sVkDrawCallCount;
                         vk_fired = true;
                     }
@@ -911,7 +911,7 @@ void LLVertexBuffer::drawArrays(U32 mode, U32 first, U32 count) const
                     LLVKLoader::pushModelviewOnce(cmd,
                                                   LLGLSLShader::sCurBoundShaderPtr->mVkPipelineLayout,
                                                   LLVKLoader::getCurrentModelviewMatrix());
-                    vkCmdDraw(cmd, count, 1, first, 0);
+                    vkCmdDraw(cmd, count, 1, first, LLVKLoader::getCurrentDrawDataID());
                     ++sVkDrawCallCount;
                     vk_fired = true;
                 }

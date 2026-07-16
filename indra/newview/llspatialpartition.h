@@ -156,6 +156,9 @@ public:
     U32   mVkSetMemoShape = 0;
     U8    mVkSetMemoL3Count = 0;
 
+    U32   mVkDrawDataSlot = 0xFFFFFFFFu;
+    U32   mVkDrawDataSlots[4] = {};
+
     void clearVkSetMemoPins();
 
     LLUUID mMaterialID; // id of LLGLTFMaterial or LLMaterial applied to this draw info

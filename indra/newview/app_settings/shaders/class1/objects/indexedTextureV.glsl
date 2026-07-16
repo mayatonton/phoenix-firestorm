@@ -34,8 +34,15 @@ in int texture_index;
 flat out int vary_texture_index;
 #endif
 
+#ifdef AYA_BINDLESS_DRAWDATA
+layout(location = 19) flat out int aya_draw_id;
+#endif
+
 void passTextureIndex()
 {
     vary_texture_index = texture_index;
+#ifdef AYA_BINDLESS_DRAWDATA
+    aya_draw_id = gl_InstanceIndex;
+#endif
 }
 

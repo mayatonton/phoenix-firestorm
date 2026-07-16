@@ -513,7 +513,39 @@ void LLRenderPass::buildAndOverrideScenePerDrawSet(LLDrawInfo* params, bool batc
         {
             slots[0] = heap_slot_for(gGL.getTexUnit(0)->mCurrImageGL);
         }
-        LLVKLoader::writeBindlessTexSlots(slots);
+        if (LLVKLoader::isBindlessDrawDataActiveVk())
+        {
+            U32 id = 0;
+            if (params != nullptr)
+            {
+                if (params->mVkDrawDataSlot == LLVKLoader::BINDLESS_INVALID_SLOT
+                    || std::memcmp(params->mVkDrawDataSlots, slots, 16) != 0)
+                {
+                    U32 ns = LLVKLoader::drawDataAcquireSlot(slots);
+                    if (ns != LLVKLoader::BINDLESS_INVALID_SLOT)
+                    {
+                        if (params->mVkDrawDataSlot != LLVKLoader::BINDLESS_INVALID_SLOT)
+                        {
+                            LLVKLoader::drawDataReleaseSlotDeferred(params->mVkDrawDataSlot);
+                        }
+                        params->mVkDrawDataSlot = ns;
+                        std::memcpy(params->mVkDrawDataSlots, slots, 16);
+                    }
+                }
+                id = (params->mVkDrawDataSlot != LLVKLoader::BINDLESS_INVALID_SLOT)
+                         ? params->mVkDrawDataSlot
+                         : LLVKLoader::drawDataWriteScratch(slots);
+            }
+            else
+            {
+                id = LLVKLoader::drawDataWriteScratch(slots);
+            }
+            LLVKLoader::setCurrentDrawDataID(id);
+        }
+        else
+        {
+            LLVKLoader::writeBindlessTexSlots(slots);
+        }
     }
 
     if (gltf_materials_ubo == 0 && gltf_geometry_ubo == 0

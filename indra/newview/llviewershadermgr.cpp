@@ -1183,6 +1183,11 @@ std::string LLViewerShaderMgr::loadBasicShaders()
         attribs["HERO_PROBES"] = "1";
     }
 
+    if (LLVKLoader::isBindlessDrawDataActiveVk())
+    {
+        attribs["AYA_BINDLESS_DRAWDATA"] = "1";
+    }
+
     { // PBR terrain
         const S32 mapping = clamp_terrain_mapping(gSavedSettings.getS32("RenderTerrainPBRPlanarSampleCount"));
         attribs["TERRAIN_PLANAR_TEXTURE_SAMPLE_COUNT"] = llformat("%d", mapping);

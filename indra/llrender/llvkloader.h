@@ -1315,6 +1315,18 @@ namespace LLVKLoader
 
     void writeBindlessTexSlots(const U32* slots4);
 
+    bool isBindlessDrawDataActiveVk();
+
+    U32  drawDataAcquireSlot(const U32* slots4);
+
+    void drawDataReleaseSlotDeferred(U32 slot);
+
+    U32  drawDataWriteScratch(const U32* slots4);
+
+    void setCurrentDrawDataID(U32 id);
+
+    U32  getCurrentDrawDataID();
+
     struct AyaTexSlots_PerDrawBind
     {
         U32 ayaTexSlots[4];

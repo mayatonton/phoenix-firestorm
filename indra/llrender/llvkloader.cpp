@@ -249,6 +249,20 @@ namespace
     };
     std::vector<PendingSlotFree> sPendingSlotFrees;
 
+    constexpr U32            DRAWDATA_TOTAL_SLOTS                    = 1048576;
+    constexpr U32            DRAWDATA_SCRATCH_PER_FRAME              = 32768;
+    constexpr U32            DRAWDATA_PERSISTENT_SLOTS               = DRAWDATA_TOTAL_SLOTS - 3 * DRAWDATA_SCRATCH_PER_FRAME;
+    bool                     sDrawDataActive                         = false;
+    VkBuffer                 sDrawDataBuffer                         = VK_NULL_HANDLE;
+    void*                    sDrawDataAllocation                     = nullptr;
+    U32*                     sDrawDataMapped                         = nullptr;
+    U32                      sDrawDataSlotNext                       = 1;
+    std::vector<U32>         sDrawDataSlotFreeList;
+    std::vector<PendingSlotFree> sPendingDrawDataSlotFrees;
+    U32                      sDrawDataScratchCursor                  = 0;
+    U32                      sDrawDataScratchFrame                   = 0xFFFFFFFFu;
+    thread_local U32         tCurrentDrawDataID                      = 0;
+
     constexpr U32                  SCENE_PER_DRAW_POOL_GROWTH_SETS     = 50000;
     constexpr U32                  SCENE_PER_DRAW_POOL_GROWTH_SAMPLERS = 250000;
     constexpr U32                  SCENE_PER_DRAW_POOL_GROWTH_UBOS     = 50000;
@@ -2040,7 +2054,7 @@ namespace
         VkWriteDescriptorSet w = {};
         w.sType           = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
         w.dstSet          = sBindlessHeapSet;
-        w.dstBinding      = 0;
+        w.dstBinding      = 1;
         w.dstArrayElement = slot;
         w.descriptorCount = 1;
         w.descriptorType  = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
@@ -2048,12 +2062,30 @@ namespace
         vkUpdateDescriptorSets(sDevice, 1, &w, 0, nullptr);
     }
 
+    bool createBufferVkImpl(U32                 size_bytes,
+                            VkBufferUsageFlags  usage,
+                            VkBuffer&           out_buffer,
+                            void*&              out_allocation,
+                            void**              out_mapped,
+                            bool                prefer_device);
+
     void destroyBindlessHeap()
     {
         if (sDevice == VK_NULL_HANDLE)
         {
             return;
         }
+        if (sDrawDataBuffer != VK_NULL_HANDLE)
+        {
+            destroyBufferVk(sDrawDataBuffer, sDrawDataAllocation);
+            sDrawDataBuffer     = VK_NULL_HANDLE;
+            sDrawDataAllocation = nullptr;
+            sDrawDataMapped     = nullptr;
+        }
+        sDrawDataActive   = false;
+        sDrawDataSlotNext = 1;
+        sDrawDataSlotFreeList.clear();
+        sPendingDrawDataSlotFrees.clear();
         if (sBindlessHeapPool != VK_NULL_HANDLE)
         {
             vkDestroyDescriptorPool(sDevice, sBindlessHeapPool, nullptr);
@@ -2090,29 +2122,35 @@ namespace
 
         const U32 count = sBindlessHeapCapacity;
 
-        VkDescriptorSetLayoutBinding b = {};
-        b.binding         = 0;
-        b.descriptorType  = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
-        b.descriptorCount = count;
-        b.stageFlags      = VK_SHADER_STAGE_FRAGMENT_BIT;
+        VkDescriptorSetLayoutBinding bindings[2] = {};
+        bindings[0].binding         = 0;
+        bindings[0].descriptorType  = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER;
+        bindings[0].descriptorCount = 1;
+        bindings[0].stageFlags      = VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT;
+        bindings[1].binding         = 1;
+        bindings[1].descriptorType  = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
+        bindings[1].descriptorCount = count;
+        bindings[1].stageFlags      = VK_SHADER_STAGE_FRAGMENT_BIT;
 
-        VkDescriptorBindingFlags bind_flags =
+        VkDescriptorBindingFlags bind_flags[2] = {
+            0,
               VK_DESCRIPTOR_BINDING_PARTIALLY_BOUND_BIT
             | VK_DESCRIPTOR_BINDING_UPDATE_AFTER_BIND_BIT
             | VK_DESCRIPTOR_BINDING_UPDATE_UNUSED_WHILE_PENDING_BIT
-            | VK_DESCRIPTOR_BINDING_VARIABLE_DESCRIPTOR_COUNT_BIT;
+            | VK_DESCRIPTOR_BINDING_VARIABLE_DESCRIPTOR_COUNT_BIT
+        };
 
         VkDescriptorSetLayoutBindingFlagsCreateInfo bf = {};
         bf.sType         = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_BINDING_FLAGS_CREATE_INFO;
-        bf.bindingCount  = 1;
-        bf.pBindingFlags = &bind_flags;
+        bf.bindingCount  = 2;
+        bf.pBindingFlags = bind_flags;
 
         VkDescriptorSetLayoutCreateInfo li = {};
         li.sType        = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO;
         li.pNext        = &bf;
         li.flags        = VK_DESCRIPTOR_SET_LAYOUT_CREATE_UPDATE_AFTER_BIND_POOL_BIT;
-        li.bindingCount = 1;
-        li.pBindings    = &b;
+        li.bindingCount = 2;
+        li.pBindings    = bindings;
 
         if (vkCreateDescriptorSetLayout(sDevice, &li, nullptr, &sBindlessHeapLayout) != VK_SUCCESS)
         {
@@ -2121,16 +2159,18 @@ namespace
             return true;
         }
 
-        VkDescriptorPoolSize ps = {};
-        ps.type            = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
-        ps.descriptorCount = count;
+        VkDescriptorPoolSize ps[2] = {};
+        ps[0].type            = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER;
+        ps[0].descriptorCount = 1;
+        ps[1].type            = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
+        ps[1].descriptorCount = count;
 
         VkDescriptorPoolCreateInfo pi = {};
         pi.sType         = VK_STRUCTURE_TYPE_DESCRIPTOR_POOL_CREATE_INFO;
         pi.flags         = VK_DESCRIPTOR_POOL_CREATE_UPDATE_AFTER_BIND_BIT;
         pi.maxSets       = 1;
-        pi.poolSizeCount = 1;
-        pi.pPoolSizes    = &ps;
+        pi.poolSizeCount = 2;
+        pi.pPoolSizes    = ps;
 
         if (vkCreateDescriptorPool(sDevice, &pi, nullptr, &sBindlessHeapPool) != VK_SUCCESS)
         {
@@ -2158,11 +2198,46 @@ namespace
             return true;
         }
 
+        {
+            void* dd_mapped = nullptr;
+            if (createBufferVkImpl(DRAWDATA_TOTAL_SLOTS * 16,
+                                   VK_BUFFER_USAGE_STORAGE_BUFFER_BIT,
+                                   sDrawDataBuffer, sDrawDataAllocation, &dd_mapped, true)
+                && dd_mapped != nullptr)
+            {
+                sDrawDataMapped = reinterpret_cast<U32*>(dd_mapped);
+                std::memset(sDrawDataMapped, 0, 16);
+
+                VkDescriptorBufferInfo bi = {};
+                bi.buffer = sDrawDataBuffer;
+                bi.offset = 0;
+                bi.range  = VK_WHOLE_SIZE;
+                VkWriteDescriptorSet w = {};
+                w.sType           = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
+                w.dstSet          = sBindlessHeapSet;
+                w.dstBinding      = 0;
+                w.dstArrayElement = 0;
+                w.descriptorCount = 1;
+                w.descriptorType  = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER;
+                w.pBufferInfo     = &bi;
+                vkUpdateDescriptorSets(sDevice, 1, &w, 0, nullptr);
+
+                const char* dde = getenv("AYASTORM_DRAWDATA");
+                sDrawDataActive = !(dde && atoi(dde) == 0);
+            }
+            else
+            {
+                LL_WARNS("Vulkan") << "VKBindless: DrawData buffer creation failed (drawdata inactive)" << LL_ENDL;
+                sDrawDataActive = false;
+            }
+        }
+
         sBindlessHeapCount = count;
         sBindlessSlotNext  = 1;
         sBindlessActive    = true;
         bindlessWriteSlotInternal(0, VK_NULL_HANDLE, VK_NULL_HANDLE);
-        LL_INFOS("Vulkan") << "VKBindless: heap active count=" << count << LL_ENDL;
+        LL_INFOS("Vulkan") << "VKBindless: heap active count=" << count
+                           << " drawdata=" << (sDrawDataActive ? 1 : 0) << LL_ENDL;
         return true;
     }
 
@@ -6560,6 +6635,28 @@ void tickDeferredImageFreeQueue()
         }
         sPendingSlotFrees.resize(sw);
     }
+
+    {
+        size_t dw = 0;
+        const size_t dn = sPendingDrawDataSlotFrees.size();
+        for (size_t r = 0; r < dn; ++r)
+        {
+            PendingSlotFree& e = sPendingDrawDataSlotFrees[r];
+            if (e.enqueue_frame <= sLastCompletedMonotonic)
+            {
+                sDrawDataSlotFreeList.push_back(e.slot);
+            }
+            else
+            {
+                if (dw != r)
+                {
+                    sPendingDrawDataSlotFrees[dw] = e;
+                }
+                ++dw;
+            }
+        }
+        sPendingDrawDataSlotFrees.resize(dw);
+    }
 }
 
 void destroyPipelineVk(VkPipeline pipeline)
@@ -8667,6 +8764,102 @@ VkDescriptorSetLayout getBindlessHeapLayout()
 VkDescriptorSet getBindlessHeapSet()
 {
     return sBindlessHeapSet;
+}
+
+bool isBindlessDrawDataActiveVk()
+{
+    return sDrawDataActive;
+}
+
+U32 drawDataAcquireSlot(const U32* slots4)
+{
+    if (!sDrawDataActive || sDrawDataMapped == nullptr)
+    {
+        return BINDLESS_INVALID_SLOT;
+    }
+    U32 slot;
+    if (!sDrawDataSlotFreeList.empty())
+    {
+        slot = sDrawDataSlotFreeList.back();
+        sDrawDataSlotFreeList.pop_back();
+    }
+    else if (sDrawDataSlotNext < DRAWDATA_PERSISTENT_SLOTS)
+    {
+        slot = sDrawDataSlotNext++;
+    }
+    else
+    {
+        static bool warned = false;
+        if (!warned)
+        {
+            LL_WARNS("Vulkan") << "VKBindless: DrawData slots exhausted" << LL_ENDL;
+            warned = true;
+        }
+        return BINDLESS_INVALID_SLOT;
+    }
+    std::memcpy(sDrawDataMapped + (size_t)slot * 4, slots4, 16);
+    return slot;
+}
+
+void drawDataReleaseSlotDeferred(U32 slot)
+{
+    if (!sDrawDataActive || slot == 0 || slot == BINDLESS_INVALID_SLOT || slot >= DRAWDATA_PERSISTENT_SLOTS)
+    {
+        return;
+    }
+    PendingSlotFree p;
+    p.slot          = slot;
+    p.enqueue_frame = sMonotonicFrameCount;
+    sPendingDrawDataSlotFrees.push_back(p);
+}
+
+static thread_local U32 tDrawDataScratchMemoFrame   = 0xFFFFFFFFu;
+static thread_local U32 tDrawDataScratchMemoSlot    = 0;
+static thread_local U32 tDrawDataScratchMemoVals[4] = {};
+
+U32 drawDataWriteScratch(const U32* slots4)
+{
+    if (!sDrawDataActive || sDrawDataMapped == nullptr)
+    {
+        return 0;
+    }
+    if (tDrawDataScratchMemoFrame == sMonotonicFrameCount
+        && std::memcmp(tDrawDataScratchMemoVals, slots4, 16) == 0)
+    {
+        return tDrawDataScratchMemoSlot;
+    }
+    if (sDrawDataScratchFrame != sMonotonicFrameCount)
+    {
+        sDrawDataScratchFrame  = sMonotonicFrameCount;
+        sDrawDataScratchCursor = 0;
+    }
+    if (sDrawDataScratchCursor >= DRAWDATA_SCRATCH_PER_FRAME)
+    {
+        static bool warned = false;
+        if (!warned)
+        {
+            LL_WARNS("Vulkan") << "VKBindless: DrawData scratch wrapped" << LL_ENDL;
+            warned = true;
+        }
+        sDrawDataScratchCursor = 0;
+    }
+    const U32 region = (sFrameIndex < FRAMES_IN_FLIGHT) ? sFrameIndex : 0;
+    const U32 slot = DRAWDATA_PERSISTENT_SLOTS + region * DRAWDATA_SCRATCH_PER_FRAME + sDrawDataScratchCursor++;
+    std::memcpy(sDrawDataMapped + (size_t)slot * 4, slots4, 16);
+    tDrawDataScratchMemoFrame = sMonotonicFrameCount;
+    tDrawDataScratchMemoSlot  = slot;
+    std::memcpy(tDrawDataScratchMemoVals, slots4, 16);
+    return slot;
+}
+
+void setCurrentDrawDataID(U32 id)
+{
+    tCurrentDrawDataID = (id == BINDLESS_INVALID_SLOT) ? 0 : id;
+}
+
+U32 getCurrentDrawDataID()
+{
+    return tCurrentDrawDataID;
 }
 
 void transitionImageLayoutVk(VkImage              image,
