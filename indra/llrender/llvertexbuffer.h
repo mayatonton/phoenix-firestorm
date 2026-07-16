@@ -28,6 +28,7 @@
 #define LL_LLVERTEXBUFFER_H
 
 #include "llgl.h"
+#include "llvkloader.h"
 #include "v2math.h"
 #include "v3math.h"
 #include "v4math.h"
@@ -287,12 +288,8 @@ protected:
     std::vector<MappedRegion> mMappedVertexRegions;  // list of mMappedData byte ranges that must be sent to GL
     std::vector<MappedRegion> mMappedIndexRegions;   // list of mMappedIndexData byte ranges that must be sent to GL
 
-    VkBuffer mVkVertexBuffer = VK_NULL_HANDLE;
-    VkBuffer mVkIndexBuffer  = VK_NULL_HANDLE;
-    void*    mVkVertexAlloc  = nullptr;
-    void*    mVkIndexAlloc   = nullptr;
-    void*    mVkVertexMapped = nullptr;
-    void*    mVkIndexMapped  = nullptr;
+    LLVKLoader::MegaSliceV mVkVertexSlice;
+    LLVKLoader::MegaSliceI mVkIndexSlice;
 
 private:
     // DEPRECATED

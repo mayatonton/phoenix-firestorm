@@ -281,7 +281,7 @@ public:
 };
 
 static LLVBOPool* sVBOPool = nullptr;
-static bool sTransientStaging = true;
+static bool sMegaBufEnabled = true;
 
 void LLVertexBufferData::drawWithMatrix()
 {
@@ -650,7 +650,7 @@ void LLVertexBuffer::drawRange(U32 mode, U32 start, U32 end, U32 count, U32 indi
                     LLVKLoader::pushModelviewOnce(cmd,
                                                   LLGLSLShader::sCurBoundShaderPtr->mVkPipelineLayout,
                                                   LLVKLoader::getCurrentModelviewMatrix());
-                    vkCmdDrawIndexed(cmd, count, 1, indices_offset, 0, LLVKLoader::getCurrentDrawDataID());
+                    vkCmdDrawIndexed(cmd, count, 1, mVkIndexSlice.offset / mIndicesStride + indices_offset, (S32)mVkVertexSlice.first, LLVKLoader::getCurrentDrawDataID());
                     ++sVkDrawCallCount;
                     vk_fired = true;
                 }
@@ -739,7 +739,7 @@ void LLVertexBuffer::drawRangeFast(U32 mode, U32 start, U32 end, U32 count, U32 
                         LLVKLoader::pushModelviewOnce(cmd,
                                                       LLGLSLShader::sCurBoundShaderPtr->mVkPipelineLayout,
                                                       LLVKLoader::getCurrentModelviewMatrix());
-                        vkCmdDrawIndexed(cmd, count, 1, indices_offset, 0, LLVKLoader::getCurrentDrawDataID());
+                        vkCmdDrawIndexed(cmd, count, 1, mVkIndexSlice.offset / mIndicesStride + indices_offset, (S32)mVkVertexSlice.first, LLVKLoader::getCurrentDrawDataID());
                         ++sVkDrawCallCount;
                         vk_fired = true;
                     }
@@ -872,7 +872,7 @@ void LLVertexBuffer::drawArrays(U32 mode, U32 first, U32 count) const
                     LLVKLoader::pushModelviewOnce(cmd,
                                                   LLGLSLShader::sCurBoundShaderPtr->mVkPipelineLayout,
                                                   LLVKLoader::getCurrentModelviewMatrix());
-                    vkCmdDraw(cmd, count, 1, first, LLVKLoader::getCurrentDrawDataID());
+                    vkCmdDraw(cmd, count, 1, mVkVertexSlice.first + first, LLVKLoader::getCurrentDrawDataID());
                     ++sVkDrawCallCount;
                     vk_fired = true;
                 }
@@ -903,8 +903,10 @@ void LLVertexBuffer::initClass(LLWindow* window)
     sVBOPool = new LLDefaultVBOPool();
 
     const char* e = getenv("AYASTORM_MEGABUF");
-    sTransientStaging = !(e && atoi(e) == 0);
-    LL_INFOS() << "VB staging: " << (sTransientStaging ? "transient" : "persistent (AYASTORM_MEGABUF=0)") << LL_ENDL;
+    sMegaBufEnabled = !(e && atoi(e) == 0);
+    LLVKLoader::megabufInit(sTypeSize, TYPE_TEXTURE_INDEX);
+    LL_INFOS() << "VB megabuf: " << (sMegaBufEnabled ? "on (transient staging + shared chunks)"
+                                                     : "off (AYASTORM_MEGABUF=0: persistent staging + exclusive chunks)") << LL_ENDL;
 }
 
 void LLVertexBuffer::unbind()
@@ -917,6 +919,8 @@ void LLVertexBuffer::cleanupClass()
 
     delete sVBOPool;
     sVBOPool = nullptr;
+
+    LLVKLoader::megabufShutdown();
 }
 
 
@@ -1016,9 +1020,9 @@ void LLVertexBuffer::genBuffer(U32 size)
 
     mSize = size;
 
-    if (mSize > 0 && mVkVertexBuffer == VK_NULL_HANDLE)
+    if (mSize > 0 && mVkVertexSlice.buffer == VK_NULL_HANDLE)
     {
-        LLVKLoader::createVertexBufferVk(mSize, mVkVertexBuffer, mVkVertexAlloc, &mVkVertexMapped);
+        LLVKLoader::megabufAcquireVertex(mTypeMask, mNumVerts, !sMegaBufEnabled, mVkVertexSlice);
     }
 }
 
@@ -1030,9 +1034,9 @@ void LLVertexBuffer::genIndices(U32 size)
 
     mIndicesSize = size;
 
-    if (mIndicesSize > 0 && mVkIndexBuffer == VK_NULL_HANDLE)
+    if (mIndicesSize > 0 && mVkIndexSlice.buffer == VK_NULL_HANDLE)
     {
-        LLVKLoader::createIndexBufferVk(mIndicesSize, mVkIndexBuffer, mVkIndexAlloc, &mVkIndexMapped);
+        LLVKLoader::megabufAcquireIndex(mIndicesSize, !sMegaBufEnabled, mVkIndexSlice);
     }
 }
 
@@ -1100,12 +1104,10 @@ void LLVertexBuffer::destroyGLBuffer()
     releaseVertexStaging();
     mSize = 0;
 
-    if (mVkVertexBuffer != VK_NULL_HANDLE || mVkVertexAlloc != nullptr)
+    if (mVkVertexSlice.buffer != VK_NULL_HANDLE)
     {
-        LLVKLoader::destroyBufferVk(mVkVertexBuffer, mVkVertexAlloc);
-        mVkVertexBuffer = VK_NULL_HANDLE;
-        mVkVertexAlloc  = nullptr;
-        mVkVertexMapped = nullptr;
+        LLVKLoader::megabufReleaseVertex(mVkVertexSlice);
+        mVkVertexSlice = LLVKLoader::MegaSliceV();
     }
 }
 
@@ -1115,12 +1117,10 @@ void LLVertexBuffer::destroyGLIndices()
     releaseIndexStaging();
     mIndicesSize = 0;
 
-    if (mVkIndexBuffer != VK_NULL_HANDLE || mVkIndexAlloc != nullptr)
+    if (mVkIndexSlice.buffer != VK_NULL_HANDLE)
     {
-        LLVKLoader::destroyBufferVk(mVkIndexBuffer, mVkIndexAlloc);
-        mVkIndexBuffer = VK_NULL_HANDLE;
-        mVkIndexAlloc  = nullptr;
-        mVkIndexMapped = nullptr;
+        LLVKLoader::megabufReleaseIndex(mVkIndexSlice);
+        mVkIndexSlice = LLVKLoader::MegaSliceI();
     }
 }
 
@@ -1132,13 +1132,14 @@ bool LLVertexBuffer::updateNumVerts(U32 nverts)
 
     U32 needed_size = calcOffsets(mTypeMask, mOffsets, nverts);
 
+    mNumVerts = nverts;
+
     if (needed_size != mSize)
     {
         success &= createGLBuffer(needed_size);
     }
 
     llassert(mSize == needed_size);
-    mNumVerts = nverts;
     return success;
 }
 
@@ -1334,16 +1335,37 @@ void LLVertexBuffer::zeroIndexData()
 //  dst -- mMappedData or mMappedIndexData
 void LLVertexBuffer::flush_vbo(GLenum target, U32 start, U32 end, void* data, U8* dst)
 {
-    if (end != 0)
+    if (end == 0)
     {
-        if (target == GL_ARRAY_BUFFER && mVkVertexMapped != nullptr)
+        return;
+    }
+    if (target == GL_ARRAY_BUFFER && mVkVertexSlice.mapped != nullptr)
+    {
+        const U8* src = (const U8*)data;
+        for (U32 i = 0; i < TYPE_TEXTURE_INDEX; ++i)
         {
-            std::memcpy((U8*)mVkVertexMapped + start, data, end - start + 1);
+            if (!(mTypeMask & (1u << i)))
+            {
+                continue;
+            }
+            const U32 block_start = mOffsets[i];
+            const U32 block_end   = block_start + sTypeSize[i] * mNumVerts - 1;
+            const U32 s = llmax(start, block_start);
+            const U32 e = llmin(end, block_end);
+            if (s > e)
+            {
+                continue;
+            }
+            U8* out = mVkVertexSlice.mapped
+                    + mVkVertexSlice.region_offsets[i]
+                    + (size_t)mVkVertexSlice.first * sTypeSize[i]
+                    + (s - block_start);
+            std::memcpy(out, src + (s - start), e - s + 1);
         }
-        else if (target == GL_ELEMENT_ARRAY_BUFFER && mVkIndexMapped != nullptr)
-        {
-            std::memcpy((U8*)mVkIndexMapped + start, data, end - start + 1);
-        }
+    }
+    else if (target == GL_ELEMENT_ARRAY_BUFFER && mVkIndexSlice.mapped != nullptr)
+    {
+        std::memcpy(mVkIndexSlice.mapped + mVkIndexSlice.offset + start, data, end - start + 1);
     }
 }
 
@@ -1434,7 +1456,7 @@ void LLVertexBuffer::_unmapBuffer()
         }
     }
 
-    if (sTransientStaging && !mStagingPersistent)
+    if (sMegaBufEnabled && !mStagingPersistent)
     {
         releaseVertexStaging();
         releaseIndexStaging();
@@ -1589,7 +1611,7 @@ void LLVertexBuffer::setBuffer()
         "Attribute mask mismatch! mTypeMask should be a superset of data_mask.  data_mask: 0x"
                 << std::hex << data_mask << " mTypeMask: 0x" << mTypeMask << " Missing: 0x" << (data_mask & ~mTypeMask) <<  std::dec);
 
-    if (LLVKLoader::shouldUseVulkanRender() && mVkVertexBuffer != VK_NULL_HANDLE
+    if (LLVKLoader::shouldUseVulkanRender() && mVkVertexSlice.buffer != VK_NULL_HANDLE
         && LLGLSLShader::sCurBoundShaderPtr->mVkPipelineLayout != VK_NULL_HANDLE)
     {
         const U32 vk_data_mask = LLGLSLShader::sCurBoundShaderPtr->mVkAttributeMask;
@@ -1601,21 +1623,22 @@ void LLVertexBuffer::setBuffer()
         VkCommandBuffer cmd = LLVKLoader::getCurrentCommandBuffer();
         if (cmd != VK_NULL_HANDLE)
         {
+            const U32* region = mVkVertexSlice.region_offsets;
             for (U32 type = 0; type < TYPE_MAX; ++type)
             {
                 if (!(vk_data_mask & (1u << type)))
                     continue;
                 VkDeviceSize buf_offset = (type == TYPE_TEXTURE_INDEX)
-                                              ? (mOffsets[TYPE_VERTEX] + 12)
-                                              : mOffsets[type];
-                LLVKLoader::bindVertexBufferVk(cmd, mVkVertexBuffer, buf_offset, type);
+                                              ? ((VkDeviceSize)region[TYPE_VERTEX] + 12)
+                                              : region[type];
+                LLVKLoader::bindVertexBufferVk(cmd, mVkVertexSlice.buffer, buf_offset, type);
             }
-            if (mVkIndexBuffer != VK_NULL_HANDLE)
+            if (mVkIndexSlice.buffer != VK_NULL_HANDLE)
             {
                 VkIndexType index_type = (mIndicesType == GL_UNSIGNED_INT)
                                              ? VK_INDEX_TYPE_UINT32
                                              : VK_INDEX_TYPE_UINT16;
-                LLVKLoader::bindIndexBufferVk(cmd, mVkIndexBuffer, 0, index_type);
+                LLVKLoader::bindIndexBufferVk(cmd, mVkIndexSlice.buffer, 0, index_type);
             }
         }
     }

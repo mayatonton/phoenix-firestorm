@@ -1119,6 +1119,33 @@ namespace LLVKLoader
     void destroyPipelineLayoutVk     (VkPipelineLayout      pipeline_layout);
     void destroyDescriptorSetLayoutVk(VkDescriptorSetLayout descriptor_set_layout);
 
+    struct MegaSliceV
+    {
+        VkBuffer   buffer = VK_NULL_HANDLE;
+        U8*        mapped = nullptr;
+        U32        first  = 0;
+        U32        count  = 0;
+        const U32* region_offsets = nullptr;
+        U64        chunk  = 0;
+    };
+
+    struct MegaSliceI
+    {
+        VkBuffer buffer = VK_NULL_HANDLE;
+        U8*      mapped = nullptr;
+        U32      offset = 0;
+        U32      size   = 0;
+        U64      chunk  = 0;
+    };
+
+    void megabufInit(const U32* type_sizes, U32 type_count);
+    void megabufShutdown();
+    bool megabufAcquireVertex(U32 typemask, U32 nverts, bool exclusive, MegaSliceV& out);
+    void megabufReleaseVertex(const MegaSliceV& slice);
+    bool megabufAcquireIndex(U32 size_bytes, bool exclusive, MegaSliceI& out);
+    void megabufReleaseIndex(const MegaSliceI& slice);
+    void megabufStats(U64& chunks, U64& capacity_bytes, U64& used_bytes);
+
     void bindVertexBufferVk(VkCommandBuffer cmd_buf,
                             VkBuffer        buffer,
                             VkDeviceSize    offset,
@@ -1377,6 +1404,10 @@ namespace LLVKLoader
         std::atomic<U64> populate{0};
         std::atomic<U64> syncmat_call{0};
         std::atomic<U64> syncmat_build{0};
+        std::atomic<U64> vb_bind{0};
+        std::atomic<U64> vb_skip{0};
+        std::atomic<U64> ib_bind{0};
+        std::atomic<U64> ib_skip{0};
         std::atomic<U64> draws_pass[5] = {};
         std::atomic<U64> draws_shadow_map[6] = {};
         std::atomic<U64> shadow_cull{0};
@@ -1388,6 +1419,7 @@ namespace LLVKLoader
             mv_push = 0; mv_skip = 0; vp_set = 0; vp_skip = 0;
             set_build = 0; set_reuse = 0; set_memo = 0; set_memo_fill = 0; populate = 0;
             syncmat_call = 0; syncmat_build = 0;
+            vb_bind = 0; vb_skip = 0; ib_bind = 0; ib_skip = 0;
             for (auto& v : draws_pass) v = 0;
             for (auto& v : draws_shadow_map) v = 0;
             shadow_cull = 0; shadow_rigged = 0;

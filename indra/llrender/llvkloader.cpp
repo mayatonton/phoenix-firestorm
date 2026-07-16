@@ -3515,6 +3515,7 @@ static VkShaderModule loadSpirvShaderModule(const U32* spv_code, size_t code_siz
 static void           tickDeferredBufferFreeQueue();
 static void           tickDeferredImageFreeQueue();
 static void           tickDeferredObjectFreeQueue();
+void                  tickMegaFreeQueue();
 static void           tickDeferredQueryReleaseQueue();
 static bool           submitOneShotVk(VkCommandBuffer cmd, VkBuffer staging_buffer, VmaAllocation staging_allocation);
 static void           tickOneShotFreeQueue();
@@ -4144,6 +4145,7 @@ bool beginFrame(bool acquire_swapchain)
     tickDeferredBufferFreeQueue();
     tickDeferredImageFreeQueue();
     tickDeferredObjectFreeQueue();
+    tickMegaFreeQueue();
     tickDeferredQueryReleaseQueue();
     tickOneShotFreeQueue();
 
@@ -4320,6 +4322,8 @@ bool endFrame()
                                    << "/" << gVkPerf.set_memo_fill.load()
                                    << " populate=" << gVkPerf.populate.load()
                                    << " | syncmat " << gVkPerf.syncmat_build.load() << "/" << gVkPerf.syncmat_call.load()
+                                   << " | vbbind " << gVkPerf.vb_bind.load() << "/" << gVkPerf.vb_skip.load()
+                                   << " ibbind " << gVkPerf.ib_bind.load() << "/" << gVkPerf.ib_skip.load()
                                    << " | pass scene=" << gVkPerf.draws_pass[0].load()
                                    << " shadow=" << gVkPerf.draws_pass[1].load()
                                    << " occl=" << gVkPerf.draws_pass[2].load()
@@ -4333,6 +4337,9 @@ bool endFrame()
                                    << "/" << gVkPerf.draws_shadow_map[5].load()
                                    << " culled=" << gVkPerf.shadow_cull.load()
                                    << " rigged=" << gVkPerf.shadow_rigged.load()
+                                   << " | mega " << [](){ U64 c,cap,use; megabufStats(c,cap,use);
+                                        return llformat("chunks=%llu used=%.1f/%.1fMB",
+                                            (unsigned long long)c, use/1048576.0, cap/1048576.0); }()
                                    << " | pe sub_ms=" << ((F64)sPESubmitUs.exchange(0) / 1000.0)
                                    << " prs_ms=" << ((F64)sPEPresentUs.exchange(0) / 1000.0)
                                    << " mt=" << (sPEThreaded ? 1 : 0)
@@ -6319,12 +6326,385 @@ void tickOneShotFreeQueue()
     sPendingOneShotFrees.resize(w);
 }
 
+namespace
+{
+    struct MegaChunk
+    {
+        VkBuffer buffer     = VK_NULL_HANDLE;
+        void*    allocation = nullptr;
+        U8*      mapped     = nullptr;
+        U32      typemask   = 0;
+        U32      capacity   = 0;
+        U32      used       = 0;
+        U32      byte_size  = 0;
+        bool     exclusive  = false;
+        bool     vertex     = false;
+        U32      region_offsets[16] = {};
+        std::vector<std::pair<U32, U32>> free_ranges;
+        U64      id = 0;
+    };
+
+    std::vector<U32> sMegaTypeSizes;
+    std::unordered_map<U32, std::vector<MegaChunk*>> sMegaVertexPools;
+    std::vector<MegaChunk*> sMegaIndexPool;
+    std::unordered_map<U64, MegaChunk*> sMegaChunksById;
+    U64 sMegaChunkNextId = 1;
+
+    struct PendingMegaFree
+    {
+        U64 chunk;
+        U32 first;
+        U32 count;
+        U32 enqueue_frame;
+    };
+    std::vector<PendingMegaFree> sPendingMegaFrees;
+
+    constexpr U32 MEGA_V_CHUNK_INITIAL = 65536;
+    constexpr U32 MEGA_V_CHUNK_MAX     = 1048576;
+    constexpr U32 MEGA_I_CHUNK_INITIAL = 1u << 20;
+    constexpr U32 MEGA_I_CHUNK_MAX     = 16u << 20;
+
+    U32 megaVertexChunkBytes(U32 typemask, U32 capacity, U32* offsets)
+    {
+        U32 offset = 0;
+        for (U32 i = 0; i < (U32)sMegaTypeSizes.size(); ++i)
+        {
+            if (typemask & (1u << i))
+            {
+                offsets[i] = offset;
+                offset += sMegaTypeSizes[i] * capacity;
+                offset = (offset + 0xF) & ~0xFu;
+            }
+        }
+        return offset;
+    }
+
+    bool megaAllocRange(MegaChunk* c, U32 count, U32& out_first)
+    {
+        for (size_t i = 0; i < c->free_ranges.size(); ++i)
+        {
+            auto& fr = c->free_ranges[i];
+            if (fr.second >= count)
+            {
+                out_first = fr.first;
+                fr.first  += count;
+                fr.second -= count;
+                if (fr.second == 0)
+                {
+                    c->free_ranges.erase(c->free_ranges.begin() + i);
+                }
+                c->used += count;
+                return true;
+            }
+        }
+        return false;
+    }
+
+    void megaFreeRange(MegaChunk* c, U32 first, U32 count)
+    {
+        c->used -= count;
+        auto& v = c->free_ranges;
+        size_t i = 0;
+        while (i < v.size() && v[i].first < first)
+        {
+            ++i;
+        }
+        v.insert(v.begin() + i, { first, count });
+        if (i + 1 < v.size() && v[i].first + v[i].second == v[i + 1].first)
+        {
+            v[i].second += v[i + 1].second;
+            v.erase(v.begin() + i + 1);
+        }
+        if (i > 0 && v[i - 1].first + v[i - 1].second == v[i].first)
+        {
+            v[i - 1].second += v[i].second;
+            v.erase(v.begin() + i);
+        }
+    }
+
+    MegaChunk* megaNewChunk(U32 typemask, U32 min_capacity, bool vertex_chunk, bool exclusive)
+    {
+        MegaChunk* c = new MegaChunk();
+        c->typemask  = typemask;
+        c->exclusive = exclusive;
+        c->vertex    = vertex_chunk;
+
+        U32 bytes;
+        if (vertex_chunk)
+        {
+            if (exclusive)
+            {
+                c->capacity = min_capacity;
+            }
+            else
+            {
+                U32 grow = MEGA_V_CHUNK_INITIAL;
+                auto& pool = sMegaVertexPools[typemask];
+                if (!pool.empty())
+                {
+                    grow = llmin(pool.back()->capacity * 2, MEGA_V_CHUNK_MAX);
+                }
+                c->capacity = llmax(grow, min_capacity);
+            }
+            bytes = megaVertexChunkBytes(typemask, c->capacity, c->region_offsets);
+        }
+        else
+        {
+            if (exclusive)
+            {
+                c->capacity = min_capacity;
+            }
+            else
+            {
+                U32 grow = MEGA_I_CHUNK_INITIAL;
+                if (!sMegaIndexPool.empty())
+                {
+                    grow = llmin(sMegaIndexPool.back()->capacity * 2, MEGA_I_CHUNK_MAX);
+                }
+                c->capacity = llmax(grow, min_capacity);
+            }
+            bytes = c->capacity;
+        }
+        c->byte_size = bytes;
+
+        void* mapped = nullptr;
+        const VkBufferUsageFlags usage = vertex_chunk ? VK_BUFFER_USAGE_VERTEX_BUFFER_BIT
+                                                      : VK_BUFFER_USAGE_INDEX_BUFFER_BIT;
+        if (!createBufferVkImpl(bytes, usage, c->buffer, c->allocation, &mapped, true)
+            || mapped == nullptr)
+        {
+            if (c->buffer != VK_NULL_HANDLE || c->allocation != nullptr)
+            {
+                destroyBufferVk(c->buffer, c->allocation);
+            }
+            delete c;
+            LL_WARNS("Vulkan") << "megabuf chunk creation failed bytes=" << bytes << LL_ENDL;
+            return nullptr;
+        }
+        c->mapped = (U8*)mapped;
+        c->free_ranges.push_back({ 0, c->capacity });
+        c->id = sMegaChunkNextId++;
+        sMegaChunksById[c->id] = c;
+        if (!exclusive)
+        {
+            if (vertex_chunk)
+            {
+                sMegaVertexPools[typemask].push_back(c);
+            }
+            else
+            {
+                sMegaIndexPool.push_back(c);
+            }
+        }
+        return c;
+    }
+
+    void megaDestroyChunk(MegaChunk* c)
+    {
+        destroyBufferVk(c->buffer, c->allocation);
+        sMegaChunksById.erase(c->id);
+        delete c;
+    }
+}
+
+void megabufInit(const U32* type_sizes, U32 type_count)
+{
+    sMegaTypeSizes.assign(type_sizes, type_sizes + type_count);
+}
+
+void megabufShutdown()
+{
+    sPendingMegaFrees.clear();
+    for (auto& it : sMegaChunksById)
+    {
+        MegaChunk* c = it.second;
+        destroyBufferVk(c->buffer, c->allocation);
+        delete c;
+    }
+    sMegaChunksById.clear();
+    sMegaVertexPools.clear();
+    sMegaIndexPool.clear();
+}
+
+bool megabufAcquireVertex(U32 typemask, U32 nverts, bool exclusive, MegaSliceV& out)
+{
+    out = MegaSliceV();
+    if (nverts == 0 || sMegaTypeSizes.empty())
+    {
+        return false;
+    }
+    const U32 count = exclusive ? nverts : ((nverts + 3u) & ~3u);
+    MegaChunk* chunk = nullptr;
+    U32 first = 0;
+    if (!exclusive)
+    {
+        for (MegaChunk* c : sMegaVertexPools[typemask])
+        {
+            if (megaAllocRange(c, count, first))
+            {
+                chunk = c;
+                break;
+            }
+        }
+    }
+    if (chunk == nullptr)
+    {
+        chunk = megaNewChunk(typemask, count, true, exclusive);
+        if (chunk == nullptr || !megaAllocRange(chunk, count, first))
+        {
+            return false;
+        }
+    }
+    out.buffer         = chunk->buffer;
+    out.mapped         = chunk->mapped;
+    out.first          = first;
+    out.count          = count;
+    out.region_offsets = chunk->region_offsets;
+    out.chunk          = chunk->id;
+    return true;
+}
+
+void megabufReleaseVertex(const MegaSliceV& slice)
+{
+    if (slice.chunk == 0)
+    {
+        return;
+    }
+    sPendingMegaFrees.push_back({ slice.chunk, slice.first, slice.count, sMonotonicFrameCount });
+}
+
+bool megabufAcquireIndex(U32 size_bytes, bool exclusive, MegaSliceI& out)
+{
+    out = MegaSliceI();
+    if (size_bytes == 0)
+    {
+        return false;
+    }
+    const U32 count = exclusive ? size_bytes : ((size_bytes + 3u) & ~3u);
+    MegaChunk* chunk = nullptr;
+    U32 first = 0;
+    if (!exclusive)
+    {
+        for (MegaChunk* c : sMegaIndexPool)
+        {
+            if (megaAllocRange(c, count, first))
+            {
+                chunk = c;
+                break;
+            }
+        }
+    }
+    if (chunk == nullptr)
+    {
+        chunk = megaNewChunk(0, count, false, exclusive);
+        if (chunk == nullptr || !megaAllocRange(chunk, count, first))
+        {
+            return false;
+        }
+    }
+    out.buffer = chunk->buffer;
+    out.mapped = chunk->mapped;
+    out.offset = first;
+    out.size   = count;
+    out.chunk  = chunk->id;
+    return true;
+}
+
+void megabufReleaseIndex(const MegaSliceI& slice)
+{
+    if (slice.chunk == 0)
+    {
+        return;
+    }
+    sPendingMegaFrees.push_back({ slice.chunk, slice.offset, slice.size, sMonotonicFrameCount });
+}
+
+void tickMegaFreeQueue()
+{
+    size_t w = 0;
+    const size_t n = sPendingMegaFrees.size();
+    for (size_t r = 0; r < n; ++r)
+    {
+        PendingMegaFree& e = sPendingMegaFrees[r];
+        if (e.enqueue_frame <= sLastCompletedMonotonic)
+        {
+            auto it = sMegaChunksById.find(e.chunk);
+            if (it != sMegaChunksById.end())
+            {
+                MegaChunk* c = it->second;
+                if (c->exclusive)
+                {
+                    megaDestroyChunk(c);
+                }
+                else
+                {
+                    megaFreeRange(c, e.first, e.count);
+                }
+            }
+        }
+        else
+        {
+            if (w != r)
+            {
+                sPendingMegaFrees[w] = e;
+            }
+            ++w;
+        }
+    }
+    sPendingMegaFrees.resize(w);
+}
+
+void megabufStats(U64& chunks, U64& capacity_bytes, U64& used_bytes)
+{
+    chunks = sMegaChunksById.size();
+    capacity_bytes = 0;
+    used_bytes = 0;
+    for (auto& it : sMegaChunksById)
+    {
+        MegaChunk* c = it.second;
+        capacity_bytes += c->byte_size;
+        if (c->vertex)
+        {
+            used_bytes += (U64)c->used * (c->capacity ? (c->byte_size / c->capacity) : 0);
+        }
+        else
+        {
+            used_bytes += c->used;
+        }
+    }
+}
+
+static thread_local VkCommandBuffer tVBMemoCmd = VK_NULL_HANDLE;
+static thread_local U32             tVBMemoFrame = 0xFFFFFFFFu;
+static thread_local VkBuffer        tVBMemoBuf[16] = {};
+static thread_local VkDeviceSize    tVBMemoOff[16] = {};
+
 void bindVertexBufferVk(VkCommandBuffer cmd_buf, VkBuffer buffer, VkDeviceSize offset, U32 firstBinding)
 {
     if (cmd_buf == VK_NULL_HANDLE || buffer == VK_NULL_HANDLE)
     {
         return;
     }
+    if (tVBMemoCmd != cmd_buf || tVBMemoFrame != sMonotonicFrameCount)
+    {
+        tVBMemoCmd   = cmd_buf;
+        tVBMemoFrame = sMonotonicFrameCount;
+        std::memset(tVBMemoBuf, 0, sizeof(tVBMemoBuf));
+        std::memset(tVBMemoOff, 0, sizeof(tVBMemoOff));
+    }
+    if (firstBinding < 16
+        && tVBMemoBuf[firstBinding] == buffer
+        && tVBMemoOff[firstBinding] == offset)
+    {
+        ++gVkPerf.vb_skip;
+        return;
+    }
+    if (firstBinding < 16)
+    {
+        tVBMemoBuf[firstBinding] = buffer;
+        tVBMemoOff[firstBinding] = offset;
+    }
+    ++gVkPerf.vb_bind;
     VkBuffer     buffers[1] = { buffer };
     VkDeviceSize offsets[1] = { offset };
     vkCmdBindVertexBuffers(cmd_buf,
@@ -6354,6 +6734,12 @@ VkDescriptorSet getCurrentPerFrameDescriptorSet()
     return sPerFrameRingSets[f][slot];
 }
 
+static thread_local VkCommandBuffer tIBMemoCmd = VK_NULL_HANDLE;
+static thread_local U32             tIBMemoFrame = 0xFFFFFFFFu;
+static thread_local VkBuffer        tIBMemoBuf = VK_NULL_HANDLE;
+static thread_local VkDeviceSize    tIBMemoOff = 0;
+static thread_local VkIndexType     tIBMemoType = VK_INDEX_TYPE_MAX_ENUM;
+
 void bindIndexBufferVk(VkCommandBuffer cmd_buf,
                        VkBuffer        buffer,
                        VkDeviceSize    offset,
@@ -6363,6 +6749,23 @@ void bindIndexBufferVk(VkCommandBuffer cmd_buf,
     {
         return;
     }
+    if (tIBMemoCmd != cmd_buf || tIBMemoFrame != sMonotonicFrameCount)
+    {
+        tIBMemoCmd   = cmd_buf;
+        tIBMemoFrame = sMonotonicFrameCount;
+        tIBMemoBuf   = VK_NULL_HANDLE;
+        tIBMemoOff   = 0;
+        tIBMemoType  = VK_INDEX_TYPE_MAX_ENUM;
+    }
+    if (tIBMemoBuf == buffer && tIBMemoOff == offset && tIBMemoType == index_type)
+    {
+        ++gVkPerf.ib_skip;
+        return;
+    }
+    tIBMemoBuf  = buffer;
+    tIBMemoOff  = offset;
+    tIBMemoType = index_type;
+    ++gVkPerf.ib_bind;
     vkCmdBindIndexBuffer(cmd_buf, buffer, offset, index_type);
 }
 
