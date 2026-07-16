@@ -358,6 +358,7 @@ hdiutil detach -force /dev/diskX
 ```bash
 env \
   -u AYASTORM_VK_VALIDATION \
+  -u AYASTORM_VKCMD_MEMO \
   -u VK_LOADER_DEBUG \
   -u MVK_CONFIG_LOG_LEVEL \
   -u VK_DRIVER_FILES \
@@ -388,6 +389,8 @@ rg -F "$APP/Contents/Frameworks/libMoltenVK.dylib" "$WORK/ayastorm-vmmap.txt" "$
 次を同一binaryで確認し、`VERIFIED / CLAIMED / OPEN`で報告します。
 
 - 全windowにログイン画面が表示され、modalとログインbuttonの左clickが反応する。
+- persisted pipeline cacheが拒否された場合は、`.rejected`への隔離または破棄、empty cache retry、Vulkan device caps初期化への継続を確認する。
+- 起動時GPU benchmarkの1回目とfinal runが両方完走する。`AYASTORM_VKCMD_MEMO=0`や`--noprobe`で回避したrunを製品gateの合格証拠にしない。
 - `RenderHiDPI=0 / 1`でUI寸法、mouse hit-test、CAMetalLayer drawable寸法、swapchain extentがそれぞれ収束する。
 - 10回以上の連続resize、minimize / restore、fullscreen、異なるscaleのdisplay間移動でrecreate loopにならない。
 - ログイン、initial simulator、movement complete、チャット文字描画、正常終了へ到達する。
@@ -397,6 +400,7 @@ validation診断runは製品相当runと分け、dylib系overrideは引き続き
 
 ```bash
 env \
+  -u AYASTORM_VKCMD_MEMO \
   -u VK_DRIVER_FILES \
   -u VK_ICD_FILENAMES \
   -u VK_ADD_DRIVER_FILES \
@@ -421,6 +425,7 @@ export FIXED_LAYER_PATH="$REPO/build-darwin-universal/packages/share/vulkan/expl
 test -f "$FIXED_LAYER_PATH/VkLayer_khronos_validation.json"
 
 env \
+  -u AYASTORM_VKCMD_MEMO \
   -u VK_DRIVER_FILES \
   -u VK_ICD_FILENAMES \
   -u VK_ADD_DRIVER_FILES \
