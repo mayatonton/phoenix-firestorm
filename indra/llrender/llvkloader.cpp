@@ -211,6 +211,20 @@ namespace
         return s_enabled;
     }
 
+    void resetCommandBufferStateTracking()
+    {
+        LLGLSLShader::sCurPerCallVkDescriptorSet = VK_NULL_HANDLE;
+        LLGLSLShader::sCurPerCallVkOffsetsDirty  = true;
+
+        sLastBoundGraphicsPipeline = VK_NULL_HANDLE;
+        sLastDescLayout            = VK_NULL_HANDLE;
+        sLastDescSet0              = VK_NULL_HANDLE;
+        sLastDescSet1              = VK_NULL_HANDLE;
+        sLastDescDynCount          = 0;
+        sLastMvLayout              = VK_NULL_HANDLE;
+        sViewportScissorValid      = false;
+    }
+
     VkSampler             sStandardLinearSampler                  = VK_NULL_HANDLE;
 
     std::unordered_map<U32, VkSampler> sSamplerCache;
@@ -1641,19 +1655,63 @@ namespace
         info.sType           = VK_STRUCTURE_TYPE_PIPELINE_CACHE_CREATE_INFO;
         info.initialDataSize = 0;
         info.pInitialData    = nullptr;
-        if (pcache::sInitialized && !pcache::sBlob.empty())
+        const bool have_persisted_blob = pcache::sInitialized && !pcache::sBlob.empty();
+        if (have_persisted_blob)
         {
             info.initialDataSize = pcache::sBlob.size();
             info.pInitialData    = pcache::sBlob.data();
         }
 
         VkResult result = vkCreatePipelineCache(sDevice, &info, nullptr, &sPipelineCache);
-        if (result != VK_SUCCESS)
+        if (result == VK_SUCCESS)
+        {
+            return true;
+        }
+
+        LL_WARNS("Vulkan") << "Pipeline cache creation failed stage="
+                            << (have_persisted_blob ? "persisted_blob" : "empty")
+                            << " result=" << result
+                            << " initialDataSize=" << info.initialDataSize << LL_ENDL;
+        sPipelineCache = VK_NULL_HANDLE;
+#if !defined(VK_USE_PLATFORM_METAL_EXT)
+        return false;
+#else
+        if (!have_persisted_blob)
         {
             return false;
         }
 
+        const std::string rejected_path = pcache::sFilePath + ".rejected";
+        const bool quarantined = LLFile::rename(pcache::sFilePath, rejected_path) == 0;
+        bool discarded = false;
+        if (!quarantined)
+        {
+            discarded = LLFile::remove(pcache::sFilePath) == 0;
+        }
+        LL_WARNS("Vulkan") << "Rejected persisted pipeline cache quarantine="
+                            << (quarantined ? 1 : 0)
+                            << " discarded=" << (discarded ? 1 : 0)
+                            << " path=" << pcache::sFilePath
+                            << (quarantined ? " rejectedPath=" + rejected_path : std::string())
+                            << LL_ENDL;
+
+        pcache::sBlob.clear();
+        pcache::sBlob.shrink_to_fit();
+        info.initialDataSize = 0;
+        info.pInitialData = nullptr;
+        result = vkCreatePipelineCache(sDevice, &info, nullptr, &sPipelineCache);
+        if (result != VK_SUCCESS)
+        {
+            LL_WARNS("Vulkan") << "Pipeline cache creation failed stage=empty_retry result="
+                                << result << " initialDataSize=0" << LL_ENDL;
+            sPipelineCache = VK_NULL_HANDLE;
+            return false;
+        }
+
+        LL_INFOS("Vulkan") << "Pipeline cache creation recovered stage=empty_retry result="
+                            << result << LL_ENDL;
         return true;
+#endif
     }
 
     bool createVmaAllocator()
@@ -2964,6 +3022,13 @@ bool initVulkan()
         return false;
     }
 
+    auto fail_init = [](const char* stage)
+    {
+        LL_WARNS("Vulkan") << "Vulkan initialization failed at stage=" << stage << LL_ENDL;
+        shutdownVulkan();
+        return false;
+    };
+
 
     VkResult result = volkInitialize();
     if (result != VK_SUCCESS)
@@ -2993,34 +3058,49 @@ bool initVulkan()
 
     if (!createPipelineCacheStorage())
     {
-        shutdownVulkan();
-        return false;
+        return fail_init("createPipelineCacheStorage");
     }
 
-    if (!createCommandPool() || !createDefaultFallbackImage() || !createPipelineCache())
+    if (!createCommandPool())
     {
-        shutdownVulkan();
-        return false;
+        return fail_init("createCommandPool");
     }
-
+    if (!createDefaultFallbackImage())
+    {
+        return fail_init("createDefaultFallbackImage");
+    }
+    if (!createPipelineCache())
+    {
+        return fail_init("createPipelineCache");
+    }
     if (!createVmaAllocator())
     {
-        shutdownVulkan();
-        return false;
+        return fail_init("createVmaAllocator");
     }
 
-    if (!createDefaultFallbackCubeArrayImage() || !createDefaultFallbackCubeImage() || !createDefaultFallback3DImage())
+    if (!createDefaultFallbackCubeArrayImage())
     {
-        shutdownVulkan();
-        return false;
+        return fail_init("createDefaultFallbackCubeArrayImage");
     }
-
-    if (!createPerFrameDescriptorSetLayout() ||
-        !createPerFrameUbos()                ||
-        !createPerFrameDescriptorSets())
+    if (!createDefaultFallbackCubeImage())
     {
-        shutdownVulkan();
-        return false;
+        return fail_init("createDefaultFallbackCubeImage");
+    }
+    if (!createDefaultFallback3DImage())
+    {
+        return fail_init("createDefaultFallback3DImage");
+    }
+    if (!createPerFrameDescriptorSetLayout())
+    {
+        return fail_init("createPerFrameDescriptorSetLayout");
+    }
+    if (!createPerFrameUbos())
+    {
+        return fail_init("createPerFrameUbos");
+    }
+    if (!createPerFrameDescriptorSets())
+    {
+        return fail_init("createPerFrameDescriptorSets");
     }
 
     {
@@ -3033,14 +3113,12 @@ bool initVulkan()
 
     if (!createStandardSampler())
     {
-        shutdownVulkan();
-        return false;
+        return fail_init("createStandardSampler");
     }
 
     if (!createSyncObjects())
     {
-        shutdownVulkan();
-        return false;
+        return fail_init("createSyncObjects");
     }
 
     sInitialized = true;
@@ -3455,16 +3533,7 @@ bool beginFrame(bool acquire_swapchain)
         return false;
     }
 
-    LLGLSLShader::sCurPerCallVkDescriptorSet = VK_NULL_HANDLE;
-    LLGLSLShader::sCurPerCallVkOffsetsDirty  = true;
-
-    sLastBoundGraphicsPipeline = VK_NULL_HANDLE;
-    sLastDescLayout            = VK_NULL_HANDLE;
-    sLastDescSet0              = VK_NULL_HANDLE;
-    sLastDescSet1              = VK_NULL_HANDLE;
-    sLastDescDynCount          = 0;
-    sLastMvLayout              = VK_NULL_HANDLE;
-    sViewportScissorValid      = false;
+    resetCommandBufferStateTracking();
 
     sSwapchainClearedThisFrame = false;
 
@@ -3746,6 +3815,8 @@ bool beginOffscreenFrameVk()
     {
         return false;
     }
+
+    resetCommandBufferStateTracking();
 
     if (sInFlightFences[sFrameIndex] != VK_NULL_HANDLE)
     {
