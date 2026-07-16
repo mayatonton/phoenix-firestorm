@@ -162,7 +162,6 @@ bool emitActive(U32 pass)
 {
     return enabled()
         && isBucketizedPass(pass)
-        && !LLPipelineFrameContext::getInstance().isShadowPass()
         && gPipeline.hasRenderType(pass);
 }
 

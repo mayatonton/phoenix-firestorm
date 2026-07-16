@@ -4254,32 +4254,6 @@ void joinRecordJobs()
     sRWCompleted  = 0;
 }
 
-void cmdShadowDepthWawBarrierVk(VkCommandBuffer cmd, VkImage depth_image)
-{
-    if (cmd == VK_NULL_HANDLE || depth_image == VK_NULL_HANDLE)
-    {
-        return;
-    }
-    VkImageMemoryBarrier b = {};
-    b.sType                           = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER;
-    b.oldLayout                       = VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL;
-    b.newLayout                       = VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL;
-    b.srcQueueFamilyIndex             = VK_QUEUE_FAMILY_IGNORED;
-    b.dstQueueFamilyIndex             = VK_QUEUE_FAMILY_IGNORED;
-    b.image                           = depth_image;
-    b.srcAccessMask                   = VK_ACCESS_DEPTH_STENCIL_ATTACHMENT_WRITE_BIT;
-    b.dstAccessMask                   = VK_ACCESS_DEPTH_STENCIL_ATTACHMENT_READ_BIT | VK_ACCESS_DEPTH_STENCIL_ATTACHMENT_WRITE_BIT;
-    b.subresourceRange.aspectMask     = VK_IMAGE_ASPECT_DEPTH_BIT | VK_IMAGE_ASPECT_STENCIL_BIT;
-    b.subresourceRange.baseMipLevel   = 0;
-    b.subresourceRange.levelCount     = 1;
-    b.subresourceRange.baseArrayLayer = 0;
-    b.subresourceRange.layerCount     = 1;
-    vkCmdPipelineBarrier(cmd,
-                         VK_PIPELINE_STAGE_LATE_FRAGMENT_TESTS_BIT,
-                         VK_PIPELINE_STAGE_EARLY_FRAGMENT_TESTS_BIT | VK_PIPELINE_STAGE_LATE_FRAGMENT_TESTS_BIT,
-                         0, 0, nullptr, 0, nullptr, 1, &b);
-}
-
 bool endFrame()
 {
     if (!sInitialized || !sInFrame)

@@ -48,7 +48,6 @@ namespace LLVKLoader
     bool isRecordJobActive();
     bool dispatchRecordJob(std::function<void(VkCommandBuffer)> body);
     void joinRecordJobs();
-    void cmdShadowDepthWawBarrierVk(VkCommandBuffer cmd, VkImage depth_image);
 
     uint32_t acquireOcclusionQueryVk();
     void     releaseOcclusionQueryVk(uint32_t handle);

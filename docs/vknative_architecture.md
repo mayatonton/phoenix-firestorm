@@ -114,7 +114,7 @@ per-frame(×1/frame):
 |---|---|---|
 | MT-1 PresentEngine(swapchain list・queue 単独所有) | **温存(恒久)** | submit/present 境界はどの設計でも必要。detachable floater の扉(swapchain list)も既に合意済み |
 | MT-2a thread_local/atomic 基盤(gGL・ring・arena・pipe cache mutex) | **温存(恒久)** | worker がどの仕事をするにせよ record-safe 基盤は前提 |
-| MT-2b shadow cascade record worker(lane/pin/seed) | **移行期温存 → 縮退** | bucket 化が shadow static に及んだ時点で「worker で記録し直す」対象自体が消える。lane 機構(RecordJob/CommandPool per lane)は更新 job の器に転用 |
+| MT-2b shadow cascade record worker(lane/pin/seed) | **縮退実施済(M4b 2026-07-16)** | shadow static の bucket 化で「worker で記録し直す」対象が消滅 = record 関数・pin・seed・mt_split 分岐を物理削除。lane 機構(RecordJob/CommandPool per lane・record-safe guard 群)は休眠温存 = M6 で更新 job の器に転用 |
 | MT-3(scene 提出並列化・凍結中) | **不実施** | 「毎フレーム全記録」を並べ直す工事 = doctrine 違反。bucket 化がその仕事を消す |
 | Strike 10 memo/署名/世代・per-draw descriptor cache | **bindless 到達で退役** | per-draw set という概念ごと消えるため |
 | Strike 1(PC 化)/5(vkCmd memo)/6(cascade cull)/7(shadow RR)/8(probe slice)/9 | **温存** | draw 数・GPU 仕事の削減 = 設計と直交して有効 |
@@ -163,7 +163,7 @@ worker pool の新しい仕事(優先順): ① geometry rebuild(genVolumeGeometr
 | **M1** | global texture heap 新設 + **indexed batch shader family を heap 消費に切替**(diffuse 系 index を DrawData でなくまず既存 per-vertex index のまま heap 化) | 当該 family の per-draw set 構築・Strike 10 memo | switch 撤去済。誤 texture・白置換・streaming 中の slot 差替 |
 | **M2** | per-draw SSBO(**tex_slots のみ** = §1.3 改訂)+ draw-ID(firstInstance→gl_InstanceIndex)。binding54 退役 | per-draw の slots arena 書込/dynamic offset(M1 運搬)・MDI への per-record 供給路を確立 | switch・binding54 とも撤去済。誤テクスチャ・batch 単位の模様混線 |
 | **M3** | mega-buffer suballocation + mapped 直書き(CPU 副本解消)。strider read 消費者の洗い出しが前提調査 | per-draw VB bind ループ・VB 二重持ち RAM | switch 撤去済(gate PASS 2026-07-16・実測 vbbind 97.8% skip)。geometry 化け・rebuild 競合 |
-| **M4** | 永続 bucket(静的不透明 + shadow static)+ dirty patch 配線。emission は CPU loop のまま。**M4a(camera 側)= 2026-07-16 gate PASS**・M4b = shadow 側 + MT-2b static split 退役 | **render map 再構築(8b)**・pool loop の当該 pass 分・pipeline per-draw 照合 | `AYASTORM_BUCKETS=0`。物の出現/消滅遅れ(dirty 配線漏れ)・LOD 切替 |
+| **M4** | 永続 bucket(静的不透明 + shadow static)+ dirty patch 配線。emission は CPU loop のまま。**M4a(camera 側)+ M4b(shadow 側 + MT-2b static split 退役)= 2026-07-16 gate PASS**(switch 撤去済) | **render map 再構築(8b)**・pool loop の当該 pass 分・pipeline per-draw 照合・MT-2b shadow record worker | switch 撤去済(gate PASS 2026-07-16・実測 bkt rpush=0 全 cull)。物の出現/消滅遅れ(dirty 配線漏れ)・LOD 切替 |
 | **M5** | multi-draw indirect + GPU frustum/HiZ culling(compute) | vkCmdDrawIndexed ×N(静的分)・occlusion query 機構・octree cull の毎フレーム可視判定 | `AYASTORM_INDIRECT=0`。物陰の物体・水面下 cull・probe |
 | **M6** | frame graph 表駆動 barrier + worker の更新 job 化(rebuild/upload/compaction)+ 旧経路の物理削除 | 手動 layout 簿記・MT-2b record worker(転用) | 段別。最後に旧経路削除の等価全数照合(GL 削除時と同じ「全数照合」規律) |
 
