@@ -1446,6 +1446,10 @@ namespace LLVKLoader
         std::atomic<U64> mdi_zero{0};
         std::atomic<U64> mdi_dyn{0};
         std::atomic<U64> mdi_full{0};
+        std::atomic<U64> alp_run{0};
+        std::atomic<U64> alp_col{0};
+        std::atomic<U64> alp_inl{0};
+        std::atomic<U64> alpha_us[12] = {};
         std::atomic<U64> fam_us[24] = {};
         std::atomic<U64> fam_draws[24] = {};
         std::atomic<U64> rigged_rec{0};
@@ -1481,6 +1485,8 @@ namespace LLVKLoader
             shadow_cull = 0; shadow_rigged = 0;
             bkt_patch = 0; bkt_range = 0; bkt_rec = 0; bkt_skip = 0;
             mdi_call = 0; mdi_rec = 0; mdi_zero = 0; mdi_dyn = 0; mdi_full = 0;
+            alp_run = 0; alp_col = 0; alp_inl = 0;
+            for (auto& v : alpha_us) v = 0;
             for (auto& v : fam_us) v = 0;
             for (auto& v : fam_draws) v = 0;
             rigged_rec = 0;

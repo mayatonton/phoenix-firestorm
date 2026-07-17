@@ -158,6 +158,8 @@ void LLDrawPoolAlpha::renderPostDeferred(S32 pass)
         return;
     }
 
+    const U64 prep_t0 = LLVKLoader::perfLogEnabled() ? (U64)LLTimer::getTotalTime() : 0;
+
     F32 water_sign = 1.f;
 
     if (getType() == LLDrawPool::POOL_ALPHA_PRE_WATER)
@@ -208,6 +210,11 @@ void LLDrawPoolAlpha::renderPostDeferred(S32 pass)
     // explicitly unbind here so render loop doesn't make assumptions about the last shader
     // already being setup for rendering
     LLGLSLShader::unbind();
+
+    if (prep_t0 != 0)
+    {
+        LLVKLoader::gVkPerf.alpha_us[11] += (U64)LLTimer::getTotalTime() - prep_t0;
+    }
 
     const bool use_alpha_rt =
         !LLPipelineFrameContext::getInstance().isImpostorPass() && !LLPipelineFrameContext::getInstance().isHUDPass() &&
@@ -780,6 +787,259 @@ void LLDrawPoolAlpha::renderRiggedPbrEmissives(std::vector<LLDrawInfo*>& emissiv
     }
 }
 
+namespace
+{
+
+struct AlphaRunSpan
+{
+    U32 mFirst = 0;
+    U32 mCount = 0;
+    LLDrawInfo* mRep = nullptr;
+};
+
+struct AlphaRun
+{
+    std::vector<VkDrawIndexedIndirectCommand> mCmds;
+    std::vector<AlphaRunSpan> mSpans;
+    const LLMatrix4* mModelMatrix = nullptr;
+    LLGLSLShader* mShader = nullptr;
+
+    bool empty() const { return mCmds.empty(); }
+
+    void reset()
+    {
+        mCmds.clear();
+        mSpans.clear();
+        mModelMatrix = nullptr;
+        mShader = nullptr;
+    }
+};
+
+constexpr size_t ALPHA_RUN_MAX_CMDS = 4096;
+
+bool alphaRunCandidate(const LLDrawInfo& params)
+{
+    if (!LLVKLoader::isIndirectDrawEnabled())
+    {
+        return false;
+    }
+    if (params.mAvatar.notNull()
+        || params.mMaterial != nullptr
+        || params.mGLTFMaterial.notNull()
+        || params.mTextureMatrix != nullptr)
+    {
+        return false;
+    }
+    if (params.mBlendFuncSrc != LLRender::BF_SOURCE_ALPHA
+        || params.mBlendFuncDst != LLRender::BF_ONE_MINUS_SOURCE_ALPHA)
+    {
+        return false;
+    }
+    LLVertexBuffer* vb = params.mVertexBuffer.get();
+    if (vb == nullptr || params.mCount == 0
+        || vb->getVkVertexSlice().buffer == VK_NULL_HANDLE
+        || vb->getVkIndexSlice().buffer == VK_NULL_HANDLE)
+    {
+        return false;
+    }
+    return true;
+}
+
+void writeAlphaPerProgramUBO(bool reset_minimum_alpha)
+{
+    if (LLVKLoader::isVulkanInitialized() && current_shader
+        && current_shader->mWritePerProgramUBOMinimumAlpha
+        && current_shader->mVkPerProgramUBO != VK_NULL_HANDLE
+        && current_shader->mVkPerProgramUBOMapped != nullptr
+        && (current_shader->mVkPerProgramUBOSize == LLVKLoader::ALPHAF_UBO_SIZE_SHADOW
+            || current_shader->mVkPerProgramUBOSize == LLVKLoader::ALPHAF_UBO_SIZE_NO_SHADOW))
+    {
+        const bool no_shadow =
+            (current_shader->mVkPerProgramUBOSize == LLVKLoader::ALPHAF_UBO_SIZE_NO_SHADOW);
+        const F32 cur_min_alpha = reset_minimum_alpha ? 0.f : MINIMUM_ALPHA;
+
+        current_shader->rotatePerProgramUBOSlot();
+        char* base = (char*)current_shader->mVkActivePerProgramUBOMapped;
+
+        memcpy(base + 0, &cur_min_alpha, sizeof(F32));
+
+        const F32 near_clip_v = LLViewerCamera::getInstance()->getNear() * 2.f;
+        memcpy(base + LLVKLoader::ALPHAF_UBO_OFFSET_NEAR_CLIP, &near_clip_v, sizeof(F32));
+
+        if (no_shadow)
+        {
+            F32 sun_moon[8] = {
+                gPipeline.mTransformedSunDir.mV[0],  gPipeline.mTransformedSunDir.mV[1],  gPipeline.mTransformedSunDir.mV[2],  0.f,
+                gPipeline.mTransformedMoonDir.mV[0], gPipeline.mTransformedMoonDir.mV[1], gPipeline.mTransformedMoonDir.mV[2], 0.f,
+            };
+            memcpy(base + LLVKLoader::ALPHAF_UBO_OFFSET_SUN_MOON, sun_moon, sizeof(sun_moon));
+        }
+
+        U32 lights_offset =
+            no_shadow ? LLVKLoader::ALPHAF_UBO_OFFSET_LIGHTS_NO_SHADOW
+                      : LLVKLoader::ALPHAF_UBO_OFFSET_LIGHTS_SHADOW;
+        F32 lp[LL_NUM_LIGHT_UNITS * 4];
+        F32 ld[LL_NUM_LIGHT_UNITS * 3];
+        F32 la[LL_NUM_LIGHT_UNITS * 4];
+        F32 ldi[LL_NUM_LIGHT_UNITS * 3];
+        gGL.getLightArrayData(lp, ld, la, ldi);
+
+        memcpy(base + lights_offset, lp, sizeof(F32) * LL_NUM_LIGHT_UNITS * 4);
+        lights_offset += 128;
+        for (U32 i = 0; i < LL_NUM_LIGHT_UNITS; i++)
+        {
+            F32 v[4] = { ld[i*3+0], ld[i*3+1], ld[i*3+2], 0.f };
+            memcpy(base + lights_offset + i * 16, v, 16);
+        }
+        lights_offset += 128;
+        memcpy(base + lights_offset, la, sizeof(F32) * LL_NUM_LIGHT_UNITS * 4);
+        lights_offset += 128;
+        for (U32 i = 0; i < LL_NUM_LIGHT_UNITS; i++)
+        {
+            F32 v[4] = { ldi[i*3+0], ldi[i*3+1], ldi[i*3+2], 0.f };
+            memcpy(base + lights_offset + i * 16, v, 16);
+        }
+    }
+}
+
+void appendAlphaRunCmd(AlphaRun& run, LLDrawInfo& params)
+{
+    LLVertexBuffer* vb = params.mVertexBuffer.get();
+    const LLVKLoader::MegaSliceV& vs = vb->getVkVertexSlice();
+    const LLVKLoader::MegaSliceI& is = vb->getVkIndexSlice();
+    AlphaRunSpan* span = run.mSpans.empty() ? nullptr : &run.mSpans.back();
+    LLVertexBuffer* rep_vb = span ? span->mRep->mVertexBuffer.get() : nullptr;
+    if (rep_vb == nullptr
+        || rep_vb->getVkVertexSlice().buffer != vs.buffer
+        || rep_vb->getVkIndexSlice().buffer != is.buffer
+        || rep_vb->getIndicesType() != vb->getIndicesType())
+    {
+        AlphaRunSpan fresh;
+        fresh.mFirst = (U32)run.mCmds.size();
+        fresh.mCount = 0;
+        fresh.mRep   = &params;
+        run.mSpans.push_back(fresh);
+        span = &run.mSpans.back();
+    }
+    ++span->mCount;
+    VkDrawIndexedIndirectCommand dc;
+    dc.indexCount    = params.mCount;
+    dc.instanceCount = 1;
+    dc.firstIndex    = is.offset / vb->getIndicesStride() + params.mOffset;
+    dc.vertexOffset  = (S32)vs.first;
+    dc.firstInstance = LLVKLoader::getCurrentDrawDataID();
+    run.mCmds.push_back(dc);
+}
+
+void flushAlphaRun(AlphaRun& run)
+{
+    if (run.empty())
+    {
+        run.reset();
+        return;
+    }
+    const U64 flu_t0 = LLVKLoader::perfLogEnabled() ? (U64)LLTimer::getTotalTime() : 0;
+    LLGLSLShader* shader = LLGLSLShader::sCurBoundShaderPtr;
+    llassert(shader == run.mShader);
+    if (shader != nullptr)
+    {
+        gGL.syncMatrices();
+        VkDescriptorSet set_to_bind = LLGLSLShader::sCurPerCallVkDescriptorSet;
+        if (set_to_bind != VK_NULL_HANDLE && LLGLSLShader::sCurPerCallVkOffsetsDirty)
+        {
+            LLGLSLShader::vkRefreshDynamicOffsetsForDraw();
+            set_to_bind = LLGLSLShader::sCurPerCallVkDescriptorSet;
+        }
+        if (set_to_bind == VK_NULL_HANDLE)
+        {
+            LLGLSLShader::populateAndBindUniversalDescriptorSet();
+            set_to_bind = LLGLSLShader::sCurPerCallVkDescriptorSet;
+        }
+        VkCommandBuffer cmd = LLVKLoader::getCurrentCommandBuffer();
+        if (set_to_bind != VK_NULL_HANDLE && cmd != VK_NULL_HANDLE)
+        {
+            VkPipeline pipeline = shader->getOrCreateVkPipelineForBoundRT(LLRender::TRIANGLES);
+            if (pipeline == VK_NULL_HANDLE)
+            {
+                static std::set<std::string> s_alpha_pipe_fail;
+                if (s_alpha_pipe_fail.insert(shader->mName).second)
+                {
+                    LL_WARNS("Vulkan") << "flushAlphaRun pipeline NULL shader='" << shader->mName
+                                       << "' = 個別要 fix" << LL_ENDL;
+                }
+            }
+            else
+            {
+                if (!LLVKLoader::isInRenderPassScope())
+                {
+                    LLRenderTarget* bound_rt = LLRenderTarget::getCurrentBoundTarget();
+                    if (bound_rt == nullptr)
+                    {
+                        LLVKLoader::beginSwapchainRendering();
+                    }
+                    else
+                    {
+                        bound_rt->resumeVkDynamicRendering();
+                    }
+                }
+                LLVKLoader::bindGraphicsPipelineOnce(cmd, pipeline);
+                {
+                    const bool vk_screen_space_copy = LLGLSLShader::vkUsePositiveViewport(
+                        LLRenderTarget::getCurrentBoundTarget() != nullptr,
+                        LLGLSLShader::vkCaptureRegimeActive());
+                    LLVKLoader::setupViewportAndScissor(cmd, vk_screen_space_copy);
+                }
+                LLVKLoader::bindDrawDescriptorSetsOnce(cmd,
+                                                       shader->mVkPipelineLayout,
+                                                       LLVKLoader::getCurrentPerFrameDescriptorSet(),
+                                                       set_to_bind,
+                                                       shader->mVkSet1DynamicCount,
+                                                       LLGLSLShader::sCurPerCallVkDynamicOffsets);
+                LLVKLoader::pushModelviewOnce(cmd,
+                                              shader->mVkPipelineLayout,
+                                              LLVKLoader::getCurrentModelviewMatrix());
+                VkBuffer     ring_buf    = VK_NULL_HANDLE;
+                VkDeviceSize ring_offset = 0;
+                void*        ring_mapped = nullptr;
+                if (LLVKLoader::indirectRingAlloc((U32)run.mCmds.size(), ring_buf, ring_offset, ring_mapped))
+                {
+                    std::memcpy(ring_mapped, run.mCmds.data(),
+                                run.mCmds.size() * sizeof(VkDrawIndexedIndirectCommand));
+                    for (const AlphaRunSpan& span : run.mSpans)
+                    {
+                        span.mRep->mVertexBuffer->setBuffer();
+                        vkCmdDrawIndexedIndirect(cmd, ring_buf,
+                                                 ring_offset + (VkDeviceSize)span.mFirst * sizeof(VkDrawIndexedIndirectCommand),
+                                                 span.mCount,
+                                                 sizeof(VkDrawIndexedIndirectCommand));
+                        ++LLVKLoader::gVkPerf.mdi_call;
+                    }
+                }
+                else
+                {
+                    for (const AlphaRunSpan& span : run.mSpans)
+                    {
+                        span.mRep->mVertexBuffer->setBuffer();
+                        for (U32 c = span.mFirst; c < span.mFirst + span.mCount; ++c)
+                        {
+                            const VkDrawIndexedIndirectCommand& dc = run.mCmds[c];
+                            vkCmdDrawIndexed(cmd, dc.indexCount, 1, dc.firstIndex, dc.vertexOffset, dc.firstInstance);
+                        }
+                    }
+                }
+                ++LLVKLoader::gVkPerf.alp_run;
+            }
+        }
+    }
+    if (flu_t0 != 0)
+    {
+        LLVKLoader::gVkPerf.alpha_us[9] += (U64)LLTimer::getTotalTime() - flu_t0;
+    }
+    run.reset();
+}
+
+}
+
 void LLDrawPoolAlpha::renderAlpha(U32 mask, bool depth_only, bool rigged, bool unified)
 {
     LL_PROFILE_ZONE_SCOPED_CATEGORY_DRAWPOOL;
@@ -842,6 +1102,12 @@ void LLDrawPoolAlpha::renderAlpha(U32 mask, bool depth_only, bool rigged, bool u
         above_water = !above_water;
     }
 
+
+    static AlphaRun run;
+
+    const bool alp_perf = LLVKLoader::perfLogEnabled();
+    U64 alp_us[11] = {};
+    auto alp_now = [&]() -> U64 { return alp_perf ? (U64)LLTimer::getTotalTime() : 0; };
 
     for (const std::pair<LLSpatialGroup*, bool>& render_entry : render_groups)
     {
@@ -923,7 +1189,17 @@ void LLDrawPoolAlpha::renderAlpha(U32 mask, bool depth_only, bool rigged, bool u
 
                 LL_PROFILE_ZONE_NAMED_CATEGORY_DRAWPOOL("ra - push batch");
 
+                const bool run_candidate = alphaRunCandidate(params);
+                if (!run.empty() && (!run_candidate || params.mModelMatrix != run.mModelMatrix))
+                {
+                    flushAlphaRun(run);
+                }
+
+                U64 alp_t = alp_now();
+
                 LLRenderPass::applyModelMatrix(params);
+
+                { U64 t2 = alp_now(); alp_us[0] += t2 - alp_t; alp_t = t2; }
 
                 LLMaterial* mat = NULL;
                 LLGLTFMaterial *gltf_mat = params.mGLTFMaterial;
@@ -1076,6 +1352,8 @@ void LLDrawPoolAlpha::renderAlpha(U32 mask, bool depth_only, bool rigged, bool u
                     if (current_shader != target_shader)
                     {// If we need shaders, and we're not ALREADY using the proper shader, then bind it
                     // (this way we won't rebind shaders unnecessarily).
+                        flushAlphaRun(run);
+                        alp_t = alp_now();
                         gPipeline.bindDeferredShaderFast(*target_shader);
 
                         if (params.mFullbright)
@@ -1130,12 +1408,19 @@ void LLDrawPoolAlpha::renderAlpha(U32 mask, bool depth_only, bool rigged, bool u
                     }
                 }
 
+                { U64 t2 = alp_now(); alp_us[1] += t2 - alp_t; alp_t = t2; }
+
                 if (params.mAvatar && !uploadMatrixPalette(params.mAvatar, params.mSkinInfo, lastAvatar, lastMeshId, lastAvatarShader, skipLastSkin))
                 {
+                    alp_us[2] += alp_now() - alp_t;
                     continue;
                 }
 
+                { U64 t2 = alp_now(); alp_us[2] += t2 - alp_t; alp_t = t2; }
+
                 bool tex_setup = TexSetup(&params, (mat != nullptr));
+
+                { U64 t2 = alp_now(); alp_us[3] += t2 - alp_t; alp_t = t2; }
 
                 {
                     gGL.blendFunc((LLRender::eBlendFactor) params.mBlendFuncSrc, (LLRender::eBlendFactor) params.mBlendFuncDst, mAlphaSFactor, mAlphaDFactor);
@@ -1149,64 +1434,51 @@ void LLDrawPoolAlpha::renderAlpha(U32 mask, bool depth_only, bool rigged, bool u
                         reset_minimum_alpha = true;
                     }
 
-                    params.mVertexBuffer->setBuffer();
+                    const bool collapse_now = run_candidate
+                        && current_shader != nullptr
+                        && current_shader->mVkUsesBindlessHeap;
 
-                    if (LLVKLoader::isVulkanInitialized() && current_shader
-                        && current_shader->mWritePerProgramUBOMinimumAlpha
-                        && current_shader->mVkPerProgramUBO != VK_NULL_HANDLE
-                        && current_shader->mVkPerProgramUBOMapped != nullptr
-                        && (current_shader->mVkPerProgramUBOSize == LLVKLoader::ALPHAF_UBO_SIZE_SHADOW
-                            || current_shader->mVkPerProgramUBOSize == LLVKLoader::ALPHAF_UBO_SIZE_NO_SHADOW))
+                    { U64 t2 = alp_now(); alp_us[4] += t2 - alp_t; alp_t = t2; }
+
+                    if (collapse_now)
                     {
-                        const bool no_shadow =
-                            (current_shader->mVkPerProgramUBOSize == LLVKLoader::ALPHAF_UBO_SIZE_NO_SHADOW);
-                        const F32 cur_min_alpha = reset_minimum_alpha ? 0.f : MINIMUM_ALPHA;
-
-                        current_shader->rotatePerProgramUBOSlot();
-                        char* base = (char*)current_shader->mVkActivePerProgramUBOMapped;
-
-                        memcpy(base + 0, &cur_min_alpha, sizeof(F32));
-
-                        const F32 near_clip_v = LLViewerCamera::getInstance()->getNear() * 2.f;
-                        memcpy(base + LLVKLoader::ALPHAF_UBO_OFFSET_NEAR_CLIP, &near_clip_v, sizeof(F32));
-
-                        if (no_shadow)
+                        if (run.empty())
                         {
-                            F32 sun_moon[8] = {
-                                gPipeline.mTransformedSunDir.mV[0],  gPipeline.mTransformedSunDir.mV[1],  gPipeline.mTransformedSunDir.mV[2],  0.f,
-                                gPipeline.mTransformedMoonDir.mV[0], gPipeline.mTransformedMoonDir.mV[1], gPipeline.mTransformedMoonDir.mV[2], 0.f,
-                            };
-                            memcpy(base + LLVKLoader::ALPHAF_UBO_OFFSET_SUN_MOON, sun_moon, sizeof(sun_moon));
+                            run.mShader = current_shader;
+                            run.mModelMatrix = params.mModelMatrix;
+                            writeAlphaPerProgramUBO(reset_minimum_alpha);
                         }
-
-                        U32 lights_offset =
-                            no_shadow ? LLVKLoader::ALPHAF_UBO_OFFSET_LIGHTS_NO_SHADOW
-                                      : LLVKLoader::ALPHAF_UBO_OFFSET_LIGHTS_SHADOW;
-                        F32 lp[LL_NUM_LIGHT_UNITS * 4];
-                        F32 ld[LL_NUM_LIGHT_UNITS * 3];
-                        F32 la[LL_NUM_LIGHT_UNITS * 4];
-                        F32 ldi[LL_NUM_LIGHT_UNITS * 3];
-                        gGL.getLightArrayData(lp, ld, la, ldi);
-
-                        memcpy(base + lights_offset, lp, sizeof(F32) * LL_NUM_LIGHT_UNITS * 4);
-                        lights_offset += 128;
-                        for (U32 i = 0; i < LL_NUM_LIGHT_UNITS; i++)
+                        { U64 t2 = alp_now(); alp_us[5] += t2 - alp_t; alp_t = t2; }
+                        LLRenderPass::buildAndOverrideScenePerDrawSet(&params, true);
+                        { U64 t2 = alp_now(); alp_us[6] += t2 - alp_t; alp_t = t2; }
+                        appendAlphaRunCmd(run, params);
+                        ++LLVKLoader::gVkPerf.alp_col;
+                        if (run.mCmds.size() >= ALPHA_RUN_MAX_CMDS)
                         {
-                            F32 v[4] = { ld[i*3+0], ld[i*3+1], ld[i*3+2], 0.f };
-                            memcpy(base + lights_offset + i * 16, v, 16);
+                            flushAlphaRun(run);
                         }
-                        lights_offset += 128;
-                        memcpy(base + lights_offset, la, sizeof(F32) * LL_NUM_LIGHT_UNITS * 4);
-                        lights_offset += 128;
-                        for (U32 i = 0; i < LL_NUM_LIGHT_UNITS; i++)
-                        {
-                            F32 v[4] = { ldi[i*3+0], ldi[i*3+1], ldi[i*3+2], 0.f };
-                            memcpy(base + lights_offset + i * 16, v, 16);
-                        }
+                        alp_us[8] += alp_now() - alp_t;
                     }
+                    else
+                    {
+                        flushAlphaRun(run);
+                        alp_t = alp_now();
+                        params.mVertexBuffer->setBuffer();
 
-                    LLRenderPass::buildAndOverrideScenePerDrawSet(&params, true);
-                    params.mVertexBuffer->drawRange(LLRender::TRIANGLES, params.mStart, params.mEnd, params.mCount, params.mOffset);
+                        { U64 t2 = alp_now(); alp_us[7] += t2 - alp_t; alp_t = t2; }
+
+                        writeAlphaPerProgramUBO(reset_minimum_alpha);
+
+                        { U64 t2 = alp_now(); alp_us[5] += t2 - alp_t; alp_t = t2; }
+
+                        LLRenderPass::buildAndOverrideScenePerDrawSet(&params, true);
+
+                        { U64 t2 = alp_now(); alp_us[6] += t2 - alp_t; alp_t = t2; }
+
+                        params.mVertexBuffer->drawRange(LLRender::TRIANGLES, params.mStart, params.mEnd, params.mCount, params.mOffset);
+                        ++LLVKLoader::gVkPerf.alp_inl;
+                        alp_us[7] += alp_now() - alp_t;
+                    }
 
                     if (reset_minimum_alpha)
                     {
@@ -1251,9 +1523,13 @@ void LLDrawPoolAlpha::renderAlpha(U32 mask, bool depth_only, bool rigged, bool u
                 }
             }
 
+            flushAlphaRun(run);
+
             // render emissive faces into alpha channel for bloom effects
             if (!depth_only)
             {
+                U64 emi_t = alp_now();
+
                 gPipeline.enableLightsDynamic();
 
                 // <AYAstorm r30 P5 fix glow-lost-in-plate 2026-05-23>
@@ -1330,6 +1606,8 @@ void LLDrawPoolAlpha::renderAlpha(U32 mask, bool depth_only, bool rigged, bool u
                     gPipeline.mAYAAlphaColor.bindTarget();
                 }
                 // </AYAstorm r30 P5 fix glow-lost-in-plate>
+
+                alp_us[10] += alp_now() - emi_t;
             }
         }
     }
@@ -1337,6 +1615,17 @@ void LLDrawPoolAlpha::renderAlpha(U32 mask, bool depth_only, bool rigged, bool u
     gGL.setSceneBlendType(LLRender::BT_ALPHA);
 
     LLVertexBuffer::unbind();
+
+    if (alp_perf)
+    {
+        for (U32 i = 0; i < 11; ++i)
+        {
+            if (alp_us[i] != 0)
+            {
+                LLVKLoader::gVkPerf.alpha_us[i] += alp_us[i];
+            }
+        }
+    }
 
     if (!light_enabled)
     {

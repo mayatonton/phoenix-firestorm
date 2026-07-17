@@ -473,7 +473,7 @@ void LLRenderPass::buildAndOverrideScenePerDrawSet(LLDrawInfo* params, bool batc
         return;
     }
 
-    const bool is_indexed = (cur->mFeatures.mIndexedTextureChannels > 0);
+    const bool is_indexed = (cur->mFeatures.mIndexedTextureChannels > 0) && !cur->mVkUsesBindlessHeap;
     const U32 indexed_layout_count =
         llmin((U32)cur->mFeatures.mIndexedTextureChannels,
               (U32)LLVKLoader::ScenePerDrawBindings::MAX_SAMPLERS);

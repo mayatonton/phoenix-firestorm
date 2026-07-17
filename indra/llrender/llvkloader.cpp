@@ -4377,6 +4377,20 @@ bool endFrame()
                                    << " zero=" << gVkPerf.mdi_zero.load()
                                    << " dyn=" << gVkPerf.mdi_dyn.load()
                                    << " full=" << gVkPerf.mdi_full.load()
+                                   << " | alp run=" << gVkPerf.alp_run.load()
+                                   << " col=" << gVkPerf.alp_col.load()
+                                   << " inl=" << gVkPerf.alp_inl.load()
+                                   << [](){ std::string s;
+                                        static const char* names[12] = {
+                                            "mtx","sel","pal","tex","bld","ubo",
+                                            "set","drw","app","flu","emi","prep" };
+                                        for (U32 i = 0; i < 12; ++i) {
+                                            const U64 us = gVkPerf.alpha_us[i].load();
+                                            if (us != 0) {
+                                                s += llformat(" %s=%.1f", names[i], us / 1000.0);
+                                            }
+                                        }
+                                        return s; }()
                                    << " | tex enq=" << gVkPerf.tex_enq.load()
                                    << " pub=" << gVkPerf.tex_pub.load()
                                    << " fail=" << gVkPerf.tex_fail.load()
