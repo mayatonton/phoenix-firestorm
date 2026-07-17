@@ -514,14 +514,6 @@ void LLRenderPass::buildAndOverrideScenePerDrawSet(LLDrawInfo* params, bool batc
         LLVKLoader::setCurrentDrawDataID(id);
     }
 
-    if (gltf_materials_ubo == 0 && gltf_geometry_ubo == 0
-        && LLGLSLShader::sCurPerCallVkDescriptorSet != VK_NULL_HANDLE
-        && LLGLSLShader::sCurPerCallVkSetShape == set_shape)
-    {
-        ++LLVKLoader::gVkPerf.set_reuse;
-        return;
-    }
-
     const bool memo_eligible = (params != nullptr && is_indexed && set_shape >= 1
                                 && gltf_materials_ubo == 0 && gltf_geometry_ubo == 0);
     const U32  memo_frame    = LLVKLoader::getCurrentFrameIndex();
