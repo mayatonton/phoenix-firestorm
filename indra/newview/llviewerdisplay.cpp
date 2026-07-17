@@ -932,11 +932,13 @@ void display(bool rebuild, F32 zoom_factor, int subfield, bool for_snapshot)
 
             {
                 LL_PROFILE_ZONE_NAMED_CATEGORY_DISPLAY("Class");
+                LLVKLoader::VkPerfImgScope img(0);
                 LLViewerTexture::updateClass();
             }
 
             {
                 LL_PROFILE_ZONE_NAMED_CATEGORY_DISPLAY("Image Update Bump");
+                LLVKLoader::VkPerfImgScope img(1);
                 gBumpImageList.updateImages();  // must be called before gTextureList version so that it's textures are thrown out first.
             }
 
@@ -949,6 +951,7 @@ void display(bool rebuild, F32 zoom_factor, int subfield, bool for_snapshot)
 
             {
                 LL_PROFILE_ZONE_NAMED_CATEGORY_DISPLAY("GLTF Materials Cleanup");
+                LLVKLoader::VkPerfImgScope img(9);
                 //remove dead gltf materials
                 gGLTFMaterialList.flushMaterials();
             }

@@ -878,16 +878,27 @@ void LLViewerTextureList::updateImages(F32 max_time)
     F32 remaining_time = max_time;
 
     //loading from fast cache
-    remaining_time -= updateImagesLoadingFastCache(remaining_time);
+    {
+        LLVKLoader::VkPerfImgScope img(2);
+        remaining_time -= updateImagesLoadingFastCache(remaining_time);
+    }
     remaining_time = llmax(remaining_time, min_time);
 
     //dispatch to texture fetch threads
-    remaining_time -= updateImagesFetchTextures(remaining_time);
+    {
+        LLVKLoader::VkPerfImgScope img(3);
+        remaining_time -= updateImagesFetchTextures(remaining_time);
+    }
     remaining_time = llmax(remaining_time, min_time);
 
     //handle results from decode threads
-    updateImagesCreateTextures(remaining_time);
+    {
+        LLVKLoader::VkPerfImgScope img(6);
+        updateImagesCreateTextures(remaining_time);
+    }
 
+    {
+    LLVKLoader::VkPerfImgScope img(8);
     bool didone = false;
     for (image_list_t::iterator iter = mCallbackList.begin();
         iter != mCallbackList.end(); )
@@ -904,6 +915,7 @@ void LLViewerTextureList::updateImages(F32 max_time)
             // Do stuff to handle callbacks, update priorities, etc.
             didone = image->doLoadedCallbacks();
         }
+    }
     }
 
     updateImagesUpdateStats();
@@ -1131,7 +1143,10 @@ F32 LLViewerTextureList::updateImagesCreateTextures(F32 max_time)
     bool worker = texWorkerEnabled();
     if (worker)
     {
-        drainTexPublishQueue();
+        {
+            LLVKLoader::VkPerfImgScope img(7);
+            drainTexPublishQueue();
+        }
         startTexWorker();
         worker = mTexWorkerRunning;
     }
@@ -1553,14 +1568,28 @@ F32 LLViewerTextureList::updateImagesFetchTextures(F32 max_time)
 
     LLTimer timer;
 
+    const bool perf_detail = LLVKLoader::perfLogEnabled();
+
     for (auto& imagep : entries)
     {
         mLastUpdateKey = LLTextureKey(imagep->getID(), (ETexListType)imagep->getTextureListType());
 
         if (imagep->getNumRefs() > 1) // make sure this image hasn't been deleted before attempting to update (may happen as a side effect of some other image updating)
         {
-            updateImageDecodePriority(imagep);
-            imagep->updateFetch();
+            if (perf_detail)
+            {
+                {
+                    LLVKLoader::VkPerfImgScope img(4);
+                    updateImageDecodePriority(imagep);
+                }
+                LLVKLoader::VkPerfImgScope img(5);
+                imagep->updateFetch();
+            }
+            else
+            {
+                updateImageDecodePriority(imagep);
+                imagep->updateFetch();
+            }
         }
 
         if (timer.getElapsedTimeF32() > max_time)

@@ -5782,22 +5782,28 @@ void LLAppViewer::idle()
     // Update frame timers
     static LLTimer idle_timer;
 
-    LLFrameTimer::updateFrameTime();
-    LLFrameTimer::updateFrameCount();
-    LLEventTimer::updateClass();
-    LLPerfStats::updateClass();
+    {
+        LLVKLoader::VkPerfIdleScope idl(0);
+        LLFrameTimer::updateFrameTime();
+        LLFrameTimer::updateFrameCount();
+        LLEventTimer::updateClass();
+        LLPerfStats::updateClass();
 
-    // LLApp::stepFrame() performs the above three calls plus mRunner.run().
-    // Not sure why we don't call stepFrame() here, except that LLRunner seems
-    // completely redundant with LLEventTimer.
-    LLNotificationsUI::LLToast::updateClass();
-    LLSmoothInterpolation::updateInterpolants();
-    LLMortician::updateClass();
-    LLFilePickerThread::clearDead();  //calls LLFilePickerThread::notify()
-    LLDirPickerThread::clearDead();
+        // LLApp::stepFrame() performs the above three calls plus mRunner.run().
+        // Not sure why we don't call stepFrame() here, except that LLRunner seems
+        // completely redundant with LLEventTimer.
+        LLNotificationsUI::LLToast::updateClass();
+        LLSmoothInterpolation::updateInterpolants();
+        LLMortician::updateClass();
+        LLFilePickerThread::clearDead();  //calls LLFilePickerThread::notify()
+        LLDirPickerThread::clearDead();
+    }
     F32 dt_raw = idle_timer.getElapsedTimeAndResetF32();
 
-    LLGLTFMaterialList::flushUpdates();
+    {
+        LLVKLoader::VkPerfIdleScope idl(1);
+        LLGLTFMaterialList::flushUpdates();
+    }
 
     static LLCachedControl<U32> downscale_method(gSavedSettings, "RenderDownScaleMethod");
     gGLManager.mDownScaleMethod = downscale_method;
@@ -5814,7 +5820,10 @@ void LLAppViewer::idle()
     // std::chrono::nanoseconds.
     static std::chrono::nanoseconds MainWorkTimeNanoSec{
         std::chrono::nanoseconds::rep(MainWorkTimeMs.value() * 1000000)};
-    gMainloopWork.runFor(MainWorkTimeNanoSec);
+    {
+        LLVKLoader::VkPerfIdleScope idl(2);
+        gMainloopWork.runFor(MainWorkTimeNanoSec);
+    }
 
     // Cap out-of-control frame times
     // Too low because in menus, swapping, debugger, etc.
@@ -5875,6 +5884,7 @@ void LLAppViewer::idle()
     if (!gDisconnected)
     {
         LL_PROFILE_ZONE_NAMED_CATEGORY_NETWORK("network"); //LL_RECORD_BLOCK_TIME(FTM_NETWORK);
+        LLVKLoader::VkPerfIdleScope idl(3);
         // Update spaceserver timeinfo
         LLWorld::getInstance()->setSpaceTimeUSec(LLWorld::getInstance()->getSpaceTimeUSec() + LLUnits::Seconds::fromValue(dt_raw));
 
@@ -5959,8 +5969,11 @@ void LLAppViewer::idle()
         // NOTE: Starting at this point, we may still have pointers to "dead" objects
         // floating throughout the various object lists.
         //
-        idleNameCache();
-        idleNetwork();
+        {
+            LLVKLoader::VkPerfIdleScope idl(4);
+            idleNameCache();
+            idleNetwork();
+        }
 
 
         // Check for away from keyboard, kick idle agents.
@@ -5968,7 +5981,10 @@ void LLAppViewer::idle()
         idle_afk_check();
 
         //  Update statistics for this frame
-        update_statistics();
+        {
+            LLVKLoader::VkPerfIdleScope idl(5);
+            update_statistics();
+        }
     }
 
     ////////////////////////////////////////
@@ -5982,6 +5998,7 @@ void LLAppViewer::idle()
 #endif
     {
 //      LL_RECORD_BLOCK_TIME(FTM_IDLE_CB);
+        LLVKLoader::VkPerfIdleScope idl(6);
 
         // Do event notifications if necessary.  Yes, we may want to move this elsewhere.
         gEventNotifier.update();
@@ -6015,7 +6032,10 @@ void LLAppViewer::idle()
     // updateUI() needs to be called even in case viewer disconected
     // since related notification still needs handling and allows
     // opening chat.
-    gViewerWindow->updateUI();
+    {
+        LLVKLoader::VkPerfIdleScope idl(7);
+        gViewerWindow->updateUI();
+    }
 
     if (gDisconnected)
     {
@@ -6063,6 +6083,7 @@ void LLAppViewer::idle()
     {
         // Handle pending gesture processing
         LL_RECORD_BLOCK_TIME(FTM_AGENT_POSITION);
+        LLVKLoader::VkPerfIdleScope idl(8);
         LLGestureMgr::instance().update();
 
         gAgent.updateAgentPosition(gFrameDTClamped, yaw, current_mouse.mX, current_mouse.mY);
@@ -6070,6 +6091,7 @@ void LLAppViewer::idle()
 
     {
         LL_RECORD_BLOCK_TIME(FTM_OBJECTLIST_UPDATE);
+        LLVKLoader::VkPerfIdleScope idl(9);
 
         if (!(logoutRequestSent() && hasSavedFinalSnapshot()))
         {
@@ -6087,6 +6109,7 @@ void LLAppViewer::idle()
 
     {
         LL_RECORD_BLOCK_TIME(FTM_CLEANUP);
+        LLVKLoader::VkPerfIdleScope idl(10);
         {
             gObjectList.cleanDeadObjects();
         }
@@ -6111,6 +6134,7 @@ void LLAppViewer::idle()
 
     {
         LL_RECORD_BLOCK_TIME(FTM_HUD_EFFECTS);
+        LLVKLoader::VkPerfIdleScope idl(11);
         LLSelectMgr::getInstance()->updateEffects();
         LLHUDManager::getInstance()->cleanupEffects();
         LLHUDManager::getInstance()->sendEffects();
@@ -6123,6 +6147,7 @@ void LLAppViewer::idle()
 
     {
         LL_RECORD_BLOCK_TIME(FTM_NETWORK);
+        LLVKLoader::VkPerfIdleScope idl(12);
         gVLManager.unpackData();
     }
 
@@ -6131,11 +6156,14 @@ void LLAppViewer::idle()
     // Update surfaces, and surface textures as well.
     //
 
-    LLWorld::getInstance()->updateVisibilities();
     {
-        const F32 max_region_update_time = .001f; // 1ms
-        LL_RECORD_BLOCK_TIME(FTM_REGION_UPDATE);
-        LLWorld::getInstance()->updateRegions(max_region_update_time);
+        LLVKLoader::VkPerfIdleScope idl(13);
+        LLWorld::getInstance()->updateVisibilities();
+        {
+            const F32 max_region_update_time = .001f; // 1ms
+            LL_RECORD_BLOCK_TIME(FTM_REGION_UPDATE);
+            LLWorld::getInstance()->updateRegions(max_region_update_time);
+        }
     }
 
     /////////////////////////
@@ -6172,11 +6200,17 @@ void LLAppViewer::idle()
 
     {
         LL_PROFILE_ZONE_NAMED_CATEGORY_APP("world update"); //LL_RECORD_BLOCK_TIME(FTM_WORLD_UPDATE);
+        LLVKLoader::VkPerfIdleScope idl(14);
         gPipeline.updateMove();
     }
 
-    LLWorld::getInstance()->updateParticles();
+    {
+        LLVKLoader::VkPerfIdleScope idl(15);
+        LLWorld::getInstance()->updateParticles();
+    }
 
+    {
+    LLVKLoader::VkPerfIdleScope idl(16);
     if (gAgentPilot.isPlaying() && gAgentPilot.getOverrideCamera())
     {
         gAgentPilot.moveCamera();
@@ -6194,25 +6228,34 @@ void LLAppViewer::idle()
 
         gAgentCamera.updateCamera();
     }
+    }
 
+    {
+    LLVKLoader::VkPerfIdleScope idl(17);
     // update media focus
     LLViewerMediaFocus::getInstance()->update();
 
     // Update marketplace
     LLMarketplaceInventoryImporter::update();
     LLMarketplaceInventoryNotifications::update();
+    }
 
     // objects and camera should be in sync, do LOD calculations now
     {
         LL_RECORD_BLOCK_TIME(FTM_LOD_UPDATE);
+        LLVKLoader::VkPerfIdleScope idl(18);
         gObjectList.updateApparentAngles(gAgent);
     }
 
     // Update AV render info
-    LLAvatarRenderInfoAccountant::getInstance()->idle();
+    {
+        LLVKLoader::VkPerfIdleScope idl(19);
+        LLAvatarRenderInfoAccountant::getInstance()->idle();
+    }
 
     {
         LL_PROFILE_ZONE_NAMED_CATEGORY_APP("audio update"); //LL_RECORD_BLOCK_TIME(FTM_AUDIO_UPDATE);
+        LLVKLoader::VkPerfIdleScope idl(20);
 
         if (gAudiop)
         {

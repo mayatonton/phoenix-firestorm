@@ -1450,6 +1450,8 @@ namespace LLVKLoader
         std::atomic<U64> fam_draws[24] = {};
         std::atomic<U64> rigged_rec{0};
         std::atomic<U64> phase_us[16] = {};
+        std::atomic<U64> idle_us[24] = {};
+        std::atomic<U64> img_us[12] = {};
         std::atomic<U64> tex_enq{0};
         std::atomic<U64> tex_pub{0};
         std::atomic<U64> tex_fail{0};
@@ -1480,6 +1482,8 @@ namespace LLVKLoader
             for (auto& v : fam_draws) v = 0;
             rigged_rec = 0;
             for (auto& v : phase_us) v = 0;
+            for (auto& v : idle_us) v = 0;
+            for (auto& v : img_us) v = 0;
             tex_enq = 0; tex_pub = 0; tex_fail = 0;
             geo_enq = 0; geo_pub = 0; geo_pub_us = 0; geo_dis = 0; geo_inl = 0; geo_defer = 0;
             bake_enq = 0; bake_pub = 0; bake_defer = 0; bake_drain_us = 0;
@@ -1506,6 +1510,24 @@ namespace LLVKLoader
         VkPerfPhaseScope(U32 idx);
         ~VkPerfPhaseScope();
     };
+
+    struct VkPerfIdleScope
+    {
+        U64 mT0;
+        U32 mIdx;
+        VkPerfIdleScope(U32 idx);
+        ~VkPerfIdleScope();
+    };
+
+    struct VkPerfImgScope
+    {
+        U64 mT0;
+        U32 mIdx;
+        VkPerfImgScope(U32 idx);
+        ~VkPerfImgScope();
+    };
+
+    bool perfLogEnabled();
 
     const float* getCurrentModelviewMatrix();
 

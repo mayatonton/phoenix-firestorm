@@ -4415,6 +4415,29 @@ bool endFrame()
                                             }
                                         }
                                         return s; }()
+                                   << " | idl " << [](){ std::string s;
+                                        static const char* names[24] = {
+                                            "tmr","gltf","work","agt","net","stat","cb","ui",
+                                            "mov","obj","dead","hud","vlm","wld","upmv","part",
+                                            "cam","misc","lod","avnfo","aud","x21","x22","x23" };
+                                        for (U32 i = 0; i < 24; ++i) {
+                                            const U64 us = gVkPerf.idle_us[i].load();
+                                            if (us != 0) {
+                                                s += llformat("%s=%.1f ", names[i], us / 1000.0);
+                                            }
+                                        }
+                                        return s; }()
+                                   << " | img " << [](){ std::string s;
+                                        static const char* names[12] = {
+                                            "cls","bmp","fc","fet","pri","ftc",
+                                            "crt","drn","cbk","mat","x10","x11" };
+                                        for (U32 i = 0; i < 12; ++i) {
+                                            const U64 us = gVkPerf.img_us[i].load();
+                                            if (us != 0) {
+                                                s += llformat("%s=%.1f ", names[i], us / 1000.0);
+                                            }
+                                        }
+                                        return s; }()
                                    << " | mega " << [](){ U64 c,cap,use; megabufStats(c,cap,use);
                                         return llformat("chunks=%llu used=%.1f/%.1fMB",
                                             (unsigned long long)c, use/1048576.0, cap/1048576.0); }()
@@ -9604,6 +9627,38 @@ VkPerfPhaseScope::~VkPerfPhaseScope()
     {
         gVkPerf.phase_us[mIdx] += phaseNowUs() - mT0;
     }
+}
+
+VkPerfIdleScope::VkPerfIdleScope(U32 idx)
+: mT0(phaseNowUs()), mIdx(idx)
+{
+}
+
+VkPerfIdleScope::~VkPerfIdleScope()
+{
+    if (mIdx < 24)
+    {
+        gVkPerf.idle_us[mIdx] += phaseNowUs() - mT0;
+    }
+}
+
+VkPerfImgScope::VkPerfImgScope(U32 idx)
+: mT0(phaseNowUs()), mIdx(idx)
+{
+}
+
+VkPerfImgScope::~VkPerfImgScope()
+{
+    if (mIdx < 12)
+    {
+        gVkPerf.img_us[mIdx] += phaseNowUs() - mT0;
+    }
+}
+
+bool perfLogEnabled()
+{
+    static const bool s_enabled = (getenv("AYASTORM_PERF_LOG") != nullptr);
+    return s_enabled;
 }
 
 bool isIndirectDrawEnabled()
