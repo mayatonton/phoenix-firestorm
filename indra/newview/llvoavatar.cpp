@@ -12770,18 +12770,6 @@ void LLVOAvatar::bodySizeChanged()
 
 bool LLVOAvatar::isUsingServerBakes() const
 {
-#if 1
-    // Sanity check - visual param for appearance version should match mUseServerBakes
-    LLVisualParam* appearance_version_param = getVisualParam(11000);
-    llassert(appearance_version_param);
-    F32 wt = appearance_version_param->getWeight();
-    F32 expect_wt = mUseServerBakes ? 1.0f : 0.0f;
-    if (!is_approx_equal(wt,expect_wt))
-    {
-        LL_WARNS() << "wt " << wt << " differs from expected " << expect_wt << LL_ENDL;
-    }
-#endif
-
     return mUseServerBakes;
 }
 
