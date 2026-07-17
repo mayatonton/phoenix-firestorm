@@ -316,6 +316,7 @@ LLGLSLShader::LLGLSLShader()
 
 LLGLSLShader::~LLGLSLShader()
 {
+    clearVkBindlessSet1Pins();
 }
 
 void LLGLSLShader::unload()
@@ -394,6 +395,7 @@ void LLGLSLShader::unloadInternal()
         }
         mVkAccessorBindingList.clear();
         mVkAccessorBindingListBuilt = false;
+        clearVkBindlessSet1Pins();
         mVkUsesBindlessHeap = false;
         if (mVkPerProgramUBO != VK_NULL_HANDLE)
         {
@@ -2300,6 +2302,42 @@ void LLGLSLShader::vkWarnL3Fallback(LLGLSLShader* shader, U32 binding, S32 enum_
     LL_WARNS("BindReg") << "BindRegFallback shader=" << shader->mName
         << " binding=" << binding
         << " enum=" << enum_value << "(" << ename << ")" << LL_ENDL;
+}
+
+bool LLGLSLShader::vkValidatePerCallCache(LLGLSLShader* cur, U64 stored_ring_sig,
+                                          const void* const* stored_l3_views,
+                                          const S16* stored_l3_enums, U8 stored_l3_count)
+{
+    U64 ring_sig = 0;
+    for (U8 b : cur->mVkAccessorBindingList)
+    {
+        VkBuffer rb = VK_NULL_HANDLE;
+        void*    rm = nullptr;
+        LLGLSLShader::SharedUBOAccessor accessor = cur->mVkBindingToUBOAccessor[b];
+        if (accessor)
+        {
+            accessor(rb, rm);
+        }
+        ring_sig = ring_sig * 0x100000001B3ull ^ (U64)(uintptr_t)rb;
+    }
+    bool memo_valid = (ring_sig == stored_ring_sig);
+    for (U8 i = 0; i < stored_l3_count && memo_valid; ++i)
+    {
+        const S16 e = stored_l3_enums[i];
+        memo_valid = (e >= 0 && e < (S16)cur->mVkEnumBoundView.size()
+                      && (void*)cur->vkResolveEnumBoundView(e) == stored_l3_views[i]);
+    }
+    return memo_valid;
+}
+
+void LLGLSLShader::clearVkBindlessSet1Pins()
+{
+    for (U32 i = 0; i < 3; ++i)
+    {
+        LLVKLoader::releaseScenePerDrawEntry(mVkBindlessSet1Tok[i], mVkBindlessSet1PinEpoch);
+        mVkBindlessSet1Tok[i] = nullptr;
+        mVkBindlessSet1[i]    = VK_NULL_HANDLE;
+    }
 }
 
 S32 LLGLSLShader::bindTexture(S32 uniform, LLTexture* texture, LLTexUnit::eTextureType mode)

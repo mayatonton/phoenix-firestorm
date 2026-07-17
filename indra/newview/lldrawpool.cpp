@@ -544,26 +544,8 @@ void LLRenderPass::buildAndOverrideScenePerDrawSet(LLDrawInfo* params, bool batc
             && cur->mVkAccessorBindingListBuilt
             && params->mVkSetMemoTopoGen == LLVKLoader::gVkPerDrawTopologyGen.load(std::memory_order_relaxed))
         {
-            U64 ring_sig = 0;
-            for (U8 b : cur->mVkAccessorBindingList)
-            {
-                VkBuffer rb = VK_NULL_HANDLE;
-                void*    rm = nullptr;
-                LLGLSLShader::SharedUBOAccessor accessor = cur->mVkBindingToUBOAccessor[b];
-                if (accessor)
-                {
-                    accessor(rb, rm);
-                }
-                ring_sig = ring_sig * 0x100000001B3ull ^ (U64)(uintptr_t)rb;
-            }
-            bool memo_valid = (ring_sig == params->mVkSetMemoRingSig[memo_frame]);
-            for (U8 i = 0; i < params->mVkSetMemoL3Count && memo_valid; ++i)
-            {
-                const S16 e = params->mVkSetMemoL3Enums[i];
-                memo_valid = (e >= 0 && e < (S16)cur->mVkEnumBoundView.size()
-                              && (void*)cur->vkResolveEnumBoundView(e) == params->mVkSetMemoL3Views[i]);
-            }
-            if (memo_valid)
+            if (LLGLSLShader::vkValidatePerCallCache(cur, params->mVkSetMemoRingSig[memo_frame],
+                    params->mVkSetMemoL3Views, params->mVkSetMemoL3Enums, params->mVkSetMemoL3Count))
             {
                 LLGLSLShader::sCurPerCallVkDescriptorSet =
                     (VkDescriptorSet)params->mVkSetMemoSet[memo_frame];
@@ -575,7 +557,22 @@ void LLRenderPass::buildAndOverrideScenePerDrawSet(LLDrawInfo* params, bool batc
         }
     }
 
+    if (cur->mVkUsesBindlessHeap && gltf_materials_ubo == 0 && gltf_geometry_ubo == 0
+        && cur->mVkAccessorBindingListBuilt
+        && cur->mVkBindlessSet1[memo_frame] != nullptr
+        && cur->mVkBindlessSet1TopoGen == LLVKLoader::gVkPerDrawTopologyGen.load(std::memory_order_relaxed)
+        && LLGLSLShader::vkValidatePerCallCache(cur, cur->mVkBindlessSet1RingSig[memo_frame],
+               cur->mVkBindlessSet1L3Views, cur->mVkBindlessSet1L3Enums, cur->mVkBindlessSet1L3Count))
+    {
+        LLGLSLShader::sCurPerCallVkDescriptorSet = cur->mVkBindlessSet1[memo_frame];
+        LLGLSLShader::sCurPerCallVkOffsetsDirty  = true;
+        LLGLSLShader::sCurPerCallVkSetShape      = set_shape;
+        ++LLVKLoader::gVkPerf.set_memo;
+        return;
+    }
+
     bool memo_fill     = memo_eligible;
+    bool bindless_fill = cur->mVkUsesBindlessHeap && gltf_materials_ubo == 0 && gltf_geometry_ubo == 0;
     U64  memo_ring_sig = 0;
     const bool build_accessor_list = !cur->mVkAccessorBindingListBuilt;
     U8   memo_l3_cnt   = 0;
@@ -673,41 +670,51 @@ void LLRenderPass::buildAndOverrideScenePerDrawSet(LLDrawInfo* params, bool batc
     }
     else
     {
-        const S32 enum1 = cur->mVkBindingToEnum[1];
-        const S32 unit1 = (cur->mVkBindingToChannel[1] >= 0) ? cur->mVkBindingToChannel[1] : 0;
-        const bool l3_hit = (enum1 >= 0 && enum1 < (S32)cur->mVkEnumBoundView.size()
-                             && cur->mVkEnumBoundView[enum1].bound);
-        VkImageView view_to_write = VK_NULL_HANDLE;
-        VkSampler   sampler1      = VK_NULL_HANDLE;
-        if (l3_hit)
+        if (cur->mVkUsesBindlessHeap)
         {
-            view_to_write = cur->vkResolveEnumBoundView(enum1);
-            sampler1      = cur->mVkEnumBoundView[enum1].sampler;
-            if (view_to_write != VK_NULL_HANDLE &&
-                cur->vkResolveEnumBoundDim(enum1) != cur->mVkBindingSamplerDim[1])
-            {
-                view_to_write = VK_NULL_HANDLE;
-            }
+            bindings.sampler_bindings[0] = 1;
+            bindings.sampler_views[0]    = fallback_view;
+            bindings.sampler_samplers[0] = sampler;
+            bindings.sampler_count       = 1;
         }
         else
         {
-            view_to_write = gGL.getTexUnit(unit1)->getLiveVkImageView();
-            sampler1      = gGL.getTexUnit(unit1)->getLiveVkSampler();
-            LLGLSLShader::vkWarnL3Fallback(cur, 1, enum1, view_to_write);
-            if (view_to_write != VK_NULL_HANDLE &&
-                gGL.getTexUnit(unit1)->getLiveVkImageViewDim() != cur->mVkBindingSamplerDim[1])
+            const S32 enum1 = cur->mVkBindingToEnum[1];
+            const S32 unit1 = (cur->mVkBindingToChannel[1] >= 0) ? cur->mVkBindingToChannel[1] : 0;
+            const bool l3_hit = (enum1 >= 0 && enum1 < (S32)cur->mVkEnumBoundView.size()
+                                 && cur->mVkEnumBoundView[enum1].bound);
+            VkImageView view_to_write = VK_NULL_HANDLE;
+            VkSampler   sampler1      = VK_NULL_HANDLE;
+            if (l3_hit)
             {
-                view_to_write = VK_NULL_HANDLE;
+                view_to_write = cur->vkResolveEnumBoundView(enum1);
+                sampler1      = cur->mVkEnumBoundView[enum1].sampler;
+                if (view_to_write != VK_NULL_HANDLE &&
+                    cur->vkResolveEnumBoundDim(enum1) != cur->mVkBindingSamplerDim[1])
+                {
+                    view_to_write = VK_NULL_HANDLE;
+                }
             }
+            else
+            {
+                view_to_write = gGL.getTexUnit(unit1)->getLiveVkImageView();
+                sampler1      = gGL.getTexUnit(unit1)->getLiveVkSampler();
+                LLGLSLShader::vkWarnL3Fallback(cur, 1, enum1, view_to_write);
+                if (view_to_write != VK_NULL_HANDLE &&
+                    gGL.getTexUnit(unit1)->getLiveVkImageViewDim() != cur->mVkBindingSamplerDim[1])
+                {
+                    view_to_write = VK_NULL_HANDLE;
+                }
+            }
+            if (view_to_write == VK_NULL_HANDLE)
+            {
+                view_to_write = fallback_view;
+            }
+            bindings.sampler_bindings[0] = 1;
+            bindings.sampler_views[0]    = view_to_write;
+            bindings.sampler_samplers[0] = sampler1;
+            bindings.sampler_count       = 1;
         }
-        if (view_to_write == VK_NULL_HANDLE)
-        {
-            view_to_write = fallback_view;
-        }
-        bindings.sampler_bindings[0] = 1;
-        bindings.sampler_views[0]    = view_to_write;
-        bindings.sampler_samplers[0] = sampler1;
-        bindings.sampler_count       = 1;
     }
 
     for (const auto& layout_binding : cur->mVkLayoutBindings)
@@ -759,7 +766,7 @@ void LLRenderPass::buildAndOverrideScenePerDrawSet(LLDrawInfo* params, bool batc
         if (l3_hit)
         {
             view = cur->vkResolveEnumBoundView(enum_value);
-            if (memo_fill)
+            if (memo_fill || bindless_fill)
             {
                 if (memo_l3_cnt < 6)
                 {
@@ -770,6 +777,7 @@ void LLRenderPass::buildAndOverrideScenePerDrawSet(LLDrawInfo* params, bool batc
                 else
                 {
                     memo_fill = false;
+                    bindless_fill = false;
                 }
             }
         }
@@ -933,7 +941,7 @@ void LLRenderPass::buildAndOverrideScenePerDrawSet(LLDrawInfo* params, bool batc
     VkDescriptorSet per_draw_set = VK_NULL_HANDLE;
     void*           memo_token   = nullptr;
     if (LLVKLoader::ensureScenePerDrawDescriptorSet(bindings, &per_draw_set,
-                                                    memo_eligible ? &memo_token : nullptr)
+                                                    (memo_eligible || cur->mVkUsesBindlessHeap) ? &memo_token : nullptr)
         && per_draw_set != VK_NULL_HANDLE)
     {
         LLGLSLShader::sCurPerCallVkDescriptorSet = per_draw_set;
@@ -979,6 +987,28 @@ void LLRenderPass::buildAndOverrideScenePerDrawSet(LLDrawInfo* params, bool batc
             }
             params->mVkSetMemoRingSig[memo_frame] = memo_ring_sig;
             params->mVkSetMemoSet[memo_frame] = (void*)per_draw_set;
+            ++LLVKLoader::gVkPerf.set_memo_fill;
+        }
+        else if (bindless_fill
+            && memo_token != nullptr
+            && (bindings.ubo == VK_NULL_HANDLE
+                || bindings.ubo == LLVKLoader::getPerDrawUBOArenaBuffer()))
+        {
+            const U64 topo_gen = LLVKLoader::gVkPerDrawTopologyGen.load(std::memory_order_relaxed);
+            cur->mVkBindlessSet1TopoGen = topo_gen;
+            cur->mVkBindlessSet1L3Count = memo_l3_cnt;
+            std::memcpy(cur->mVkBindlessSet1L3Enums, memo_l3_enums, sizeof(memo_l3_enums));
+            std::memcpy(cur->mVkBindlessSet1L3Views, memo_l3_views, sizeof(memo_l3_views));
+            cur->mVkBindlessSet1RingSig[memo_frame] = memo_ring_sig;
+            if (cur->mVkBindlessSet1Tok[memo_frame] != memo_token)
+            {
+                LLVKLoader::releaseScenePerDrawEntry(cur->mVkBindlessSet1Tok[memo_frame],
+                                                     cur->mVkBindlessSet1PinEpoch);
+                LLVKLoader::pinScenePerDrawEntry(memo_token);
+                cur->mVkBindlessSet1Tok[memo_frame] = memo_token;
+                cur->mVkBindlessSet1PinEpoch = LLVKLoader::getScenePerDrawCacheEpoch();
+            }
+            cur->mVkBindlessSet1[memo_frame] = per_draw_set;
             ++LLVKLoader::gVkPerf.set_memo_fill;
         }
         else if (params != nullptr)

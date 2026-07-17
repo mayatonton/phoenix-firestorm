@@ -393,6 +393,16 @@ public:
     void*                      mVkPerProgramUBOMapped   = nullptr;
     U32                        mVkPerProgramUBOSize     = 0;
 
+    VkDescriptorSet mVkBindlessSet1[3]        = {};
+    void*           mVkBindlessSet1Tok[3]     = {};
+    U64             mVkBindlessSet1RingSig[3] = {};
+    U64             mVkBindlessSet1PinEpoch   = 0;
+    U64             mVkBindlessSet1TopoGen    = 0;
+    void*           mVkBindlessSet1L3Views[6] = {};
+    S16             mVkBindlessSet1L3Enums[6] = {};
+    U8              mVkBindlessSet1L3Count    = 0;
+    void clearVkBindlessSet1Pins();
+
     VkBuffer                   mVkActivePerProgramUBO       = VK_NULL_HANDLE;
     void*                      mVkActivePerProgramUBOMapped = nullptr;
     struct PerProgramUBORingSlot
@@ -417,6 +427,9 @@ public:
                                           LLVKLoader::ScenePerDrawBindings& bindings,
                                           U32                               per_program_dynamic_offset,
                                           U32*                              out_offsets);
+    static bool vkValidatePerCallCache(LLGLSLShader* cur, U64 stored_ring_sig,
+                                       const void* const* stored_l3_views,
+                                       const S16* stored_l3_enums, U8 stored_l3_count);
 
     bool                       mWritePerProgramUBOMinimumAlpha = false;
 
