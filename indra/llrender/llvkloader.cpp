@@ -4394,11 +4394,15 @@ bool endFrame()
                                    << " defer=" << gVkPerf.bake_defer.load()
                                    << " drain_ms=" << (gVkPerf.bake_drain_us.load() / 1000.0)
                                    << " | fam " << [](){ std::string s;
+                                        static const char* pool_names[24] = {
+                                            "p0","sky","wexcl","wlsky","simple","fbright","bump","mat",
+                                            "pbr","terrain","grass","pbrmask","tree","amask","fbmask","avatar",
+                                            "ctrlav","glow","alphaPre","voidwtr","water","alphaPost","alpha","p23" };
                                         for (U32 i = 0; i < 24; ++i) {
                                             const U64 us = gVkPerf.fam_us[i].load();
                                             const U64 d  = gVkPerf.fam_draws[i].load();
                                             if (us != 0 || d != 0) {
-                                                s += llformat("%u=%lluus/%llud ", i,
+                                                s += llformat("%s=%lluus/%llud ", pool_names[i],
                                                     (unsigned long long)us, (unsigned long long)d);
                                             }
                                         }
