@@ -4092,6 +4092,23 @@ void LLDrawInfo::clearVkSetMemoPins()
     }
 }
 
+bool LLDrawInfo::ensureVkDrawDataSlot(const U32 slots[4])
+{
+    if (mVkDrawDataSlot == LLVKLoader::BINDLESS_INVALID_SLOT
+        || std::memcmp(mVkDrawDataSlots, slots, 16) != 0)
+    {
+        U32 ns = LLVKLoader::drawDataAcquireSlot(slots);
+        if (ns != LLVKLoader::BINDLESS_INVALID_SLOT)
+        {
+            if (mVkDrawDataSlot != LLVKLoader::BINDLESS_INVALID_SLOT)
+                LLVKLoader::drawDataReleaseSlotDeferred(mVkDrawDataSlot);
+            mVkDrawDataSlot = ns;
+            std::memcpy(mVkDrawDataSlots, slots, 16);
+        }
+    }
+    return mVkDrawDataSlot != LLVKLoader::BINDLESS_INVALID_SLOT;
+}
+
 LLColor4U LLDrawInfo::getDebugColor() const
 {
     LLColor4U color;

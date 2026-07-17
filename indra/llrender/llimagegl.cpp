@@ -1386,6 +1386,21 @@ void LLImageGL::updateVkHeapSlot()
     }
 }
 
+U32 LLImageGL::vkHeapSlotOrDefault(const LLImageGL* gl)
+{
+    if (gl != nullptr && gl->hasVkImage()
+        && gl->getVkHeapSlot() != LLVKLoader::BINDLESS_INVALID_SLOT)
+    {
+        return gl->getVkHeapSlot();
+    }
+    const LLImageGL* def = sDefaultGLTexture;
+    if (def != nullptr && def->getVkHeapSlot() != LLVKLoader::BINDLESS_INVALID_SLOT)
+    {
+        return def->getVkHeapSlot();
+    }
+    return 0;
+}
+
 bool LLImageGL::buildVkUploadJob(LLVkTexUploadJob& job, S32 discard_level, const LLImageRaw* imageraw) const
 {
     if (!LLVKLoader::shouldUseVulkanRender())

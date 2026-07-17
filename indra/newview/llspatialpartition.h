@@ -165,6 +165,7 @@ public:
 
     U32   mVkDrawDataSlot = 0xFFFFFFFFu;
     U32   mVkDrawDataSlots[4] = {};
+    bool ensureVkDrawDataSlot(const U32 slots[4]);
 
     LLVKBucket::Bucket* mVkTplBucket = nullptr;
     U32   mVkTplCmdIndex = 0;

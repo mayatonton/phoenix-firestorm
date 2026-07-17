@@ -306,18 +306,7 @@ namespace
 
     U32 heapSlotFor(LLTexture* t)
     {
-        LLImageGL* gl = (t != nullptr) ? t->getGLTexture() : nullptr;
-        if (gl != nullptr && gl->hasVkImage()
-            && gl->getVkHeapSlot() != LLVKLoader::BINDLESS_INVALID_SLOT)
-        {
-            return gl->getVkHeapSlot();
-        }
-        LLImageGL* def = LLImageGL::sDefaultGLTexture;
-        if (def != nullptr && def->getVkHeapSlot() != LLVKLoader::BINDLESS_INVALID_SLOT)
-        {
-            return def->getVkHeapSlot();
-        }
-        return 0;
+        return LLImageGL::vkHeapSlotOrDefault(t ? t->getGLTexture() : nullptr);
     }
 
     void computeRecordSlots(LLDrawInfo* info, U32* slots)
@@ -345,22 +334,7 @@ namespace
     {
         U32 slots[4];
         computeRecordSlots(info, slots);
-        if (info->mVkDrawDataSlot == LLVKLoader::BINDLESS_INVALID_SLOT
-            || std::memcmp(info->mVkDrawDataSlots, slots, 16) != 0)
-        {
-            const U32 ns = LLVKLoader::drawDataAcquireSlot(slots);
-            if (ns == LLVKLoader::BINDLESS_INVALID_SLOT)
-            {
-                return info->mVkDrawDataSlot != LLVKLoader::BINDLESS_INVALID_SLOT;
-            }
-            if (info->mVkDrawDataSlot != LLVKLoader::BINDLESS_INVALID_SLOT)
-            {
-                LLVKLoader::drawDataReleaseSlotDeferred(info->mVkDrawDataSlot);
-            }
-            info->mVkDrawDataSlot = ns;
-            std::memcpy(info->mVkDrawDataSlots, slots, 16);
-        }
-        return true;
+        return info->ensureVkDrawDataSlot(slots);
     }
 
     void onImageSlotChanged(LLImageGL* image)

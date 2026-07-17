@@ -197,6 +197,7 @@ public:
 
     U32  getVkHeapSlot() const { return mVkHeapSlot; }
     void updateVkHeapSlot();
+    static U32 vkHeapSlotOrDefault(const LLImageGL* gl);
     static void (*sVkSlotChangeHook)(LLImageGL*);
 
     void setExternalVkBacking(VkImage image, VkImageView view, void* allocation, U32 w, U32 h, VkFormat format, U32 mip_levels = 1);

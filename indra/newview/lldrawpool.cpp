@@ -483,20 +483,6 @@ void LLRenderPass::buildAndOverrideScenePerDrawSet(LLDrawInfo* params, bool batc
 
     if (cur->mVkUsesBindlessHeap)
     {
-        auto heap_slot_for = [](LLImageGL* gl) -> U32
-        {
-            if (gl != nullptr && gl->hasVkImage()
-                && gl->getVkHeapSlot() != LLVKLoader::BINDLESS_INVALID_SLOT)
-            {
-                return gl->getVkHeapSlot();
-            }
-            LLImageGL* def = LLImageGL::sDefaultGLTexture;
-            if (def != nullptr && def->getVkHeapSlot() != LLVKLoader::BINDLESS_INVALID_SLOT)
-            {
-                return def->getVkHeapSlot();
-            }
-            return 0;
-        };
         U32 slots[4] = { 0, 0, 0, 0 };
         if (params != nullptr && batch_textures && params->mTextureList.size() > 1)
         {
@@ -504,37 +490,22 @@ void LLRenderPass::buildAndOverrideScenePerDrawSet(LLDrawInfo* params, bool batc
             for (U32 i = 0; i < n; ++i)
             {
                 LLTexture* t = params->mTextureList[i].get();
-                slots[i] = heap_slot_for(t ? t->getGLTexture() : nullptr);
+                slots[i] = LLImageGL::vkHeapSlotOrDefault(t ? t->getGLTexture() : nullptr);
             }
         }
         else if (params != nullptr && params->mTexture.notNull())
         {
-            slots[0] = heap_slot_for(params->mTexture->getGLTexture());
+            slots[0] = LLImageGL::vkHeapSlotOrDefault(params->mTexture->getGLTexture());
         }
         else
         {
-            slots[0] = heap_slot_for(gGL.getTexUnit(0)->mCurrImageGL);
+            slots[0] = LLImageGL::vkHeapSlotOrDefault(gGL.getTexUnit(0)->mCurrImageGL);
         }
         U32 id = 0;
         if (params != nullptr)
         {
-            if (params->mVkDrawDataSlot == LLVKLoader::BINDLESS_INVALID_SLOT
-                || std::memcmp(params->mVkDrawDataSlots, slots, 16) != 0)
-            {
-                U32 ns = LLVKLoader::drawDataAcquireSlot(slots);
-                if (ns != LLVKLoader::BINDLESS_INVALID_SLOT)
-                {
-                    if (params->mVkDrawDataSlot != LLVKLoader::BINDLESS_INVALID_SLOT)
-                    {
-                        LLVKLoader::drawDataReleaseSlotDeferred(params->mVkDrawDataSlot);
-                    }
-                    params->mVkDrawDataSlot = ns;
-                    std::memcpy(params->mVkDrawDataSlots, slots, 16);
-                }
-            }
-            id = (params->mVkDrawDataSlot != LLVKLoader::BINDLESS_INVALID_SLOT)
-                     ? params->mVkDrawDataSlot
-                     : LLVKLoader::drawDataWriteScratch(slots);
+            const bool ok = params->ensureVkDrawDataSlot(slots);
+            id = ok ? params->mVkDrawDataSlot : LLVKLoader::drawDataWriteScratch(slots);
         }
         else
         {
