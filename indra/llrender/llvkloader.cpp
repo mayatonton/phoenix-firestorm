@@ -4421,7 +4421,7 @@ bool endFrame()
                                             "tmr","gltf","work","agt","net","stat","cb","ui",
                                             "mov","obj","dead","hud","vlm","wld","upmv","part",
                                             "cam","misc","lod","avnfo","aud","dObj","dDrw","oAv",
-                                            "oNav","oFlex","oTanim","oMisc","x28","x29","x30","x31" };
+                                            "oNav","oFlex","oTanim","oMisc","aChar","aMisc","aName","aPre" };
                                         for (U32 i = 0; i < 32; ++i) {
                                             const U64 us = gVkPerf.idle_us[i].load();
                                             if (us != 0) {
@@ -4439,6 +4439,9 @@ bool endFrame()
                                                 s += llformat("%s=%.1f ", names[i], us / 1000.0);
                                             }
                                         }
+                                        s += llformat("psk=%llu/%llu",
+                                            (unsigned long long)gVkPerf.img_pri_skip.load(),
+                                            (unsigned long long)gVkPerf.img_pri_full.load());
                                         return s; }()
                                    << " | mega " << [](){ U64 c,cap,use; megabufStats(c,cap,use);
                                         return llformat("chunks=%llu used=%.1f/%.1fMB",

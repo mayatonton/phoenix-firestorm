@@ -158,6 +158,8 @@ public:
 
     void addToBoostPollList(LLViewerFetchedTexture* imagep);
 
+    static U32 sPriScanGen;
+
 private:
     void updateBoostPollList();
 

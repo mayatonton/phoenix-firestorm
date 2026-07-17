@@ -2929,6 +2929,9 @@ void LLVOAvatar::idleUpdate(LLAgent &agent, const F64 &time)
         mNeedsExtentUpdate = ((thisFrame + mID.mData[0]) % upd_freq == 0);
     }
 
+    {
+    LLVKLoader::VkPerfIdleScope idl(31);
+
     checkTextureLoading() ;
 
     // force immediate pixel area update on avatars using last frames data (before drawable or camera updates)
@@ -2983,11 +2986,16 @@ void LLVOAvatar::idleUpdate(LLAgent &agent, const F64 &time)
     {
         lazyAttach();
     }
+    }
 
     // animate the character
     // store off last frame's root position to be consistent with camera position
     mLastRootPos = mRoot->getWorldPosition();
-    bool detailed_update = updateCharacter(agent);
+    bool detailed_update;
+    {
+        LLVKLoader::VkPerfIdleScope idl(28);
+        detailed_update = updateCharacter(agent);
+    }
 
     static LLUICachedControl<bool> visualizers_in_calls("ShowVoiceVisualizersInCalls", false);
     bool voice_enabled = (visualizers_in_calls || LLVoiceClient::getInstance()->inProximalChannel()) &&
@@ -2996,7 +3004,10 @@ void LLVOAvatar::idleUpdate(LLAgent &agent, const F64 &time)
     LLVector3 hud_name_pos = idleCalcNameTagPosition(mLastRootPos);
 
     idleUpdateVoiceVisualizer(voice_enabled, hud_name_pos);
-    idleUpdateMisc( detailed_update );
+    {
+        LLVKLoader::VkPerfIdleScope idl(29);
+        idleUpdateMisc( detailed_update );
+    }
     idleUpdateAppearanceAnimation();
     if (detailed_update)
     {
@@ -3006,7 +3017,10 @@ void LLVOAvatar::idleUpdate(LLAgent &agent, const F64 &time)
         idleUpdateWindEffect();
     }
 
-    idleUpdateNameTag(hud_name_pos);
+    {
+        LLVKLoader::VkPerfIdleScope idl(30);
+        idleUpdateNameTag(hud_name_pos);
+    }
 
     // Complexity has stale mechanics, but updates still can be very rapid
     // so spread avatar complexity calculations over frames to lesen load from

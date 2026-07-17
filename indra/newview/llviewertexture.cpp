@@ -549,6 +549,7 @@ void LLViewerTexture::updateClass()
         if (is_sys_low || over_pct > 2.f)
         { // if we're low on system memory, emergency purge off screen textures to avoid a death spiral
             LL_WARNS() << "Low system memory detected, emergency downrezzing off screen textures" << LL_ENDL;
+            ++LLViewerTextureList::sPriScanGen;
             for (auto& image : gTextureList)
             {
                 gTextureList.updateImageDecodePriority(image, false /*will modify gTextureList otherwise!*/);
@@ -921,6 +922,7 @@ void LLViewerTexture::addFace(U32 ch, LLFace* facep)
     facep->setIndexInTex(ch, mNumFaces[ch]);
     mNumFaces[ch]++;
     mLastFaceListUpdateTimer.reset();
+    mPriScanDirty = true;
 }
 
 void LLViewerTexture::removeFace(U32 ch, LLFace* facep)
@@ -942,6 +944,7 @@ void LLViewerTexture::removeFace(U32 ch, LLFace* facep)
         mNumFaces[ch] = 0;
     }
     mLastFaceListUpdateTimer.reset();
+    mPriScanDirty = true;
 }
 
 S32 LLViewerTexture::getTotalNumFaces() const

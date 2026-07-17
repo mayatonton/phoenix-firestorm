@@ -55,6 +55,7 @@
 #include "lltexturefetch.h"
 #include "llviewercontrol.h"
 #include "llviewertexture.h"
+#include "llviewercamera.h"
 #include "llviewermedia.h"
 #include "llviewernetwork.h"
 #include "llviewerregion.h"
@@ -73,6 +74,7 @@
 void (*LLViewerTextureList::sUUIDCallback)(void **, const LLUUID&) = NULL;
 
 S32 LLViewerTextureList::sNumImages = 0;
+U32 LLViewerTextureList::sPriScanGen = 0;
 
 // <FS:Ansariel> Fast cache stats
 U32 LLViewerTextureList::sNumFastCacheReads = 0;
@@ -953,8 +955,29 @@ void LLViewerTextureList::updateImageDecodePriority(LLViewerFetchedTexture* imag
         static LLCachedControl<F32> texture_scale_min(gSavedSettings, "TextureScaleMinAreaFactor", 0.0095f);
         static LLCachedControl<F32> texture_scale_max(gSavedSettings, "TextureScaleMaxAreaFactor", 25.f);
 
+        constexpr F32 PRI_SCAN_FLOOR_SECONDS = 4.f;
+        if (!imagep->mPriScanDirty
+            && !imagep->mPriScanHadRigged
+            && imagep->mLastPriScanGen == sPriScanGen
+            && gFrameTimeSeconds - imagep->mLastPriScanTime < PRI_SCAN_FLOOR_SECONDS)
+        {
+            ++LLVKLoader::gVkPerf.img_pri_skip;
+            if (imagep->getType() == LLViewerTexture::LOD_TEXTURE && imagep->getBoostLevel() == LLViewerTexture::BOOST_NONE)
+            {
+                if (LLViewerTexture::sDesiredDiscardBias > BIAS_TRS_OUT_OF_SCREEN ||
+                    (!imagep->mCachedPriOnScreen && LLViewerTexture::sDesiredDiscardBias > BIAS_TRS_ON_SCREEN))
+                {
+                    imagep->mMaxVirtualSize = 0.f;
+                }
+            }
+            imagep->addTextureStats(imagep->mCachedPriVsize);
+        }
+        else
+        {
+        ++LLVKLoader::gVkPerf.img_pri_full;
         F32 max_vsize = 0.f;
         bool on_screen = false;
+        bool had_rigged = false;
 
         U32 face_count = 0;
         U32 max_faces_to_check = 1024;
@@ -979,6 +1002,7 @@ void LLViewerTextureList::updateImageDecodePriority(LLViewerFetchedTexture* imag
 
                 if (face && face->getViewerObject())
                 {
+                    had_rigged |= face->isState(LLFace::RIGGED);
                     F32 radius;
                     F32 cos_angle_to_view_dir;
 
@@ -1060,6 +1084,14 @@ void LLViewerTextureList::updateImageDecodePriority(LLViewerFetchedTexture* imag
         }
 
         imagep->addTextureStats(max_vsize);
+
+        imagep->mPriScanDirty = false;
+        imagep->mPriScanHadRigged = had_rigged;
+        imagep->mLastPriScanGen = sPriScanGen;
+        imagep->mLastPriScanTime = gFrameTimeSeconds;
+        imagep->mCachedPriVsize = max_vsize;
+        imagep->mCachedPriOnScreen = on_screen;
+        }
     }
 
 #if 0
@@ -1570,6 +1602,37 @@ F32 LLViewerTextureList::updateImagesFetchTextures(F32 max_time)
 {
     LL_PROFILE_ZONE_SCOPED_CATEGORY_TEXTURE;
 
+    {
+        LLViewerCamera* camera = LLViewerCamera::getInstance();
+        static LLCachedControl<F32> texture_camera_boost(gSavedSettings, "TextureCameraBoost", 8.f);
+        static LLCachedControl<F32> texture_scale_min(gSavedSettings, "TextureScaleMinAreaFactor", 0.0095f);
+        static LLCachedControl<F32> texture_scale_max(gSavedSettings, "TextureScaleMaxAreaFactor", 25.f);
+        static LLVector3 last_origin;
+        static LLVector3 last_at;
+        static F32 last_view = -1.f;
+        static F32 last_bias = -1.f;
+        static F32 last_boost = -1.f;
+        static F32 last_smin = -1.f;
+        static F32 last_smax = -1.f;
+        if (camera->getOrigin() != last_origin
+            || camera->getAtAxis() != last_at
+            || camera->getView() != last_view
+            || LLViewerTexture::sDesiredDiscardBias != last_bias
+            || (F32)texture_camera_boost != last_boost
+            || (F32)texture_scale_min != last_smin
+            || (F32)texture_scale_max != last_smax)
+        {
+            ++sPriScanGen;
+            last_origin = camera->getOrigin();
+            last_at = camera->getAtAxis();
+            last_view = camera->getView();
+            last_bias = LLViewerTexture::sDesiredDiscardBias;
+            last_boost = texture_camera_boost;
+            last_smin = texture_scale_min;
+            last_smax = texture_scale_max;
+        }
+    }
+
     updateBoostPollList();
 
     typedef std::vector<LLPointer<LLViewerFetchedTexture> > entries_list_t;
@@ -1673,6 +1736,8 @@ void LLViewerTextureList::decodeAllImages(F32 max_time)
 {
     LL_PROFILE_ZONE_SCOPED_CATEGORY_TEXTURE;
     LLTimer timer;
+
+    ++sPriScanGen;
 
     //loading from fast cache
     max_time -= updateImagesLoadingFastCache(max_time);

@@ -206,6 +206,12 @@ protected:
     mutable F32 mMaxVirtualSize = 0.f;  // The largest virtual size of the image, in pixels - how much data to we need?
     mutable S32  mMaxVirtualSizeResetCounter;
     mutable S32  mMaxVirtualSizeResetInterval;
+    bool mPriScanDirty = true;
+    bool mPriScanHadRigged = false;
+    bool mCachedPriOnScreen = false;
+    U32 mLastPriScanGen = 0;
+    F32 mLastPriScanTime = -1000.f;
+    F32 mCachedPriVsize = 0.f;
     LLFrameTimer mLastReferencedTimer;
 
     ll_face_list_t    mFaceList[LLRender::NUM_TEXTURE_CHANNELS]; //reverse pointer pointing to the faces using this image as texture
