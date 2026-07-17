@@ -69,6 +69,8 @@ LLImageDecodeThread::LLImageDecodeThread(bool /*threaded*/)
 {
     mThreadPool = std::make_unique<LL::ThreadPool>("ImageDecode", 8);
     mThreadPool->start();
+    mHiThreadPool = std::make_unique<LL::ThreadPool>("ImageDecodeHi", 2);
+    mHiThreadPool->start();
 }
 
 //virtual
@@ -85,14 +87,15 @@ size_t LLImageDecodeThread::update(F32 max_time_ms)
 
 size_t LLImageDecodeThread::getPending()
 {
-    return mThreadPool->getQueue().size();
+    return mThreadPool->getQueue().size() + mHiThreadPool->getQueue().size();
 }
 
 LLImageDecodeThread::handle_t LLImageDecodeThread::decodeImage(
     const LLPointer<LLImageFormatted>& image,
     S32 discard,
     bool needs_aux,
-    const LLPointer<LLImageDecodeThread::Responder>& responder)
+    const LLPointer<LLImageDecodeThread::Responder>& responder,
+    bool high_priority)
 {
     LL_PROFILE_ZONE_SCOPED_CATEGORY_TEXTURE;
 
@@ -101,7 +104,7 @@ LLImageDecodeThread::handle_t LLImageDecodeThread::decodeImage(
         decode_id = ++mDecodeCount;
 
     // Instantiate the ImageRequest right in the lambda, why not?
-    bool posted = mThreadPool->getQueue().post(
+    bool posted = (high_priority ? mHiThreadPool : mThreadPool)->getQueue().post(
         [req = ImageRequest(image, discard, needs_aux, responder, decode_id)]
         () mutable
         {
@@ -120,6 +123,7 @@ LLImageDecodeThread::handle_t LLImageDecodeThread::decodeImage(
 void LLImageDecodeThread::shutdown()
 {
     mThreadPool->close();
+    mHiThreadPool->close();
 }
 
 LLImageDecodeThread::Responder::~Responder()

@@ -2635,15 +2635,13 @@ bool LLAppViewer::initThreads()
     // The only configurable thread count right now is ImageDecode
     // The viewer typically starts around 8 threads not including image decode,
     // so try to leave at least one core free
-    // <FS:Ansariel> Override image decode thread config
-    //S32 image_decode_count = llclamp(cores - 6, 2, 16);
-    S32 image_decode_count = llclamp(cores - 4, 2, 8);
+    S32 image_decode_count = llclamp(cores - 6, 2, 16);
     if (auto max_decodes = gSavedSettings.getU32("FSImageDecodeThreads"); max_decodes > 0)
     {
         image_decode_count = llclamp((S32)max_decodes, 1, 32);
     }
-    // <FS:Ansariel>
     threadCounts["ImageDecode"] = image_decode_count;
+    threadCounts["ImageDecodeHi"] = 2;
     gSavedSettings.setLLSD("ThreadPoolSizes", threadCounts);
 
     // Image decoding
@@ -6111,10 +6109,12 @@ void LLAppViewer::idle()
         LL_RECORD_BLOCK_TIME(FTM_CLEANUP);
         LLVKLoader::VkPerfIdleScope idl(10);
         {
+            LLVKLoader::VkPerfIdleScope idl2(21);
             gObjectList.cleanDeadObjects();
         }
         {
             LL_RECORD_BLOCK_TIME(FTM_CLEANUP_DRAWABLES);
+            LLVKLoader::VkPerfIdleScope idl2(22);
             LLDrawable::cleanupDeadDrawables();
         }
     }

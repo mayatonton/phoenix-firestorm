@@ -1450,11 +1450,12 @@ namespace LLVKLoader
         std::atomic<U64> fam_draws[24] = {};
         std::atomic<U64> rigged_rec{0};
         std::atomic<U64> phase_us[16] = {};
-        std::atomic<U64> idle_us[24] = {};
+        std::atomic<U64> idle_us[32] = {};
         std::atomic<U64> img_us[12] = {};
         std::atomic<U64> tex_enq{0};
         std::atomic<U64> tex_pub{0};
         std::atomic<U64> tex_fail{0};
+        std::atomic<U64> tex_dec{0};
         std::atomic<U64> geo_enq{0};
         std::atomic<U64> geo_pub{0};
         std::atomic<U64> geo_pub_us{0};
@@ -1484,7 +1485,7 @@ namespace LLVKLoader
             for (auto& v : phase_us) v = 0;
             for (auto& v : idle_us) v = 0;
             for (auto& v : img_us) v = 0;
-            tex_enq = 0; tex_pub = 0; tex_fail = 0;
+            tex_enq = 0; tex_pub = 0; tex_fail = 0; tex_dec = 0;
             geo_enq = 0; geo_pub = 0; geo_pub_us = 0; geo_dis = 0; geo_inl = 0; geo_defer = 0;
             bake_enq = 0; bake_pub = 0; bake_defer = 0; bake_drain_us = 0;
         }

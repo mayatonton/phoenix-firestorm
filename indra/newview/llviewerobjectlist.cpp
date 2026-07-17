@@ -36,6 +36,7 @@
 #include "llviewercontrol.h"
 #include "llface.h"
 #include "llvoavatar.h"
+#include "llvkloader.h"
 #include "llviewerobject.h"
 #include "llviewerwindow.h"
 #include "llnetmap.h"
@@ -1042,25 +1043,40 @@ void LLViewerObjectList::update(LLAgent &agent)
     }
     else
     {
+        const bool perf_detail = LLVKLoader::perfLogEnabled();
         for (std::vector<LLViewerObject*>::iterator idle_iter = idle_list.begin();
             idle_iter != idle_end; idle_iter++)
         {
             objectp = *idle_iter;
             llassert(objectp->isActive());
+            if (perf_detail)
+            {
+                LLVKLoader::VkPerfIdleScope idl(objectp->isAvatar() ? 23 : 24);
                 objectp->idleUpdate(agent, frame_time);
+            }
+            else
+            {
+                objectp->idleUpdate(agent, frame_time);
+            }
         }
 
         //update flexible objects
-        LLVolumeImplFlexible::updateClass();
+        {
+            LLVKLoader::VkPerfIdleScope idl(25);
+            LLVolumeImplFlexible::updateClass();
+        }
 
         //update animated textures
         if (gAnimateTextures)
         {
+            LLVKLoader::VkPerfIdleScope idl(26);
             LLViewerTextureAnim::updateClass();
         }
     }
 
 
+    {
+    LLVKLoader::VkPerfIdleScope idl(27);
 
     fetchObjectCosts();
     fetchPhysicsFlags();
@@ -1073,6 +1089,7 @@ void LLViewerObjectList::update(LLAgent &agent)
     if (! mWasPaused)
     {
         LLViewerStats::getInstance()->updateFrameStats(time_diff);
+    }
     }
 
     /*

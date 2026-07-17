@@ -1885,11 +1885,16 @@ bool LLViewerFetchedTexture::isActiveFetching()
 
 void LLViewerFetchedTexture::setBoostLevel(S32 level)
 {
+    const S32 prev_level = mBoostLevel;
     LLViewerTexture::setBoostLevel(level);
 
     if (level >= LLViewerTexture::BOOST_HIGH)
     {
         mDesiredDiscardLevel = 0;
+        if (prev_level != level)
+        {
+            gTextureList.addToBoostPollList(this);
+        }
     }
 }
 
@@ -2123,7 +2128,8 @@ bool LLViewerFetchedTexture::updateFetch()
             if(decode_priority > 0.0f || mStopFetchingTimer.getElapsedTimeF32() > MAX_HOLD_TIME)
             {
                 mStopFetchingTimer.reset();
-                LLAppViewer::getTextureFetch()->updateRequestPriority(mID, decode_priority);
+                LLAppViewer::getTextureFetch()->updateRequestPriority(mID, decode_priority,
+                                                                      getBoostLevel() >= LLViewerTexture::BOOST_HIGH);
             }
         }
     }
@@ -2199,6 +2205,7 @@ bool LLViewerFetchedTexture::updateFetch()
         S32 fetch_request_response = -1;
         S32 worker_discard = -1;
         fetch_request_response = LLAppViewer::getTextureFetch()->createRequest(mFTType, mUrl, getID(), getTargetHost(), decode_priority,
+                                                                              getBoostLevel() >= LLViewerTexture::BOOST_HIGH,
                                                                               w, h, c, desired_discard, needsAux(), mCanUseHTTP);
 
         if (fetch_request_response >= 0) // positive values and 0 are discard values

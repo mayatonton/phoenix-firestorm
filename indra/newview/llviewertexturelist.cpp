@@ -1140,6 +1140,14 @@ F32 LLViewerTextureList::updateImagesCreateTextures(F32 max_time)
 
     LLTimer create_timer;
 
+    {
+        const U64 dec_pending = (U64)LLAppViewer::getImageDecodeThread()->getPending();
+        if (dec_pending > LLVKLoader::gVkPerf.tex_dec.load())
+        {
+            LLVKLoader::gVkPerf.tex_dec.store(dec_pending);
+        }
+    }
+
     bool worker = texWorkerEnabled();
     if (worker)
     {
@@ -1515,9 +1523,54 @@ void LLViewerTextureList::forceImmediateUpdate(LLViewerFetchedTexture* imagep)
     return ;
 }
 
+void LLViewerTextureList::addToBoostPollList(LLViewerFetchedTexture* imagep)
+{
+    if (!imagep)
+    {
+        return;
+    }
+    for (const auto& entry : mBoostPollList)
+    {
+        if (entry.get() == imagep)
+        {
+            return;
+        }
+    }
+    mBoostPollList.push_back(imagep);
+}
+
+void LLViewerTextureList::updateBoostPollList()
+{
+    if (mBoostPollList.empty())
+    {
+        return;
+    }
+
+    size_t keep = 0;
+    for (size_t i = 0; i < mBoostPollList.size(); ++i)
+    {
+        LLViewerFetchedTexture* imagep = mBoostPollList[i].get();
+        imagep->updateFetch();
+
+        const bool reached = imagep->hasGLTexture()
+                             && imagep->getDiscardLevel() >= 0
+                             && imagep->getDiscardLevel() <= imagep->getDesiredDiscardLevel();
+        const bool drop = imagep->getBoostLevel() < LLViewerTexture::BOOST_HIGH
+                          || imagep->isMissingAsset()
+                          || (!imagep->isFetching() && !imagep->hasFetcher() && reached);
+        if (!drop)
+        {
+            mBoostPollList[keep++] = mBoostPollList[i];
+        }
+    }
+    mBoostPollList.resize(keep);
+}
+
 F32 LLViewerTextureList::updateImagesFetchTextures(F32 max_time)
 {
     LL_PROFILE_ZONE_SCOPED_CATEGORY_TEXTURE;
+
+    updateBoostPollList();
 
     typedef std::vector<LLPointer<LLViewerFetchedTexture> > entries_list_t;
     entries_list_t entries;

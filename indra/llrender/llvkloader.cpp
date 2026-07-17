@@ -4380,6 +4380,7 @@ bool endFrame()
                                    << " | tex enq=" << gVkPerf.tex_enq.load()
                                    << " pub=" << gVkPerf.tex_pub.load()
                                    << " fail=" << gVkPerf.tex_fail.load()
+                                   << " dec=" << gVkPerf.tex_dec.load()
                                    << " stg_mb=" << (sOneShotStagingBytes.load() >> 20)
                                    << " | geo enq=" << gVkPerf.geo_enq.load()
                                    << " pub=" << gVkPerf.geo_pub.load()
@@ -4416,11 +4417,12 @@ bool endFrame()
                                         }
                                         return s; }()
                                    << " | idl " << [](){ std::string s;
-                                        static const char* names[24] = {
+                                        static const char* names[32] = {
                                             "tmr","gltf","work","agt","net","stat","cb","ui",
                                             "mov","obj","dead","hud","vlm","wld","upmv","part",
-                                            "cam","misc","lod","avnfo","aud","x21","x22","x23" };
-                                        for (U32 i = 0; i < 24; ++i) {
+                                            "cam","misc","lod","avnfo","aud","dObj","dDrw","oAv",
+                                            "oNav","oFlex","oTanim","oMisc","x28","x29","x30","x31" };
+                                        for (U32 i = 0; i < 32; ++i) {
                                             const U64 us = gVkPerf.idle_us[i].load();
                                             if (us != 0) {
                                                 s += llformat("%s=%.1f ", names[i], us / 1000.0);
@@ -9636,7 +9638,7 @@ VkPerfIdleScope::VkPerfIdleScope(U32 idx)
 
 VkPerfIdleScope::~VkPerfIdleScope()
 {
-    if (mIdx < 24)
+    if (mIdx < 32)
     {
         gVkPerf.idle_us[mIdx] += phaseNowUs() - mT0;
     }

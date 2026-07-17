@@ -560,6 +560,7 @@ private:
     std::string mUrl;
     U8 mType;
     F32 mImagePriority; // should map to max virtual size
+    bool mHighPriority;
     F32 mRequestedPriority;
     S32 mDesiredDiscard;
     S32 mSimRequestedDiscard; // <FS:Ansariel> OpenSim compatibility
@@ -914,6 +915,7 @@ LLTextureFetchWorker::LLTextureFetchWorker(LLTextureFetch* fetcher,
       mHost(host),
       mUrl(url),
       mImagePriority(priority),
+      mHighPriority(false),
       mRequestedPriority(0.f),
       mDesiredDiscard(-1),
       mSimRequestedDiscard(-1), // <FS:Ansariel> OpenSim compatibility
@@ -2007,7 +2009,8 @@ bool LLTextureFetchWorker::doWork(S32 param)
         mDecodeHandle = LLAppViewer::getImageDecodeThread()->decodeImage(mFormattedImage,
                                                                        discard,
                                                                        mNeedsAux,
-                                                                       new DecodeResponder(mFetcher, mID, this));
+                                                                       new DecodeResponder(mFetcher, mID, this),
+                                                                       mHighPriority);
         if (mDecodeHandle == 0)
         {
             // Abort, failed to put into queue.
@@ -2779,7 +2782,7 @@ LLTextureFetch::~LLTextureFetch()
     // ~LLQueuedThread() called here
 }
 
-S32 LLTextureFetch::createRequest(FTType f_type, const std::string& url, const LLUUID& id, const LLHost& host, F32 priority,
+S32 LLTextureFetch::createRequest(FTType f_type, const std::string& url, const LLUUID& id, const LLHost& host, F32 priority, bool high_priority,
     S32 w, S32 h, S32 c, S32 desired_discard, bool needs_aux, bool can_use_http)
 {
     LL_PROFILE_ZONE_SCOPED;
@@ -2865,6 +2868,7 @@ S32 LLTextureFetch::createRequest(FTType f_type, const std::string& url, const L
         worker->mActiveCount++;
         worker->mNeedsAux = needs_aux;
         worker->setImagePriority(priority);
+        worker->mHighPriority = high_priority;
         worker->setDesiredDiscard(desired_discard, desired_size);
         worker->setCanUseHTTP(can_use_http);
 
@@ -2892,6 +2896,7 @@ S32 LLTextureFetch::createRequest(FTType f_type, const std::string& url, const L
         worker->lockWorkMutex();                                        // +Mw
         worker->mActiveCount++;
         worker->mNeedsAux = needs_aux;
+        worker->mHighPriority = high_priority;
         worker->setCanUseHTTP(can_use_http);
         worker->unlockWorkMutex();                                      // -Mw
     }
@@ -3179,7 +3184,7 @@ bool LLTextureFetch::getRequestFinished(const LLUUID& id, S32& discard_level, S3
 }
 
 // Threads:  T*
-bool LLTextureFetch::updateRequestPriority(const LLUUID& id, F32 priority)
+bool LLTextureFetch::updateRequestPriority(const LLUUID& id, F32 priority, bool high_priority)
 {
     LL_PROFILE_ZONE_SCOPED;
     mRequestQueue.tryPost([=, this]()
@@ -3189,6 +3194,10 @@ bool LLTextureFetch::updateRequestPriority(const LLUUID& id, F32 priority)
             {
                 worker->lockWorkMutex();                                        // +Mw
                 worker->setImagePriority(priority);
+                if (high_priority)
+                {
+                    worker->mHighPriority = true;
+                }
                 worker->unlockWorkMutex();                                      // -Mw
             }
         });

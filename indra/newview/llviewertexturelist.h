@@ -156,7 +156,13 @@ public:
     // - cleans up textures that haven't been referenced in awhile
     void updateImageDecodePriority(LLViewerFetchedTexture* imagep, bool flush_images = true);
 
+    void addToBoostPollList(LLViewerFetchedTexture* imagep);
+
 private:
+    void updateBoostPollList();
+
+    std::vector<LLPointer<LLViewerFetchedTexture> > mBoostPollList;
+
     F32  updateImagesCreateTextures(F32 max_time);
     F32  updateImagesFetchTextures(F32 max_time);
     void updateImagesUpdateStats();
