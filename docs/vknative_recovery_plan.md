@@ -56,7 +56,7 @@ per-draw 単価 ~0.9µs の中身(perf 実測・main thread): ScenePerDrawCache 
 
 ## 2. 工程表
 
-### T 系(トポロジー手術)
+### T 系(トポロジー手術)— ✅ 全段完遂(2026-07-17・T1 `ff2d31472c` / T2 `7adc5f56e1`+`73d465b43d` / T3 `9a7e5e8924` / T5 計測 `0400f9f656` / T4 `bc4bf32d19` / T5 処置 = pri skip `8861538295` + cleanDeadObjects `1433566671`。分解の残 = aChar 2.05ms/f と net = Phase 2 送り・台帳参照)
 
 | 段 | 内容 | 消える病理 | gate | 依存 |
 |---|---|---|---|---|
