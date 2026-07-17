@@ -210,6 +210,7 @@ protected:
     typedef std::vector<LLPointer<LLViewerObject> > vobj_list_t;
 
     vobj_list_t mObjects;
+    vobj_list_t mDeadCleanupQ;
     std::vector<LLPointer<LLViewerObject> > mActiveObjects;
 
     vobj_list_t mMapObjects;

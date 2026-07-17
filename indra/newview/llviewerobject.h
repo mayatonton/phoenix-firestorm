@@ -292,6 +292,9 @@ public:
     S32 getListIndex() const                        { return mListIndex; }
     void setListIndex(S32 idx)                      { mListIndex = idx; }
 
+    S32 getGlobalListIndex() const                  { return mGlobalListIndex; }
+    void setGlobalListIndex(S32 idx)                { mGlobalListIndex = idx; }
+
     virtual bool isFlexible() const                 { return false; }
     virtual bool isSculpted() const                 { return false; }
     virtual bool isMesh() const                     { return false; }
@@ -809,6 +812,9 @@ public:
 
     // index into LLViewerObjectList::mActiveObjects or -1 if not in list
     S32             mListIndex;
+
+    // index into LLViewerObjectList::mObjects or -1 if not in list
+    S32             mGlobalListIndex;
 
     // last index data for mIndexAndLocalIDToUUID
     U32             mRegionIndex;

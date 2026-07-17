@@ -271,6 +271,7 @@ LLViewerObject::LLViewerObject(const LLUUID &id, const LLPCode pcode, LLViewerRe
     mLocalID(0),
     mTotalCRC(0),
     mListIndex(-1),
+    mGlobalListIndex(-1),
     mTEImages(NULL),
     mTENormalMaps(NULL),
     mTESpecularMaps(NULL),
