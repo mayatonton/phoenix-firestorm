@@ -468,9 +468,6 @@ void LLRenderTarget::bindTarget()
     mPreviousRT = sBoundTarget;
     sBoundTarget = this;
 
-    LLGLSLShader::sCurPerCallVkDescriptorSet = VK_NULL_HANDLE;
-    LLVKContract::pokeSite(14);
-
     if (LLVKLoader::isVulkanInitialized())
     {
         U32 color_count = static_cast<U32>(mInternalFormat.size() < 4 ? mInternalFormat.size() : 4);
@@ -802,9 +799,6 @@ void LLRenderTarget::flush()
     gGL.flush();
     llassert(mAllocated);
     llassert(sBoundTarget == this);
-
-    LLGLSLShader::sCurPerCallVkDescriptorSet = VK_NULL_HANDLE;
-    LLVKContract::pokeSite(15);
 
     if (LLVKLoader::isVulkanInitialized())
     {

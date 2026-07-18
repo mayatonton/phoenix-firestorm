@@ -121,7 +121,6 @@ void LLDrawPoolTree::renderDeferred(S32 pass)
             buff->drawRange(LLRender::TRIANGLES, 0, buff->getNumVerts() - 1, buff->getNumIndices(), 0);
         }
     }
-    LLGLSLShader::sCurPerCallVkDescriptorSet = VK_NULL_HANDLE;
 }
 
 void LLDrawPoolTree::endDeferredPass(S32 pass)

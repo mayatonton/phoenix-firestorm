@@ -149,7 +149,6 @@ U64 sWatchTot     = 0;
 thread_local const void* tCurDrawInfo = nullptr;
 thread_local const char* tCurTag      = nullptr;
 thread_local ECause      tLastCause   = C_UNKNOWN;
-thread_local U32         tLastPokeSite = 0;
 
 std::atomic<U64> sCauseWin[CAUSE_COUNT] = {};
 std::atomic<U64> sCauseTot[CAUSE_COUNT] = {};
@@ -607,19 +606,8 @@ void causeNamed(ECause c, const std::string& shader_name)
     {
         LL_WARNS("VKContract") << "VKC recovered cause=" << CAUSE_NAMES[c]
                                << " shader='" << shader_name << "'"
-                               << " poke=" << tLastPokeSite
                                << " sn=" << sn << provenance() << LL_ENDL;
     }
-}
-
-void pokeSite(U32 id)
-{
-    tLastPokeSite = id;
-}
-
-void pokeClear()
-{
-    tLastPokeSite = 0;
 }
 
 void drawSkipped(ECause fire_cause, const std::string& shader_name)

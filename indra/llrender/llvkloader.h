@@ -1523,6 +1523,7 @@ namespace LLVKLoader
     extern thread_local U32 gVkPerfShadowMapIndex;
 
     extern std::atomic<U64> gVkPerDrawTopologyGen;
+    extern std::atomic<U64> gVkViewDestroyGen;
 
     struct VkPerfPassScope
     {

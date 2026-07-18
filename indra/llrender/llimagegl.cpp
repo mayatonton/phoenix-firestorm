@@ -1336,8 +1336,6 @@ void LLImageGL::setExternalVkBacking(VkImage image, VkImageView view, void* allo
     mVkImageHeight   = h;
     mVkImageFormat   = format;
     mVkImageMipLevels = mip_levels;
-    LLGLSLShader::sCurPerCallVkDescriptorSet = VK_NULL_HANDLE;
-    LLVKContract::pokeSite(16);
     updateVkHeapSlot();
 }
 
@@ -1674,8 +1672,6 @@ void LLImageGL::applyVkUploadJob(LLVkTexUploadJob& job)
     job.mImage      = VK_NULL_HANDLE;
     job.mView       = VK_NULL_HANDLE;
     job.mAllocation = nullptr;
-    LLGLSLShader::sCurPerCallVkDescriptorSet = VK_NULL_HANDLE;
-    LLVKContract::pokeSite(17);
     updateVkHeapSlot();
 
     if (job.mHasMaskResult)

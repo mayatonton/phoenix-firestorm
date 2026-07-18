@@ -102,8 +102,6 @@ void resolveBegin();
 void cause(ECause c);
 void causeIfNone(ECause c);
 void causeNamed(ECause c, const std::string& shader_name);
-void pokeSite(U32 id);
-void pokeClear();
 void note(ECause c, const std::string& shader_name);
 void noteDetail(ECause c, const char* key, const std::string& detail);
 void drawSkipped(ECause fire_cause, const std::string& shader_name);

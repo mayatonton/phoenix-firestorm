@@ -4153,8 +4153,6 @@ bool beginFrame(bool acquire_swapchain)
         return false;
     }
 
-    LLGLSLShader::sCurPerCallVkDescriptorSet = VK_NULL_HANDLE;
-    LLVKContract::pokeSite(10);
     LLGLSLShader::sCurPerCallVkOffsetsDirty  = true;
 
     sLastBoundGraphicsPipeline = VK_NULL_HANDLE;
@@ -4297,6 +4295,7 @@ thread_local U32 gVkPerfPassTag = 0;
 thread_local U32 gVkPerfShadowMapIndex = 0;
 
 std::atomic<U64> gVkPerDrawTopologyGen{1};
+std::atomic<U64> gVkViewDestroyGen{1};
 
 U64 getScenePerDrawCacheEpoch()
 {
@@ -6202,8 +6201,6 @@ void clearDeferredUtilOverrideSlot()
         std::memcpy(slot.mapped, &data, sizeof(StructType));                                           \
         sCur##BindName##Buf[f]    = slot.buffer;                                                       \
         sCur##BindName##Mapped[f] = slot.mapped;                                                       \
-        LLGLSLShader::sCurPerCallVkDescriptorSet = VK_NULL_HANDLE;                                     \
-        LLVKContract::pokeSite(11);                                                                     \
     }                                                                                                  \
     bool getShared##BindName##UBO(VkBuffer& out_buffer, void*& out_mapped)                             \
     {                                                                                                  \
@@ -7558,8 +7555,7 @@ void destroyImageVk(VkImage image, VkImageView view, void* allocation)
     {
         return;
     }
-    LLGLSLShader::sCurPerCallVkDescriptorSet = VK_NULL_HANDLE;
-    LLVKContract::pokeSite(12);
+    ++gVkViewDestroyGen;
     PendingImageFree pending;
     pending.image         = image;
     pending.view          = view;
@@ -7759,11 +7755,6 @@ bool createTextureImageVk(U32          width,
                                                      "createTextureImageVk",
                                                      out_image, out_view, out_allocation,
                                                      mip_levels);
-    if (created)
-    {
-        LLGLSLShader::sCurPerCallVkDescriptorSet = VK_NULL_HANDLE;
-        LLVKContract::pokeSite(13);
-    }
     return created;
 }
 
@@ -8432,8 +8423,6 @@ bool createTexture3DImageVk(U32          width,
     out_image      = image;
     out_view       = view;
     out_allocation = reinterpret_cast<void*>(allocation);
-    LLGLSLShader::sCurPerCallVkDescriptorSet = VK_NULL_HANDLE;
-    LLVKContract::pokeSite(18);
     return true;
 }
 

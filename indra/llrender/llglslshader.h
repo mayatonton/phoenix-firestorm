@@ -465,7 +465,6 @@ public:
                                        const void* const* stored_l3_views,
                                        const S16* stored_l3_enums, U8 stored_l3_count);
     static U64  vkComputeImmediateSig(LLGLSLShader* cur);
-    static bool vkImmediateCacheEnabled();
 
     bool                       mWritePerProgramUBOMinimumAlpha = false;
 

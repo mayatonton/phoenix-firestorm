@@ -2141,9 +2141,6 @@ void LLGLSLShader::bind()
             placeProfileQuery();
         }
 
-        sCurPerCallVkDescriptorSet = VK_NULL_HANDLE;
-        LLVKContract::pokeSite(8);
-
         if (LLVKLoader::isVulkanInitialized() && mVkPipelineLayout != VK_NULL_HANDLE)
         {
             VkCommandBuffer cmd = LLVKLoader::getCurrentCommandBuffer();
@@ -3059,11 +3056,6 @@ void LLGLSLShader::rotatePerProgramUBOSlot()
         {
             sCurPerCallVkOffsetsDirty = true;
         }
-        else
-        {
-            sCurPerCallVkDescriptorSet = VK_NULL_HANDLE;
-            LLVKContract::pokeSite(9);
-        }
     }
 }
 
@@ -3183,11 +3175,6 @@ void LLGLSLShader::vkRefreshDynamicOffsetsForDraw()
     sCurPerCallVkOffsetsDirty = false;
 }
 
-static thread_local LLGLSLShader* tPPVerifyShader = nullptr;
-static thread_local bool          tPPVerifyValid  = false;
-static thread_local U64           tPPVerifyHash   = 0;
-static thread_local U32           tPPVerifyOffset = 0;
-
 bool LLGLSLShader::vkResolvePerProgramForDraw(VkBuffer& out_buf, U32& out_offset)
 {
     out_buf    = VK_NULL_HANDLE;
@@ -3200,9 +3187,6 @@ bool LLGLSLShader::vkResolvePerProgramForDraw(VkBuffer& out_buf, U32& out_offset
         || mVkPerProgramShadow.size() < mVkPerProgramUBOSize)
     {
         out_buf = mVkActivePerProgramUBO;
-        tPPVerifyShader = this;
-        tPPVerifyValid  = false;
-        tPPVerifyOffset = 0;
         return out_buf != VK_NULL_HANDLE;
     }
     VkBuffer arena = VK_NULL_HANDLE;
@@ -3213,13 +3197,6 @@ bool LLGLSLShader::vkResolvePerProgramForDraw(VkBuffer& out_buf, U32& out_offset
         std::memcpy(aptr, mVkPerProgramShadow.data(), mVkPerProgramUBOSize);
         out_buf    = arena;
         out_offset = aoff;
-        tPPVerifyShader = this;
-        tPPVerifyValid  = LLVKContract::verboseEnabled();
-        if (tPPVerifyValid)
-        {
-            tPPVerifyHash = LLVKLoader::sharedUBOContentHash(mVkPerProgramShadow.data(), mVkPerProgramUBOSize);
-        }
-        tPPVerifyOffset = aoff;
         return true;
     }
     LLVKContract::causeNamed(LLVKContract::C_PP_FALLBACK_LOSSY, mName);
@@ -3228,9 +3205,6 @@ bool LLGLSLShader::vkResolvePerProgramForDraw(VkBuffer& out_buf, U32& out_offset
         std::memcpy(mVkPerProgramUBOBaseMapped, mVkPerProgramShadow.data(), mVkPerProgramUBOSize);
     }
     out_buf = mVkPerProgramUBO;
-    tPPVerifyShader = this;
-    tPPVerifyValid  = false;
-    tPPVerifyOffset = 0;
     return true;
 }
 
@@ -3253,33 +3227,7 @@ void LLGLSLShader::vkVerifyPerCallBindingsAtBind(const U32* offsets, U32 dyn_cou
         {
             break;
         }
-        if (db == 0 && cur->mVkPerProgramUBOBinding == 0)
-        {
-            if (cur->mVkPerProgramUBO != VK_NULL_HANDLE && cur->mVkPerProgramUBOSize > 0)
-            {
-                if (tPPVerifyShader != cur)
-                {
-                    LLVKContract::causeNamed(LLVKContract::C_UBO_OFFSET_STALE,
-                                             cur->mName + "|pp_foreign");
-                }
-                else if (tPPVerifyValid)
-                {
-                    if (offsets[idx] != tPPVerifyOffset)
-                    {
-                        LLVKContract::causeNamed(LLVKContract::C_UBO_OFFSET_STALE,
-                                                 cur->mName + "|pp");
-                    }
-                    else if (cur->mVkPerProgramShadow.size() >= cur->mVkPerProgramUBOSize
-                             && LLVKLoader::sharedUBOContentHash(cur->mVkPerProgramShadow.data(),
-                                                                 cur->mVkPerProgramUBOSize) != tPPVerifyHash)
-                    {
-                        LLVKContract::causeNamed(LLVKContract::C_UBO_CONTENT_STALE,
-                                                 cur->mName + "|pp");
-                    }
-                }
-            }
-        }
-        else
+        if (!(db == 0 && cur->mVkPerProgramUBOBinding == 0))
         {
             const void* shadow  = nullptr;
             U32         size    = 0;
@@ -3358,6 +3306,12 @@ VkDescriptorSet LLGLSLShader::vkResolvePerCallSetForDraw()
 {
     LLVKContract::resolveBegin();
     const bool authored = sCurPerCallAuthored;
+    if (!authored)
+    {
+        sCurPerCallVkDescriptorSet = VK_NULL_HANDLE;
+        populateAndBindUniversalDescriptorSet(false);
+        return sCurPerCallVkDescriptorSet;
+    }
     VkDescriptorSet set = sCurPerCallVkDescriptorSet;
     const bool set_was_present = (set != VK_NULL_HANDLE);
     if (set != VK_NULL_HANDLE && sCurPerCallVkOffsetsDirty)
@@ -3385,12 +3339,6 @@ VkDescriptorSet LLGLSLShader::vkResolvePerCallSetForDraw()
     return set;
 }
 
-bool LLGLSLShader::vkImmediateCacheEnabled()
-{
-    static const bool s_on = (getenv("AYASTORM_IMMCACHE") != nullptr);
-    return s_on;
-}
-
 U64 LLGLSLShader::vkComputeImmediateSig(LLGLSLShader* cur)
 {
     U64 sig = 1469598103934665603ull;
@@ -3407,6 +3355,8 @@ U64 LLGLSLShader::vkComputeImmediateSig(LLGLSLShader* cur)
         sig = sig * 0x100000001B3ull ^ (U64)(uintptr_t)tu->mCurrImageGL;
     }
     sig = sig * 0x100000001B3ull ^ LLVKLoader::currentPassAttachmentSig();
+    sig = sig * 0x100000001B3ull ^ LLVKLoader::gVkViewDestroyGen.load(std::memory_order_relaxed);
+    sig = sig * 0x100000001B3ull ^ (U64)(uintptr_t)cur->mVkActivePerProgramUBO;
     return sig;
 }
 
@@ -3486,7 +3436,7 @@ void LLGLSLShader::populateAndBindUniversalDescriptorSet(bool preserve_drawdata)
         }
     }
 
-    const bool imm_cache = vkImmediateCacheEnabled() && !cur->mVkUsesBindlessHeap;
+    const bool imm_cache = !cur->mVkUsesBindlessHeap;
     const U32  imm_lane  = LLVKLoader::getCurrentRecordLane();
     const U32  imm_frame = LLVKLoader::getCurrentFrameIndex();
     U64        imm_sig       = 0;
