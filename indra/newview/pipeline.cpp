@@ -4598,6 +4598,7 @@ void LLPipeline::postSort(LLCamera &camera)
         }
 
         getFrameCull()->setBucketVisible(group);
+        group->mVkLastFireFrame = gFrameCount;
         if (group->mVkBucketIndexCount > 0 &&
             !isFrameShadowPass() && !isFrameReflectionPass() && !gCubeSnapshot)
         {
