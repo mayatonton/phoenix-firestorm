@@ -1186,6 +1186,7 @@ std::string LLViewerShaderMgr::loadBasicShaders()
     if (LLVKLoader::isBindlessActiveVk())
     {
         attribs["AYA_BINDLESS"] = "1";
+        attribs["AYA_BINDLESS_MAT"] = "1";
     }
 
     { // PBR terrain

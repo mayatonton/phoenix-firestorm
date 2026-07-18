@@ -315,6 +315,7 @@ public:
 
     bool                       mVkVertexPushConstantOver64 = false;
     bool                       mVkUsesBindlessHeap         = false;
+    bool                       mVkReflUsesHeapSet          = false;
 
     U32                        mVkAttributeMask = 0;
     bool                       mVkAttributeMaskValid = false;

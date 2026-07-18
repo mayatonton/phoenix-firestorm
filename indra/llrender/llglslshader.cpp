@@ -1194,7 +1194,8 @@ static void reflectUsedSet1SamplerBindingsFromSpirv(const std::vector<unsigned i
 
 static void reflectVkSet1BindingsFromSpirv(const std::vector<unsigned int>& spirv,
                                            std::vector<VkSpirvSet1Sampler>& out_samplers,
-                                           std::vector<S32>& out_ubo_bindings)
+                                           std::vector<S32>& out_ubo_bindings,
+                                           bool* out_uses_set2 = nullptr)
 {
     if (spirv.size() < 5)
     {
@@ -1292,6 +1293,10 @@ static void reflectVkSet1BindingsFromSpirv(const std::vector<unsigned int>& spir
             const unsigned int storage = w[i + 3];
             auto sit = desc_sets.find(result_id);
             auto bit = desc_bindings.find(result_id);
+            if (out_uses_set2 != nullptr && sit != desc_sets.end() && sit->second == 2)
+            {
+                *out_uses_set2 = true;
+            }
             if (sit != desc_sets.end() && sit->second == 1 && bit != desc_bindings.end())
             {
                 if (storage == 2u)
@@ -1941,13 +1946,14 @@ bool LLGLSLShader::generatePerProgramSPIRV(const std::vector<StageSource>& stage
         }
     }
 
+    mVkReflUsesHeapSet = false;
     for (const auto& ss : stage_spvs)
     {
         const U8 stage_mask = (ss.type == GL_FRAGMENT_SHADER) ? VKBS_FRAGMENT
                             : (ss.type == GL_VERTEX_SHADER)   ? VKBS_VERTEX : (U8)0;
         std::vector<VkSpirvSet1Sampler> samplers;
         std::vector<S32> ubo_bindings;
-        reflectVkSet1BindingsFromSpirv(ss.spirv, samplers, ubo_bindings);
+        reflectVkSet1BindingsFromSpirv(ss.spirv, samplers, ubo_bindings, &mVkReflUsesHeapSet);
         reflectVkUboLayoutsFromSpirv(ss.spirv, stage_mask, mVkReflUboBlocks, mVkReflPushConstants);
         std::set<S32> used_sampler_bindings;
         reflectUsedSet1SamplerBindingsFromSpirv(ss.spirv, used_sampler_bindings);
@@ -2821,19 +2827,12 @@ bool LLGLSLShader::createVkPipeline(U32 perProgramUBOSize, bool needsSharedWater
                     VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER_DYNAMIC);
     add_sampler(50, VK_SHADER_STAGE_FRAGMENT_BIT, LLShaderMgr::DEFERRED_LIGHTFUNC);
 
-    mVkUsesBindlessHeap = false;
-    if (mFeatures.mIndexedTextureChannels > 0)
+    mVkUsesBindlessHeap = (LLVKLoader::isBindlessActiveVk() && mVkReflUsesHeapSet);
+    if (mFeatures.mIndexedTextureChannels > 0 && !mVkUsesBindlessHeap)
     {
-        if (LLVKLoader::isBindlessActiveVk() && mFeatures.mIndexedTextureChannels <= 4)
+        for (S32 i = 0; i < mFeatures.mIndexedTextureChannels && i < 8; ++i)
         {
-            mVkUsesBindlessHeap = true;
-        }
-        else
-        {
-            for (S32 i = 0; i < mFeatures.mIndexedTextureChannels && i < 8; ++i)
-            {
-                add_sampler(100 + i, VK_SHADER_STAGE_FRAGMENT_BIT, -2);
-            }
+            add_sampler(100 + i, VK_SHADER_STAGE_FRAGMENT_BIT, -2);
         }
     }
 

@@ -123,9 +123,16 @@ out vec2 vary_texcoord2;
 #endif
 #endif
 
+#if defined(AYA_BINDLESS_MAT) && (defined(HAS_NORMAL_MAP) || defined(HAS_SPECULAR_MAP))
+#define AYA_MAT_HEAP 1
+#endif
+
 #ifdef LL_VULKAN_GLSL
 layout(location = 6) out vec4 vertex_color;
 layout(location = 7) out vec2 vary_texcoord0;
+#ifdef AYA_MAT_HEAP
+layout(location = 19) flat out int aya_draw_id;
+#endif
 #else
 out vec4 vertex_color;
 out vec2 vary_texcoord0;
@@ -133,6 +140,9 @@ out vec2 vary_texcoord0;
 
 void main()
 {
+#if defined(LL_VULKAN_GLSL) && defined(AYA_MAT_HEAP)
+    aya_draw_id = gl_InstanceIndex;
+#endif
 #ifdef HAS_SKIN
     mat4 mat = getObjectSkinnedTransform();
 

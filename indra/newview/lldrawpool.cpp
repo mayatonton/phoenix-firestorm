@@ -570,6 +570,14 @@ void LLRenderPass::buildAndOverrideScenePerDrawSet(LLDrawInfo* params, bool batc
         else if (params != nullptr && params->mTexture.notNull())
         {
             slots[0] = LLImageGL::vkHeapSlotOrDefault(params->mTexture->getGLTexture());
+            if (params->mNormalMap.notNull())
+            {
+                slots[1] = LLImageGL::vkHeapSlotOrDefault(params->mNormalMap->getGLTexture());
+            }
+            if (params->mSpecularMap.notNull())
+            {
+                slots[2] = LLImageGL::vkHeapSlotOrDefault(params->mSpecularMap->getGLTexture());
+            }
         }
         else
         {
