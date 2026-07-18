@@ -5894,6 +5894,10 @@ namespace
             {
                 return 2u;
             }
+            if (strcmp(e, "repair") == 0)
+            {
+                return 3u;
+            }
             return 1u;
         }();
         return s_mode;
@@ -5989,7 +5993,7 @@ namespace
     }
 
     void geoAbReportRegion(const char* attr, const U8* ref, const U8* out, U32 bytes, bool f32_lanes,
-                           const char* verdict, LLVKContract::ECause cause, const std::string& prov)
+                           const char* verdict, bool repaired, LLVKContract::ECause cause, const std::string& prov)
     {
         U32 first = 0;
         while (first < bytes && ref[first] == out[first])
@@ -6027,7 +6031,12 @@ namespace
                 os << " nan=1";
             }
         }
-        os << " verdict=" << verdict << ' ' << prov;
+        os << " verdict=" << verdict;
+        if (repaired)
+        {
+            os << " repaired=1";
+        }
+        os << ' ' << prov;
         LLVKContract::noteDetail(cause, attr, os.str());
     }
 
@@ -6142,14 +6151,14 @@ namespace
         {
             const char* name;
             U8* ref;
-            const U8* out;
+            U8* out;
             U32 bytes;
             bool f32;
             U8** chk_slot;
         };
         Region regions[10];
         U32 nregions = 0;
-        auto add = [&](const char* name, U8* ref, const U8* out, U32 bytes, bool f32, U8** chk_slot)
+        auto add = [&](const char* name, U8* ref, U8* out, U32 bytes, bool f32, U8** chk_slot)
         {
             if (ref != nullptr && out != nullptr && bytes > 0)
             {
@@ -6251,6 +6260,7 @@ namespace
             }
 
             bool now_ok = LLFace::runVkGeoFill(chk);
+            bool repair = (geoAbMode() == 3);
 
             for (U32 i = 0; i < nregions; ++i)
             {
@@ -6278,8 +6288,12 @@ namespace
                         verdict = "both";
                     }
                 }
+                if (repair)
+                {
+                    memcpy(regions[i].out, regions[i].ref, regions[i].bytes);
+                }
                 geoAbReportRegion(regions[i].name, regions[i].ref, regions[i].out, regions[i].bytes, regions[i].f32,
-                                  verdict, cause, prov);
+                                  verdict, repair, cause, prov);
             }
         }
 
@@ -6301,13 +6315,13 @@ namespace
             return;
         }
         static U32 s_cursor = 0;
-        size_t count = (mode == 2) ? n : llmin((size_t)4, n);
+        size_t count = (mode >= 2) ? n : llmin((size_t)4, n);
         for (size_t k = 0; k < count; ++k)
         {
-            size_t fi = (mode == 2) ? k : ((s_cursor + k) % n);
+            size_t fi = (mode >= 2) ? k : ((s_cursor + k) % n);
             geoAbCheckFill(staged, staged.mFills[fi]);
         }
-        if (mode != 2)
+        if (mode < 2)
         {
             s_cursor += (U32)count;
         }

@@ -114,6 +114,7 @@
 
 - **通常起動(既定)**: 装置は counting + `VKC-SUM`(1 行/10s・失敗ゼロなら無音)のみ。per-event WARNS・L2 sentinel・L3 A/B は全 OFF ≒ 追加コストほぼゼロ。
 - **診断起動**: `AYASTORM_VKC=1` を付けて起動(例: `AYASTORM_VKC=1 AYASTORM_PERF_LOG=5 ~/ayastorm/ayastorm`)→ 全装置 full。`AYASTORM_GEOAB=full/0` は L3 の明示上書き。
+- **判別実験モード**: `AYASTORM_GEOAB=repair` = L3 を全数化し、不一致検出時に参照出力(旧経路の正内容)をその場で buffer へ反映(`repaired=1` を log)。**穴が repair で消える → 幾何内容(source drift 族)が犯人と機械確定 / 消えない → 幾何は無罪確定**。適用範囲 = 入力 drift なし面のみ(volume 差替え面はサイズ危険のため非修復・申告)。診断専用(恒久 fix ではない)。
 - `AYASTORM_PERF_LOG` に束ねない理由: AYA が常用するフラグのため「取る/取らない」の分離が成立しない。
 
 ## 4.6 初回運転の結果(2026-07-18 夜・穴再現起動 1 回)
