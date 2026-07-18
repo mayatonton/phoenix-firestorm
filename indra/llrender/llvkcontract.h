@@ -38,6 +38,7 @@ enum ECause : U32
     C_STALE_UNREFRESHED,
     C_GEOAB_STAGE_SKIP,
     C_APPLY_UNRENDERED,
+    C_AUTHORED_REBIND,
     CAUSE_COUNT
 };
 
@@ -62,6 +63,7 @@ void setResolvers(std::string (*describe)(const void*), U64 (*key)(const void*))
 
 void drawScopeBegin(const void* draw_info, const char* tag);
 void drawScopeEnd();
+const void* currentDrawInfo();
 
 struct DrawScope
 {

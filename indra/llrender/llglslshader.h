@@ -376,6 +376,8 @@ public:
     static void populateAndBindUniversalDescriptorSet(bool preserve_drawdata = false);
 
 public:
+    static bool (*sVkRecoveryRebindHook)(const void* draw_info);
+    static bool vkRecoverAuthorEnabled();
     static bool vkCaptureRegimeActive();
     static bool vkUsePositiveViewport(bool render_target_bound, bool capture_regime);
 

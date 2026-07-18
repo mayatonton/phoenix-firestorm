@@ -108,11 +108,23 @@ static U64 vkContractDrawInfoKey(const void* p)
     return (k != 0) ? k : 1;
 }
 
+static bool vkContractRecoveryRebind(const void* p)
+{
+    LLDrawInfo* di = (LLDrawInfo*)p;
+    if (di == nullptr || di->mGLTFMaterial.notNull())
+    {
+        return false;
+    }
+    LLRenderPass::buildAndOverrideScenePerDrawSet(di, true);
+    return LLGLSLShader::sCurPerCallVkDescriptorSet != VK_NULL_HANDLE;
+}
+
 struct VkContractResolverInit
 {
     VkContractResolverInit()
     {
         LLVKContract::setResolvers(&vkContractDescribeDrawInfo, &vkContractDrawInfoKey);
+        LLGLSLShader::sVkRecoveryRebindHook = &vkContractRecoveryRebind;
     }
 };
 static VkContractResolverInit sVkContractResolverInit;

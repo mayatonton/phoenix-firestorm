@@ -47,7 +47,8 @@ const char* CAUSE_NAMES[CAUSE_COUNT] =
     "geoab_stage_degenerate",
     "stale_unrefreshed",
     "geoab_stage_skip",
-    "apply_unrendered"
+    "apply_unrendered",
+    "authored_rebind"
 };
 
 const char* SITE_NAMES[SITE_COUNT] =
@@ -194,6 +195,11 @@ void drawScopeEnd()
 {
     tCurDrawInfo = nullptr;
     tCurTag      = nullptr;
+}
+
+const void* currentDrawInfo()
+{
+    return tCurDrawInfo;
 }
 
 void resolveBegin()
