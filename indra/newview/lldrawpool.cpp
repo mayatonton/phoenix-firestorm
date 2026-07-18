@@ -549,14 +549,15 @@ void LLRenderPass::buildAndOverrideScenePerDrawSet(LLDrawInfo* params, bool batc
         }
     }
 
+    const U32 lane = LLVKLoader::getCurrentRecordLane();
     if (cur->mVkUsesBindlessHeap && gltf_materials_ubo == 0 && gltf_geometry_ubo == 0
         && cur->mVkAccessorBindingListBuilt
-        && cur->mVkBindlessSet1[memo_frame] != nullptr
-        && cur->mVkBindlessSet1TopoGen == LLVKLoader::gVkPerDrawTopologyGen.load(std::memory_order_relaxed)
-        && LLGLSLShader::vkValidatePerCallCache(cur, cur->mVkBindlessSet1RingSig[memo_frame],
-               cur->mVkBindlessSet1L3Views, cur->mVkBindlessSet1L3Enums, cur->mVkBindlessSet1L3Count))
+        && cur->mVkBindlessSet1Lanes[lane].set[memo_frame] != nullptr
+        && cur->mVkBindlessSet1Lanes[lane].topoGen == LLVKLoader::gVkPerDrawTopologyGen.load(std::memory_order_relaxed)
+        && LLGLSLShader::vkValidatePerCallCache(cur, cur->mVkBindlessSet1Lanes[lane].ringSig[memo_frame],
+               cur->mVkBindlessSet1Lanes[lane].l3Views, cur->mVkBindlessSet1Lanes[lane].l3Enums, cur->mVkBindlessSet1Lanes[lane].l3Count))
     {
-        LLGLSLShader::sCurPerCallVkDescriptorSet = cur->mVkBindlessSet1[memo_frame];
+        LLGLSLShader::sCurPerCallVkDescriptorSet = cur->mVkBindlessSet1Lanes[lane].set[memo_frame];
         LLGLSLShader::sCurPerCallVkOffsetsDirty  = true;
         LLGLSLShader::sCurPerCallVkSetShape      = set_shape;
         ++LLVKLoader::gVkPerf.set_memo;
@@ -987,20 +988,20 @@ void LLRenderPass::buildAndOverrideScenePerDrawSet(LLDrawInfo* params, bool batc
                 || bindings.ubo == LLVKLoader::getPerDrawUBOArenaBuffer()))
         {
             const U64 topo_gen = LLVKLoader::gVkPerDrawTopologyGen.load(std::memory_order_relaxed);
-            cur->mVkBindlessSet1TopoGen = topo_gen;
-            cur->mVkBindlessSet1L3Count = memo_l3_cnt;
-            std::memcpy(cur->mVkBindlessSet1L3Enums, memo_l3_enums, sizeof(memo_l3_enums));
-            std::memcpy(cur->mVkBindlessSet1L3Views, memo_l3_views, sizeof(memo_l3_views));
-            cur->mVkBindlessSet1RingSig[memo_frame] = memo_ring_sig;
-            if (cur->mVkBindlessSet1Tok[memo_frame] != memo_token)
+            cur->mVkBindlessSet1Lanes[lane].topoGen = topo_gen;
+            cur->mVkBindlessSet1Lanes[lane].l3Count = memo_l3_cnt;
+            std::memcpy(cur->mVkBindlessSet1Lanes[lane].l3Enums, memo_l3_enums, sizeof(memo_l3_enums));
+            std::memcpy(cur->mVkBindlessSet1Lanes[lane].l3Views, memo_l3_views, sizeof(memo_l3_views));
+            cur->mVkBindlessSet1Lanes[lane].ringSig[memo_frame] = memo_ring_sig;
+            if (cur->mVkBindlessSet1Lanes[lane].tok[memo_frame] != memo_token)
             {
-                LLVKLoader::releaseScenePerDrawEntry(cur->mVkBindlessSet1Tok[memo_frame],
-                                                     cur->mVkBindlessSet1PinEpoch);
+                LLVKLoader::releaseScenePerDrawEntry(cur->mVkBindlessSet1Lanes[lane].tok[memo_frame],
+                                                     cur->mVkBindlessSet1Lanes[lane].pinEpoch);
                 LLVKLoader::pinScenePerDrawEntry(memo_token);
-                cur->mVkBindlessSet1Tok[memo_frame] = memo_token;
-                cur->mVkBindlessSet1PinEpoch = LLVKLoader::getScenePerDrawCacheEpoch();
+                cur->mVkBindlessSet1Lanes[lane].tok[memo_frame] = memo_token;
+                cur->mVkBindlessSet1Lanes[lane].pinEpoch = LLVKLoader::getScenePerDrawCacheEpoch();
             }
-            cur->mVkBindlessSet1[memo_frame] = per_draw_set;
+            cur->mVkBindlessSet1Lanes[lane].set[memo_frame] = per_draw_set;
             ++LLVKLoader::gVkPerf.set_memo_fill;
         }
         else if (params != nullptr)

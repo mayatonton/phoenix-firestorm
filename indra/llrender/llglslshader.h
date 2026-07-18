@@ -393,14 +393,18 @@ public:
     void*                      mVkPerProgramUBOMapped   = nullptr;
     U32                        mVkPerProgramUBOSize     = 0;
 
-    VkDescriptorSet mVkBindlessSet1[3]        = {};
-    void*           mVkBindlessSet1Tok[3]     = {};
-    U64             mVkBindlessSet1RingSig[3] = {};
-    U64             mVkBindlessSet1PinEpoch   = 0;
-    U64             mVkBindlessSet1TopoGen    = 0;
-    void*           mVkBindlessSet1L3Views[6] = {};
-    S16             mVkBindlessSet1L3Enums[6] = {};
-    U8              mVkBindlessSet1L3Count    = 0;
+    struct VkBindlessSet1LaneState
+    {
+        VkDescriptorSet set[3]     = {};
+        void*           tok[3]     = {};
+        U64             ringSig[3] = {};
+        U64             pinEpoch   = 0;
+        U64             topoGen    = 0;
+        void*           l3Views[6] = {};
+        S16             l3Enums[6] = {};
+        U8              l3Count    = 0;
+    };
+    VkBindlessSet1LaneState mVkBindlessSet1Lanes[LLVKLoader::MAX_RECORD_LANES];
     void clearVkBindlessSet1Pins();
 
     VkBuffer                   mVkActivePerProgramUBO       = VK_NULL_HANDLE;

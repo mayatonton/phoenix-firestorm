@@ -44,10 +44,13 @@ namespace LLVKLoader
     void endOffscreenFrameVk();
     VkCommandBuffer getCurrentCommandBuffer();
 
+    constexpr U32 MAX_RECORD_LANES = 8;
+
     U32  recordWorkerCount();
     bool isRecordJobActive();
     bool dispatchRecordJob(std::function<void(VkCommandBuffer)> body);
     void joinRecordJobs();
+    U32  getCurrentRecordLane();
 
     uint32_t acquireOcclusionQueryVk();
     void     releaseOcclusionQueryVk(uint32_t handle);

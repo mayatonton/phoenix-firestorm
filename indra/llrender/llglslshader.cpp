@@ -2332,11 +2332,14 @@ bool LLGLSLShader::vkValidatePerCallCache(LLGLSLShader* cur, U64 stored_ring_sig
 
 void LLGLSLShader::clearVkBindlessSet1Pins()
 {
-    for (U32 i = 0; i < 3; ++i)
+    for (U32 L = 0; L < LLVKLoader::MAX_RECORD_LANES; ++L)
     {
-        LLVKLoader::releaseScenePerDrawEntry(mVkBindlessSet1Tok[i], mVkBindlessSet1PinEpoch);
-        mVkBindlessSet1Tok[i] = nullptr;
-        mVkBindlessSet1[i]    = VK_NULL_HANDLE;
+        for (U32 i = 0; i < 3; ++i)
+        {
+            LLVKLoader::releaseScenePerDrawEntry(mVkBindlessSet1Lanes[L].tok[i], mVkBindlessSet1Lanes[L].pinEpoch);
+            mVkBindlessSet1Lanes[L].tok[i] = nullptr;
+            mVkBindlessSet1Lanes[L].set[i] = VK_NULL_HANDLE;
+        }
     }
 }
 

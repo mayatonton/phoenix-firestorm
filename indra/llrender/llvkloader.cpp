@@ -353,7 +353,6 @@ namespace
         U32             enqueue_frame;
     };
 
-    constexpr U32 MAX_RECORD_LANES = 8;
     thread_local U32 tRecordLaneIndex = 0;
 
     struct PerDrawDescLane
@@ -4258,6 +4257,11 @@ void releaseScenePerDrawEntry(void* token, U64 epoch)
 U32 recordWorkerCount()
 {
     return rwDesiredWorkerCount();
+}
+
+U32 getCurrentRecordLane()
+{
+    return tRecordLaneIndex;
 }
 
 bool isRecordJobActive()
