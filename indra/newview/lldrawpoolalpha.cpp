@@ -949,7 +949,7 @@ void flushAlphaRun(AlphaRun& run)
     if (shader != nullptr)
     {
         gGL.syncMatrices();
-        LLVKContract::DrawScope vkc_scope(nullptr, "alphaRun");
+        LLVKContract::DrawScope vkc_scope(run.mSpans.empty() ? nullptr : run.mSpans.back().mRep, "alphaRun");
         VkDescriptorSet set_to_bind = LLGLSLShader::vkResolvePerCallSetForDraw();
         VkCommandBuffer cmd = LLVKLoader::getCurrentCommandBuffer();
         if (set_to_bind == VK_NULL_HANDLE)
