@@ -409,6 +409,26 @@ public:
     VkBindlessSet1LaneState mVkBindlessSet1Lanes[LLVKLoader::MAX_RECORD_LANES];
     void clearVkBindlessSet1Pins();
 
+    struct VkImmediateSet1LaneState
+    {
+        VkDescriptorSet set[3]     = {};
+        void*           tok[3]     = {};
+        U64             sig[3]     = {};
+        U64             ringSig[3] = {};
+        U64             topoGen    = 0;
+        void*           l3Views[6] = {};
+        S16             l3Enums[6] = {};
+        U8              l3Count    = 0;
+        U64             pinEpoch   = 0;
+    };
+    VkImmediateSet1LaneState mVkImmediateSet1Lanes[LLVKLoader::MAX_RECORD_LANES];
+    U32  mVkImmediateSigUnits = 0xFFFFFFFFu;
+    bool mVkImmediateUncacheable = false;
+    U32  mVkImmediateHits  = 0;
+    U32  mVkImmediateFills = 0;
+    bool mVkImmediateNoFill = false;
+    void clearVkImmediateSet1Pins();
+
     VkBuffer                   mVkActivePerProgramUBO       = VK_NULL_HANDLE;
     void*                      mVkActivePerProgramUBOMapped = nullptr;
     struct PerProgramUBORingSlot
@@ -436,6 +456,8 @@ public:
     static bool vkValidatePerCallCache(LLGLSLShader* cur, U64 stored_ring_sig,
                                        const void* const* stored_l3_views,
                                        const S16* stored_l3_enums, U8 stored_l3_count);
+    static U64  vkComputeImmediateSig(LLGLSLShader* cur);
+    static bool vkImmediateCacheEnabled();
 
     bool                       mWritePerProgramUBOMinimumAlpha = false;
 

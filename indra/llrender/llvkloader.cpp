@@ -4357,6 +4357,11 @@ bool endFrame()
                                    << "/" << gVkPerf.set_memo_fill.load()
                                    << " populate=" << gVkPerf.populate.load()
                                    << " populate_us=" << (gVkPerf.populate_us.load() / 1000.0)
+                                   << " bl=" << gVkPerf.populate_bl.load()
+                                   << " pl=" << gVkPerf.populate_pl.load()
+                                   << " blhit=" << gVkPerf.populate_blhit.load()
+                                   << " ihit=" << gVkPerf.populate_hit.load()
+                                   << " imiss=" << gVkPerf.populate_miss.load()
                                    << " | syncmat " << gVkPerf.syncmat_build.load() << "/" << gVkPerf.syncmat_call.load()
                                    << " | vbbind " << gVkPerf.vb_bind.load() << "/" << gVkPerf.vb_skip.load()
                                    << " ibbind " << gVkPerf.ib_bind.load() << "/" << gVkPerf.ib_skip.load()
@@ -10202,6 +10207,23 @@ bool hasSwapchainDepth()
 bool isInRenderPassScope()
 {
     return sInDynamicRendering;
+}
+
+U64 currentPassAttachmentSig()
+{
+    U64 sig = sInDynamicRendering ? 0x9E3779B97F4A7C15ull : 0;
+    if (sInDynamicRendering)
+    {
+        if (sSavedHasDepth)
+        {
+            sig = sig * 0x100000001B3ull ^ (U64)(uintptr_t)sSavedDepthInfo.imageView;
+        }
+        for (U32 i = 0; i < sSavedColorCount && i < 4; ++i)
+        {
+            sig = sig * 0x100000001B3ull ^ (U64)(uintptr_t)sSavedColorInfos[i].imageView;
+        }
+    }
+    return sig;
 }
 
 bool isImageViewActivePassAttachment(VkImageView view)

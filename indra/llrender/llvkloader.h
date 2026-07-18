@@ -1408,6 +1408,7 @@ namespace LLVKLoader
 
     bool        isInRenderPassScope();
     bool        isImageViewActivePassAttachment(VkImageView view);
+    U64         currentPassAttachmentSig();
     void        setupViewportAndScissor(VkCommandBuffer cmd, bool screen_space_copy = false);
     void        bindGraphicsPipelineOnce(VkCommandBuffer cmd, VkPipeline pipeline);
     void        bindDrawDescriptorSetsOnce(VkCommandBuffer cmd, VkPipelineLayout layout,
@@ -1431,6 +1432,11 @@ namespace LLVKLoader
         std::atomic<U64> set_memo_fill{0};
         std::atomic<U64> populate{0};
         std::atomic<U64> populate_us{0};
+        std::atomic<U64> populate_bl{0};
+        std::atomic<U64> populate_pl{0};
+        std::atomic<U64> populate_blhit{0};
+        std::atomic<U64> populate_hit{0};
+        std::atomic<U64> populate_miss{0};
         std::atomic<U64> syncmat_call{0};
         std::atomic<U64> syncmat_build{0};
         std::atomic<U64> vb_bind{0};
@@ -1483,6 +1489,8 @@ namespace LLVKLoader
             mv_push = 0; mv_skip = 0; vp_set = 0; vp_skip = 0;
             set_build = 0; set_memo = 0; set_memo_fill = 0; populate = 0;
             populate_us = 0;
+            populate_bl = 0; populate_pl = 0; populate_blhit = 0;
+            populate_hit = 0; populate_miss = 0;
             syncmat_call = 0; syncmat_build = 0;
             vb_bind = 0; vb_skip = 0; ib_bind = 0; ib_skip = 0;
             for (auto& v : draws_pass) v = 0;

@@ -319,6 +319,7 @@ LLGLSLShader::LLGLSLShader()
 LLGLSLShader::~LLGLSLShader()
 {
     clearVkBindlessSet1Pins();
+    clearVkImmediateSet1Pins();
 }
 
 void LLGLSLShader::unload()
@@ -401,6 +402,12 @@ void LLGLSLShader::unloadInternal()
             mVkAccessorBindingListBuiltLanes[L] = false;
         }
         clearVkBindlessSet1Pins();
+        clearVkImmediateSet1Pins();
+        mVkImmediateSigUnits    = 0xFFFFFFFFu;
+        mVkImmediateUncacheable = false;
+        mVkImmediateHits        = 0;
+        mVkImmediateFills       = 0;
+        mVkImmediateNoFill      = false;
         mVkUsesBindlessHeap = false;
         if (mVkPerProgramUBO != VK_NULL_HANDLE)
         {
@@ -3239,6 +3246,44 @@ VkDescriptorSet LLGLSLShader::vkResolvePerCallSetForDraw()
     return set;
 }
 
+bool LLGLSLShader::vkImmediateCacheEnabled()
+{
+    static const bool s_on = (getenv("AYASTORM_IMMCACHE") != nullptr);
+    return s_on;
+}
+
+U64 LLGLSLShader::vkComputeImmediateSig(LLGLSLShader* cur)
+{
+    U64 sig = 1469598103934665603ull;
+    const U32 K = cur->mVkImmediateSigUnits;
+    for (U32 u = 0; u < K; ++u)
+    {
+        LLTexUnit* tu = gGL.getTexUnit((S32)u);
+        if (tu == nullptr)
+        {
+            continue;
+        }
+        sig = sig * 0x100000001B3ull ^ (U64)(uintptr_t)tu->getLiveVkImageView();
+        sig = sig * 0x100000001B3ull ^ (U64)(uintptr_t)tu->getLiveVkSampler();
+        sig = sig * 0x100000001B3ull ^ (U64)(uintptr_t)tu->mCurrImageGL;
+    }
+    sig = sig * 0x100000001B3ull ^ LLVKLoader::currentPassAttachmentSig();
+    return sig;
+}
+
+void LLGLSLShader::clearVkImmediateSet1Pins()
+{
+    for (U32 L = 0; L < LLVKLoader::MAX_RECORD_LANES; ++L)
+    {
+        for (U32 i = 0; i < 3; ++i)
+        {
+            LLVKLoader::releaseScenePerDrawEntry(mVkImmediateSet1Lanes[L].tok[i], mVkImmediateSet1Lanes[L].pinEpoch);
+            mVkImmediateSet1Lanes[L].tok[i] = nullptr;
+            mVkImmediateSet1Lanes[L].set[i] = VK_NULL_HANDLE;
+        }
+    }
+}
+
 void LLGLSLShader::populateAndBindUniversalDescriptorSet()
 {
     if (!LLVKLoader::isVulkanInitialized())
@@ -3274,6 +3319,69 @@ void LLGLSLShader::populateAndBindUniversalDescriptorSet()
         PopulateCostTimer() : t0(LLVKLoader::perfLogEnabled() ? (U64)LLTimer::getTotalTime() : 0) {}
         ~PopulateCostTimer() { if (t0) LLVKLoader::gVkPerf.populate_us += (U64)LLTimer::getTotalTime() - t0; }
     } populate_cost_timer;
+
+    if (LLVKLoader::perfLogEnabled())
+    {
+        if (cur->mVkUsesBindlessHeap)
+        {
+            ++LLVKLoader::gVkPerf.populate_bl;
+            const U32 mlane  = LLVKLoader::getCurrentRecordLane();
+            const U32 mframe = LLVKLoader::getCurrentFrameIndex();
+            if (cur->mVkAccessorBindingListBuiltLanes[mlane]
+                && cur->mVkBindlessSet1Lanes[mlane].set[mframe] != nullptr
+                && cur->mVkBindlessSet1Lanes[mlane].topoGen == LLVKLoader::gVkPerDrawTopologyGen.load(std::memory_order_relaxed)
+                && vkValidatePerCallCache(cur, cur->mVkBindlessSet1Lanes[mlane].ringSig[mframe],
+                       cur->mVkBindlessSet1Lanes[mlane].l3Views, cur->mVkBindlessSet1Lanes[mlane].l3Enums,
+                       cur->mVkBindlessSet1Lanes[mlane].l3Count))
+            {
+                ++LLVKLoader::gVkPerf.populate_blhit;
+            }
+        }
+        else
+        {
+            ++LLVKLoader::gVkPerf.populate_pl;
+        }
+    }
+
+    const bool imm_cache = vkImmediateCacheEnabled() && !cur->mVkUsesBindlessHeap;
+    const U32  imm_lane  = LLVKLoader::getCurrentRecordLane();
+    const U32  imm_frame = LLVKLoader::getCurrentFrameIndex();
+    U64        imm_sig       = 0;
+    bool       imm_sig_valid = false;
+    if (imm_cache
+        && !cur->mVkImmediateUncacheable
+        && !cur->mVkImmediateNoFill
+        && cur->mVkImmediateSigUnits != 0xFFFFFFFFu
+        && cur->mVkAccessorBindingListBuiltLanes[imm_lane])
+    {
+        imm_sig       = vkComputeImmediateSig(cur);
+        imm_sig_valid = true;
+        VkImmediateSet1LaneState& ic = cur->mVkImmediateSet1Lanes[imm_lane];
+        if (ic.set[imm_frame] != VK_NULL_HANDLE
+            && ic.sig[imm_frame] == imm_sig
+            && ic.topoGen == LLVKLoader::gVkPerDrawTopologyGen.load(std::memory_order_relaxed)
+            && vkValidatePerCallCache(cur, ic.ringSig[imm_frame], ic.l3Views, ic.l3Enums, ic.l3Count))
+        {
+            ++cur->mVkImmediateHits;
+            LLGLSLShader::sCurPerCallVkDescriptorSet = ic.set[imm_frame];
+            vkRefreshDynamicOffsetsForDraw();
+            if (LLGLSLShader::sCurPerCallVkDescriptorSet != VK_NULL_HANDLE)
+            {
+                LLGLSLShader::sCurPerCallVkSetShape = 0xFFFFFFFFu;
+                if (LLVKLoader::perfLogEnabled()) { ++LLVKLoader::gVkPerf.populate_hit; }
+                ++LLVKLoader::gVkPerf.populate;
+            }
+            return;
+        }
+    }
+
+    S32   imm_max_unit          = -1;
+    bool  imm_uncacheable_build = false;
+    void* imm_l3_views[6]       = {};
+    S16   imm_l3_enums[6]       = {};
+    U8    imm_l3_cnt            = 0;
+    U64   imm_ring_sig          = 0;
+    const bool imm_build_acc    = imm_cache && !cur->mVkAccessorBindingListBuiltLanes[imm_lane];
 
     LLVKLoader::ScenePerDrawBindings bindings;
     bindings.layout       = cur->mVkDescriptorSetLayout;
@@ -3364,6 +3472,28 @@ void LLGLSLShader::populateAndBindUniversalDescriptorSet()
                     vkWarnL3Fallback(cur, N, enum_value, view);
                 }
             }
+        }
+
+        if (enum_value == -2)
+        {
+            imm_uncacheable_build = true;
+        }
+        else if (l3_hit)
+        {
+            if (imm_l3_cnt < 6)
+            {
+                imm_l3_enums[imm_l3_cnt] = (S16)enum_value;
+                imm_l3_views[imm_l3_cnt] = (void*)view;
+                ++imm_l3_cnt;
+            }
+            else
+            {
+                imm_uncacheable_build = true;
+            }
+        }
+        else if (resolved_unit > imm_max_unit)
+        {
+            imm_max_unit = resolved_unit;
         }
 
         if (view != VK_NULL_HANDLE && LLVKLoader::isImageViewActivePassAttachment(view))
@@ -3465,6 +3595,11 @@ void LLGLSLShader::populateAndBindUniversalDescriptorSet()
                 {
                     ubo_sz = cur->sharedUBOBindingSize(N);
                 }
+                if (imm_build_acc && N < 256)
+                {
+                    cur->mVkAccessorBindingListLanes[imm_lane].push_back((U8)N);
+                }
+                imm_ring_sig = imm_ring_sig * 0x100000001B3ull ^ (U64)(uintptr_t)ubo_buf;
             }
         }
 
@@ -3481,14 +3616,37 @@ void LLGLSLShader::populateAndBindUniversalDescriptorSet()
         }
     }
 
+    if (imm_build_acc)
+    {
+        cur->mVkAccessorBindingListBuiltLanes[imm_lane] = true;
+    }
+    if (imm_cache)
+    {
+        if (imm_uncacheable_build)
+        {
+            cur->mVkImmediateUncacheable = true;
+        }
+        else if (cur->mVkImmediateSigUnits == 0xFFFFFFFFu)
+        {
+            cur->mVkImmediateSigUnits = (imm_max_unit >= 0) ? (U32)(imm_max_unit + 1) : 0;
+        }
+    }
+
     U32 dyn_offsets[LLGLSLShader::MAX_VK_DYNAMIC_BINDINGS] = {};
     if (!vkCollectDynamicUBOWrites(cur, bindings, per_program_dynamic_offset, dyn_offsets))
     {
         return;
     }
 
+    const bool imm_fill = imm_cache && !cur->mVkImmediateUncacheable && !cur->mVkImmediateNoFill
+                          && cur->mVkImmediateSigUnits != 0xFFFFFFFFu
+                          && (bindings.ubo == VK_NULL_HANDLE
+                              || bindings.ubo == LLVKLoader::getPerDrawUBOArenaBuffer());
+
     VkDescriptorSet per_draw_set = VK_NULL_HANDLE;
-    if (LLVKLoader::ensureScenePerDrawDescriptorSet(bindings, &per_draw_set)
+    void*           imm_token    = nullptr;
+    if (LLVKLoader::ensureScenePerDrawDescriptorSet(bindings, &per_draw_set,
+                                                    imm_fill ? &imm_token : nullptr)
         && per_draw_set != VK_NULL_HANDLE)
     {
         LLGLSLShader::sCurPerCallVkDescriptorSet = per_draw_set;
@@ -3496,6 +3654,36 @@ void LLGLSLShader::populateAndBindUniversalDescriptorSet()
         LLGLSLShader::sCurPerCallVkOffsetsDirty = false;
         LLGLSLShader::sCurPerCallVkSetShape = 0xFFFFFFFFu;
         ++LLVKLoader::gVkPerf.populate;
+
+        if (imm_fill && imm_token != nullptr)
+        {
+            if (!imm_sig_valid)
+            {
+                imm_sig       = vkComputeImmediateSig(cur);
+                imm_sig_valid = true;
+            }
+            VkImmediateSet1LaneState& ic = cur->mVkImmediateSet1Lanes[imm_lane];
+            if (ic.tok[imm_frame] != imm_token)
+            {
+                LLVKLoader::releaseScenePerDrawEntry(ic.tok[imm_frame], ic.pinEpoch);
+                LLVKLoader::pinScenePerDrawEntry(imm_token);
+                ic.tok[imm_frame] = imm_token;
+                ic.pinEpoch       = LLVKLoader::getScenePerDrawCacheEpoch();
+            }
+            ic.set[imm_frame]     = per_draw_set;
+            ic.sig[imm_frame]     = imm_sig;
+            ic.ringSig[imm_frame] = imm_ring_sig;
+            ic.topoGen            = LLVKLoader::gVkPerDrawTopologyGen.load(std::memory_order_relaxed);
+            ic.l3Count            = imm_l3_cnt;
+            std::memcpy(ic.l3Enums, imm_l3_enums, sizeof(ic.l3Enums));
+            std::memcpy(ic.l3Views, imm_l3_views, sizeof(ic.l3Views));
+            ++cur->mVkImmediateFills;
+            if (cur->mVkImmediateFills >= 32 && cur->mVkImmediateHits * 2 < cur->mVkImmediateFills)
+            {
+                cur->mVkImmediateNoFill = true;
+            }
+            if (LLVKLoader::perfLogEnabled()) { ++LLVKLoader::gVkPerf.populate_miss; }
+        }
     }
 }
 
