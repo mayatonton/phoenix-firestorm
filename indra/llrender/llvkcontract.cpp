@@ -43,7 +43,9 @@ const char* CAUSE_NAMES[CAUSE_COUNT] =
     "geoab_kernel_mismatch",
     "geoab_source_drift",
     "geoab_ref_fail",
-    "geoab_worker_snapshot"
+    "geoab_worker_snapshot",
+    "geoab_stage_degenerate",
+    "stale_unrefreshed"
 };
 
 const char* SITE_NAMES[SITE_COUNT] =
@@ -84,6 +86,19 @@ std::unordered_map<const void*, SentEntry> sSentPending;
 std::atomic<U64> sSentPendingCount{0};
 std::atomic<U64> sSiteWin[SITE_COUNT] = {};
 std::atomic<U64> sGapWin[4] = {};
+
+struct StaleEntry
+{
+    U32 objId = 0;
+    const char* kind = "";
+    U64 frame = 0;
+    U8 stage = 0;
+};
+
+std::mutex sStaleMutex;
+std::unordered_map<const void*, StaleEntry> sStalePending;
+std::atomic<U64> sStalePendingCount{0};
+std::atomic<U64> sStaleGapWin[4] = {};
 
 std::string (*sDescribe)(const void*) = nullptr;
 U64 (*sKey)(const void*) = nullptr;
@@ -313,6 +328,55 @@ void sentinelRegister(const void* drawable)
     sSentPendingCount.fetch_sub(1, std::memory_order_relaxed);
 }
 
+void stalePend(const void* key, U32 obj_local_id, const char* kind)
+{
+    if (key == nullptr || !verboseEnabled())
+    {
+        return;
+    }
+    std::lock_guard<std::mutex> lock(sStaleMutex);
+    StaleEntry e;
+    e.objId = obj_local_id;
+    e.kind = kind != nullptr ? kind : "";
+    e.frame = sFrame.load(std::memory_order_relaxed);
+    if (sStalePending.emplace(key, e).second)
+    {
+        sStalePendingCount.fetch_add(1, std::memory_order_relaxed);
+    }
+}
+
+void staleResolve(const void* key)
+{
+    if (key == nullptr || sStalePendingCount.load(std::memory_order_relaxed) == 0 || !verboseEnabled())
+    {
+        return;
+    }
+    std::lock_guard<std::mutex> lock(sStaleMutex);
+    auto it = sStalePending.find(key);
+    if (it == sStalePending.end())
+    {
+        return;
+    }
+    U64 age = sFrame.load(std::memory_order_relaxed) - it->second.frame;
+    U32 bin = age < 2 ? 0 : (age < 8 ? 1 : (age < 32 ? 2 : 3));
+    sStaleGapWin[bin].fetch_add(1, std::memory_order_relaxed);
+    sStalePending.erase(it);
+    sStalePendingCount.fetch_sub(1, std::memory_order_relaxed);
+}
+
+void staleCancel(const void* key)
+{
+    if (key == nullptr || sStalePendingCount.load(std::memory_order_relaxed) == 0)
+    {
+        return;
+    }
+    std::lock_guard<std::mutex> lock(sStaleMutex);
+    if (sStalePending.erase(key) > 0)
+    {
+        sStalePendingCount.fetch_sub(1, std::memory_order_relaxed);
+    }
+}
+
 void causeNamed(ECause c, const std::string& shader_name)
 {
     if (c >= CAUSE_COUNT)
@@ -497,6 +561,46 @@ void frameBegin()
         }
     }
 
+    if (sStalePendingCount.load(std::memory_order_relaxed) != 0)
+    {
+        U64 frame = sFrame.load(std::memory_order_relaxed);
+        std::lock_guard<std::mutex> lock(sStaleMutex);
+        for (auto it = sStalePending.begin(); it != sStalePending.end(); )
+        {
+            StaleEntry& e = it->second;
+            U64 age = frame - e.frame;
+            if (age >= 10 && e.stage == 0)
+            {
+                e.stage = 1;
+                sCauseWin[C_STALE_UNREFRESHED].fetch_add(1, std::memory_order_relaxed);
+                sCauseTot[C_STALE_UNREFRESHED].fetch_add(1, std::memory_order_relaxed);
+                U64 sn = 0;
+                if (perShaderEscalate(C_STALE_UNREFRESHED, e.kind, sn))
+                {
+                    LL_WARNS("VKContract") << "VKC stale_unrefreshed kind=" << e.kind
+                                           << " obj=" << e.objId
+                                           << " age=" << age
+                                           << " sn=" << sn << LL_ENDL;
+                }
+            }
+            if (age >= 120 && e.stage == 1)
+            {
+                U64 sn = 0;
+                if (perShaderEscalate(C_STALE_UNREFRESHED, "never", sn))
+                {
+                    LL_WARNS("VKContract") << "VKC stale_unrefreshed kind=" << e.kind
+                                           << " obj=" << e.objId
+                                           << " age=" << age << " dropped=1"
+                                           << " sn=" << sn << LL_ENDL;
+                }
+                it = sStalePending.erase(it);
+                sStalePendingCount.fetch_sub(1, std::memory_order_relaxed);
+                continue;
+            }
+            ++it;
+        }
+    }
+
     F64 now = LLTimer::getElapsedSeconds();
     if (sLastSummaryTime == 0.0)
     {
@@ -577,6 +681,19 @@ void frameBegin()
     {
         os << " gap{0=" << gap_win[0] << " 1=" << gap_win[1]
            << " 2=" << gap_win[2] << " 3+=" << gap_win[3] << '}';
+    }
+
+    U64 stale_win[4];
+    U64 stale_any = 0;
+    for (U32 i = 0; i < 4; ++i)
+    {
+        stale_win[i] = sStaleGapWin[i].exchange(0, std::memory_order_relaxed);
+        stale_any += stale_win[i];
+    }
+    if (stale_any != 0)
+    {
+        os << " restage{<2=" << stale_win[0] << " <8=" << stale_win[1]
+           << " <32=" << stale_win[2] << " 32+=" << stale_win[3] << '}';
     }
 
     LL_WARNS("VKContract") << os.str() << LL_ENDL;

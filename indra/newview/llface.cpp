@@ -58,6 +58,7 @@
 #include "llsculptidsize.h"
 #include "llmeshrepository.h"
 #include "llskinningutil.h"
+#include "llvkcontract.h"
 // [RLVa:KB] - Checked: RLVa-2.0.0
 #include "rlvhandler.h"
 // [/RLVa:KB]
@@ -183,6 +184,8 @@ void LLFace::init(LLDrawable* drawablep, LLViewerObject* objp)
 
 void LLFace::destroy()
 {
+    LLVKContract::staleCancel(this);
+
     if (gDebugGL)
     {
         gPipeline.checkReferences(this);
@@ -2792,6 +2795,43 @@ LLFace::EGeoFillBuild LLFace::buildVkGeoFill(LLGeoFaceFill& out,
     // mutation of it can no longer corrupt worker output. Byte accounting is done
     // at the staging site (llvovolume.cpp) to avoid a per-face timer tax here.
     out.mSnapshot.capture(vf, num_vertices, num_indices);
+
+    if (LLVKContract::verboseEnabled())
+    {
+        if (out.mSnapshot.mCaptured && out.mSnapshot.mPositions != nullptr && num_vertices > 0)
+        {
+            U32 nan_count = 0;
+            LLVector4a vmin = out.mSnapshot.mPositions[0];
+            LLVector4a vmax = out.mSnapshot.mPositions[0];
+            for (S32 i = 0; i < num_vertices; ++i)
+            {
+                const F32* p = out.mSnapshot.mPositions[i].getF32ptr();
+                if (p[0] != p[0] || p[1] != p[1] || p[2] != p[2])
+                {
+                    ++nan_count;
+                    continue;
+                }
+                vmin.setMin(vmin, out.mSnapshot.mPositions[i]);
+                vmax.setMax(vmax, out.mSnapshot.mPositions[i]);
+            }
+            LLVector4a ext;
+            ext.setSub(vmax, vmin);
+            const F32* e = ext.getF32ptr();
+            bool zero_extent = num_vertices >= 3 && nan_count == 0
+                && e[0] == 0.f && e[1] == 0.f && e[2] == 0.f;
+            if (nan_count > 0 || zero_extent)
+            {
+                std::ostringstream os;
+                os << (nan_count > 0 ? "nan=" : "zero_extent=1 nan=") << nan_count
+                   << " nv=" << num_vertices
+                   << " obj=" << (mVObjp.notNull() ? mVObjp->getLocalID() : 0)
+                   << " te=" << face_index
+                   << " lod=" << (mVObjp.notNull() ? mVObjp->getLOD() : -1);
+                LLVKContract::noteDetail(LLVKContract::C_GEOAB_STAGE_DEGEN,
+                                         nan_count > 0 ? "nan" : "zero", os.str());
+            }
+        }
+    }
 
     return GEO_FILL_OK;
 }

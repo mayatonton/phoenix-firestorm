@@ -6080,6 +6080,7 @@ namespace
         if (vobj->getVolume() != fill.mVolume.get())
         {
             LLVKContract::noteDetail(LLVKContract::C_GEOAB_INPUT_DRIFT, "volume", "volume swapped " + prov);
+            LLVKContract::stalePend(facep, vobj->getLocalID(), "volume");
             return;
         }
 
@@ -6097,6 +6098,7 @@ namespace
         {
             LLVKContract::noteDetail(LLVKContract::C_GEOAB_INPUT_DRIFT, "rebuild",
                 std::string("rebuild=") + (built == LLFace::GEO_FILL_DEFER ? "defer " : "fail ") + prov);
+            LLVKContract::stalePend(facep, vobj->getLocalID(), "rebuild");
             if (animated)
             {
                 vobj->updateRelativeXform(false);
@@ -6109,6 +6111,7 @@ namespace
             std::ostringstream os;
             os << "fields=0x" << std::hex << drift << std::dec << ' ' << prov;
             LLVKContract::noteDetail(LLVKContract::C_GEOAB_INPUT_DRIFT, "fields", os.str());
+            LLVKContract::stalePend(facep, vobj->getLocalID(), "fields");
             if (animated)
             {
                 vobj->updateRelativeXform(false);
@@ -6308,6 +6311,7 @@ namespace
                     {
                         verdict = "src";
                         cause = LLVKContract::C_GEOAB_SRC_DRIFT;
+                        LLVKContract::stalePend(facep, vobj->getLocalID(), "src");
                     }
                     else if (c_eq_a && !c_eq_b)
                     {
@@ -8008,6 +8012,7 @@ U32 LLVolumeGeometryManager::genDrawInfo(LLSpatialGroup* group, U32 mask, LLFace
                         }
                         if (staged == nullptr || !staged->mDefer)
                         {
+                            LLVKContract::staleResolve(facep);
                             if (!facep->getGeometryVolume(*volume, te_idx,
                                 vobj->getRelativeXform(), vobj->getRelativeXformInvTrans(), index_offset,true))
                             {
@@ -8017,6 +8022,7 @@ U32 LLVolumeGeometryManager::genDrawInfo(LLSpatialGroup* group, U32 mask, LLFace
                     }
                     else
                     {
+                        LLVKContract::staleResolve(facep);
                         staged->mFills.emplace_back();
                         LLFace::EGeoFillBuild built = facep->buildVkGeoFill(staged->mFills.back(), buffer,
                             vobj->getRelativeXform(), vobj->getRelativeXformInvTrans(),
