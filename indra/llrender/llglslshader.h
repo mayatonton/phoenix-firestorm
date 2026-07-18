@@ -370,8 +370,8 @@ public:
 
     std::vector<VkDescriptorSetLayoutBinding> mVkLayoutBindings;
 
-    std::vector<U8> mVkAccessorBindingList;
-    bool            mVkAccessorBindingListBuilt = false;
+    std::vector<U8> mVkAccessorBindingListLanes[LLVKLoader::MAX_RECORD_LANES];
+    bool            mVkAccessorBindingListBuiltLanes[LLVKLoader::MAX_RECORD_LANES] = {};
 
     static void populateAndBindUniversalDescriptorSet();
 

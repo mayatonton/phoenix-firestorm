@@ -518,6 +518,7 @@ void LLRenderPass::buildAndOverrideScenePerDrawSet(LLDrawInfo* params, bool batc
                                 && gltf_materials_ubo == 0 && gltf_geometry_ubo == 0);
     const U32  memo_frame    = LLVKLoader::getCurrentFrameIndex();
     U64        memo_sig      = 0;
+    const U32  lane          = LLVKLoader::getCurrentRecordLane();
 
     if (memo_eligible)
     {
@@ -533,7 +534,7 @@ void LLRenderPass::buildAndOverrideScenePerDrawSet(LLDrawInfo* params, bool batc
             && params->mVkSetMemoShape == set_shape
             && params->mVkSetMemoSet[memo_frame] != nullptr
             && params->mVkSetMemoTexSig == memo_sig
-            && cur->mVkAccessorBindingListBuilt
+            && cur->mVkAccessorBindingListBuiltLanes[lane]
             && params->mVkSetMemoTopoGen == LLVKLoader::gVkPerDrawTopologyGen.load(std::memory_order_relaxed))
         {
             if (LLGLSLShader::vkValidatePerCallCache(cur, params->mVkSetMemoRingSig[memo_frame],
@@ -549,9 +550,8 @@ void LLRenderPass::buildAndOverrideScenePerDrawSet(LLDrawInfo* params, bool batc
         }
     }
 
-    const U32 lane = LLVKLoader::getCurrentRecordLane();
     if (cur->mVkUsesBindlessHeap && gltf_materials_ubo == 0 && gltf_geometry_ubo == 0
-        && cur->mVkAccessorBindingListBuilt
+        && cur->mVkAccessorBindingListBuiltLanes[lane]
         && cur->mVkBindlessSet1Lanes[lane].set[memo_frame] != nullptr
         && cur->mVkBindlessSet1Lanes[lane].topoGen == LLVKLoader::gVkPerDrawTopologyGen.load(std::memory_order_relaxed)
         && LLGLSLShader::vkValidatePerCallCache(cur, cur->mVkBindlessSet1Lanes[lane].ringSig[memo_frame],
@@ -567,7 +567,7 @@ void LLRenderPass::buildAndOverrideScenePerDrawSet(LLDrawInfo* params, bool batc
     bool memo_fill     = memo_eligible;
     bool bindless_fill = cur->mVkUsesBindlessHeap && gltf_materials_ubo == 0 && gltf_geometry_ubo == 0;
     U64  memo_ring_sig = 0;
-    const bool build_accessor_list = !cur->mVkAccessorBindingListBuilt;
+    const bool build_accessor_list = !cur->mVkAccessorBindingListBuiltLanes[lane];
     U8   memo_l3_cnt   = 0;
     S16  memo_l3_enums[6] = {};
     void* memo_l3_views[6] = {};
@@ -903,7 +903,7 @@ void LLRenderPass::buildAndOverrideScenePerDrawSet(LLDrawInfo* params, bool batc
                 }
                 if (build_accessor_list && N < 256)
                 {
-                    cur->mVkAccessorBindingList.push_back((U8)N);
+                    cur->mVkAccessorBindingListLanes[lane].push_back((U8)N);
                 }
                 memo_ring_sig = memo_ring_sig * 0x100000001B3ull ^ (U64)(uintptr_t)ubo_buf;
             }
@@ -922,7 +922,7 @@ void LLRenderPass::buildAndOverrideScenePerDrawSet(LLDrawInfo* params, bool batc
 
     if (build_accessor_list)
     {
-        cur->mVkAccessorBindingListBuilt = true;
+        cur->mVkAccessorBindingListBuiltLanes[lane] = true;
     }
 
     U32 dyn_offsets[LLGLSLShader::MAX_VK_DYNAMIC_BINDINGS] = {};

@@ -393,8 +393,11 @@ void LLGLSLShader::unloadInternal()
             mVkDescriptorSetLayout = VK_NULL_HANDLE;
             ++LLVKLoader::gVkPerDrawTopologyGen;
         }
-        mVkAccessorBindingList.clear();
-        mVkAccessorBindingListBuilt = false;
+        for (U32 L = 0; L < LLVKLoader::MAX_RECORD_LANES; ++L)
+        {
+            mVkAccessorBindingListLanes[L].clear();
+            mVkAccessorBindingListBuiltLanes[L] = false;
+        }
         clearVkBindlessSet1Pins();
         mVkUsesBindlessHeap = false;
         if (mVkPerProgramUBO != VK_NULL_HANDLE)
@@ -2309,7 +2312,7 @@ bool LLGLSLShader::vkValidatePerCallCache(LLGLSLShader* cur, U64 stored_ring_sig
                                           const S16* stored_l3_enums, U8 stored_l3_count)
 {
     U64 ring_sig = 0;
-    for (U8 b : cur->mVkAccessorBindingList)
+    for (U8 b : cur->mVkAccessorBindingListLanes[LLVKLoader::getCurrentRecordLane()])
     {
         VkBuffer rb = VK_NULL_HANDLE;
         void*    rm = nullptr;
