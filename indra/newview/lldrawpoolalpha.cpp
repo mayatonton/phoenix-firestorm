@@ -1176,6 +1176,7 @@ void LLDrawPoolAlpha::renderAlpha(U32 mask, bool depth_only, bool rigged, bool u
             bool disable_cull = is_particle_or_hud_particle;
             LLGLDisable cull(disable_cull ? GL_CULL_FACE : 0);
 
+            group->mVkLastFireFrame = gFrameCount;
             LLSpatialGroup::drawmap_elem_t& draw_info = group_rigged ? group->mDrawMap[LLRenderPass::PASS_ALPHA_RIGGED] : group->mDrawMap[LLRenderPass::PASS_ALPHA];
 
             for (LLSpatialGroup::drawmap_elem_t::iterator k = draw_info.begin(); k != draw_info.end(); ++k)

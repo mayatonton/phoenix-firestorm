@@ -269,6 +269,7 @@ public:
         GEO_FILL_OK = 0,
         GEO_FILL_FAIL,
         GEO_FILL_DEFER,
+        GEO_FILL_SKIP,
     };
     EGeoFillBuild buildVkGeoFill(LLGeoFaceFill& out,
                                  LLVertexBuffer* buffer,

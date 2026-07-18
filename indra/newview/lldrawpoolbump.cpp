@@ -380,6 +380,7 @@ void LLDrawPoolBump::endFullbrightShiny()
 
 void LLDrawPoolBump::renderGroup(LLSpatialGroup* group, U32 type, bool texture = true)
 {
+    group->mVkLastFireFrame = gFrameCount;
     LLSpatialGroup::drawmap_elem_t& draw_info = group->mDrawMap[type];
 
     for (LLSpatialGroup::drawmap_elem_t::iterator k = draw_info.begin(); k != draw_info.end(); ++k)

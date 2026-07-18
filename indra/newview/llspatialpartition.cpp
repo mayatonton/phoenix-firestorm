@@ -246,6 +246,67 @@ void LLSpatialGroup::clearDrawMapStaged(const std::unordered_set<LLDrawable*>& p
     LLVKBucket::evictGroup(this);
 }
 
+namespace LLVKFireOracle
+{
+    namespace
+    {
+        struct MarkEntry
+        {
+            LLPointer<LLSpatialGroup> mGroup;
+            U32 mFrame = 0;
+        };
+        std::vector<MarkEntry> sMarks;
+    }
+
+    void applyMark(LLSpatialGroup* group, U32 frame)
+    {
+        if (group == nullptr || !LLVKContract::verboseEnabled())
+        {
+            return;
+        }
+        MarkEntry e;
+        e.mGroup = group;
+        e.mFrame = frame;
+        sMarks.push_back(e);
+    }
+
+    void reconcile(U32 frame)
+    {
+        if (sMarks.empty())
+        {
+            return;
+        }
+        size_t w = 0;
+        for (size_t r = 0; r < sMarks.size(); ++r)
+        {
+            MarkEntry& e = sMarks[r];
+            if (e.mFrame >= frame)
+            {
+                if (w != r)
+                {
+                    sMarks[w] = sMarks[r];
+                }
+                ++w;
+                continue;
+            }
+            LLSpatialGroup* g = e.mGroup.get();
+            if (g != nullptr && !g->isDead() && g->isVisible()
+                && g->mVkLastFireFrame < e.mFrame && !g->mDrawMap.empty())
+            {
+                std::ostringstream os;
+                os << "group=" << (const void*)g
+                   << " part=" << (g->getSpatialPartition() != nullptr ? g->getSpatialPartition()->mPartitionType : -1)
+                   << " elems=" << g->getElementCount()
+                   << " passes=" << g->mDrawMap.size()
+                   << " af=" << e.mFrame
+                   << " lastfire=" << g->mVkLastFireFrame;
+                LLVKContract::noteDetail(LLVKContract::C_APPLY_UNRENDERED, "miss", os.str());
+            }
+        }
+        sMarks.resize(w);
+    }
+}
+
 void LLSpatialGroup::stripDrawRecords(LLDrawable* drawablep, U32 evict_site)
 {
     if (drawablep == nullptr || mDrawMap.empty())

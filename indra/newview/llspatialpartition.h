@@ -451,7 +451,14 @@ public:
     std::vector<std::pair<LLVKBucket::Bucket*, U32> > mVkBucketSlots;
     bool mVkGeoInflight = false;
     bool mVkForceInlineRebuild = false;
+    U32 mVkLastFireFrame = 0;
 } LL_ALIGN_POSTFIX(16);
+
+namespace LLVKFireOracle
+{
+    void applyMark(LLSpatialGroup* group, U32 frame);
+    void reconcile(U32 frame);
+}
 
 class LLGeometryManager
 {

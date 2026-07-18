@@ -45,7 +45,9 @@ const char* CAUSE_NAMES[CAUSE_COUNT] =
     "geoab_ref_fail",
     "geoab_worker_snapshot",
     "geoab_stage_degenerate",
-    "stale_unrefreshed"
+    "stale_unrefreshed",
+    "geoab_stage_skip",
+    "apply_unrendered"
 };
 
 const char* SITE_NAMES[SITE_COUNT] =

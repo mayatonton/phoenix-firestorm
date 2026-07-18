@@ -2339,6 +2339,35 @@ LLFace::EGeoFillBuild LLFace::buildVkGeoFill(LLGeoFaceFill& out,
     num_vertices = llclamp(num_vertices, (S32)0, (S32)mGeomCount);
     num_indices = llclamp(num_indices, (S32)0, (S32)mIndicesCount);
 
+    if (volume.getParams().isSculpt() && !volume.getParams().isMeshSculpt()
+        && volume.getSculptLevel() < 0
+        && num_vertices >= 3 && vf.mPositions != nullptr)
+    {
+        LLVector4a vmin = vf.mPositions[0];
+        LLVector4a vmax = vf.mPositions[0];
+        for (S32 i = 1; i < num_vertices; ++i)
+        {
+            vmin.setMin(vmin, vf.mPositions[i]);
+            vmax.setMax(vmax, vf.mPositions[i]);
+        }
+        LLVector4a ext;
+        ext.setSub(vmax, vmin);
+        const F32* e = ext.getF32ptr();
+        if (e[0] == 0.f && e[1] == 0.f && e[2] == 0.f)
+        {
+            if (LLVKContract::verboseEnabled())
+            {
+                std::ostringstream os;
+                os << "skip zero_extent nv=" << num_vertices
+                   << " obj=" << (mVObjp.notNull() ? mVObjp->getLocalID() : 0)
+                   << " te=" << face_index
+                   << " lod=" << (mVObjp.notNull() ? mVObjp->getLOD() : -1);
+                LLVKContract::noteDetail(LLVKContract::C_GEOAB_STAGE_SKIP, "skip", os.str());
+            }
+            return GEO_FILL_SKIP;
+        }
+    }
+
     if (num_indices + (S32)indices_index > (S32)buffer->getNumIndices())
     {
         LL_WARNS() << "Index buffer overflow!" << LL_ENDL;

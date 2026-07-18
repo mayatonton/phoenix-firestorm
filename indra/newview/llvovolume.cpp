@@ -6441,6 +6441,7 @@ void LLVolumeGeometryManager::stopGeoWorker()
 void LLVolumeGeometryManager::drainGeoPublishQueue()
 {
     LLTimer pub_timer;
+    LLVKFireOracle::reconcile(gFrameCount);
     bool any = false;
     for (;;)
     {
@@ -6466,6 +6467,7 @@ void LLVolumeGeometryManager::drainGeoPublishQueue()
         if (applied)
         {
             geoAbCheckJob(job);
+            LLVKFireOracle::applyMark(group, gFrameCount);
         }
 
         geoUnpinJob(job);
@@ -7927,6 +7929,7 @@ U32 LLVolumeGeometryManager::genDrawInfo(LLSpatialGroup* group, U32 mask, LLFace
             //update face indices for new buffer
             facep = *face_iter;
 
+            bool skip_face = false;
             LLGeoFaceApply* apply = nullptr;
             if (staged != nullptr)
             {
@@ -8042,6 +8045,17 @@ U32 LLVolumeGeometryManager::genDrawInfo(LLSpatialGroup* group, U32 mask, LLFace
                             staged->mHadFailedFace = true;
                             LL_WARNS() << "Failed to get geometry for face!" << LL_ENDL;
                         }
+                        else if (built == LLFace::GEO_FILL_SKIP)
+                        {
+                            staged->mFills.pop_back();
+                            if (apply != nullptr && !staged->mFaces.empty()
+                                && staged->mFaces.back().mFace == facep)
+                            {
+                                staged->mFaces.pop_back();
+                                apply = nullptr;
+                            }
+                            skip_face = true;
+                        }
                     }
 
                     if (drawablep->isState(LLDrawable::ANIMATED_CHILD))
@@ -8049,6 +8063,12 @@ U32 LLVolumeGeometryManager::genDrawInfo(LLSpatialGroup* group, U32 mask, LLFace
                         vobj->updateRelativeXform(false);
                     }
                 }
+            }
+
+            if (skip_face)
+            {
+                ++face_iter;
+                continue;
             }
 
             if (staged != nullptr && staged->mDefer)
