@@ -46,8 +46,8 @@
 - **D2 = 全 NULL 経路に原因コード付与済**(契約層 v1)。
 - 残り: **D1(authority カバレッジ)・D3(fallback 非対称)・D8(poke 蒸発 = P3)は未治療**。authored_empty/refresh_shared_ubo は回復イベントとして毎窓 1〜3k 件観測されており、D8 の設計入力になる。
 
-## 優先順(設計者推奨・更新)
-1. **屋根の穴(fire-but-wrong 族・skips=0 下で発生)**: 容疑 `fb_view_diffuse`(alpha-mask shader が fallback diffuse を掴むと全画素 discard = 穴)/ `fb_heap_default`。v1.1(fb 系 shader 別初回 provenance 印字)で犯人 object を名指しさせてからソーストレース。
-2. 契約層 + fix の commit(AYA gate 済・指示待ち)。
-3. D1 の設計決裁(materials を scene authority に載せるか)→ D8(percall P3 再設計・poke に de-author を含める)→ E2 clean 再開発。
-4. v2(束縛内容契約)= 屋根の穴の追跡で必要になれば建てる。
+## 優先順(2026-07-19 更新・設計者)
+1. ~~屋根の穴~~ **解決済**(fire-but-wrong 説は誤りだった = 正体は list 層の record 断絶・octree 転居 × worker 窓。commit `affd82db88`。fb_view_* は streaming 中の fallback ノイズで穴と無関係・無害)。
+2. ~~契約層 commit~~ 済(`2823344ff4` 系列)。
+3. **D1 = 案 A 決裁済・A1(materials `df489e2c52`)A2(avatar/tree `53eb84eb73`)済 → A3(D8 = poke 蒸発・進行中)→ A4(P4 gate + T7 閉じ)→ E2 clean 再開発**。D3 は髪 fix の resolver 回復路で構造閉鎖済。
+4. v2(束縛内容契約)= 現時点で不要。必要が生じた arc で再検討。
