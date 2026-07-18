@@ -554,17 +554,7 @@ void LLVertexBuffer::drawRange(U32 mode, U32 start, U32 end, U32 count, U32 indi
     if (LLVKLoader::shouldUseVulkanRender()
         && LLGLSLShader::sCurBoundShaderPtr != nullptr)
     {
-        VkDescriptorSet set_to_bind = LLGLSLShader::sCurPerCallVkDescriptorSet;
-        if (set_to_bind != VK_NULL_HANDLE && LLGLSLShader::sCurPerCallVkOffsetsDirty)
-        {
-            LLGLSLShader::vkRefreshDynamicOffsetsForDraw();
-            set_to_bind = LLGLSLShader::sCurPerCallVkDescriptorSet;
-        }
-        if (set_to_bind == VK_NULL_HANDLE)
-        {
-            LLGLSLShader::populateAndBindUniversalDescriptorSet();
-            set_to_bind = LLGLSLShader::sCurPerCallVkDescriptorSet;
-        }
+        VkDescriptorSet set_to_bind = LLGLSLShader::vkResolvePerCallSetForDraw();
 
         if (set_to_bind == VK_NULL_HANDLE)
         {
@@ -681,17 +671,7 @@ void LLVertexBuffer::drawRangeFast(U32 mode, U32 start, U32 end, U32 count, U32 
         bool vk_fired = false;
         if (LLGLSLShader::sCurBoundShaderPtr != nullptr)
         {
-            VkDescriptorSet set_to_bind = LLGLSLShader::sCurPerCallVkDescriptorSet;
-            if (set_to_bind != VK_NULL_HANDLE && LLGLSLShader::sCurPerCallVkOffsetsDirty)
-            {
-                LLGLSLShader::vkRefreshDynamicOffsetsForDraw();
-                set_to_bind = LLGLSLShader::sCurPerCallVkDescriptorSet;
-            }
-            if (set_to_bind == VK_NULL_HANDLE)
-            {
-                LLGLSLShader::populateAndBindUniversalDescriptorSet();
-                set_to_bind = LLGLSLShader::sCurPerCallVkDescriptorSet;
-            }
+            VkDescriptorSet set_to_bind = LLGLSLShader::vkResolvePerCallSetForDraw();
             if (set_to_bind != VK_NULL_HANDLE)
             {
                 VkCommandBuffer cmd = LLVKLoader::getCurrentCommandBuffer();
@@ -776,17 +756,7 @@ void LLVertexBuffer::drawArrays(U32 mode, U32 first, U32 count) const
     if (LLVKLoader::shouldUseVulkanRender()
         && LLGLSLShader::sCurBoundShaderPtr != nullptr)
     {
-        VkDescriptorSet set_to_bind = LLGLSLShader::sCurPerCallVkDescriptorSet;
-        if (set_to_bind != VK_NULL_HANDLE && LLGLSLShader::sCurPerCallVkOffsetsDirty)
-        {
-            LLGLSLShader::vkRefreshDynamicOffsetsForDraw();
-            set_to_bind = LLGLSLShader::sCurPerCallVkDescriptorSet;
-        }
-        if (set_to_bind == VK_NULL_HANDLE)
-        {
-            LLGLSLShader::populateAndBindUniversalDescriptorSet();
-            set_to_bind = LLGLSLShader::sCurPerCallVkDescriptorSet;
-        }
+        VkDescriptorSet set_to_bind = LLGLSLShader::vkResolvePerCallSetForDraw();
 
         if (set_to_bind == VK_NULL_HANDLE)
         {

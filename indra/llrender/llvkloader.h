@@ -1430,6 +1430,7 @@ namespace LLVKLoader
         std::atomic<U64> set_memo{0};
         std::atomic<U64> set_memo_fill{0};
         std::atomic<U64> populate{0};
+        std::atomic<U64> populate_us{0};
         std::atomic<U64> syncmat_call{0};
         std::atomic<U64> syncmat_build{0};
         std::atomic<U64> vb_bind{0};
@@ -1481,6 +1482,7 @@ namespace LLVKLoader
             pipe_bind = 0; pipe_skip = 0; desc_bind = 0; desc_skip = 0;
             mv_push = 0; mv_skip = 0; vp_set = 0; vp_skip = 0;
             set_build = 0; set_memo = 0; set_memo_fill = 0; populate = 0;
+            populate_us = 0;
             syncmat_call = 0; syncmat_build = 0;
             vb_bind = 0; vb_skip = 0; ib_bind = 0; ib_skip = 0;
             for (auto& v : draws_pass) v = 0;

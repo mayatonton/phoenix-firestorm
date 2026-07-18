@@ -45,6 +45,7 @@
 
 #include "llvkloader.h"
 #include "llvkuboreg.h"
+#include "lltimer.h"
 #include <glslang/Public/ShaderLang.h>
 #include <glslang/Public/ResourceLimits.h>
 #include <glslang/SPIRV/GlslangToSpv.h>
@@ -75,6 +76,7 @@ thread_local VkDescriptorSet LLGLSLShader::sCurPerCallVkDescriptorSet = VK_NULL_
 thread_local U32 LLGLSLShader::sCurPerCallVkDynamicOffsets[LLGLSLShader::MAX_VK_DYNAMIC_BINDINGS] = {};
 thread_local bool LLGLSLShader::sCurPerCallVkOffsetsDirty = false;
 thread_local U32 LLGLSLShader::sCurPerCallVkSetShape = 0xFFFFFFFFu;
+thread_local bool LLGLSLShader::sCurPerCallAuthored = false;
 
 namespace
 {
@@ -3210,8 +3212,31 @@ void LLGLSLShader::resetPerThreadRecordState()
     std::memset(sCurPerCallVkDynamicOffsets, 0, sizeof(sCurPerCallVkDynamicOffsets));
     sCurPerCallVkOffsetsDirty = false;
     sCurPerCallVkSetShape     = 0xFFFFFFFFu;
+    sCurPerCallAuthored = false;
     sVkPipeMemoShader = nullptr;
     sVkPipeMemoPipe   = VK_NULL_HANDLE;
+}
+
+VkDescriptorSet LLGLSLShader::vkResolvePerCallSetForDraw()
+{
+    const bool authored = sCurPerCallAuthored;
+    VkDescriptorSet set = sCurPerCallVkDescriptorSet;
+    if (set != VK_NULL_HANDLE && sCurPerCallVkOffsetsDirty)
+    {
+        vkRefreshDynamicOffsetsForDraw();
+        set = sCurPerCallVkDescriptorSet;
+    }
+    if (authored)
+    {
+        sCurPerCallAuthored        = false;
+        sCurPerCallVkDescriptorSet = VK_NULL_HANDLE;
+    }
+    else if (set == VK_NULL_HANDLE)
+    {
+        populateAndBindUniversalDescriptorSet();
+        set = sCurPerCallVkDescriptorSet;
+    }
+    return set;
 }
 
 void LLGLSLShader::populateAndBindUniversalDescriptorSet()
@@ -3242,6 +3267,13 @@ void LLGLSLShader::populateAndBindUniversalDescriptorSet()
     {
         return;
     }
+
+    struct PopulateCostTimer
+    {
+        U64 t0;
+        PopulateCostTimer() : t0(LLVKLoader::perfLogEnabled() ? (U64)LLTimer::getTotalTime() : 0) {}
+        ~PopulateCostTimer() { if (t0) LLVKLoader::gVkPerf.populate_us += (U64)LLTimer::getTotalTime() - t0; }
+    } populate_cost_timer;
 
     LLVKLoader::ScenePerDrawBindings bindings;
     bindings.layout       = cur->mVkDescriptorSetLayout;

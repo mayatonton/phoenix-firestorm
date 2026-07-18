@@ -385,7 +385,9 @@ public:
     static thread_local U32    sCurPerCallVkDynamicOffsets[MAX_VK_DYNAMIC_BINDINGS];
     static thread_local bool   sCurPerCallVkOffsetsDirty;
     static thread_local U32    sCurPerCallVkSetShape;
+    static thread_local bool   sCurPerCallAuthored;
     static void vkRefreshDynamicOffsetsForDraw();
+    static VkDescriptorSet vkResolvePerCallSetForDraw();
     static void resetPerThreadRecordState();
 
     VkBuffer                   mVkPerProgramUBO         = VK_NULL_HANDLE;

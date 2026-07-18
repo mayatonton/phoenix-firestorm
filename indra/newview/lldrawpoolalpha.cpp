@@ -944,17 +944,7 @@ void flushAlphaRun(AlphaRun& run)
     if (shader != nullptr)
     {
         gGL.syncMatrices();
-        VkDescriptorSet set_to_bind = LLGLSLShader::sCurPerCallVkDescriptorSet;
-        if (set_to_bind != VK_NULL_HANDLE && LLGLSLShader::sCurPerCallVkOffsetsDirty)
-        {
-            LLGLSLShader::vkRefreshDynamicOffsetsForDraw();
-            set_to_bind = LLGLSLShader::sCurPerCallVkDescriptorSet;
-        }
-        if (set_to_bind == VK_NULL_HANDLE)
-        {
-            LLGLSLShader::populateAndBindUniversalDescriptorSet();
-            set_to_bind = LLGLSLShader::sCurPerCallVkDescriptorSet;
-        }
+        VkDescriptorSet set_to_bind = LLGLSLShader::vkResolvePerCallSetForDraw();
         VkCommandBuffer cmd = LLVKLoader::getCurrentCommandBuffer();
         if (set_to_bind != VK_NULL_HANDLE && cmd != VK_NULL_HANDLE)
         {

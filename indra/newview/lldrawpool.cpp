@@ -473,6 +473,8 @@ void LLRenderPass::buildAndOverrideScenePerDrawSet(LLDrawInfo* params, bool batc
         return;
     }
 
+    LLGLSLShader::sCurPerCallAuthored = false;
+
     const bool is_indexed = (cur->mFeatures.mIndexedTextureChannels > 0) && !cur->mVkUsesBindlessHeap;
     const U32 indexed_layout_count =
         llmin((U32)cur->mFeatures.mIndexedTextureChannels,
@@ -544,6 +546,7 @@ void LLRenderPass::buildAndOverrideScenePerDrawSet(LLDrawInfo* params, bool batc
                     (VkDescriptorSet)params->mVkSetMemoSet[memo_frame];
                 LLGLSLShader::sCurPerCallVkOffsetsDirty = true;
                 LLGLSLShader::sCurPerCallVkSetShape     = set_shape;
+                LLGLSLShader::sCurPerCallAuthored       = true;
                 ++LLVKLoader::gVkPerf.set_memo;
                 return;
             }
@@ -560,6 +563,7 @@ void LLRenderPass::buildAndOverrideScenePerDrawSet(LLDrawInfo* params, bool batc
         LLGLSLShader::sCurPerCallVkDescriptorSet = cur->mVkBindlessSet1Lanes[lane].set[memo_frame];
         LLGLSLShader::sCurPerCallVkOffsetsDirty  = true;
         LLGLSLShader::sCurPerCallVkSetShape      = set_shape;
+        LLGLSLShader::sCurPerCallAuthored        = true;
         ++LLVKLoader::gVkPerf.set_memo;
         return;
     }
@@ -943,6 +947,7 @@ void LLRenderPass::buildAndOverrideScenePerDrawSet(LLDrawInfo* params, bool batc
         LLGLSLShader::sCurPerCallVkSetShape = (gltf_materials_ubo == 0 && gltf_geometry_ubo == 0)
                                                   ? set_shape
                                                   : 0xFFFFFFFFu;
+        LLGLSLShader::sCurPerCallAuthored = true;
         ++LLVKLoader::gVkPerf.set_build;
 
         if (memo_fill
@@ -1073,17 +1078,7 @@ void LLRenderPass::pushUntexturedBatches(U32 type)
 static bool pushIndirectSpans(LLVKBucket::Bucket& bucket, VkBuffer ring_buf, VkDeviceSize ring_offset)
 {
     LLGLSLShader* shader = LLGLSLShader::sCurBoundShaderPtr;
-    VkDescriptorSet set_to_bind = LLGLSLShader::sCurPerCallVkDescriptorSet;
-    if (set_to_bind != VK_NULL_HANDLE && LLGLSLShader::sCurPerCallVkOffsetsDirty)
-    {
-        LLGLSLShader::vkRefreshDynamicOffsetsForDraw();
-        set_to_bind = LLGLSLShader::sCurPerCallVkDescriptorSet;
-    }
-    if (set_to_bind == VK_NULL_HANDLE)
-    {
-        LLGLSLShader::populateAndBindUniversalDescriptorSet();
-        set_to_bind = LLGLSLShader::sCurPerCallVkDescriptorSet;
-    }
+    VkDescriptorSet set_to_bind = LLGLSLShader::vkResolvePerCallSetForDraw();
     if (set_to_bind == VK_NULL_HANDLE)
     {
         return false;
@@ -1714,7 +1709,6 @@ void LLRenderPass::pushVelocityBatchesTextured(U32 type)
 
         params.mVertexBuffer->setBuffer();
         params.mVertexBuffer->drawRange(LLRender::TRIANGLES, params.mStart, params.mEnd, params.mCount, params.mOffset);
-        LLGLSLShader::sCurPerCallVkDescriptorSet = VK_NULL_HANDLE;
 
         const LLMatrix4* current_mat = params.mModelMatrix ? params.mModelMatrix : &identity;
         if (params.mLastModelMatrix)
@@ -1769,7 +1763,6 @@ void LLRenderPass::pushRiggedVelocityBatchesTextured(U32 type)
 
         params.mVertexBuffer->setBuffer();
         params.mVertexBuffer->drawRange(LLRender::TRIANGLES, params.mStart, params.mEnd, params.mCount, params.mOffset);
-        LLGLSLShader::sCurPerCallVkDescriptorSet = VK_NULL_HANDLE;
     }
 }
 
