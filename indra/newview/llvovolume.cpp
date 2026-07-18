@@ -5904,10 +5904,6 @@ namespace
             {
                 return 2u;
             }
-            if (strcmp(e, "repair") == 0)
-            {
-                return 3u;
-            }
             return 1u;
         }();
         return s_mode;
@@ -6108,7 +6104,6 @@ namespace
         if (vobj->getVolume() != fill.mVolume.get())
         {
             LLVKContract::noteDetail(LLVKContract::C_GEOAB_INPUT_DRIFT, "volume", "volume swapped " + prov);
-            LLVKContract::stalePend(facep, vobj->getLocalID(), "volume");
             return;
         }
 
@@ -6126,7 +6121,6 @@ namespace
         {
             LLVKContract::noteDetail(LLVKContract::C_GEOAB_INPUT_DRIFT, "rebuild",
                 std::string("rebuild=") + (built == LLFace::GEO_FILL_DEFER ? "defer " : "fail ") + prov);
-            LLVKContract::stalePend(facep, vobj->getLocalID(), "rebuild");
             if (animated)
             {
                 vobj->updateRelativeXform(false);
@@ -6139,7 +6133,6 @@ namespace
             std::ostringstream os;
             os << "fields=0x" << std::hex << drift << std::dec << ' ' << prov;
             LLVKContract::noteDetail(LLVKContract::C_GEOAB_INPUT_DRIFT, "fields", os.str());
-            LLVKContract::stalePend(facep, vobj->getLocalID(), "fields");
             if (animated)
             {
                 vobj->updateRelativeXform(false);
@@ -6321,7 +6314,6 @@ namespace
             }
 
             bool now_ok = LLFace::runVkGeoFill(chk);
-            bool repair = (geoAbMode() == 3);
 
             for (U32 i = 0; i < nregions; ++i)
             {
@@ -6339,7 +6331,6 @@ namespace
                     {
                         verdict = "src";
                         cause = LLVKContract::C_GEOAB_SRC_DRIFT;
-                        LLVKContract::stalePend(facep, vobj->getLocalID(), "src");
                     }
                     else if (c_eq_a && !c_eq_b)
                     {
@@ -6350,12 +6341,8 @@ namespace
                         verdict = "both";
                     }
                 }
-                if (repair)
-                {
-                    memcpy(regions[i].out, regions[i].ref, regions[i].bytes);
-                }
                 geoAbReportRegion(regions[i].name, regions[i].ref, regions[i].out, regions[i].bytes, regions[i].f32,
-                                  verdict, repair, cause, prov);
+                                  verdict, false, cause, prov);
             }
         }
 
@@ -6469,7 +6456,6 @@ void LLVolumeGeometryManager::stopGeoWorker()
 void LLVolumeGeometryManager::drainGeoPublishQueue()
 {
     LLTimer pub_timer;
-    LLVKFireOracle::reconcile(gFrameCount);
     bool any = false;
     for (;;)
     {
@@ -6506,7 +6492,6 @@ void LLVolumeGeometryManager::drainGeoPublishQueue()
         if (applied)
         {
             geoAbCheckJob(job);
-            LLVKFireOracle::applyMark(group, gFrameCount);
         }
 
         geoUnpinJob(job);
@@ -8075,7 +8060,6 @@ U32 LLVolumeGeometryManager::genDrawInfo(LLSpatialGroup* group, U32 mask, LLFace
                         }
                         if (staged == nullptr || !staged->mDefer)
                         {
-                            LLVKContract::staleResolve(facep);
                             if (!facep->getGeometryVolume(*volume, te_idx,
                                 vobj->getRelativeXform(), vobj->getRelativeXformInvTrans(), index_offset,true))
                             {
@@ -8086,7 +8070,6 @@ U32 LLVolumeGeometryManager::genDrawInfo(LLSpatialGroup* group, U32 mask, LLFace
                     }
                     else
                     {
-                        LLVKContract::staleResolve(facep);
                         staged->mFills.emplace_back();
                         LLFace::EGeoFillBuild built = facep->buildVkGeoFill(staged->mFills.back(), buffer,
                             vobj->getRelativeXform(), vobj->getRelativeXformInvTrans(),

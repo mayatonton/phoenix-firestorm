@@ -3354,14 +3354,6 @@ void LLGLSLShader::resetPerThreadRecordState()
     sVkPipeMemoPipe   = VK_NULL_HANDLE;
 }
 
-bool (*LLGLSLShader::sVkRecoveryRebindHook)(const void* draw_info) = nullptr;
-
-bool LLGLSLShader::vkRecoverAuthorEnabled()
-{
-    static const bool s_on = (getenv("AYASTORM_RECOVER_AUTHOR") != nullptr);
-    return s_on;
-}
-
 VkDescriptorSet LLGLSLShader::vkResolvePerCallSetForDraw()
 {
     LLVKContract::resolveBegin();
@@ -3386,29 +3378,6 @@ VkDescriptorSet LLGLSLShader::vkResolvePerCallSetForDraw()
                                      sCurBoundShaderPtr != nullptr
                                          ? sCurBoundShaderPtr->mName
                                          : std::string("(no-shader)"));
-            if (vkRecoverAuthorEnabled() && sVkRecoveryRebindHook != nullptr)
-            {
-                const void* di = LLVKContract::currentDrawInfo();
-                if (di != nullptr && sVkRecoveryRebindHook(di))
-                {
-                    sCurPerCallAuthored = false;
-                    set = sCurPerCallVkDescriptorSet;
-                    if (set != VK_NULL_HANDLE)
-                    {
-                        if (sCurPerCallVkOffsetsDirty)
-                        {
-                            vkRefreshDynamicOffsetsForDraw();
-                            set = sCurPerCallVkDescriptorSet;
-                        }
-                        if (set != VK_NULL_HANDLE)
-                        {
-                            LLVKContract::cause(LLVKContract::C_AUTHORED_REBIND);
-                            sCurPerCallVkDescriptorSet = VK_NULL_HANDLE;
-                            return set;
-                        }
-                    }
-                }
-            }
         }
         populateAndBindUniversalDescriptorSet(authored);
         set = sCurPerCallVkDescriptorSet;

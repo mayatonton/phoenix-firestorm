@@ -837,10 +837,6 @@ namespace
     {
         const char* e = getenv("AYASTORM_MT_THREADS");
         sPEThreaded = (e == nullptr) || (atoi(e) > 1);
-        if (getenv("AYASTORM_PE_INLINE") != nullptr)
-        {
-            sPEThreaded = false;
-        }
         if (!sPEThreaded)
         {
             return;

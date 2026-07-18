@@ -184,8 +184,6 @@ void LLFace::init(LLDrawable* drawablep, LLViewerObject* objp)
 
 void LLFace::destroy()
 {
-    LLVKContract::staleCancel(this);
-
     if (gDebugGL)
     {
         gPipeline.checkReferences(this);

@@ -35,10 +35,7 @@ enum ECause : U32
     C_GEOAB_REF_FAIL,
     C_GEOAB_WORKER_SNAPSHOT,
     C_GEOAB_STAGE_DEGEN,
-    C_STALE_UNREFRESHED,
     C_GEOAB_STAGE_SKIP,
-    C_APPLY_UNRENDERED,
-    C_AUTHORED_REBIND,
     C_UBO_SLICE_FAIL,
     C_PP_FALLBACK_LOSSY,
     C_UBO_OFFSET_STALE,
@@ -115,10 +112,6 @@ void frameBegin();
 
 void sentinelEvict(U32 site, const void* drawable, U32 obj_local_id, U32 record_count, bool drawable_dead, bool eligible);
 void sentinelRegister(const void* drawable);
-
-void stalePend(const void* key, U32 obj_local_id, const char* kind);
-void staleResolve(const void* key);
-void staleCancel(const void* key);
 
 enum EVfy : U32
 {

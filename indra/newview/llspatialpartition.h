@@ -455,12 +455,6 @@ public:
     U32 mVkLastFireFrame = 0;
 } LL_ALIGN_POSTFIX(16);
 
-namespace LLVKFireOracle
-{
-    void applyMark(LLSpatialGroup* group, U32 frame);
-    void reconcile(U32 frame);
-}
-
 class LLGeometryManager
 {
 public:
