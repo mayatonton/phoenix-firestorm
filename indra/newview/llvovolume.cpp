@@ -5663,24 +5663,6 @@ namespace
 
     constexpr U64 GEO_INFLIGHT_BYTE_CAP = 512ull << 20;
 
-    bool geoVolumePinned(LLVolume* volume)
-    {
-        auto it = sGeoVolumePins.find(volume);
-        return it != sGeoVolumePins.end() && it->second > 0;
-    }
-
-    bool geoJobPinsVolume(const LLGeoRebuildJob* job, const LLVolume* volume)
-    {
-        for (const LLPointer<LLVolume>& v : job->mPinned)
-        {
-            if (v.get() == volume)
-            {
-                return true;
-            }
-        }
-        return false;
-    }
-
     void geoWorkerMain()
     {
 #if LL_LINUX
@@ -6155,49 +6137,97 @@ namespace
             U32 bytes;
             bool f32;
             U8** chk_slot;
+            U8** fill_slot;
         };
         Region regions[10];
         U32 nregions = 0;
-        auto add = [&](const char* name, U8* ref, U8* out, U32 bytes, bool f32, U8** chk_slot)
+        auto add = [&](const char* name, U8* ref, U8** out_slot, U32 bytes, bool f32, U8** chk_slot)
         {
+            U8* out = *out_slot;
             if (ref != nullptr && out != nullptr && bytes > 0)
             {
-                regions[nregions++] = { name, ref, out, bytes, f32, chk_slot };
+                regions[nregions++] = { name, ref, out, bytes, f32, chk_slot, out_slot };
             }
         };
-        add("index", buffer->mapIndexBuffer(entry->mIndicesIndex, ni), fill.mDstIndex, ni * 2, false, &chk.mDstIndex);
-        add("pos", buffer->mapVertexBuffer(LLVertexBuffer::TYPE_VERTEX, entry->mGeomIndex, fill.mGeomCount), fill.mDstPos, fill.mGeomCount * 16, true, &chk.mDstPos);
+        add("index", buffer->mapIndexBuffer(entry->mIndicesIndex, ni), &fill.mDstIndex, ni * 2, false, &chk.mDstIndex);
+        add("pos", buffer->mapVertexBuffer(LLVertexBuffer::TYPE_VERTEX, entry->mGeomIndex, fill.mGeomCount), &fill.mDstPos, fill.mGeomCount * 16, true, &chk.mDstPos);
         if (fill.mDoNormal)
         {
-            add("norm", buffer->mapVertexBuffer(LLVertexBuffer::TYPE_NORMAL, entry->mGeomIndex, nv), fill.mDstNormal, nv * 16, true, &chk.mDstNormal);
+            add("norm", buffer->mapVertexBuffer(LLVertexBuffer::TYPE_NORMAL, entry->mGeomIndex, nv), &fill.mDstNormal, nv * 16, true, &chk.mDstNormal);
         }
         if (fill.mDoTangent)
         {
-            add("tangent", buffer->mapVertexBuffer(LLVertexBuffer::TYPE_TANGENT, entry->mGeomIndex, nv), fill.mDstTangent, nv * 16, true, &chk.mDstTangent);
+            add("tangent", buffer->mapVertexBuffer(LLVertexBuffer::TYPE_TANGENT, entry->mGeomIndex, nv), &fill.mDstTangent, nv * 16, true, &chk.mDstTangent);
         }
         if (fill.mDoWeights)
         {
-            add("weights", buffer->mapVertexBuffer(LLVertexBuffer::TYPE_WEIGHT4, entry->mGeomIndex, nv), fill.mDstWeights, nv * 16, true, &chk.mDstWeights);
+            add("weights", buffer->mapVertexBuffer(LLVertexBuffer::TYPE_WEIGHT4, entry->mGeomIndex, nv), &fill.mDstWeights, nv * 16, true, &chk.mDstWeights);
         }
         if (fill.mDstColor != nullptr)
         {
-            add("color", buffer->mapVertexBuffer(LLVertexBuffer::TYPE_COLOR, entry->mGeomIndex, nv), fill.mDstColor, nv * 4, false, &chk.mDstColor);
+            add("color", buffer->mapVertexBuffer(LLVertexBuffer::TYPE_COLOR, entry->mGeomIndex, nv), &fill.mDstColor, nv * 4, false, &chk.mDstColor);
         }
         if (fill.mDoEmissive)
         {
-            add("emissive", buffer->mapVertexBuffer(LLVertexBuffer::TYPE_EMISSIVE, entry->mGeomIndex, nv), fill.mDstEmissive, nv * 4, false, &chk.mDstEmissive);
+            add("emissive", buffer->mapVertexBuffer(LLVertexBuffer::TYPE_EMISSIVE, entry->mGeomIndex, nv), &fill.mDstEmissive, nv * 4, false, &chk.mDstEmissive);
         }
         if (fill.mDoTC && fill.mDstTC[0] != nullptr)
         {
-            add("tc0", buffer->mapVertexBuffer(LLVertexBuffer::TYPE_TEXCOORD0, entry->mGeomIndex, nv), fill.mDstTC[0], nv * 8, true, &chk.mDstTC[0]);
+            add("tc0", buffer->mapVertexBuffer(LLVertexBuffer::TYPE_TEXCOORD0, entry->mGeomIndex, nv), &fill.mDstTC[0], nv * 8, true, &chk.mDstTC[0]);
         }
         if (fill.mDstTC[1] != nullptr)
         {
-            add("tc1", buffer->mapVertexBuffer(LLVertexBuffer::TYPE_TEXCOORD1, entry->mGeomIndex, nv), fill.mDstTC[1], nv * 8, true, &chk.mDstTC[1]);
+            add("tc1", buffer->mapVertexBuffer(LLVertexBuffer::TYPE_TEXCOORD1, entry->mGeomIndex, nv), &fill.mDstTC[1], nv * 8, true, &chk.mDstTC[1]);
         }
         if (fill.mDstTC[2] != nullptr)
         {
-            add("tc2", buffer->mapVertexBuffer(LLVertexBuffer::TYPE_TEXCOORD2, entry->mGeomIndex, nv), fill.mDstTC[2], nv * 8, true, &chk.mDstTC[2]);
+            add("tc2", buffer->mapVertexBuffer(LLVertexBuffer::TYPE_TEXCOORD2, entry->mGeomIndex, nv), &fill.mDstTC[2], nv * 8, true, &chk.mDstTC[2]);
+        }
+
+        // Primary post-snapshot acceptance signal: re-run the kernel on the EXACT
+        // stage-time snapshot the worker consumed and require byte-identical output.
+        // Non-zero => worker-side corruption / mega-slice clobber / non-determinism
+        // (a real defect). This is distinct from the src/kernel verdicts below,
+        // which compare against the LIVE volume and legitimately differ once it has
+        // moved on (normal async staleness, NOT a hole).
+        {
+            size_t wtotal = 16;
+            for (U32 i = 0; i < nregions; ++i)
+            {
+                wtotal += ((regions[i].bytes + 15u) & ~15u) + 16;
+            }
+            std::vector<U8> wscratch(wtotal);
+            U8* wp = wscratch.data();
+            U8* wslot[10] = {};
+            U8* wsaved[10] = {};
+            for (U32 i = 0; i < nregions; ++i)
+            {
+                wp = (U8*)(((uintptr_t)wp + 15u) & ~(uintptr_t)15u);
+                wslot[i] = wp;
+                wp += (regions[i].bytes + 15u) & ~15u;
+                wsaved[i] = *regions[i].fill_slot;
+                *regions[i].fill_slot = wslot[i];
+            }
+
+            bool wok = LLFace::runVkGeoFill(fill);
+
+            for (U32 i = 0; i < nregions; ++i)
+            {
+                *regions[i].fill_slot = wsaved[i];
+            }
+
+            if (wok)
+            {
+                for (U32 i = 0; i < nregions; ++i)
+                {
+                    if (memcmp(wslot[i], regions[i].out, regions[i].bytes) != 0)
+                    {
+                        geoAbReportRegion(regions[i].name, wslot[i], regions[i].out, regions[i].bytes,
+                                          regions[i].f32, "wsnap", false,
+                                          LLVKContract::C_GEOAB_WORKER_SNAPSHOT, prov);
+                    }
+                }
+            }
         }
 
         for (U32 i = 0; i < nregions; ++i)
@@ -6350,47 +6380,10 @@ bool LLVolumeGeometryManager::geoEnsureTangents(LLVolume* volume, S32 face_index
     {
         return true;
     }
-    if (geoVolumePinned(volume))
-    {
-        for (LLGeoRebuildJob* job : sGeoInflight)
-        {
-            if (geoJobPinsVolume(job, volume) && job->mState.load() == GEO_JOB_QUEUED)
-            {
-                return false;
-            }
-        }
-        for (LLGeoRebuildJob* job : sGeoInflight)
-        {
-            while (geoJobPinsVolume(job, volume) && job->mState.load() != GEO_JOB_DONE)
-            {
-                std::this_thread::yield();
-            }
-        }
-    }
+    // Generation face only. The former inflight-wait was needed when the worker
+    // read the live LLVolumeFace; with stage-time snapshots the worker never
+    // touches the live face, so generating tangents here cannot race any job.
     volume->genTangents(face_index);
-    return true;
-}
-
-bool LLVolumeGeometryManager::geoVolumeReady(LLVolume* volume)
-{
-    if (volume == nullptr || !geoVolumePinned(volume))
-    {
-        return true;
-    }
-    for (LLGeoRebuildJob* job : sGeoInflight)
-    {
-        if (geoJobPinsVolume(job, volume) && job->mState.load() == GEO_JOB_QUEUED)
-        {
-            return false;
-        }
-    }
-    for (LLGeoRebuildJob* job : sGeoInflight)
-    {
-        while (geoJobPinsVolume(job, volume) && job->mState.load() != GEO_JOB_DONE)
-        {
-            std::this_thread::yield();
-        }
-    }
     return true;
 }
 
@@ -7515,6 +7508,10 @@ void LLVolumeGeometryManager::rebuildGeom(LLSpatialGroup* group)
         std::unordered_set<LLVolume*> seen;
         for (LLGeoFaceFill& fill : job->mStaged.mFills)
         {
+            // Count the private snapshot toward the inflight byte cap so large
+            // meshes throttle correctly, and report it in the VkPerf geo column.
+            job->mBytes += fill.mSnapshot.mBytes;
+            LLVKLoader::gVkPerf.geo_snap_bytes.fetch_add(fill.mSnapshot.mBytes);
             LLVolume* v = fill.mVolume.get();
             if (v != nullptr && seen.insert(v).second)
             {

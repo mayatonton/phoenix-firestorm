@@ -42,7 +42,8 @@ const char* CAUSE_NAMES[CAUSE_COUNT] =
     "geoab_input_drift",
     "geoab_kernel_mismatch",
     "geoab_source_drift",
-    "geoab_ref_fail"
+    "geoab_ref_fail",
+    "geoab_worker_snapshot"
 };
 
 const char* SITE_NAMES[SITE_COUNT] =

@@ -4946,11 +4946,8 @@ bool LLMeshRepository::notifyMeshLoaded(const LLVolumeParams& mesh_params, LLVol
             LLVolume* sys_volume = LLPrimitive::getVolumeManager()->refVolume(mesh_params, detail);
             if (sys_volume)
             {
-                if (!LLVolumeGeometryManager::geoVolumeReady(sys_volume))
-                {
-                    LLPrimitive::getVolumeManager()->unrefVolume(sys_volume);
-                    return false;
-                }
+                // No inflight-wait needed: geometry workers read stage-time
+                // snapshots, so overwriting the live volume faces here is safe.
                 sys_volume->copyVolumeFaces(volume);
                 sys_volume->setMeshAssetLoaded(true);
                 LLPrimitive::getVolumeManager()->unrefVolume(sys_volume);

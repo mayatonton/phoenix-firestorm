@@ -45,6 +45,7 @@
 
 class LLFacePool;
 class LLVolume;
+class LLVolumeFace;
 class LLViewerTexture;
 class LLTextureEntry;
 class LLVertexProgram;
@@ -61,6 +62,41 @@ const F32 MIN_ALPHA_SIZE = 1024.f;
 const F32 MIN_TEX_ANIM_SIZE = 16.f;
 // </FS:minerjr>
 const U8 FACE_DO_NOT_BATCH_TEXTURES = 255;
+
+// Stage-time private copy of the LLVolumeFace arrays that runVkGeoFill reads.
+// Makes "worker input is immutable during job lifetime" true by construction:
+// the aya-geoup worker reads this snapshot, never the live LLVolumeFace, so any
+// main-thread mutation (mesh LOD arrival / sculpt / regen / genTangents) can no
+// longer race the worker. Move-only; owns its buffers.
+class alignas(16) LLGeoFaceSnapshot
+{
+public:
+    LLGeoFaceSnapshot() = default;
+    ~LLGeoFaceSnapshot();
+    LLGeoFaceSnapshot(const LLGeoFaceSnapshot&) = delete;
+    LLGeoFaceSnapshot& operator=(const LLGeoFaceSnapshot&) = delete;
+    LLGeoFaceSnapshot(LLGeoFaceSnapshot&& rhs) noexcept;
+    LLGeoFaceSnapshot& operator=(LLGeoFaceSnapshot&& rhs) noexcept;
+
+    void capture(const LLVolumeFace& vf, S32 num_vertices, S32 num_indices);
+    void reset();
+
+    LLVector4a  mCenter;
+    LLVector4a* mPositions = nullptr; // owns the pos/norm/tc block
+    LLVector4a* mNormals   = nullptr; // into mPositions block (null if source had none)
+    LLVector2*  mTexCoords = nullptr; // into mPositions block (null if source had none)
+    LLVector4a* mTangents  = nullptr; // separate alloc (null if none)
+    LLVector4a* mWeights   = nullptr; // separate alloc (null if none)
+    U16*        mIndices   = nullptr; // separate alloc
+    S32         mNumVertices = 0;
+    S32         mNumIndices  = 0;
+    U64         mBytes = 0;
+    bool        mHasCenter = false;
+    bool        mCaptured  = false;
+
+private:
+    void moveFrom(LLGeoFaceSnapshot& rhs) noexcept;
+};
 
 class alignas(16) LLGeoFaceFill
 {
@@ -88,6 +124,8 @@ public:
     LLQuaternion mBumpQuat;
     LLPointer<LLVolume> mVolume;
     LLFace* mSrcFace = nullptr;
+
+    LLGeoFaceSnapshot mSnapshot;
 
     S32 mFaceIndex = 0;
     S32 mNumVertices = 0;

@@ -2167,6 +2167,130 @@ bool LLFace::getGeometryVolume(const LLVolume& volume,
     return true;
 }
 
+void LLGeoFaceSnapshot::reset()
+{
+    if (mPositions) ll_aligned_free<64>(mPositions);
+    if (mTangents)  ll_aligned_free_16(mTangents);
+    if (mWeights)   ll_aligned_free_16(mWeights);
+    if (mIndices)   ll_aligned_free_16(mIndices);
+    mPositions = mNormals = mTangents = mWeights = nullptr;
+    mTexCoords = nullptr;
+    mIndices = nullptr;
+    mNumVertices = 0;
+    mNumIndices = 0;
+    mBytes = 0;
+    mHasCenter = false;
+    mCaptured = false;
+}
+
+void LLGeoFaceSnapshot::moveFrom(LLGeoFaceSnapshot& rhs) noexcept
+{
+    mCenter = rhs.mCenter;
+    mPositions = rhs.mPositions;
+    mNormals = rhs.mNormals;
+    mTexCoords = rhs.mTexCoords;
+    mTangents = rhs.mTangents;
+    mWeights = rhs.mWeights;
+    mIndices = rhs.mIndices;
+    mNumVertices = rhs.mNumVertices;
+    mNumIndices = rhs.mNumIndices;
+    mBytes = rhs.mBytes;
+    mHasCenter = rhs.mHasCenter;
+    mCaptured = rhs.mCaptured;
+
+    rhs.mPositions = rhs.mNormals = rhs.mTangents = rhs.mWeights = nullptr;
+    rhs.mTexCoords = nullptr;
+    rhs.mIndices = nullptr;
+    rhs.mNumVertices = 0;
+    rhs.mNumIndices = 0;
+    rhs.mBytes = 0;
+    rhs.mHasCenter = false;
+    rhs.mCaptured = false;
+}
+
+LLGeoFaceSnapshot::LLGeoFaceSnapshot(LLGeoFaceSnapshot&& rhs) noexcept
+{
+    moveFrom(rhs);
+}
+
+LLGeoFaceSnapshot& LLGeoFaceSnapshot::operator=(LLGeoFaceSnapshot&& rhs) noexcept
+{
+    if (this != &rhs)
+    {
+        reset();
+        moveFrom(rhs);
+    }
+    return *this;
+}
+
+LLGeoFaceSnapshot::~LLGeoFaceSnapshot()
+{
+    reset();
+}
+
+// Copy exactly the arrays runVkGeoFill reads, per-array from each live pointer.
+// Destination layout is ours (pos/norm/tc contiguous in one block); source reads
+// make NO assumption about the LLVolumeFace allocation layout.
+void LLGeoFaceSnapshot::capture(const LLVolumeFace& vf, S32 num_vertices, S32 num_indices)
+{
+    reset();
+    mNumVertices = num_vertices;
+    mNumIndices = num_indices;
+
+    if (num_vertices > 0 && vf.mPositions != nullptr)
+    {
+        const S32 tc_size = ((num_vertices * (S32)sizeof(LLVector2)) + 0xF) & ~0xF;
+        const size_t block = sizeof(LLVector4a) * 2 * (size_t)num_vertices + (size_t)tc_size;
+        mPositions = (LLVector4a*)ll_aligned_malloc<64>(block);
+        mBytes += block;
+
+        LLVector4a* norm_slot = mPositions + num_vertices;
+        LLVector2*  tc_slot   = (LLVector2*)(norm_slot + num_vertices);
+
+        memcpy(mPositions, vf.mPositions, sizeof(LLVector4a) * (size_t)num_vertices);
+        if (vf.mNormals != nullptr)
+        {
+            memcpy(norm_slot, vf.mNormals, sizeof(LLVector4a) * (size_t)num_vertices);
+            mNormals = norm_slot;
+        }
+        if (vf.mTexCoords != nullptr)
+        {
+            memcpy(tc_slot, vf.mTexCoords, sizeof(LLVector2) * (size_t)num_vertices);
+            mTexCoords = tc_slot;
+        }
+        if (vf.mTangents != nullptr)
+        {
+            const size_t tsz = sizeof(LLVector4a) * (size_t)num_vertices;
+            mTangents = (LLVector4a*)ll_aligned_malloc_16(tsz);
+            memcpy(mTangents, vf.mTangents, tsz);
+            mBytes += tsz;
+        }
+        if (vf.mWeights != nullptr)
+        {
+            const size_t wsz = sizeof(LLVector4a) * (size_t)num_vertices;
+            mWeights = (LLVector4a*)ll_aligned_malloc_16(wsz);
+            memcpy(mWeights, vf.mWeights, wsz);
+            mBytes += wsz;
+        }
+        if (vf.mCenter != nullptr)
+        {
+            mCenter = *vf.mCenter;
+            mHasCenter = true;
+        }
+    }
+
+    if (num_indices > 0 && vf.mIndices != nullptr)
+    {
+        const size_t isz  = (size_t)num_indices * sizeof(U16);
+        const size_t asz  = (isz + 0xF) & ~0xF;
+        mIndices = (U16*)ll_aligned_malloc_16(asz);
+        memcpy(mIndices, vf.mIndices, isz);
+        mBytes += asz;
+    }
+
+    mCaptured = true;
+}
+
 LLFace::EGeoFillBuild LLFace::buildVkGeoFill(LLGeoFaceFill& out,
                                              LLVertexBuffer* buffer,
                                              const LLMatrix4& mat_vert_in,
@@ -2663,21 +2787,21 @@ LLFace::EGeoFillBuild LLFace::buildVkGeoFill(LLGeoFaceFill& out,
     mTexExtents[0][1] *= et;
     mTexExtents[1][1] *= et;
 
+    // Stage-time private copy of the volume face arrays the worker will read.
+    // From here on the worker never touches the live LLVolumeFace, so main-thread
+    // mutation of it can no longer corrupt worker output. Byte accounting is done
+    // at the staging site (llvovolume.cpp) to avoid a per-face timer tax here.
+    out.mSnapshot.capture(vf, num_vertices, num_indices);
+
     return GEO_FILL_OK;
 }
 
 bool LLFace::runVkGeoFill(LLGeoFaceFill& f)
 {
-    if (f.mVolume.isNull() || f.mFaceIndex < 0 || f.mFaceIndex >= f.mVolume->getNumVolumeFaces())
-    {
-        return false;
-    }
-    const LLVolumeFace& vf = f.mVolume->getVolumeFace(f.mFaceIndex);
-    if (vf.mPositions == nullptr || vf.mIndices == nullptr)
-    {
-        return false;
-    }
-    if ((S32)vf.mNumVertices < f.mNumVertices || (S32)vf.mNumIndices < f.mNumIndices)
+    // Read the stage-time snapshot, never the live LLVolumeFace. This is what
+    // makes the worker input immutable by construction.
+    LLGeoFaceSnapshot& vf = f.mSnapshot;
+    if (!vf.mCaptured || vf.mPositions == nullptr || vf.mIndices == nullptr)
     {
         return false;
     }
@@ -2781,7 +2905,7 @@ bool LLFace::runVkGeoFill(LLGeoFaceFill& f)
                     {
                         LLVector2 tc(vf.mTexCoords[i]);
                         LLVector4a& norm = vf.mNormals[i];
-                        LLVector4a& center = *(vf.mCenter);
+                        LLVector4a& center = vf.mCenter;
                         LLVector4a vec = vf.mPositions[i];
                         vec.mul(f.mScale);
                         planarProjection(tc, norm, center, vec);
@@ -2800,7 +2924,7 @@ bool LLFace::runVkGeoFill(LLGeoFaceFill& f)
                     {
                         LLVector2 tc(vf.mTexCoords[i]);
                         LLVector4a& norm = vf.mNormals[i];
-                        LLVector4a& center = *(vf.mCenter);
+                        LLVector4a& center = vf.mCenter;
                         LLVector4a vec = vf.mPositions[i];
                         vec.mul(f.mScale);
                         planarProjection(tc, norm, center, vec);
@@ -2816,7 +2940,7 @@ bool LLFace::runVkGeoFill(LLGeoFaceFill& f)
                     {
                         LLVector2 tc(vf.mTexCoords[i]);
                         LLVector4a& norm = vf.mNormals[i];
-                        LLVector4a& center = *(vf.mCenter);
+                        LLVector4a& center = vf.mCenter;
                         LLVector4a vec = vf.mPositions[i];
                         vec.mul(f.mScale);
                         planarProjection(tc, norm, center, vec);
@@ -2850,7 +2974,7 @@ bool LLFace::runVkGeoFill(LLGeoFaceFill& f)
                     {
                         LLVector2 tc(vf.mTexCoords[i]);
                         LLVector4a& norm = vf.mNormals[i];
-                        LLVector4a& center = *(vf.mCenter);
+                        LLVector4a& center = vf.mCenter;
                         LLVector4a vec = vf.mPositions[i];
 
                         vec.mul(f.mScale);

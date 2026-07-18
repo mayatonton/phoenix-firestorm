@@ -771,7 +771,6 @@ class LLVolumeGeometryManager: public LLGeometryManager
     static void drainGeoPublishQueue();
     static void stopGeoWorker();
     static bool geoEnsureTangents(LLVolume* volume, S32 face_index);
-    static bool geoVolumeReady(LLVolume* volume);
 
 private:
     void allocateFaces(U32 pMaxFaceCount);
