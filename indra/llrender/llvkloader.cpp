@@ -241,6 +241,7 @@ namespace
     U32                      sBindlessHeapCount                      = 0;
     U32                      sBindlessSlotNext                       = 1;
     std::vector<U32>         sBindlessSlotFreeList;
+    std::mutex               sBindlessSlotMutex;
     bool                     sBindlessActive                         = false;
     struct PendingSlotFree
     {
@@ -7414,6 +7415,7 @@ void tickDeferredImageFreeQueue()
     sPendingImageFrees.resize(w);
 
     {
+        std::lock_guard<std::mutex> guard(sBindlessSlotMutex);
         size_t sw = 0;
         const size_t sn = sPendingSlotFrees.size();
         for (size_t r = 0; r < sn; ++r)
@@ -9765,6 +9767,7 @@ U32 bindlessAcquireSlot(VkImageView view, VkSampler sampler)
     {
         return BINDLESS_INVALID_SLOT;
     }
+    std::lock_guard<std::mutex> guard(sBindlessSlotMutex);
     U32 slot;
     if (!sBindlessSlotFreeList.empty())
     {
@@ -9789,12 +9792,23 @@ U32 bindlessAcquireSlot(VkImageView view, VkSampler sampler)
     return slot;
 }
 
+void bindlessUpdateSlot(U32 slot, VkImageView view, VkSampler sampler)
+{
+    if (!sBindlessActive || slot == 0 || slot == BINDLESS_INVALID_SLOT || slot >= sBindlessHeapCount)
+    {
+        return;
+    }
+    std::lock_guard<std::mutex> guard(sBindlessSlotMutex);
+    bindlessWriteSlotInternal(slot, view, sampler);
+}
+
 void bindlessReleaseSlotDeferred(U32 slot)
 {
     if (!sBindlessActive || slot == 0 || slot == BINDLESS_INVALID_SLOT || slot >= sBindlessHeapCount)
     {
         return;
     }
+    std::lock_guard<std::mutex> guard(sBindlessSlotMutex);
     PendingSlotFree p;
     p.slot          = slot;
     p.enqueue_frame = sMonotonicFrameCount;

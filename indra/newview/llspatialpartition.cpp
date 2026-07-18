@@ -4070,7 +4070,6 @@ LLDrawInfo::LLDrawInfo(U16 start, U16 end, U32 count, U32 offset,
 LLDrawInfo::~LLDrawInfo()
 {
     clearVkSetMemoPins();
-    LLVKBucket::unsubscribeRecord(this);
     if (mVkDrawDataSlot != 0xFFFFFFFFu)
     {
         LLVKLoader::drawDataReleaseSlotDeferred(mVkDrawDataSlot);

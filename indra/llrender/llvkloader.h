@@ -1361,6 +1361,7 @@ namespace LLVKLoader
     bool isBindlessActiveVk();
 
     U32  bindlessAcquireSlot(VkImageView view, VkSampler sampler);
+    void bindlessUpdateSlot(U32 slot, VkImageView view, VkSampler sampler);
 
     void bindlessReleaseSlotDeferred(U32 slot);
 

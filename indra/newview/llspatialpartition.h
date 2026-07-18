@@ -169,8 +169,6 @@ public:
 
     LLVKBucket::Bucket* mVkTplBucket = nullptr;
     U32   mVkTplCmdIndex = 0;
-    bool  mVkSlotSubscribed = false;
-    std::vector<LLImageGL*> mVkSubbedImages;
 
     void clearVkSetMemoPins();
 

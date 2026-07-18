@@ -68,8 +68,6 @@ namespace LLVKBucket
     bool emitActive(U32 pass);
     U32  visWordCount();
 
-    void unsubscribeRecord(LLDrawInfo* info);
-
     void patchGroup(LLSpatialGroup* group);
     void evictGroup(LLSpatialGroup* group);
     void onGroupDestroyed(LLSpatialGroup* group);

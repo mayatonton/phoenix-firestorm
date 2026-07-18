@@ -302,8 +302,6 @@ void onRegionDestroyed(LLViewerRegion* region)
 
 namespace
 {
-    std::unordered_map<LLImageGL*, std::vector<LLDrawInfo*> > sSlotSubscribers;
-
     U32 heapSlotFor(LLTexture* t)
     {
         return LLImageGL::vkHeapSlotOrDefault(t ? t->getGLTexture() : nullptr);
@@ -337,106 +335,6 @@ namespace
         return info->ensureVkDrawDataSlot(slots);
     }
 
-    void onImageSlotChanged(LLImageGL* image)
-    {
-        auto it = sSlotSubscribers.find(image);
-        if (it == sSlotSubscribers.end())
-        {
-            return;
-        }
-        for (LLDrawInfo* info : it->second)
-        {
-            if (!ensureRecordDrawDataSlot(info))
-            {
-                continue;
-            }
-            Bucket* bucket = info->mVkTplBucket;
-            if (bucket != nullptr && !bucket->mTplDirty
-                && info->mVkTplCmdIndex < bucket->mTplRecords.size()
-                && bucket->mTplRecords[info->mVkTplCmdIndex] == info)
-            {
-                bucket->mTplCommands[info->mVkTplCmdIndex].firstInstance = info->mVkDrawDataSlot;
-            }
-        }
-    }
-
-    bool subscribeRecordTextures(LLDrawInfo* info)
-    {
-        if (info->mVkSlotSubscribed)
-        {
-            return true;
-        }
-        if (LLImageGL::sVkSlotChangeHook == nullptr)
-        {
-            LLImageGL::sVkSlotChangeHook = &onImageSlotChanged;
-        }
-        bool all_present = true;
-        auto add = [info, &all_present](LLTexture* t)
-        {
-            LLImageGL* gl = (t != nullptr) ? t->getGLTexture() : nullptr;
-            if (gl == nullptr)
-            {
-                all_present = false;
-                return;
-            }
-            for (LLImageGL* seen : info->mVkSubbedImages)
-            {
-                if (seen == gl)
-                {
-                    return;
-                }
-            }
-            sSlotSubscribers[gl].push_back(info);
-            info->mVkSubbedImages.push_back(gl);
-        };
-        if (info->mTextureList.size() > 1)
-        {
-            const U32 n = llmin((U32)info->mTextureList.size(), 4u);
-            for (U32 i = 0; i < n; ++i)
-            {
-                add(info->mTextureList[i].get());
-            }
-        }
-        else if (info->mTexture.notNull())
-        {
-            add(info->mTexture.get());
-        }
-        if (!all_present)
-        {
-            unsubscribeRecord(info);
-            return false;
-        }
-        info->mVkSlotSubscribed = true;
-        return true;
-    }
-}
-
-void unsubscribeRecord(LLDrawInfo* info)
-{
-    for (LLImageGL* gl : info->mVkSubbedImages)
-    {
-        auto it = sSlotSubscribers.find(gl);
-        if (it == sSlotSubscribers.end())
-        {
-            continue;
-        }
-        std::vector<LLDrawInfo*>& subs = it->second;
-        for (size_t i = 0; i < subs.size(); ++i)
-        {
-            if (subs[i] == info)
-            {
-                subs[i] = subs.back();
-                subs.pop_back();
-                break;
-            }
-        }
-        if (subs.empty())
-        {
-            sSlotSubscribers.erase(it);
-        }
-    }
-    info->mVkSubbedImages.clear();
-    info->mVkSlotSubscribed = false;
 }
 
 void rebuildTemplateIfDirty(Bucket& bucket)
@@ -482,8 +380,7 @@ void rebuildTemplateIfDirty(Bucket& bucket)
                 && vb->getVkIndexSlice().buffer != VK_NULL_HANDLE;
             if (is_static && camera_mdi)
             {
-                is_static = ensureRecordDrawDataSlot(info)
-                         && subscribeRecordTextures(info);
+                is_static = ensureRecordDrawDataSlot(info);
             }
             if (is_static)
             {

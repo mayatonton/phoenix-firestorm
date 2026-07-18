@@ -331,7 +331,6 @@ S32 LLImageGL::sCount                   = 0;
 bool LLImageGL::sGlobalUseAnisotropic   = false;
 F32 LLImageGL::sLastFrameTime           = 0.f;
 LLImageGL* LLImageGL::sDefaultGLTexture = NULL ;
-void (*LLImageGL::sVkSlotChangeHook)(LLImageGL*) = nullptr;
 LLImageGL* LLImageGL::sWhiteImageGLp   = NULL ;
 bool LLImageGL::sCompressTextures = false;
 std::unordered_set<LLImageGL*> LLImageGL::sImageList;
@@ -1354,44 +1353,40 @@ void LLImageGL::updateVkHeapSlot()
     if (mVkImageView != VK_NULL_HANDLE)
     {
         smp = LLVKLoader::getSamplerForState((U32)mAddressMode, (U32)mFilterOption, mHasMipMaps, false);
-        if (mVkHeapSlot != LLVKLoader::BINDLESS_INVALID_SLOT
-            && mVkHeapSlotView == mVkImageView
-            && mVkHeapSlotSampler == smp)
+    }
+
+    if (mVkHeapSlot == LLVKLoader::BINDLESS_INVALID_SLOT)
+    {
+        mVkHeapSlot = LLVKLoader::bindlessAcquireSlot(mVkImageView, smp);
+        if (mVkHeapSlot == LLVKLoader::BINDLESS_INVALID_SLOT)
         {
             return;
         }
-    }
-    else if (mVkHeapSlot == LLVKLoader::BINDLESS_INVALID_SLOT)
-    {
+        mVkHeapSlotView    = mVkImageView;
+        mVkHeapSlotSampler = smp;
         return;
     }
-    const U32 old_slot = mVkHeapSlot;
-    if (mVkImageView != VK_NULL_HANDLE)
+
+    if (mVkHeapSlotView != mVkImageView || mVkHeapSlotSampler != smp)
     {
-        mVkHeapSlot = LLVKLoader::bindlessAcquireSlot(mVkImageView, smp);
-    }
-    else
-    {
-        mVkHeapSlot = LLVKLoader::BINDLESS_INVALID_SLOT;
-    }
-    mVkHeapSlotView    = mVkImageView;
-    mVkHeapSlotSampler = smp;
-    if (old_slot != LLVKLoader::BINDLESS_INVALID_SLOT)
-    {
-        LLVKLoader::bindlessReleaseSlotDeferred(old_slot);
-    }
-    if (mVkHeapSlot != old_slot && sVkSlotChangeHook != nullptr)
-    {
-        sVkSlotChangeHook(this);
+        LLVKLoader::bindlessUpdateSlot(mVkHeapSlot, mVkImageView, smp);
+        mVkHeapSlotView    = mVkImageView;
+        mVkHeapSlotSampler = smp;
     }
 }
 
-U32 LLImageGL::vkHeapSlotOrDefault(const LLImageGL* gl)
+U32 LLImageGL::vkHeapSlotOrDefault(LLImageGL* gl)
 {
-    if (gl != nullptr && gl->hasVkImage()
-        && gl->getVkHeapSlot() != LLVKLoader::BINDLESS_INVALID_SLOT)
+    if (gl != nullptr && gl->mTarget == GL_TEXTURE_2D && LLVKLoader::isBindlessActiveVk())
     {
-        return gl->getVkHeapSlot();
+        if (gl->mVkHeapSlot == LLVKLoader::BINDLESS_INVALID_SLOT)
+        {
+            gl->updateVkHeapSlot();
+        }
+        if (gl->mVkHeapSlot != LLVKLoader::BINDLESS_INVALID_SLOT)
+        {
+            return gl->mVkHeapSlot;
+        }
     }
     const LLImageGL* def = sDefaultGLTexture;
     if (def != nullptr && def->getVkHeapSlot() != LLVKLoader::BINDLESS_INVALID_SLOT)
