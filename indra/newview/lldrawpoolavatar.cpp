@@ -899,15 +899,7 @@ void LLDrawPoolAvatar::renderAvatars(LLVOAvatar* single_avatar, S32 pass)
             if (sVertexProgram->hasReflectedUniform(LLShaderMgr::AYA_SSS_SKIN_FLAG))
             {
                 const F32 sssFlag = avatarp->isSSSTarget() ? 1.f : 0.f;
-                if (LLVKLoader::isVulkanInitialized() && sVertexProgram->mVkPipelineLayout != VK_NULL_HANDLE)
-                {
-                    VkCommandBuffer cmd = LLVKLoader::getCurrentCommandBuffer();
-                    if (cmd != VK_NULL_HANDLE)
-                    {
-                        vkCmdPushConstants(cmd, sVertexProgram->mVkPipelineLayout, VK_SHADER_STAGE_FRAGMENT_BIT,
-                                           LLVkUboReg::PC_OFF_SSS_SKIN_FLAG, sizeof(F32), &sssFlag);
-                    }
-                }
+                sVertexProgram->vkPushFragPC(LLVkUboReg::PC_OFF_SSS_SKIN_FLAG, sizeof(F32), &sssFlag);
             }
         }
         // render rigid meshes (eyeballs) first
@@ -958,15 +950,7 @@ void LLDrawPoolAvatar::renderAvatars(LLVOAvatar* single_avatar, S32 pass)
             if (sVertexProgram->hasReflectedUniform(LLShaderMgr::AYA_SSS_SKIN_FLAG))
             {
                 const F32 sssFlag = avatarp->isSSSTarget() ? 1.f : 0.f;
-                if (LLVKLoader::isVulkanInitialized() && sVertexProgram->mVkPipelineLayout != VK_NULL_HANDLE)
-                {
-                    VkCommandBuffer cmd = LLVKLoader::getCurrentCommandBuffer();
-                    if (cmd != VK_NULL_HANDLE)
-                    {
-                        vkCmdPushConstants(cmd, sVertexProgram->mVkPipelineLayout, VK_SHADER_STAGE_FRAGMENT_BIT,
-                                           LLVkUboReg::PC_OFF_SSS_SKIN_FLAG, sizeof(F32), &sssFlag);
-                    }
-                }
+                sVertexProgram->vkPushFragPC(LLVkUboReg::PC_OFF_SSS_SKIN_FLAG, sizeof(F32), &sssFlag);
             }
         }
         avatarp->renderSkinned();

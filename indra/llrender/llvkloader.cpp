@@ -206,6 +206,45 @@ namespace
 
     thread_local VkCommandBuffer  tRecordCmdOverride = VK_NULL_HANDLE;
 
+    thread_local VkCommandBuffer  tMemoPipeCmd = VK_NULL_HANDLE;
+    thread_local VkCommandBuffer  tMemoDescCmd = VK_NULL_HANDLE;
+    thread_local VkCommandBuffer  tMemoMvCmd   = VK_NULL_HANDLE;
+    thread_local VkCommandBuffer  tMemoVpCmd   = VK_NULL_HANDLE;
+
+    std::atomic<U32> sVkcScratchOwner{0};
+    std::atomic<U32> sVkcSlotOwner{0};
+    std::atomic<U32> sVkcMegaOwner{0};
+
+    U32 vkcRaceSelf()
+    {
+        static std::atomic<U32> s_next{0};
+        static thread_local U32 s_id = ++s_next;
+        return s_id;
+    }
+
+    struct VkcRaceProbe
+    {
+        std::atomic<U32>& mOwner;
+        bool              mOwned;
+        VkcRaceProbe(std::atomic<U32>& owner, LLVKContract::ECause c)
+            : mOwner(owner)
+        {
+            U32 expected = 0;
+            mOwned = owner.compare_exchange_strong(expected, vkcRaceSelf(), std::memory_order_acquire);
+            if (!mOwned)
+            {
+                LLVKContract::cause(c);
+            }
+        }
+        ~VkcRaceProbe()
+        {
+            if (mOwned)
+            {
+                mOwner.store(0, std::memory_order_release);
+            }
+        }
+    };
+
     bool vkCmdMemoEnabled()
     {
         static const bool s_enabled = []() -> bool {
@@ -3077,6 +3116,19 @@ namespace
                                << " prefer_device=" << (prefer_device ? 1 : 0) << LL_ENDL;
         }
 
+        {
+            VkMemoryPropertyFlags mem_props = 0;
+            vmaGetAllocationMemoryProperties(sAllocator, allocation, &mem_props);
+            if ((mem_props & VK_MEMORY_PROPERTY_HOST_COHERENT_BIT) == 0)
+            {
+                LLVKContract::cause(LLVKContract::C_ALLOC_NONCOHERENT);
+                LL_WARNS("Vulkan") << "createBufferVkImpl noncoherent mapped allocation size=" << size_bytes
+                                   << " usage=0x" << std::hex << (U32)usage
+                                   << " memflags=0x" << (U32)mem_props << std::dec
+                                   << " prefer_device=" << (prefer_device ? 1 : 0) << LL_ENDL;
+            }
+        }
+
         out_buffer     = buffer;
         out_allocation = reinterpret_cast<void*>(allocation);
         if (out_mapped)
@@ -5785,11 +5837,13 @@ bool allocPerDrawUBOSlice(U32 size_bytes, VkBuffer& out_buffer, U32& out_offset,
     const U32 f = sFrameIndex;
     if (f >= FRAMES_IN_FLIGHT)
     {
+        LLVKContract::cause(LLVKContract::C_UBO_SLICE_FAIL);
         return false;
     }
     PerDrawUBOArena& a = sPerDrawUBOArena[f];
     if (!ensurePerDrawUBOArenaCurrent(a))
     {
+        LLVKContract::cause(LLVKContract::C_UBO_SLICE_FAIL);
         return false;
     }
     VkDeviceSize align = sPhysicalDeviceProperties.limits.minUniformBufferOffsetAlignment;
@@ -5828,6 +5882,7 @@ bool allocPerDrawUBOSlice(U32 size_bytes, VkBuffer& out_buffer, U32& out_offset,
                                     VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT,
                                     nb.buffer, nb.allocation, &nb_mapped))
             {
+                LLVKContract::cause(LLVKContract::C_UBO_SLICE_FAIL);
                 return false;
             }
             nb.mapped   = nb_mapped;
@@ -6200,6 +6255,23 @@ LLVK_SHARED_UBO_RING_IMPL(PbrTerrain,       PbrTerrain_PerShaderBind,        52)
     static U64 s##BindName##UpGen[FRAMES_IN_FLIGHT]    = { 0, 0, 0 };                                   \
     static U32 s##BindName##UpOffset[FRAMES_IN_FLIGHT] = { 0, 0, 0 };                                   \
     static VkBuffer s##BindName##UpBuf[FRAMES_IN_FLIGHT] = { VK_NULL_HANDLE, VK_NULL_HANDLE, VK_NULL_HANDLE }; \
+    static U64 s##BindName##UpHash[FRAMES_IN_FLIGHT] = { 0, 0, 0 };                                     \
+    static bool peek##BindName##State(const void*& out_shadow, U32& out_size,                           \
+                                      U32& out_off, bool& out_current, U64& out_up_hash)                \
+    {                                                                                                  \
+        const U32 f = sFrameIndex;                                                                      \
+        if (f >= FRAMES_IN_FLIGHT)                                                                      \
+        {                                                                                              \
+            return false;                                                                               \
+        }                                                                                              \
+        out_shadow  = &s##BindName##Shadow;                                                             \
+        out_size    = (U32)sizeof(StructType);                                                          \
+        out_off     = s##BindName##UpOffset[f];                                                         \
+        out_up_hash = s##BindName##UpHash[f];                                                           \
+        out_current = (s##BindName##UpFrame[f] == sMonotonicFrameCount                                  \
+                       && s##BindName##UpGen[f] == s##BindName##WriteGen);                              \
+        return true;                                                                                   \
+    }                                                                                                  \
     void writeCurrent##BindName##UBO(const StructType& data)                                            \
     {                                                                                                  \
         s##BindName##Shadow = data;                                                                     \
@@ -6231,6 +6303,8 @@ LLVK_SHARED_UBO_RING_IMPL(PbrTerrain,       PbrTerrain_PerShaderBind,        52)
             }                                                                                          \
             std::memcpy(p, &s##BindName##Shadow, sizeof(StructType));                                   \
             s##BindName##UpBuf[f]    = b;                                                               \
+            s##BindName##UpHash[f]   = LLVKContract::verboseEnabled()                                    \
+                ? sharedUBOContentHash(&s##BindName##Shadow, (U32)sizeof(StructType)) : 0;              \
             s##BindName##UpOffset[f] = o;                                                               \
             s##BindName##UpFrame[f]  = sMonotonicFrameCount;                                            \
             s##BindName##UpGen[f]    = s##BindName##WriteGen;                                           \
@@ -6257,6 +6331,24 @@ static U64 sObjectSkinUpFrame[FRAMES_IN_FLIGHT]  = { ~0ull, ~0ull, ~0ull };
 static U64 sObjectSkinUpGen[FRAMES_IN_FLIGHT]    = { 0, 0, 0 };
 static U32 sObjectSkinUpOffset[FRAMES_IN_FLIGHT] = { 0, 0, 0 };
 static VkBuffer sObjectSkinUpBuf[FRAMES_IN_FLIGHT] = { VK_NULL_HANDLE, VK_NULL_HANDLE, VK_NULL_HANDLE };
+static U64 sObjectSkinUpHash[FRAMES_IN_FLIGHT] = { 0, 0, 0 };
+
+static bool peekObjectSkinState(const void*& out_shadow, U32& out_size,
+                                U32& out_off, bool& out_current, U64& out_up_hash)
+{
+    const U32 f = sFrameIndex;
+    if (f >= FRAMES_IN_FLIGHT)
+    {
+        return false;
+    }
+    out_shadow  = &sObjectSkinShadow;
+    out_size    = (U32)sizeof(ObjectSkin_PerProgramBind);
+    out_off     = sObjectSkinUpOffset[f];
+    out_up_hash = sObjectSkinUpHash[f];
+    out_current = (sObjectSkinUpFrame[f] == sMonotonicFrameCount
+                   && sObjectSkinUpGen[f] == sObjectSkinWriteGen);
+    return true;
+}
 
 static bool ensureObjectSkinUploaded(VkBuffer& out_buf, U32& out_off)
 {
@@ -6282,6 +6374,8 @@ static bool ensureObjectSkinUploaded(VkBuffer& out_buf, U32& out_off)
         }
         std::memcpy(p, &sObjectSkinShadow, sizeof(ObjectSkin_PerProgramBind));
         sObjectSkinUpBuf[f]    = b;
+        sObjectSkinUpHash[f]   = LLVKContract::verboseEnabled()
+            ? sharedUBOContentHash(&sObjectSkinShadow, (U32)sizeof(ObjectSkin_PerProgramBind)) : 0;
         sObjectSkinUpOffset[f] = o;
         sObjectSkinUpFrame[f]  = sMonotonicFrameCount;
         sObjectSkinUpGen[f]    = sObjectSkinWriteGen;
@@ -6300,6 +6394,39 @@ bool getSharedDynamicUBOForBinding(U32 binding, VkBuffer& out_buf, U32& out_off)
         case 48: return ensurePBRMaterialUploaded(out_buf, out_off);
         case 51: return ensureDrawColorUploaded(out_buf, out_off);
         case 53: return ensureShadowParamsUploaded(out_buf, out_off);
+        default: return false;
+    }
+}
+
+U64 sharedUBOContentHash(const void* p, U32 n)
+{
+    const U8* b = (const U8*)p;
+    U64 h = 0xcbf29ce484222325ull;
+    while (n >= 8)
+    {
+        U64 v;
+        std::memcpy(&v, b, 8);
+        h = (h ^ v) * 0x100000001b3ull;
+        b += 8;
+        n -= 8;
+    }
+    while (n--)
+    {
+        h = (h ^ *b++) * 0x100000001b3ull;
+    }
+    return h;
+}
+
+bool peekSharedDynamicUBO(U32 binding, const void*& out_shadow, U32& out_size,
+                          U32& out_off, bool& out_current, U64& out_up_hash)
+{
+    switch (binding)
+    {
+        case 45: return peekAvatarSkinState(out_shadow, out_size, out_off, out_current, out_up_hash);
+        case 46: return peekObjectSkinState(out_shadow, out_size, out_off, out_current, out_up_hash);
+        case 48: return peekPBRMaterialState(out_shadow, out_size, out_off, out_current, out_up_hash);
+        case 51: return peekDrawColorState(out_shadow, out_size, out_off, out_current, out_up_hash);
+        case 53: return peekShadowParamsState(out_shadow, out_size, out_off, out_current, out_up_hash);
         default: return false;
     }
 }
@@ -7076,6 +7203,7 @@ bool megabufAcquireVertex(U32 typemask, U32 nverts, MegaSliceV& out)
         return false;
     }
     const U32 count = (nverts + 3u) & ~3u;
+    VkcRaceProbe probe(sVkcMegaOwner, LLVKContract::C_MEGA_RACE);
     MegaChunk* chunk = nullptr;
     U32 first = 0;
     for (MegaChunk* c : sMegaVertexPools[typemask])
@@ -7109,6 +7237,7 @@ void megabufReleaseVertex(const MegaSliceV& slice)
     {
         return;
     }
+    VkcRaceProbe probe(sVkcMegaOwner, LLVKContract::C_MEGA_RACE);
     sPendingMegaFrees.push_back({ slice.chunk, slice.first, slice.count, sMonotonicFrameCount });
 }
 
@@ -7120,6 +7249,7 @@ bool megabufAcquireIndex(U32 size_bytes, MegaSliceI& out)
         return false;
     }
     const U32 count = (size_bytes + 3u) & ~3u;
+    VkcRaceProbe probe(sVkcMegaOwner, LLVKContract::C_MEGA_RACE);
     MegaChunk* chunk = nullptr;
     U32 first = 0;
     for (MegaChunk* c : sMegaIndexPool)
@@ -7152,11 +7282,13 @@ void megabufReleaseIndex(const MegaSliceI& slice)
     {
         return;
     }
+    VkcRaceProbe probe(sVkcMegaOwner, LLVKContract::C_MEGA_RACE);
     sPendingMegaFrees.push_back({ slice.chunk, slice.offset, slice.size, sMonotonicFrameCount });
 }
 
 void tickMegaFreeQueue()
 {
+    VkcRaceProbe probe(sVkcMegaOwner, LLVKContract::C_MEGA_RACE);
     size_t w = 0;
     const size_t n = sPendingMegaFrees.size();
     for (size_t r = 0; r < n; ++r)
@@ -9892,6 +10024,7 @@ U32 drawDataAcquireSlot(const U32* slots4)
     {
         return BINDLESS_INVALID_SLOT;
     }
+    VkcRaceProbe probe(sVkcSlotOwner, LLVKContract::C_DRAWDATA_RACE);
     U32 slot;
     if (!sDrawDataSlotFreeList.empty())
     {
@@ -9904,6 +10037,7 @@ U32 drawDataAcquireSlot(const U32* slots4)
     }
     else
     {
+        LLVKContract::cause(LLVKContract::C_DRAWDATA_EXHAUSTED);
         static bool warned = false;
         if (!warned)
         {
@@ -9922,6 +10056,7 @@ void drawDataReleaseSlotDeferred(U32 slot)
     {
         return;
     }
+    VkcRaceProbe probe(sVkcSlotOwner, LLVKContract::C_DRAWDATA_RACE);
     PendingSlotFree p;
     p.slot          = slot;
     p.enqueue_frame = sMonotonicFrameCount;
@@ -9943,6 +10078,7 @@ U32 drawDataWriteScratch(const U32* slots4)
     {
         return tDrawDataScratchMemoSlot;
     }
+    VkcRaceProbe probe(sVkcScratchOwner, LLVKContract::C_DRAWDATA_RACE);
     if (sDrawDataScratchFrame != sMonotonicFrameCount)
     {
         sDrawDataScratchFrame  = sMonotonicFrameCount;
@@ -9950,6 +10086,7 @@ U32 drawDataWriteScratch(const U32* slots4)
     }
     if (sDrawDataScratchCursor >= DRAWDATA_SCRATCH_PER_FRAME)
     {
+        LLVKContract::cause(LLVKContract::C_DRAWDATA_SCRATCH_WRAP);
         static bool warned = false;
         if (!warned)
         {
@@ -10395,6 +10532,10 @@ void setupViewportAndScissor(VkCommandBuffer cmd, bool screen_space_copy)
         && std::memcmp(&viewport, &sLastViewport, sizeof(viewport)) == 0
         && std::memcmp(&scissor, &sLastScissor, sizeof(scissor)) == 0)
     {
+        if (cmd != tMemoVpCmd)
+        {
+            LLVKContract::noteDetail(LLVKContract::C_MEMO_CROSS_CMD, "vp", "kind=vp");
+        }
         ++gVkPerf.vp_skip;
         return;
     }
@@ -10404,18 +10545,24 @@ void setupViewportAndScissor(VkCommandBuffer cmd, bool screen_space_copy)
     sLastViewport         = viewport;
     sLastScissor          = scissor;
     sViewportScissorValid = true;
+    tMemoVpCmd            = cmd;
 }
 
 void bindGraphicsPipelineOnce(VkCommandBuffer cmd, VkPipeline pipeline)
 {
     if (vkCmdMemoEnabled() && pipeline == sLastBoundGraphicsPipeline)
     {
+        if (cmd != tMemoPipeCmd)
+        {
+            LLVKContract::noteDetail(LLVKContract::C_MEMO_CROSS_CMD, "pipe", "kind=pipe");
+        }
         ++gVkPerf.pipe_skip;
         return;
     }
     ++gVkPerf.pipe_bind;
     vkCmdBindPipeline(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, pipeline);
     sLastBoundGraphicsPipeline = pipeline;
+    tMemoPipeCmd               = cmd;
 }
 
 void bindDrawDescriptorSetsOnce(VkCommandBuffer cmd, VkPipelineLayout layout,
@@ -10438,6 +10585,7 @@ void bindDrawDescriptorSetsOnce(VkCommandBuffer cmd, VkPipelineLayout layout,
             set2 = sBindlessHeapSet;
         }
     }
+    LLGLSLShader::vkVerifyPerCallBindingsAtBind(offsets, dyn_count);
     if (vkCmdMemoEnabled()
         && layout == sLastDescLayout
         && set0 == sLastDescSet0
@@ -10446,6 +10594,10 @@ void bindDrawDescriptorSetsOnce(VkCommandBuffer cmd, VkPipelineLayout layout,
         && dyn_count == sLastDescDynCount
         && (dyn_count == 0 || std::memcmp(offsets, sLastDescOffsets, dyn_count * sizeof(U32)) == 0))
     {
+        if (cmd != tMemoDescCmd)
+        {
+            LLVKContract::noteDetail(LLVKContract::C_MEMO_CROSS_CMD, "desc", "kind=desc");
+        }
         ++gVkPerf.desc_skip;
         return;
     }
@@ -10464,6 +10616,7 @@ void bindDrawDescriptorSetsOnce(VkCommandBuffer cmd, VkPipelineLayout layout,
     sLastDescSet1     = set1;
     sLastDescSet2     = set2;
     sLastDescDynCount = dyn_count;
+    tMemoDescCmd      = cmd;
     if (dyn_count > 0)
     {
         std::memcpy(sLastDescOffsets, offsets, dyn_count * sizeof(U32));
@@ -10474,6 +10627,10 @@ void pushModelviewOnce(VkCommandBuffer cmd, VkPipelineLayout layout, const float
 {
     if (vkCmdMemoEnabled() && layout == sLastMvLayout && std::memcmp(mv16, sLastMv, sizeof(sLastMv)) == 0)
     {
+        if (cmd != tMemoMvCmd)
+        {
+            LLVKContract::noteDetail(LLVKContract::C_MEMO_CROSS_CMD, "mv", "kind=mv");
+        }
         ++gVkPerf.mv_skip;
         return;
     }
@@ -10481,6 +10638,7 @@ void pushModelviewOnce(VkCommandBuffer cmd, VkPipelineLayout layout, const float
     vkCmdPushConstants(cmd, layout, VK_SHADER_STAGE_VERTEX_BIT, 0, 64, mv16);
     sLastMvLayout = layout;
     std::memcpy(sLastMv, mv16, sizeof(sLastMv));
+    tMemoMvCmd = cmd;
 }
 
 bool perFrameMatrixNeedsWrite()

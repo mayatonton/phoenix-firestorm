@@ -390,7 +390,15 @@ public:
     static thread_local bool   sCurPerCallAuthored;
     static void vkRefreshDynamicOffsetsForDraw();
     static VkDescriptorSet vkResolvePerCallSetForDraw();
+    static void vkVerifyPerCallBindingsAtBind(const U32* offsets, U32 dyn_count);
     static void resetPerThreadRecordState();
+
+    static constexpr U32 VK_FRAG_PC_BASE   = 64;
+    static constexpr U32 VK_FRAG_PC_DWORDS = 16;
+    F32 mVkFragPC[VK_FRAG_PC_DWORDS] = {};
+    U32 mVkFragPCMask = 0;
+    void vkPushFragPC(U32 offset, U32 size, const void* data);
+    void vkReassertFragPC(VkCommandBuffer cmd);
 
     VkBuffer                   mVkPerProgramUBO         = VK_NULL_HANDLE;
     void*                      mVkPerProgramUBOAllocation = nullptr;

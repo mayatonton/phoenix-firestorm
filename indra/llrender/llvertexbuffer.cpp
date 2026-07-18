@@ -619,6 +619,10 @@ void LLVertexBuffer::drawRange(U32 mode, U32 start, U32 end, U32 count, U32 indi
                     LLVKLoader::pushModelviewOnce(cmd,
                                                   LLGLSLShader::sCurBoundShaderPtr->mVkPipelineLayout,
                                                   LLVKLoader::getCurrentModelviewMatrix());
+                    if (LLGLSLShader::sCurBoundShaderPtr->mVkUsesBindlessHeap)
+                    {
+                        LLVKContract::checkDrawDataIDAtFire(LLVKLoader::getCurrentDrawDataID());
+                    }
                     vkCmdDrawIndexed(cmd, count, 1, mVkIndexSlice.offset / mIndicesStride + indices_offset, (S32)mVkVertexSlice.first, LLVKLoader::getCurrentDrawDataID());
                     ++sVkDrawCallCount;
                     vk_fired = true;
@@ -708,6 +712,10 @@ void LLVertexBuffer::drawRangeFast(U32 mode, U32 start, U32 end, U32 count, U32 
                         LLVKLoader::pushModelviewOnce(cmd,
                                                       LLGLSLShader::sCurBoundShaderPtr->mVkPipelineLayout,
                                                       LLVKLoader::getCurrentModelviewMatrix());
+                        if (LLGLSLShader::sCurBoundShaderPtr->mVkUsesBindlessHeap)
+                        {
+                            LLVKContract::checkDrawDataIDAtFire(LLVKLoader::getCurrentDrawDataID());
+                        }
                         vkCmdDrawIndexed(cmd, count, 1, mVkIndexSlice.offset / mIndicesStride + indices_offset, (S32)mVkVertexSlice.first, LLVKLoader::getCurrentDrawDataID());
                         ++sVkDrawCallCount;
                         vk_fired = true;
@@ -806,6 +814,10 @@ void LLVertexBuffer::drawArrays(U32 mode, U32 first, U32 count) const
                     LLVKLoader::pushModelviewOnce(cmd,
                                                   LLGLSLShader::sCurBoundShaderPtr->mVkPipelineLayout,
                                                   LLVKLoader::getCurrentModelviewMatrix());
+                    if (LLGLSLShader::sCurBoundShaderPtr->mVkUsesBindlessHeap)
+                    {
+                        LLVKContract::checkDrawDataIDAtFire(LLVKLoader::getCurrentDrawDataID());
+                    }
                     vkCmdDraw(cmd, count, 1, mVkVertexSlice.first + first, LLVKLoader::getCurrentDrawDataID());
                     ++sVkDrawCallCount;
                     vk_fired = true;

@@ -32,6 +32,7 @@
 
 #include "lldrawpool.h"
 #include "llrender.h"
+#include "glm/gtc/type_ptr.hpp"
 #include "llfasttimer.h"
 #include "llviewercontrol.h"
 
@@ -119,11 +120,27 @@ static bool vkContractRecoveryRebind(const void* p)
     return LLGLSLShader::sCurPerCallVkDescriptorSet != VK_NULL_HANDLE;
 }
 
+extern bool gCubeSnapshot;
+extern bool gHeroProbeMirrorRender;
+
+static U32 vkContractObjId(const void* p)
+{
+    const LLDrawInfo* di = static_cast<const LLDrawInfo*>(p);
+    return di != nullptr ? (U32)di->mFSPickerLocalID : 0u;
+}
+
+static U32 vkContractPassBucket()
+{
+    return (gCubeSnapshot || gHeroProbeMirrorRender) ? 3u : LLVKLoader::gVkPerfPassTag;
+}
+
 struct VkContractResolverInit
 {
     VkContractResolverInit()
     {
         LLVKContract::setResolvers(&vkContractDescribeDrawInfo, &vkContractDrawInfoKey);
+        LLVKContract::setObjIdResolver(&vkContractObjId);
+        LLVKContract::setPassBucketResolver(&vkContractPassBucket);
         LLGLSLShader::sVkRecoveryRebindHook = &vkContractRecoveryRebind;
     }
 };
@@ -581,6 +598,7 @@ void LLRenderPass::buildAndOverrideScenePerDrawSet(LLDrawInfo* params, bool batc
             id = LLVKLoader::drawDataWriteScratch(slots);
         }
         LLVKLoader::setCurrentDrawDataID(id);
+        LLVKContract::stashDrawDataID((id == LLVKLoader::BINDLESS_INVALID_SLOT) ? 0 : id);
     }
 
     const bool memo_eligible = (params != nullptr && is_indexed && set_shape >= 1
@@ -872,7 +890,12 @@ void LLRenderPass::buildAndOverrideScenePerDrawSet(LLDrawInfo* params, bool batc
             }
         }
 
+        const char* vkc_fb_reason = nullptr;
         bool need_typed_fallback = (view == VK_NULL_HANDLE);
+        if (need_typed_fallback)
+        {
+            vkc_fb_reason = "no_view";
+        }
         if (!need_typed_fallback)
         {
             if (l3_hit)
@@ -880,6 +903,7 @@ void LLRenderPass::buildAndOverrideScenePerDrawSet(LLDrawInfo* params, bool batc
                 if (cur->vkResolveEnumBoundDim(enum_value) != cur->mVkBindingSamplerDim[N])
                 {
                     need_typed_fallback = true;
+                    vkc_fb_reason = "dim_l3";
                 }
             }
             else if (resolved_unit >= 0)
@@ -888,6 +912,7 @@ void LLRenderPass::buildAndOverrideScenePerDrawSet(LLDrawInfo* params, bool batc
                 if (dim_tu != nullptr && dim_tu->getLiveVkImageViewDim() != cur->mVkBindingSamplerDim[N])
                 {
                     need_typed_fallback = true;
+                    vkc_fb_reason = "dim_unit";
                 }
             }
         }
@@ -896,6 +921,7 @@ void LLRenderPass::buildAndOverrideScenePerDrawSet(LLDrawInfo* params, bool batc
             LLVKContract::note(resolved_unit == 0 ? LLVKContract::C_FB_VIEW_DIFFUSE
                                                   : LLVKContract::C_FB_VIEW_AUX,
                                cur->mName);
+            LLVKContract::watchFbProbe(resolved_unit == 0, vkc_fb_reason);
             const U8 sdim_fb = cur->mVkBindingSamplerDim[N];
             view = (sdim_fb == LLGLSLShader::VKSD_CUBE_ARRAY) ? LLVKLoader::getDefaultFallbackCubeArrayVkImageView()
                  : (sdim_fb == LLGLSLShader::VKSD_CUBE)       ? LLVKLoader::getDefaultFallbackCubeVkImageView()
@@ -1422,6 +1448,40 @@ void LLRenderPass::applyModelMatrix(const LLMatrix4* model_matrix)
     }
 }
 
+void LLRenderPass::vkcVerifyDrawModelview(const LLDrawInfo& params)
+{
+    if (!LLVKContract::verboseEnabled())
+    {
+        return;
+    }
+    LLVKContract::vfyTick(LLVKContract::VFY_MV);
+    glm::mat4 expected = glm::make_mat4(gGLModelView);
+    if (params.mModelMatrix)
+    {
+        expected *= glm::make_mat4((const GLfloat*)params.mModelMatrix->mMatrix);
+    }
+    const glm::mat4& actual = gGL.getModelviewMatrix();
+    const F32* e = glm::value_ptr(expected);
+    const F32* a = glm::value_ptr(actual);
+    F32 maxd = 0.f;
+    for (U32 i = 0; i < 16; ++i)
+    {
+        const F32 d = fabsf(e[i] - a[i]);
+        if (d > maxd)
+        {
+            maxd = d;
+        }
+    }
+    if (maxd > 0.001f)
+    {
+        const char* tag = LLVKContract::currentDrawTag();
+        LLVKContract::causeNamed(LLVKContract::C_MV_STALE_VALUE,
+                                 std::string(tag != nullptr ? tag : "?") + '|'
+                                     + (maxd > 1.f ? "diff_1m+"
+                                                   : (maxd > 0.1f ? "diff_0.1+" : "diff_small")));
+    }
+}
+
 void LLRenderPass::pushBatch(LLDrawInfo& params, bool texture, bool batch_textures)
 {
     LL_PROFILE_ZONE_SCOPED_CATEGORY_DRAWPOOL;
@@ -1479,6 +1539,7 @@ void LLRenderPass::pushBatch(LLDrawInfo& params, bool texture, bool batch_textur
     LLVKContract::DrawScope vkc_scope(&params, "scene");
     params.mVertexBuffer->setBuffer();
     params.mVertexBuffer->drawRange(LLRender::TRIANGLES, params.mStart, params.mEnd, params.mCount, params.mOffset);
+    vkcVerifyDrawModelview(params);
     if (tex_setup)
     {
         gGL.matrixMode(LLRender::MM_TEXTURE0);
@@ -1515,6 +1576,7 @@ void LLRenderPass::pushUntexturedBatch(LLDrawInfo& params)
     LLVKContract::DrawScope vkc_scope(&params, "scene");
     params.mVertexBuffer->setBuffer();
     params.mVertexBuffer->drawRange(LLRender::TRIANGLES, params.mStart, params.mEnd, params.mCount, params.mOffset);
+    vkcVerifyDrawModelview(params);
 }
 
 bool LLRenderPass::uploadMatrixPalette(LLDrawInfo& params)
@@ -1945,15 +2007,7 @@ void LLRenderPass::pushGLTFBatch(LLDrawInfo& params)
         if (cur->hasReflectedUniform(LLShaderMgr::AYA_SSS_SKIN_FLAG))
         {
             const F32 sssFlag = params.mIsSSSTarget ? 1.f : 0.f;
-            if (LLVKLoader::isVulkanInitialized() && cur->mVkPipelineLayout != VK_NULL_HANDLE)
-            {
-                VkCommandBuffer cmd = LLVKLoader::getCurrentCommandBuffer();
-                if (cmd != VK_NULL_HANDLE)
-                {
-                    vkCmdPushConstants(cmd, cur->mVkPipelineLayout, VK_SHADER_STAGE_FRAGMENT_BIT,
-                                       LLVkUboReg::PC_OFF_SSS_SKIN_FLAG, sizeof(F32), &sssFlag);
-                }
-            }
+            cur->vkPushFragPC(LLVkUboReg::PC_OFF_SSS_SKIN_FLAG, sizeof(F32), &sssFlag);
         }
     }
     // </FS:AYA>
@@ -1962,6 +2016,7 @@ void LLRenderPass::pushGLTFBatch(LLDrawInfo& params)
     params.mVertexBuffer->setBuffer();
 
     params.mVertexBuffer->drawRange(LLRender::TRIANGLES, params.mStart, params.mEnd, params.mCount, params.mOffset);
+    vkcVerifyDrawModelview(params);
 
     teardown_texture_matrix(params);
 }
@@ -1988,6 +2043,7 @@ void LLRenderPass::pushUntexturedGLTFBatch(LLDrawInfo& params)
     LLVKContract::DrawScope vkc_scope(&params, "scene");
     params.mVertexBuffer->setBuffer();
     params.mVertexBuffer->drawRange(LLRender::TRIANGLES, params.mStart, params.mEnd, params.mCount, params.mOffset);
+    vkcVerifyDrawModelview(params);
 }
 
 void LLRenderPass::pushRiggedGLTFBatches(U32 type, bool textured)

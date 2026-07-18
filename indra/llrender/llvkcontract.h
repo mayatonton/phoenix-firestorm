@@ -39,6 +39,25 @@ enum ECause : U32
     C_GEOAB_STAGE_SKIP,
     C_APPLY_UNRENDERED,
     C_AUTHORED_REBIND,
+    C_UBO_SLICE_FAIL,
+    C_PP_FALLBACK_LOSSY,
+    C_UBO_OFFSET_STALE,
+    C_UBO_CONTENT_STALE,
+    C_MEMO_CROSS_CMD,
+    C_DRAWDATA_SCRATCH_WRAP,
+    C_DRAWDATA_EXHAUSTED,
+    C_DRAWDATA_RACE,
+    C_MEGA_RACE,
+    C_ALLOC_NONCOHERENT,
+    C_MV_STALE_VALUE,
+    C_DRAWDATA_ID_MISMATCH,
+    C_LIST_DROP_INFRUSTUM,
+    C_LIST_OCCL_DROP,
+    C_LIST_RESUME,
+    C_LIST_ABSENT_LONG,
+    C_UUID_ABSENT,
+    C_UUID_FB_DIFFUSE,
+    C_UUID_FB_AUX,
     CAUSE_COUNT
 };
 
@@ -60,10 +79,21 @@ enum ESentinelSite : U32
 bool verboseEnabled();
 
 void setResolvers(std::string (*describe)(const void*), U64 (*key)(const void*));
+void setObjIdResolver(U32 (*fn)(const void*));
+void setPassBucketResolver(U32 (*fn)());
+void watchPickCandidate(U32 localid);
+bool watchPickModeEnabled();
+void watchAddLocal(U32 localid);
+void watchFbProbe(bool diffuse, const char* reason);
+void watchStageEvent(U32 localid, const char* what, U32 n = 0);
+bool watchLastStage(U32 localid, const char*& what, U32& n, U64& age);
+bool watchLastEvict(U32 localid, U32& site, U32& records, U64& age);
+const char* sentinelSiteName(U32 site);
 
 void drawScopeBegin(const void* draw_info, const char* tag);
 void drawScopeEnd();
 const void* currentDrawInfo();
+const char* currentDrawTag();
 
 struct DrawScope
 {
@@ -89,6 +119,17 @@ void sentinelRegister(const void* drawable);
 void stalePend(const void* key, U32 obj_local_id, const char* kind);
 void staleResolve(const void* key);
 void staleCancel(const void* key);
+
+enum EVfy : U32
+{
+    VFY_BIND = 0,
+    VFY_MV   = 1,
+    VFY_DD   = 2,
+    VFY_COUNT = 3
+};
+void vfyTick(U32 which);
+void stashDrawDataID(U32 id);
+void checkDrawDataIDAtFire(U32 actual);
 
 }
 

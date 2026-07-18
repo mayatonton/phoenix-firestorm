@@ -81,15 +81,7 @@ void LLFetchedGLTFMaterial::bind(LLViewerTexture* media_tex)
         {
             min_alpha = mAlphaCutoff;
         }
-        if (LLVKLoader::isVulkanInitialized() && shader->mVkPipelineLayout != VK_NULL_HANDLE)
-        {
-            VkCommandBuffer cmd = LLVKLoader::getCurrentCommandBuffer();
-            if (cmd != VK_NULL_HANDLE)
-            {
-                vkCmdPushConstants(cmd, shader->mVkPipelineLayout, VK_SHADER_STAGE_FRAGMENT_BIT,
-                                   LLVkUboReg::PC_OFF_MINIMUM_ALPHA, sizeof(F32), &min_alpha);
-            }
-        }
+        shader->vkPushFragPC(LLVkUboReg::PC_OFF_MINIMUM_ALPHA, sizeof(F32), &min_alpha);
     }
 
     if (baseColorTex != nullptr)
@@ -132,22 +124,13 @@ void LLFetchedGLTFMaterial::bind(LLViewerTexture* media_tex)
 
         // NOTE: base color factor is baked into vertex stream
 
-        if (LLVKLoader::isVulkanInitialized() && shader->mVkPipelineLayout != VK_NULL_HANDLE)
         {
-            VkCommandBuffer cmd = LLVKLoader::getCurrentCommandBuffer();
-            if (cmd != VK_NULL_HANDLE)
-            {
-                const F32 aya_sss_skin_flag = 0.f;
-                vkCmdPushConstants(cmd, shader->mVkPipelineLayout, VK_SHADER_STAGE_FRAGMENT_BIT,
-                                   LLVkUboReg::PC_OFF_SSS_SKIN_FLAG, sizeof(F32), &aya_sss_skin_flag);
-                vkCmdPushConstants(cmd, shader->mVkPipelineLayout, VK_SHADER_STAGE_FRAGMENT_BIT,
-                                   LLVkUboReg::PC_OFF_ROUGHNESS, sizeof(F32), &mRoughnessFactor);
-                vkCmdPushConstants(cmd, shader->mVkPipelineLayout, VK_SHADER_STAGE_FRAGMENT_BIT,
-                                   LLVkUboReg::PC_OFF_METALLIC, sizeof(F32), &mMetallicFactor);
-                const F32 emissive_pc[4] = { mEmissiveColor.mV[0], mEmissiveColor.mV[1], mEmissiveColor.mV[2], 0.f };
-                vkCmdPushConstants(cmd, shader->mVkPipelineLayout, VK_SHADER_STAGE_FRAGMENT_BIT,
-                                   LLVkUboReg::PC_OFF_EMISSIVE_COLOR, sizeof(emissive_pc), emissive_pc);
-            }
+            const F32 aya_sss_skin_flag = 0.f;
+            shader->vkPushFragPC(LLVkUboReg::PC_OFF_SSS_SKIN_FLAG, sizeof(F32), &aya_sss_skin_flag);
+            shader->vkPushFragPC(LLVkUboReg::PC_OFF_ROUGHNESS, sizeof(F32), &mRoughnessFactor);
+            shader->vkPushFragPC(LLVkUboReg::PC_OFF_METALLIC, sizeof(F32), &mMetallicFactor);
+            const F32 emissive_pc[4] = { mEmissiveColor.mV[0], mEmissiveColor.mV[1], mEmissiveColor.mV[2], 0.f };
+            shader->vkPushFragPC(LLVkUboReg::PC_OFF_EMISSIVE_COLOR, sizeof(emissive_pc), emissive_pc);
         }
 
     }

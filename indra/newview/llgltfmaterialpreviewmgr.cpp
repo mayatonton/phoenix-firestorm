@@ -507,18 +507,13 @@ bool LLGLTFPreviewTexture::render()
         gPipeline.bindDeferredShader(shader);
         fixup_shader_constants(shader);
 
-        if (LLVKLoader::isVulkanInitialized() && shader.mVkPipelineLayout != VK_NULL_HANDLE)
         {
-            VkCommandBuffer cmd = LLVKLoader::getCurrentCommandBuffer();
-            if (cmd != VK_NULL_HANDLE)
             {
                 const F32 aya_preview_water_sign = 0.f;
-                vkCmdPushConstants(cmd, shader.mVkPipelineLayout, VK_SHADER_STAGE_FRAGMENT_BIT,
-                                   LLVkUboReg::PC_OFF_WATER_SIGN, sizeof(F32), &aya_preview_water_sign);
+                shader.vkPushFragPC(LLVkUboReg::PC_OFF_WATER_SIGN, sizeof(F32), &aya_preview_water_sign);
 
                 const F32 aya_preview_neutral_atmos = 1.f;
-                vkCmdPushConstants(cmd, shader.mVkPipelineLayout, VK_SHADER_STAGE_FRAGMENT_BIT,
-                                   LLVkUboReg::PC_OFF_PREVIEW_NEUTRAL_ATMOS, sizeof(F32), &aya_preview_neutral_atmos);
+                shader.vkPushFragPC(LLVkUboReg::PC_OFF_PREVIEW_NEUTRAL_ATMOS, sizeof(F32), &aya_preview_neutral_atmos);
             }
         }
 

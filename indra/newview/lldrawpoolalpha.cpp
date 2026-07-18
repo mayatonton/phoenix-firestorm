@@ -118,18 +118,10 @@ static void prepare_alpha_shader(LLGLSLShader* shader, bool deferredEnvironment,
         water_sign_pc = 0.f;
     }
 
-    if (LLVKLoader::isVulkanInitialized() && shader->mVkPipelineLayout != VK_NULL_HANDLE)
+    shader->vkPushFragPC(LLVkUboReg::PC_OFF_WATER_SIGN, sizeof(F32), &water_sign_pc);
     {
-        VkCommandBuffer cmd = LLVKLoader::getCurrentCommandBuffer();
-        if (cmd != VK_NULL_HANDLE)
-        {
-            vkCmdPushConstants(cmd, shader->mVkPipelineLayout, VK_SHADER_STAGE_FRAGMENT_BIT,
-                               LLVkUboReg::PC_OFF_WATER_SIGN, sizeof(F32), &water_sign_pc);
-
-            const F32 aya_preview_neutral_atmos = 0.f;
-            vkCmdPushConstants(cmd, shader->mVkPipelineLayout, VK_SHADER_STAGE_FRAGMENT_BIT,
-                               LLVkUboReg::PC_OFF_PREVIEW_NEUTRAL_ATMOS, sizeof(F32), &aya_preview_neutral_atmos);
-        }
+        const F32 aya_preview_neutral_atmos = 0.f;
+        shader->vkPushFragPC(LLVkUboReg::PC_OFF_PREVIEW_NEUTRAL_ATMOS, sizeof(F32), &aya_preview_neutral_atmos);
     }
 
     if (LLPipelineFrameContext::getInstance().isImpostorPass())
@@ -621,6 +613,7 @@ inline void Draw(LLDrawInfo* draw, U32 mask)
     draw->mVertexBuffer->setBuffer();
     LLRenderPass::applyModelMatrix(*draw);
     draw->mVertexBuffer->drawRange(LLRender::TRIANGLES, draw->mStart, draw->mEnd, draw->mCount, draw->mOffset);
+    LLRenderPass::vkcVerifyDrawModelview(*draw);
 }
 
 bool LLDrawPoolAlpha::TexSetup(LLDrawInfo* draw, bool use_material)
@@ -713,8 +706,10 @@ void LLDrawPoolAlpha::RestoreTexSetup(bool tex_setup)
 void LLDrawPoolAlpha::drawEmissive(LLDrawInfo* draw)
 {
     LLVKContract::DrawScope vkc_scope(draw, "alphaEmi");
+    LLRenderPass::applyModelMatrix(*draw);
     draw->mVertexBuffer->setBuffer();
     draw->mVertexBuffer->drawRange(LLRender::TRIANGLES, draw->mStart, draw->mEnd, draw->mCount, draw->mOffset);
+    LLRenderPass::vkcVerifyDrawModelview(*draw);
 }
 
 
@@ -740,8 +735,10 @@ void LLDrawPoolAlpha::renderPbrEmissives(std::vector<LLDrawInfo*>& emissives)
         LLGLDisable cull_face(draw->mGLTFMaterial->mDoubleSided ? GL_CULL_FACE : 0);
         draw->mGLTFMaterial->bind(draw->mTexture);
         LLVKContract::DrawScope vkc_scope(draw, "alphaPbrEmi");
+        LLRenderPass::applyModelMatrix(*draw);
         draw->mVertexBuffer->setBuffer();
         draw->mVertexBuffer->drawRange(LLRender::TRIANGLES, draw->mStart, draw->mEnd, draw->mCount, draw->mOffset);
+        LLRenderPass::vkcVerifyDrawModelview(*draw);
     }
 }
 
@@ -789,6 +786,7 @@ void LLDrawPoolAlpha::renderRiggedPbrEmissives(std::vector<LLDrawInfo*>& emissiv
         LLVKContract::DrawScope vkc_scope(draw, "alphaPbrEmi");
         draw->mVertexBuffer->setBuffer();
         draw->mVertexBuffer->drawRange(LLRender::TRIANGLES, draw->mStart, draw->mEnd, draw->mCount, draw->mOffset);
+        LLRenderPass::vkcVerifyDrawModelview(*draw);
     }
 }
 
@@ -1477,6 +1475,7 @@ void LLDrawPoolAlpha::renderAlpha(U32 mask, bool depth_only, bool rigged, bool u
                         { U64 t2 = alp_now(); alp_us[6] += t2 - alp_t; alp_t = t2; }
 
                         params.mVertexBuffer->drawRange(LLRender::TRIANGLES, params.mStart, params.mEnd, params.mCount, params.mOffset);
+                        LLRenderPass::vkcVerifyDrawModelview(params);
                         ++LLVKLoader::gVkPerf.alp_inl;
                         alp_us[7] += alp_now() - alp_t;
                     }

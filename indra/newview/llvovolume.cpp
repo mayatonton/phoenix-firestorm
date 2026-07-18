@@ -5643,6 +5643,7 @@ namespace
         LLGeoStagedRebuild mStaged;
         std::vector<LLPointer<LLVolume> > mPinned;
         U64 mBytes = 0;
+        U32 mGen = 0;
         bool mFillFailed = false;
         std::atomic<U32> mState{ GEO_JOB_QUEUED };
     };
@@ -5766,19 +5767,31 @@ namespace
 
     bool applyGeoStaged(LLSpatialGroup* group, LLGeoStagedRebuild& staged)
     {
+        auto watch_id = [](const LLGeoFaceApply& e) -> U32
+        {
+            const LLViewerObject* vo = e.mDrawable.notNull() ? e.mDrawable->getVObj() : nullptr;
+            return vo != nullptr ? vo->getLocalID() : 0;
+        };
         for (const LLGeoFaceApply& e : staged.mFaces)
         {
             LLDrawable* drawablep = e.mDrawable.get();
             if (drawablep == nullptr || drawablep->isDead())
             {
+                LLVKContract::watchStageEvent(watch_id(e), "apply_abort_dead");
                 return false;
+            }
+            if (drawablep->getSpatialGroup() != group)
+            {
+                continue;
             }
             if (e.mTEOffset < 0 || e.mTEOffset >= drawablep->getNumFaces())
             {
+                LLVKContract::watchStageEvent(watch_id(e), "apply_abort_te");
                 return false;
             }
             if (drawablep->getFace(e.mTEOffset) != e.mFace)
             {
+                LLVKContract::watchStageEvent(watch_id(e), "apply_abort_face");
                 return false;
             }
             if (!e.mFieldsApplied && !e.mAllocFailed)
@@ -5786,8 +5799,14 @@ namespace
                 if ((U32)e.mFace->getGeomCount() != e.mGeomCount ||
                     (U32)e.mFace->getIndicesCount() != e.mIndicesCount)
                 {
+                    LLVKContract::watchStageEvent(watch_id(e), "apply_abort_count");
                     return false;
                 }
+            }
+            if (e.mFieldsApplied && !e.mAllocFailed && e.mFace->getVertexBuffer() == nullptr)
+            {
+                LLVKContract::watchStageEvent(watch_id(e), "apply_abort_nullvb");
+                return false;
             }
         }
 
@@ -5810,7 +5829,8 @@ namespace
                         continue;
                     }
                     LLDrawable* d = info->mSrcDrawable.get();
-                    if (staged_drawables.find(d) == staged_drawables.end() && geoDrawableEligible(d))
+                    if (staged_drawables.find(d) == staged_drawables.end() && geoDrawableEligible(d)
+                        && d->getSpatialGroup() == group)
                     {
                         preserve.insert(d);
                     }
@@ -5824,6 +5844,12 @@ namespace
         {
             LLFace* facep = e.mFace;
 
+            if (e.mDrawable.isNull() || e.mDrawable->getSpatialGroup() != group)
+            {
+                LLVKContract::watchStageEvent(watch_id(e), "apply_moved");
+                continue;
+            }
+
             if (e.mAllocFailed)
             {
                 if (!e.mFieldsApplied)
@@ -5831,6 +5857,7 @@ namespace
                     facep->setVertexBuffer(nullptr);
                     facep->setSize(0, 0);
                 }
+                LLVKContract::watchStageEvent(watch_id(e), "apply_allocfail");
                 continue;
             }
 
@@ -5845,6 +5872,7 @@ namespace
             {
                 LLVolumeGeometryManager::registerFace(group, facep, pass);
             }
+            LLVKContract::watchStageEvent(watch_id(e), "apply_reg", (U32)e.mPasses.size());
         }
 
         for (auto& bm : staged.mBufferMaps)
@@ -6458,10 +6486,21 @@ void LLVolumeGeometryManager::drainGeoPublishQueue()
         any = true;
 
         LLSpatialGroup* group = job->mGroup.get();
+        const bool stale_gen = group != nullptr && job->mGen != group->mVkGeoGen;
         bool applied = false;
-        if (group != nullptr && !group->isDead() && !job->mFillFailed)
+        if (group != nullptr && !group->isDead() && !job->mFillFailed && !stale_gen)
         {
             applied = applyGeoStaged(group, job->mStaged);
+        }
+        else
+        {
+            const char* why = (group == nullptr || group->isDead()) ? "pub_drop_dead"
+                            : stale_gen ? "pub_stale_gen" : "fill_failed_pub";
+            for (const LLGeoFaceApply& e : job->mStaged.mFaces)
+            {
+                const LLViewerObject* vo = e.mDrawable.notNull() ? e.mDrawable->getVObj() : nullptr;
+                LLVKContract::watchStageEvent(vo != nullptr ? vo->getLocalID() : 0, why);
+            }
         }
 
         if (applied)
@@ -6477,7 +6516,7 @@ void LLVolumeGeometryManager::drainGeoPublishQueue()
             group->mVkGeoInflight = false;
             if (!group->isDead())
             {
-                if (!applied || job->mStaged.mHadFailedFace)
+                if (!stale_gen && (!applied || job->mStaged.mHadFailedFace))
                 {
                     group->setState(LLSpatialGroup::GEOM_DIRTY);
                 }
@@ -6534,6 +6573,19 @@ void LLVolumeGeometryManager::registerFace(LLSpatialGroup* group, LLFace* facep,
              (RlvActions::canEdit(pObj)) ) ) )
 // [/RVLa:KB]
     {
+        LLVKContract::watchStageEvent(pObj->getLocalID(), "reg_hidden");
+        return;
+    }
+
+    if (facep->getVertexBuffer() == nullptr)
+    {
+        LLVKContract::watchStageEvent(pObj->getLocalID(), "reg_nullvb");
+        static std::atomic<U32> s_null_vb_faces{0};
+        const U32 n = ++s_null_vb_faces;
+        if ((n & (n - 1)) == 0)
+        {
+            LL_WARNS("Vulkan") << "registerFace with null vertex buffer skipped n=" << n << LL_ENDL;
+        }
         return;
     }
 
@@ -6897,7 +6949,7 @@ void LLVolumeGeometryManager::rebuildGeom(LLSpatialGroup* group)
         return;
     }
 
-    if (group->mVkGeoInflight)
+    if (group->mVkGeoInflight && !group->mVkForceInlineRebuild)
     {
         return;
     }
@@ -6906,6 +6958,7 @@ void LLVolumeGeometryManager::rebuildGeom(LLSpatialGroup* group)
         && group->hasState(LLSpatialGroup::GEOM_DIRTY | LLSpatialGroup::ALPHA_DIRTY)
         && !group->isHUDGroup()
         && !group->mDrawMap.empty()
+        && !group->mVkForceInlineRebuild
         && LLVKLoader::gVkGeoInflightBytes.load() > GEO_INFLIGHT_BYTE_CAP)
     {
         ++LLVKLoader::gVkPerf.geo_defer;
@@ -7491,6 +7544,7 @@ void LLVolumeGeometryManager::rebuildGeom(LLSpatialGroup* group)
 
     if (staged.mInline || staged.mFills.empty())
     {
+        ++group->mVkGeoGen;
         applyGeoStaged(group, staged);
         group->mVkForceInlineRebuild = false;
         ++LLVKLoader::gVkPerf.geo_inl;
@@ -7500,6 +7554,7 @@ void LLVolumeGeometryManager::rebuildGeom(LLSpatialGroup* group)
     startGeoWorker();
     if (!sGeoWorkerRunning)
     {
+        ++group->mVkGeoGen;
         applyGeoStaged(group, staged);
         ++LLVKLoader::gVkPerf.geo_inl;
         return;
@@ -7509,6 +7564,7 @@ void LLVolumeGeometryManager::rebuildGeom(LLSpatialGroup* group)
     job->mGroup = group;
     job->mStaged = std::move(staged);
     job->mBytes = geometryBytes;
+    job->mGen = group->mVkGeoGen;
 
     {
         std::unordered_set<LLVolume*> seen;
@@ -7947,10 +8003,14 @@ U32 LLVolumeGeometryManager::genDrawInfo(LLSpatialGroup* group, U32 mask, LLFace
 
             if (buffer.isNull())
             {
+                LLVKContract::watchStageEvent(facep->getViewerObject() != nullptr
+                                              ? facep->getViewerObject()->getLocalID() : 0,
+                                              "alloc_null");
                 // Bulk allocation failed
                 if (apply != nullptr)
                 {
                     apply->mAllocFailed = true;
+                    staged->mHadFailedFace = true;
                     if (fill_inline)
                     {
                         facep->setVertexBuffer(buffer);
@@ -8021,6 +8081,7 @@ U32 LLVolumeGeometryManager::genDrawInfo(LLSpatialGroup* group, U32 mask, LLFace
                             {
                                 LL_WARNS() << "Failed to get geometry for face!" << LL_ENDL;
                             }
+                            LLVKContract::watchStageEvent(vobj->getLocalID(), "inline");
                         }
                     }
                     else
@@ -8034,6 +8095,7 @@ U32 LLVolumeGeometryManager::genDrawInfo(LLSpatialGroup* group, U32 mask, LLFace
                         {
                             staged->mFills.pop_back();
                             staged->mDefer = true;
+                            LLVKContract::watchStageEvent(vobj->getLocalID(), "defer");
                         }
                         else if (built == LLFace::GEO_FILL_FAIL)
                         {
@@ -8043,6 +8105,7 @@ U32 LLVolumeGeometryManager::genDrawInfo(LLSpatialGroup* group, U32 mask, LLFace
                                 apply->mAllocFailed = true;
                             }
                             staged->mHadFailedFace = true;
+                            LLVKContract::watchStageEvent(vobj->getLocalID(), "fill_fail");
                             LL_WARNS() << "Failed to get geometry for face!" << LL_ENDL;
                         }
                         else if (built == LLFace::GEO_FILL_SKIP)
@@ -8055,6 +8118,11 @@ U32 LLVolumeGeometryManager::genDrawInfo(LLSpatialGroup* group, U32 mask, LLFace
                                 apply = nullptr;
                             }
                             skip_face = true;
+                            LLVKContract::watchStageEvent(vobj->getLocalID(), "skip");
+                        }
+                        else
+                        {
+                            LLVKContract::watchStageEvent(vobj->getLocalID(), "staged");
                         }
                     }
 

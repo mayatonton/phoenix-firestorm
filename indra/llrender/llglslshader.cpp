@@ -2154,6 +2154,7 @@ void LLGLSLShader::bind()
                 {
                     LLVKLoader::bindGraphicsPipelineOnce(cmd, pipeline);
                 }
+                vkReassertFragPC(cmd);
             }
         }
 
@@ -2563,15 +2564,55 @@ bool LLGLSLShader::hasReflectedUniform(S32 reserved_enum) const
 
 void LLGLSLShader::pushGaussianFragPC(F32 resScale, F32 dirX, F32 dirY)
 {
+    const F32 gaussian_pc[4] = { resScale, 0.f, dirX, dirY };
+    vkPushFragPC(LLVkUboReg::PC_OFF_GAUSSIAN_RES_SCALE, sizeof(gaussian_pc), gaussian_pc);
+}
+
+void LLGLSLShader::vkPushFragPC(U32 offset, U32 size, const void* data)
+{
+    if (offset < VK_FRAG_PC_BASE || (offset & 3u) != 0 || (size & 3u) != 0 || size == 0
+        || (offset - VK_FRAG_PC_BASE) + size > VK_FRAG_PC_DWORDS * 4u)
+    {
+        return;
+    }
+    const U32 d0 = (offset - VK_FRAG_PC_BASE) / 4u;
+    const U32 dn = size / 4u;
+    std::memcpy(&mVkFragPC[d0], data, size);
+    for (U32 i = 0; i < dn; ++i)
+    {
+        mVkFragPCMask |= (1u << (d0 + i));
+    }
     if (LLVKLoader::isVulkanInitialized() && mVkPipelineLayout != VK_NULL_HANDLE)
     {
         VkCommandBuffer cmd = LLVKLoader::getCurrentCommandBuffer();
         if (cmd != VK_NULL_HANDLE)
         {
-            const F32 gaussian_pc[4] = { resScale, 0.f, dirX, dirY };
-            vkCmdPushConstants(cmd, mVkPipelineLayout, VK_SHADER_STAGE_FRAGMENT_BIT,
-                               LLVkUboReg::PC_OFF_GAUSSIAN_RES_SCALE, sizeof(gaussian_pc), gaussian_pc);
+            vkCmdPushConstants(cmd, mVkPipelineLayout, VK_SHADER_STAGE_FRAGMENT_BIT, offset, size, data);
         }
+    }
+}
+
+void LLGLSLShader::vkReassertFragPC(VkCommandBuffer cmd)
+{
+    if (mVkFragPCMask == 0 || mVkPipelineLayout == VK_NULL_HANDLE)
+    {
+        return;
+    }
+    for (U32 d = 0; d < VK_FRAG_PC_DWORDS; )
+    {
+        if (((mVkFragPCMask >> d) & 1u) == 0)
+        {
+            ++d;
+            continue;
+        }
+        U32 dn = 0;
+        while (d + dn < VK_FRAG_PC_DWORDS && ((mVkFragPCMask >> (d + dn)) & 1u) != 0)
+        {
+            ++dn;
+        }
+        vkCmdPushConstants(cmd, mVkPipelineLayout, VK_SHADER_STAGE_FRAGMENT_BIT,
+                           VK_FRAG_PC_BASE + d * 4u, dn * 4u, &mVkFragPC[d]);
+        d += dn;
     }
 }
 
@@ -2580,16 +2621,8 @@ void LLGLSLShader::setMinimumAlpha(F32 minimum)
     LL_PROFILE_ZONE_SCOPED_CATEGORY_SHADER;
     gGL.flush();
 
-    if (LLVKLoader::isVulkanInitialized() && mVkPipelineLayout != VK_NULL_HANDLE)
-    {
-        VkCommandBuffer cmd = LLVKLoader::getCurrentCommandBuffer();
-        if (cmd != VK_NULL_HANDLE)
-        {
-            const F32 minimum_alpha_pc = minimum;
-            vkCmdPushConstants(cmd, mVkPipelineLayout, VK_SHADER_STAGE_FRAGMENT_BIT,
-                               LLVkUboReg::PC_OFF_MINIMUM_ALPHA, sizeof(F32), &minimum_alpha_pc);
-        }
-    }
+    const F32 minimum_alpha_pc = minimum;
+    vkPushFragPC(LLVkUboReg::PC_OFF_MINIMUM_ALPHA, sizeof(F32), &minimum_alpha_pc);
 
     if (LLVKLoader::isVulkanInitialized() && mWritePerProgramUBOMinimumAlpha
         && mVkPerProgramUBO != VK_NULL_HANDLE && mVkActivePerProgramUBOMapped != nullptr)
@@ -2605,16 +2638,8 @@ void LLGLSLShader::setMinimumAlpha(F32 minimum)
 
 void LLGLSLShader::setObjectAlpha(F32 object_alpha)
 {
-    if (LLVKLoader::isVulkanInitialized() && mVkPipelineLayout != VK_NULL_HANDLE)
-    {
-        VkCommandBuffer cmd = LLVKLoader::getCurrentCommandBuffer();
-        if (cmd != VK_NULL_HANDLE)
-        {
-            const F32 object_alpha_pc = object_alpha;
-            vkCmdPushConstants(cmd, mVkPipelineLayout, VK_SHADER_STAGE_FRAGMENT_BIT,
-                               LLVkUboReg::PC_OFF_OBJECT_ALPHA, sizeof(F32), &object_alpha_pc);
-        }
-    }
+    const F32 object_alpha_pc = object_alpha;
+    vkPushFragPC(LLVkUboReg::PC_OFF_OBJECT_ALPHA, sizeof(F32), &object_alpha_pc);
 }
 
 LLUUID LLGLSLShader::hash()
@@ -3158,6 +3183,11 @@ void LLGLSLShader::vkRefreshDynamicOffsetsForDraw()
     sCurPerCallVkOffsetsDirty = false;
 }
 
+static thread_local LLGLSLShader* tPPVerifyShader = nullptr;
+static thread_local bool          tPPVerifyValid  = false;
+static thread_local U64           tPPVerifyHash   = 0;
+static thread_local U32           tPPVerifyOffset = 0;
+
 bool LLGLSLShader::vkResolvePerProgramForDraw(VkBuffer& out_buf, U32& out_offset)
 {
     out_buf    = VK_NULL_HANDLE;
@@ -3170,6 +3200,9 @@ bool LLGLSLShader::vkResolvePerProgramForDraw(VkBuffer& out_buf, U32& out_offset
         || mVkPerProgramShadow.size() < mVkPerProgramUBOSize)
     {
         out_buf = mVkActivePerProgramUBO;
+        tPPVerifyShader = this;
+        tPPVerifyValid  = false;
+        tPPVerifyOffset = 0;
         return out_buf != VK_NULL_HANDLE;
     }
     VkBuffer arena = VK_NULL_HANDLE;
@@ -3180,14 +3213,96 @@ bool LLGLSLShader::vkResolvePerProgramForDraw(VkBuffer& out_buf, U32& out_offset
         std::memcpy(aptr, mVkPerProgramShadow.data(), mVkPerProgramUBOSize);
         out_buf    = arena;
         out_offset = aoff;
+        tPPVerifyShader = this;
+        tPPVerifyValid  = LLVKContract::verboseEnabled();
+        if (tPPVerifyValid)
+        {
+            tPPVerifyHash = LLVKLoader::sharedUBOContentHash(mVkPerProgramShadow.data(), mVkPerProgramUBOSize);
+        }
+        tPPVerifyOffset = aoff;
         return true;
     }
+    LLVKContract::causeNamed(LLVKContract::C_PP_FALLBACK_LOSSY, mName);
     if (mVkPerProgramUBOBaseMapped != nullptr)
     {
         std::memcpy(mVkPerProgramUBOBaseMapped, mVkPerProgramShadow.data(), mVkPerProgramUBOSize);
     }
     out_buf = mVkPerProgramUBO;
+    tPPVerifyShader = this;
+    tPPVerifyValid  = false;
+    tPPVerifyOffset = 0;
     return true;
+}
+
+void LLGLSLShader::vkVerifyPerCallBindingsAtBind(const U32* offsets, U32 dyn_count)
+{
+    if (!LLVKContract::verboseEnabled())
+    {
+        return;
+    }
+    LLGLSLShader* cur = sCurBoundShaderPtr;
+    if (cur == nullptr || offsets == nullptr || dyn_count == 0)
+    {
+        return;
+    }
+    LLVKContract::vfyTick(LLVKContract::VFY_BIND);
+    U32 idx = 0;
+    for (U32 db : cur->mVkDynamicBindings)
+    {
+        if (idx >= dyn_count || idx >= MAX_VK_DYNAMIC_BINDINGS)
+        {
+            break;
+        }
+        if (db == 0 && cur->mVkPerProgramUBOBinding == 0)
+        {
+            if (cur->mVkPerProgramUBO != VK_NULL_HANDLE && cur->mVkPerProgramUBOSize > 0)
+            {
+                if (tPPVerifyShader != cur)
+                {
+                    LLVKContract::causeNamed(LLVKContract::C_UBO_OFFSET_STALE,
+                                             cur->mName + "|pp_foreign");
+                }
+                else if (tPPVerifyValid)
+                {
+                    if (offsets[idx] != tPPVerifyOffset)
+                    {
+                        LLVKContract::causeNamed(LLVKContract::C_UBO_OFFSET_STALE,
+                                                 cur->mName + "|pp");
+                    }
+                    else if (cur->mVkPerProgramShadow.size() >= cur->mVkPerProgramUBOSize
+                             && LLVKLoader::sharedUBOContentHash(cur->mVkPerProgramShadow.data(),
+                                                                 cur->mVkPerProgramUBOSize) != tPPVerifyHash)
+                    {
+                        LLVKContract::causeNamed(LLVKContract::C_UBO_CONTENT_STALE,
+                                                 cur->mName + "|pp");
+                    }
+                }
+            }
+        }
+        else
+        {
+            const void* shadow  = nullptr;
+            U32         size    = 0;
+            U32         off     = 0;
+            bool        current = false;
+            U64         up_hash = 0;
+            if (LLVKLoader::peekSharedDynamicUBO(db, shadow, size, off, current, up_hash))
+            {
+                if (!current || offsets[idx] != off)
+                {
+                    LLVKContract::causeNamed(LLVKContract::C_UBO_OFFSET_STALE,
+                                             cur->mName + "|b" + std::to_string(db));
+                }
+                else if (shadow != nullptr && size > 0
+                         && LLVKLoader::sharedUBOContentHash(shadow, size) != up_hash)
+                {
+                    LLVKContract::causeNamed(LLVKContract::C_UBO_CONTENT_STALE,
+                                             cur->mName + "|b" + std::to_string(db));
+                }
+            }
+        }
+        ++idx;
+    }
 }
 
 VkDeviceSize LLGLSLShader::sharedUBOBindingSize(U32 binding) const
@@ -3464,7 +3579,11 @@ void LLGLSLShader::populateAndBindUniversalDescriptorSet(bool preserve_drawdata)
         {
             slots[0] = LLImageGL::vkHeapSlotOrDefault(gGL.getTexUnit(0)->mCurrImageGL);
         }
-        LLVKLoader::setCurrentDrawDataID(LLVKLoader::drawDataWriteScratch(slots));
+        {
+            const U32 scratch_id = LLVKLoader::drawDataWriteScratch(slots);
+            LLVKLoader::setCurrentDrawDataID(scratch_id);
+            LLVKContract::stashDrawDataID(scratch_id);
+        }
     }
 
     VkImageView fallback_view = LLVKLoader::getDefaultFallbackVkImageView();
@@ -3555,12 +3674,18 @@ void LLGLSLShader::populateAndBindUniversalDescriptorSet(bool preserve_drawdata)
             imm_max_unit = resolved_unit;
         }
 
+        const char* vkc_fb_reason = nullptr;
         if (view != VK_NULL_HANDLE && LLVKLoader::isImageViewActivePassAttachment(view))
         {
             view = VK_NULL_HANDLE;
+            vkc_fb_reason = "attachment";
         }
 
         bool used_fallback = (view == VK_NULL_HANDLE);
+        if (used_fallback && vkc_fb_reason == nullptr)
+        {
+            vkc_fb_reason = "no_view";
+        }
         if (!used_fallback)
         {
             if (l3_hit)
@@ -3568,6 +3693,7 @@ void LLGLSLShader::populateAndBindUniversalDescriptorSet(bool preserve_drawdata)
                 if (cur->vkResolveEnumBoundDim(enum_value) != cur->mVkBindingSamplerDim[N])
                 {
                     used_fallback = true;
+                    vkc_fb_reason = "dim_l3";
                 }
             }
             else if (resolved_unit >= 0)
@@ -3576,6 +3702,7 @@ void LLGLSLShader::populateAndBindUniversalDescriptorSet(bool preserve_drawdata)
                 if (dim_tu != nullptr && dim_tu->getLiveVkImageViewDim() != cur->mVkBindingSamplerDim[N])
                 {
                     used_fallback = true;
+                    vkc_fb_reason = "dim_unit";
                 }
             }
         }
@@ -3584,6 +3711,7 @@ void LLGLSLShader::populateAndBindUniversalDescriptorSet(bool preserve_drawdata)
             LLVKContract::note(resolved_unit == 0 ? LLVKContract::C_FB_VIEW_DIFFUSE
                                                   : LLVKContract::C_FB_VIEW_AUX,
                                cur->mName);
+            LLVKContract::watchFbProbe(resolved_unit == 0, vkc_fb_reason);
             const U8 sdim = cur->mVkBindingSamplerDim[N];
             view = (sdim == VKSD_CUBE_ARRAY) ? LLVKLoader::getDefaultFallbackCubeArrayVkImageView()
                  : (sdim == VKSD_CUBE)       ? LLVKLoader::getDefaultFallbackCubeVkImageView()

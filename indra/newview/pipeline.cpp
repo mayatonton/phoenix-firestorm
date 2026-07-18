@@ -50,6 +50,8 @@
 #include "llglheaders.h"
 #include "llrender.h"
 #include "llvkloader.h"
+#include "llvkcontract.h"
+#include <fstream>
 #include "llvkuboreg.h"
 #include "llstartup.h"
 #include "llwindow.h"   // swapBuffers()
@@ -4545,6 +4547,204 @@ void renderSoundHighlights(LLDrawable *drawablep)
     }
 }
 
+namespace LLVKListOracle
+{
+    struct Entry
+    {
+        LLVector4a center;
+        LLVector4a size;
+    };
+    static std::unordered_map<U32, Entry> sPrev;
+    static std::unordered_map<U32, Entry> sCur;
+
+    static void record(U32 objid, const LLVector4a* bounds)
+    {
+        if (objid == 0)
+        {
+            return;
+        }
+        Entry e;
+        e.center = bounds[0];
+        e.size   = bounds[1];
+        sCur.emplace(objid, e);
+    }
+}
+
+namespace LLVKUuidWatch
+{
+    struct Member
+    {
+        LLUUID uuid;
+        U32 localid = 0;
+        U32 absent = 0;
+        bool haveBounds = false;
+        S32 prevVis = -2;
+        S32 prevOccl = -2;
+        S32 prevDirty = -2;
+        S32 prevInflight = -2;
+        S32 prevRecs = -2;
+        S32 prevOwn = -2;
+        LL_ALIGN_16(LLVector4a center);
+        LL_ALIGN_16(LLVector4a size);
+    };
+    static std::vector<LLUUID> sPending;
+    static std::vector<Member> sMembers;
+    static bool sLoaded = false;
+
+    static void loadOnce()
+    {
+        if (sLoaded)
+        {
+            return;
+        }
+        sLoaded = true;
+        const char* path = getenv("AYASTORM_VKC_UUIDS");
+        if (path == nullptr)
+        {
+            return;
+        }
+        std::ifstream in(path);
+        std::string line;
+        U32 n = 0;
+        while (std::getline(in, line))
+        {
+            LLStringUtil::trim(line);
+            LLUUID id;
+            if (line.size() >= 36 && LLUUID::parseUUID(line, &id) && id.notNull())
+            {
+                sPending.push_back(id);
+                ++n;
+            }
+        }
+        LL_WARNS("VKContract") << "VKC-UUID loaded " << n << " watch uuids from " << path << LL_ENDL;
+    }
+
+    static void tick(LLCamera& camera, U32 frame)
+    {
+        loadOnce();
+        if (!sPending.empty())
+        {
+            size_t w = 0;
+            for (size_t r = 0; r < sPending.size(); ++r)
+            {
+                LLViewerObject* o = gObjectList.findObject(sPending[r]);
+                if (o != nullptr && o->getLocalID() != 0)
+                {
+                    Member m;
+                    m.uuid    = sPending[r];
+                    m.localid = o->getLocalID();
+                    sMembers.push_back(m);
+                    LLVKContract::watchAddLocal(m.localid);
+                    LL_WARNS("VKContract") << "VKC-UUID resolved uuid=" << m.uuid
+                                           << " local=" << m.localid << LL_ENDL;
+                }
+                else
+                {
+                    if (w != r)
+                    {
+                        sPending[w] = sPending[r];
+                    }
+                    ++w;
+                }
+            }
+            sPending.resize(w);
+        }
+        for (Member& m : sMembers)
+        {
+            S32 vis = -1, occl = -1, dirty = -1, inflight = -1, recs = -1, own = -1;
+            LLViewerObject* o = gObjectList.findObject(m.uuid);
+            if (o != nullptr && o->mDrawable.notNull())
+            {
+                LLSpatialGroup* g = o->mDrawable->getSpatialGroup();
+                if (g != nullptr)
+                {
+                    vis      = g->isVisible() ? 1 : 0;
+                    occl     = g->isOcclusionState(LLSpatialGroup::OCCLUDED) ? 1 : 0;
+                    dirty    = g->hasState(LLSpatialGroup::GEOM_DIRTY | LLSpatialGroup::ALPHA_DIRTY) ? 1 : 0;
+                    inflight = g->mVkGeoInflight ? 1 : 0;
+                    recs     = 0;
+                    own      = 0;
+                    LLDrawable* dr = o->mDrawable.get();
+                    for (LLSpatialGroup::draw_map_t::iterator j3 = g->mDrawMap.begin(); j3 != g->mDrawMap.end(); ++j3)
+                    {
+                        recs += (S32)j3->second.size();
+                        for (LLSpatialGroup::drawmap_elem_t::iterator k3 = j3->second.begin(); k3 != j3->second.end(); ++k3)
+                        {
+                            if (k3->notNull() && (*k3)->mSrcDrawable.get() == dr)
+                            {
+                                ++own;
+                            }
+                        }
+                    }
+                }
+            }
+            auto it = LLVKListOracle::sCur.find(m.localid);
+            if (it != LLVKListOracle::sCur.end())
+            {
+                if (m.absent >= 2)
+                {
+                    LL_WARNS("VKContract") << "VKC-UUID resumed local=" << m.localid
+                                           << " gap=" << m.absent << " frame=" << frame << LL_ENDL;
+                }
+                m.absent     = 0;
+                m.haveBounds = true;
+                m.center     = it->second.center;
+                m.size       = it->second.size;
+            }
+            else if (m.haveBounds && camera.AABBInFrustum(m.center, m.size) > 0)
+            {
+                ++m.absent;
+                LLVKContract::cause(LLVKContract::C_UUID_ABSENT);
+                if (m.absent == 1 || m.absent == 8 || m.absent == 32 || m.absent == 128)
+                {
+                    U32 esite = 0, erecs = 0;
+                    U64 eage = 0, sage = 0;
+                    const char* swhat = nullptr;
+                    U32 sn = 0;
+                    const bool he = LLVKContract::watchLastEvict(m.localid, esite, erecs, eage);
+                    const bool hs = LLVKContract::watchLastStage(m.localid, swhat, sn, sage);
+                    LL_WARNS("VKContract") << "VKC-UUID absent local=" << m.localid
+                                           << " streak=" << m.absent << " frame=" << frame
+                                           << " vis=" << m.prevVis << " occl=" << m.prevOccl
+                                           << " dirty=" << m.prevDirty << " inflight=" << m.prevInflight
+                                           << " recs=" << m.prevRecs
+                                           << " own=" << m.prevOwn
+                                           << " evict=" << (he ? LLVKContract::sentinelSiteName(esite) : "-")
+                                           << "/" << erecs << "@-" << eage
+                                           << " stage=" << (hs && swhat != nullptr ? swhat : "-")
+                                           << "(" << sn << ")@-" << sage << LL_ENDL;
+                }
+            }
+            m.prevVis      = vis;
+            m.prevOccl     = occl;
+            m.prevDirty    = dirty;
+            m.prevInflight = inflight;
+            m.prevRecs     = recs;
+            m.prevOwn      = own;
+        }
+    }
+}
+
+namespace LLVKListOracle
+{
+    static void rotateAndReport(LLCamera& camera, U32 frame)
+    {
+        LLVKUuidWatch::tick(camera, frame);
+        for (auto& p : sPrev)
+        {
+            if (sCur.find(p.first) == sCur.end())
+            {
+                if (camera.AABBInFrustum(p.second.center, p.second.size) > 0)
+                {
+                    LLVKContract::cause(LLVKContract::C_LIST_DROP_INFRUSTUM);
+                }
+            }
+        }
+        sPrev.swap(sCur);
+        sCur.clear();
+    }
+}
+
 void LLPipeline::postSort(LLCamera &camera)
 {
     LL_PROFILE_ZONE_SCOPED_CATEGORY_PIPELINE;
@@ -4581,6 +4781,14 @@ void LLPipeline::postSort(LLCamera &camera)
     // build render map
     {
         LL_PROFILE_ZONE_NAMED_CATEGORY_PIPELINE("build render map");
+    const bool vkc_list_watch = LLVKContract::verboseEnabled()
+        && LLViewerCamera::getCurCameraID() == LLViewerCamera::CAMERA_WORLD
+        && !gCubeSnapshot && !isFrameShadowPass() && !isFrameReflectionPass()
+        && !hasRenderType(LLPipeline::RENDER_TYPE_HUD);
+    if (vkc_list_watch)
+    {
+        LLVKListOracle::rotateAndReport(camera, (U32)gFrameCount);
+    }
     for (LLCullResult::sg_iterator i = getFrameCull()->beginVisibleGroups(); i != getFrameCull()->endVisibleGroups(); ++i)
     {
         LLSpatialGroup *group = *i;
@@ -4594,6 +4802,31 @@ void LLPipeline::postSort(LLCamera &camera)
             (RenderAutoHideSurfaceAreaLimit > 0.f &&
              group->mSurfaceArea > RenderAutoHideSurfaceAreaLimit * llmax(group->mObjectBoxSize, 10.f)))
         {
+            if (vkc_list_watch && group->mVkLastFireFrame == gFrameCount - 1
+                && camera.AABBInFrustum(group->getBounds()[0], group->getBounds()[1]) > 0)
+            {
+                U32 sample_obj = 0;
+                U32 recs = 0;
+                for (LLSpatialGroup::draw_map_t::iterator j2 = group->mDrawMap.begin(); j2 != group->mDrawMap.end(); ++j2)
+                {
+                    for (LLSpatialGroup::drawmap_elem_t::iterator k2 = j2->second.begin(); k2 != j2->second.end(); ++k2)
+                    {
+                        if (k2->notNull())
+                        {
+                            ++recs;
+                            if (sample_obj == 0)
+                            {
+                                sample_obj = (*k2)->mFSPickerLocalID;
+                            }
+                        }
+                    }
+                }
+                std::ostringstream os;
+                os << "obj=" << sample_obj << " recs=" << recs
+                   << " occl=" << ((sUseOcclusion && group->isOcclusionState(LLSpatialGroup::OCCLUDED)) ? 1 : 0)
+                   << " frame=" << gFrameCount;
+                LLVKContract::noteDetail(LLVKContract::C_LIST_OCCL_DROP, "occl", os.str());
+            }
             continue;
         }
 
@@ -4622,6 +4855,10 @@ void LLPipeline::postSort(LLCamera &camera)
                 LLDrawInfo *info = *k;
 
                 getFrameCull()->pushDrawInfo(j->first, info);
+                if (vkc_list_watch)
+                {
+                    LLVKListOracle::record(info->mFSPickerLocalID, group->getBounds());
+                }
                 if (!isFrameShadowPass() && !isFrameReflectionPass() && !gCubeSnapshot)
                 {
                     addTrianglesDrawn(info->mCount);

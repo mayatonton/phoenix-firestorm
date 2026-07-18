@@ -10,6 +10,7 @@
 #include <set>
 #include <sstream>
 #include <unordered_map>
+#include <unordered_set>
 
 namespace LLVKContract
 {
@@ -48,7 +49,26 @@ const char* CAUSE_NAMES[CAUSE_COUNT] =
     "stale_unrefreshed",
     "geoab_stage_skip",
     "apply_unrendered",
-    "authored_rebind"
+    "authored_rebind",
+    "ubo_slice_fail",
+    "pp_fallback_lossy",
+    "ubo_offset_stale",
+    "ubo_content_stale",
+    "memo_cross_cmd",
+    "drawdata_scratch_wrap",
+    "drawdata_exhausted",
+    "drawdata_race",
+    "mega_alloc_race",
+    "alloc_noncoherent",
+    "mv_stale_value",
+    "drawdata_id_mismatch",
+    "list_drop_infrustum",
+    "list_occl_drop",
+    "list_resume",
+    "list_absent_long",
+    "uuid_absent",
+    "uuid_fb_diffuse",
+    "uuid_fb_aux"
 };
 
 const char* SITE_NAMES[SITE_COUNT] =
@@ -105,6 +125,41 @@ std::atomic<U64> sStaleGapWin[4] = {};
 
 std::string (*sDescribe)(const void*) = nullptr;
 U64 (*sKey)(const void*) = nullptr;
+U32 (*sObjIdFn)(const void*) = nullptr;
+U32 (*sPassBucketFn)() = nullptr;
+
+std::atomic<U32> sWatchDynamicId{0};
+
+bool watchPickMode()
+{
+    static const bool s_pick = []() -> bool {
+        const char* e = getenv("AYASTORM_VKC_OBJ");
+        return e != nullptr && strcmp(e, "pick") == 0;
+    }();
+    return s_pick;
+}
+
+U32 watchObjId()
+{
+    static const U32 s_id = []() -> U32 {
+        const char* e = getenv("AYASTORM_VKC_OBJ");
+        return e != nullptr ? (U32)strtoul(e, nullptr, 10) : 0u;
+    }();
+    if (s_id != 0)
+    {
+        return s_id;
+    }
+    return watchPickMode() ? sWatchDynamicId.load(std::memory_order_relaxed) : 0u;
+}
+
+std::atomic<U64> sWatchFrameFired{0};
+std::atomic<U64> sWatchFrameCam{0};
+U64 sWatchPrevCam = 0;
+U64 sWatchFrames  = 0;
+U64 sWatchZeroCam = 0;
+U64 sWatchCamMin  = ~0ull;
+U64 sWatchCamMax  = 0;
+U64 sWatchTot     = 0;
 
 thread_local const void* tCurDrawInfo = nullptr;
 thread_local const char* tCurTag      = nullptr;
@@ -185,6 +240,170 @@ void setResolvers(std::string (*describe)(const void*), U64 (*key)(const void*))
     sKey      = key;
 }
 
+void setObjIdResolver(U32 (*fn)(const void*))
+{
+    sObjIdFn = fn;
+}
+
+void setPassBucketResolver(U32 (*fn)())
+{
+    sPassBucketFn = fn;
+}
+
+bool watchPickModeEnabled()
+{
+    return watchPickMode();
+}
+
+namespace
+{
+std::mutex sWatchLocalsMutex;
+std::unordered_set<U32> sWatchLocals;
+std::atomic<bool> sWatchLocalsAny{false};
+bool perShaderEscalate(ECause c, const std::string& shader_name, U64& out_count);
+
+struct WatchStageEv
+{
+    const char* what = nullptr;
+    U32 n = 0;
+    U64 frame = 0;
+};
+struct WatchEvictEv
+{
+    U32 site = 0;
+    U32 records = 0;
+    U64 frame = 0;
+};
+std::unordered_map<U32, WatchStageEv> sWatchStage;
+std::unordered_map<U32, WatchEvictEv> sWatchEvict;
+
+bool watchContainsLocked(U32 localid)
+{
+    return sWatchLocals.find(localid) != sWatchLocals.end();
+}
+}
+
+void watchAddLocal(U32 localid)
+{
+    if (localid == 0)
+    {
+        return;
+    }
+    std::lock_guard<std::mutex> lock(sWatchLocalsMutex);
+    sWatchLocals.insert(localid);
+    sWatchLocalsAny.store(true, std::memory_order_relaxed);
+}
+
+void watchFbProbe(bool diffuse, const char* reason)
+{
+    if (!sWatchLocalsAny.load(std::memory_order_relaxed)
+        || tCurDrawInfo == nullptr || sObjIdFn == nullptr)
+    {
+        return;
+    }
+    const U32 id = sObjIdFn(tCurDrawInfo);
+    {
+        std::lock_guard<std::mutex> lock(sWatchLocalsMutex);
+        if (sWatchLocals.find(id) == sWatchLocals.end())
+        {
+            return;
+        }
+    }
+    const ECause c = diffuse ? C_UUID_FB_DIFFUSE : C_UUID_FB_AUX;
+    sCauseWin[c].fetch_add(1, std::memory_order_relaxed);
+    sCauseTot[c].fetch_add(1, std::memory_order_relaxed);
+    if (!verboseEnabled())
+    {
+        return;
+    }
+    U64 sn = 0;
+    if (perShaderEscalate(c, std::to_string(id) + '|' + (reason != nullptr ? reason : "?"), sn))
+    {
+        LL_WARNS("VKContract") << "VKC-UUID fb " << (diffuse ? "diffuse" : "aux")
+                               << " obj=" << id
+                               << " reason=" << (reason != nullptr ? reason : "?")
+                               << " sn=" << sn << provenance() << LL_ENDL;
+    }
+}
+
+void watchStageEvent(U32 localid, const char* what, U32 n)
+{
+    if (localid == 0 || what == nullptr
+        || !sWatchLocalsAny.load(std::memory_order_relaxed))
+    {
+        return;
+    }
+    std::lock_guard<std::mutex> lock(sWatchLocalsMutex);
+    if (!watchContainsLocked(localid))
+    {
+        return;
+    }
+    WatchStageEv& ev = sWatchStage[localid];
+    ev.what  = what;
+    ev.n     = n;
+    ev.frame = sFrame.load(std::memory_order_relaxed);
+}
+
+bool watchLastStage(U32 localid, const char*& what, U32& n, U64& age)
+{
+    std::lock_guard<std::mutex> lock(sWatchLocalsMutex);
+    auto it = sWatchStage.find(localid);
+    if (it == sWatchStage.end())
+    {
+        return false;
+    }
+    what = it->second.what;
+    n    = it->second.n;
+    age  = sFrame.load(std::memory_order_relaxed) - it->second.frame;
+    return true;
+}
+
+bool watchLastEvict(U32 localid, U32& site, U32& records, U64& age)
+{
+    std::lock_guard<std::mutex> lock(sWatchLocalsMutex);
+    auto it = sWatchEvict.find(localid);
+    if (it == sWatchEvict.end())
+    {
+        return false;
+    }
+    site    = it->second.site;
+    records = it->second.records;
+    age     = sFrame.load(std::memory_order_relaxed) - it->second.frame;
+    return true;
+}
+
+const char* sentinelSiteName(U32 site)
+{
+    switch (site)
+    {
+        case SITE_NONE:                  return "none";
+        case SITE_STRIP_DESTROY:         return "strip_destroy";
+        case SITE_STRIP_CLEANUP:         return "strip_cleanup";
+        case SITE_STRIP_DELETE_FACES:    return "strip_delete_faces";
+        case SITE_CLEAR_GROUP_DTOR:      return "group_dtor";
+        case SITE_CLEAR_REBUILD_GENERIC: return "rebuild_generic";
+        case SITE_CLEAR_LAST_ELEMENT:    return "last_element";
+        case SITE_CLEAR_ZOMBIE:          return "zombie";
+        case SITE_CLEAR_DESTROY_GL:      return "destroy_gl";
+        case SITE_CLEAR_APPLY:           return "apply";
+        default:                         return "?";
+    }
+}
+
+void watchPickCandidate(U32 localid)
+{
+    if (!watchPickMode() || localid == 0)
+    {
+        return;
+    }
+    const U32 prev = sWatchDynamicId.exchange(localid, std::memory_order_relaxed);
+    if (prev != localid)
+    {
+        LL_WARNS("VKContract") << "VKC-OBJ watch locked obj=" << localid
+                               << (prev != 0 ? " (switched)" : "") << LL_ENDL;
+    }
+}
+
 void drawScopeBegin(const void* draw_info, const char* tag)
 {
     tCurDrawInfo = draw_info;
@@ -200,6 +419,11 @@ void drawScopeEnd()
 const void* currentDrawInfo()
 {
     return tCurDrawInfo;
+}
+
+const char* currentDrawTag()
+{
+    return tCurTag;
 }
 
 void resolveBegin()
@@ -297,6 +521,17 @@ void sentinelEvict(U32 site, const void* drawable, U32 obj_local_id, U32 record_
     {
         return;
     }
+    if (obj_local_id != 0 && sWatchLocalsAny.load(std::memory_order_relaxed))
+    {
+        std::lock_guard<std::mutex> wlock(sWatchLocalsMutex);
+        if (watchContainsLocked(obj_local_id))
+        {
+            WatchEvictEv& ev = sWatchEvict[obj_local_id];
+            ev.site    = site;
+            ev.records = record_count;
+            ev.frame   = sFrame.load(std::memory_order_relaxed);
+        }
+    }
     std::lock_guard<std::mutex> lock(sSentMutex);
     if (siteTerminal(site) || drawable_dead)
     {
@@ -385,6 +620,41 @@ void staleCancel(const void* key)
     }
 }
 
+namespace
+{
+std::atomic<U64> sVfyWin[VFY_COUNT] = {};
+thread_local U32  tExpectedDrawDataID = 0;
+thread_local bool tExpectedDDValid    = false;
+}
+
+void vfyTick(U32 which)
+{
+    if (which < VFY_COUNT)
+    {
+        sVfyWin[which].fetch_add(1, std::memory_order_relaxed);
+    }
+}
+
+void stashDrawDataID(U32 id)
+{
+    tExpectedDrawDataID = id;
+    tExpectedDDValid    = true;
+}
+
+void checkDrawDataIDAtFire(U32 actual)
+{
+    if (!verboseEnabled() || !tExpectedDDValid)
+    {
+        return;
+    }
+    vfyTick(VFY_DD);
+    if (actual != tExpectedDrawDataID)
+    {
+        causeNamed(C_DRAWDATA_ID_MISMATCH,
+                   std::to_string(actual) + "!=" + std::to_string(tExpectedDrawDataID));
+    }
+}
+
 void causeNamed(ECause c, const std::string& shader_name)
 {
     if (c >= CAUSE_COUNT)
@@ -438,6 +708,17 @@ void drawSkipped(ECause fire_cause, const std::string& shader_name)
                                << " n=" << n << provenance() << LL_ENDL;
     }
 
+    {
+        const U32 wid = watchObjId();
+        if (wid != 0 && tCurDrawInfo != nullptr && sObjIdFn != nullptr
+            && sObjIdFn(tCurDrawInfo) == wid && verboseEnabled())
+        {
+            LL_WARNS("VKContract") << "VKC-OBJ skip cause=" << CAUSE_NAMES[c]
+                                   << " shader='" << shader_name << "'"
+                                   << provenance() << LL_ENDL;
+        }
+    }
+
     if (tCurDrawInfo != nullptr && sKey != nullptr)
     {
         U64 key = sKey(tCurDrawInfo);
@@ -472,6 +753,18 @@ void drawSkipped(ECause fire_cause, const std::string& shader_name)
 void drawFired()
 {
     sFireWin.fetch_add(1, std::memory_order_relaxed);
+    {
+        const U32 wid = watchObjId();
+        if (wid != 0 && tCurDrawInfo != nullptr && sObjIdFn != nullptr
+            && sObjIdFn(tCurDrawInfo) == wid)
+        {
+            sWatchFrameFired.fetch_add(1, std::memory_order_relaxed);
+            if (sPassBucketFn == nullptr || sPassBucketFn() == 0)
+            {
+                sWatchFrameCam.fetch_add(1, std::memory_order_relaxed);
+            }
+        }
+    }
     if (!sAnyWatched.load(std::memory_order_relaxed))
     {
         return;
@@ -517,6 +810,45 @@ void drawFired()
 void frameBegin()
 {
     sFrame.fetch_add(1, std::memory_order_relaxed);
+
+    {
+        const U32 wid = watchObjId();
+        if (wid != 0)
+        {
+            const U64 cam = sWatchFrameCam.exchange(0, std::memory_order_relaxed);
+            const U64 tot = sWatchFrameFired.exchange(0, std::memory_order_relaxed);
+            ++sWatchFrames;
+            sWatchTot += tot;
+            if (cam == 0)
+            {
+                ++sWatchZeroCam;
+            }
+            if (cam < sWatchCamMin)
+            {
+                sWatchCamMin = cam;
+            }
+            if (cam > sWatchCamMax)
+            {
+                sWatchCamMax = cam;
+            }
+            if (verboseEnabled())
+            {
+                if (cam == 0 && sWatchPrevCam > 0)
+                {
+                    LL_WARNS("VKContract") << "VKC-OBJ camera fire dropped obj=" << wid
+                                           << " frame=" << sFrame.load(std::memory_order_relaxed)
+                                           << " prev=" << sWatchPrevCam << LL_ENDL;
+                }
+                else if (cam > 0 && sWatchPrevCam == 0 && sWatchFrames > 1)
+                {
+                    LL_WARNS("VKContract") << "VKC-OBJ camera fire resumed obj=" << wid
+                                           << " frame=" << sFrame.load(std::memory_order_relaxed)
+                                           << " count=" << cam << LL_ENDL;
+                }
+            }
+            sWatchPrevCam = cam;
+        }
+    }
 
     if (sSentPendingCount.load(std::memory_order_relaxed) != 0)
     {
@@ -630,7 +962,14 @@ void frameBegin()
     }
     U64 skips = sSkipWin.exchange(0, std::memory_order_relaxed);
     U64 fired = sFireWin.exchange(0, std::memory_order_relaxed);
-    if (any == 0 && skips == 0)
+    U64 vfy_win[VFY_COUNT];
+    U64 vfy_any = 0;
+    for (U32 i = 0; i < VFY_COUNT; ++i)
+    {
+        vfy_win[i] = sVfyWin[i].exchange(0, std::memory_order_relaxed);
+        vfy_any += vfy_win[i];
+    }
+    if (any == 0 && skips == 0 && vfy_any == 0 && watchObjId() == 0)
     {
         return;
     }
@@ -702,6 +1041,30 @@ void frameBegin()
     {
         os << " restage{<2=" << stale_win[0] << " <8=" << stale_win[1]
            << " <32=" << stale_win[2] << " 32+=" << stale_win[3] << '}';
+    }
+
+    if (vfy_any != 0)
+    {
+        os << " vfy{bind=" << vfy_win[VFY_BIND]
+           << " mv=" << vfy_win[VFY_MV]
+           << " dd=" << vfy_win[VFY_DD] << '}';
+    }
+
+    {
+        const U32 wid = watchObjId();
+        if (wid != 0 && sWatchFrames != 0)
+        {
+            os << " watch{obj=" << wid
+               << " frames=" << sWatchFrames
+               << " zerocam=" << sWatchZeroCam
+               << " cam=" << (sWatchCamMin == ~0ull ? 0 : sWatchCamMin) << ".." << sWatchCamMax
+               << " tot=" << sWatchTot << '}';
+            sWatchFrames  = 0;
+            sWatchZeroCam = 0;
+            sWatchCamMin  = ~0ull;
+            sWatchCamMax  = 0;
+            sWatchTot     = 0;
+        }
     }
 
     LL_WARNS("VKContract") << os.str() << LL_ENDL;

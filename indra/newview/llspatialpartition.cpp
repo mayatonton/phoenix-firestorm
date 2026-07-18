@@ -519,6 +519,10 @@ bool LLSpatialGroup::addObject(LLDrawable *drawablep)
         setState(static_cast<U32>(OBJECT_DIRTY) | static_cast<U32>(GEOM_DIRTY));
         setOcclusionState(LLSpatialGroup::DISCARD_QUERY, LLSpatialGroup::STATE_MODE_ALL_CAMERAS);
         gPipeline.markRebuild(this);
+        if (drawablep->isVisible())
+        {
+            mVkForceInlineRebuild = true;
+        }
         if (drawablep->isSpatialBridge())
         {
             mBridgeList.push_back((LLSpatialBridge*) drawablep);

@@ -237,6 +237,9 @@ namespace LLVKLoader
     bool allocPerDrawUBOSlice(U32 size_bytes, VkBuffer& out_buffer, U32& out_offset, void*& out_mapped);
     VkBuffer getPerDrawUBOArenaBuffer();
     bool getSharedDynamicUBOForBinding(U32 binding, VkBuffer& out_buf, U32& out_off);
+    bool peekSharedDynamicUBO(U32 binding, const void*& out_shadow, U32& out_size,
+                              U32& out_off, bool& out_current, U64& out_up_hash);
+    U64  sharedUBOContentHash(const void* p, U32 n);
 
     struct DynamicRenderingAttachment
     {
