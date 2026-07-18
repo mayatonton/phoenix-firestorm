@@ -3248,9 +3248,16 @@ void LLGLSLShader::populateAndBindUniversalDescriptorSet()
     {
         U32 slots[4] = { 0, 0, 0, 0 };
         const U32 n = llmin((U32)cur->mFeatures.mIndexedTextureChannels, 4u);
-        for (U32 i = 0; i < n; ++i)
+        if (n > 0)
         {
-            slots[i] = LLImageGL::vkHeapSlotOrDefault(gGL.getTexUnit((S32)i)->mCurrImageGL);
+            for (U32 i = 0; i < n; ++i)
+            {
+                slots[i] = LLImageGL::vkHeapSlotOrDefault(gGL.getTexUnit((S32)i)->mCurrImageGL);
+            }
+        }
+        else
+        {
+            slots[0] = LLImageGL::vkHeapSlotOrDefault(gGL.getTexUnit(0)->mCurrImageGL);
         }
         LLVKLoader::setCurrentDrawDataID(LLVKLoader::drawDataWriteScratch(slots));
     }
