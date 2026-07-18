@@ -39,6 +39,7 @@
 #include "llglslshader.h"
 #include "llmemory.h"
 #include "llvkloader.h"
+#include "llvkcontract.h"
 #include "llvkuboreg.h"
 #include "llrendertarget.h"
 #include <glm/gtc/type_ptr.hpp>
@@ -558,14 +559,8 @@ void LLVertexBuffer::drawRange(U32 mode, U32 start, U32 end, U32 count, U32 indi
 
         if (set_to_bind == VK_NULL_HANDLE)
         {
-            static U32 s_null_set_skips = 0;
-            ++s_null_set_skips;
-            if ((s_null_set_skips & (s_null_set_skips - 1)) == 0)
-            {
-                LL_WARNS("Vulkan") << "draw skipped: per-call descriptor NULL shader='"
-                                   << LLGLSLShader::sCurBoundShaderPtr->mName
-                                   << "' total_skips=" << s_null_set_skips << LL_ENDL;
-            }
+            LLVKContract::drawSkipped(LLVKContract::C_UNKNOWN,
+                                      LLGLSLShader::sCurBoundShaderPtr->mName);
         }
 
         if (set_to_bind != VK_NULL_HANDLE)
@@ -573,16 +568,8 @@ void LLVertexBuffer::drawRange(U32 mode, U32 start, U32 end, U32 count, U32 indi
             VkCommandBuffer cmd = LLVKLoader::getCurrentCommandBuffer();
             if (cmd == VK_NULL_HANDLE)
             {
-                static std::set<std::string> s_cmd_null_set_i;
-                const std::string& sn = LLGLSLShader::sCurBoundShaderPtr->mName;
-                if (s_cmd_null_set_i.insert(sn).second)
-                {
-                    LL_WARNS("Vulkan") << "drawRange cmd NULL silent skip shader='" << sn
-                                       << "' mode=" << (S32)mode
-                                       << " (set_to_bind=alloc + sInFrame=false = present scope 外 fire)"
-                                       << " = atomic 11 真因 isolation 対象"
-                                       << LL_ENDL;
-                }
+                LLVKContract::drawSkipped(LLVKContract::C_CMD_NULL,
+                                          LLGLSLShader::sCurBoundShaderPtr->mName);
             }
             if (cmd != VK_NULL_HANDLE)
             {
@@ -590,15 +577,8 @@ void LLVertexBuffer::drawRange(U32 mode, U32 start, U32 end, U32 count, U32 indi
                     LLGLSLShader::sCurBoundShaderPtr->getOrCreateVkPipelineForBoundRT(mode);
                 if (pipeline == VK_NULL_HANDLE)
                 {
-                    static std::set<std::string> s_pipe_fail_seti;
-                    const std::string& sn = LLGLSLShader::sCurBoundShaderPtr->mName;
-                    if (s_pipe_fail_seti.insert(sn).second)
-                    {
-                        LL_WARNS("Vulkan") << "drawRange Pipeline NULL shader='" << sn
-                                           << "' mode=" << (S32)mode
-                                           << " (VUID-vkCmdDrawIndexed-None-08606 回避) = 個別要 fix"
-                                           << LL_ENDL;
-                    }
+                    LLVKContract::drawSkipped(LLVKContract::C_PIPELINE_NULL,
+                                              LLGLSLShader::sCurBoundShaderPtr->mName);
                 }
                 else
                 {
@@ -642,6 +622,7 @@ void LLVertexBuffer::drawRange(U32 mode, U32 start, U32 end, U32 count, U32 indi
                     vkCmdDrawIndexed(cmd, count, 1, mVkIndexSlice.offset / mIndicesStride + indices_offset, (S32)mVkVertexSlice.first, LLVKLoader::getCurrentDrawDataID());
                     ++sVkDrawCallCount;
                     vk_fired = true;
+                    LLVKContract::drawFired();
                 }
             }
         }
@@ -649,17 +630,11 @@ void LLVertexBuffer::drawRange(U32 mode, U32 start, U32 end, U32 count, U32 indi
 
     if (!vk_fired)
     {
-        if (LLVKLoader::shouldUseVulkanRender())
+        if (LLVKLoader::shouldUseVulkanRender()
+            && LLGLSLShader::sCurBoundShaderPtr == nullptr)
         {
-            static std::set<std::string> s_vk_nopipe_drawi_shaders;
-            const std::string name = (LLGLSLShader::sCurBoundShaderPtr ? LLGLSLShader::sCurBoundShaderPtr->mName : std::string("(no-shader)"));
-            if (s_vk_nopipe_drawi_shaders.insert(name).second)
-            {
-                LL_WARNS("Vulkan") << "GL fallback 廃止: Vulkan 未描画 shader='"
-                                   << name << "' (count=" << (S32)count
-                                   << ") = Vulkan pipeline 不成立 = 個別要 fix"
-                                   << LL_ENDL;
-            }
+            LLVKContract::drawSkipped(LLVKContract::C_NO_SHADER_OR_LAYOUT,
+                                      std::string("(no-shader)"));
         }
     }
 }
@@ -672,14 +647,29 @@ void LLVertexBuffer::drawRangeFast(U32 mode, U32 start, U32 end, U32 count, U32 
         if (LLGLSLShader::sCurBoundShaderPtr != nullptr)
         {
             VkDescriptorSet set_to_bind = LLGLSLShader::vkResolvePerCallSetForDraw();
-            if (set_to_bind != VK_NULL_HANDLE)
+            if (set_to_bind == VK_NULL_HANDLE)
+            {
+                LLVKContract::drawSkipped(LLVKContract::C_UNKNOWN,
+                                          LLGLSLShader::sCurBoundShaderPtr->mName);
+            }
+            else
             {
                 VkCommandBuffer cmd = LLVKLoader::getCurrentCommandBuffer();
-                if (cmd != VK_NULL_HANDLE)
+                if (cmd == VK_NULL_HANDLE)
+                {
+                    LLVKContract::drawSkipped(LLVKContract::C_CMD_NULL,
+                                              LLGLSLShader::sCurBoundShaderPtr->mName);
+                }
+                else
                 {
                     VkPipeline pipeline =
                         LLGLSLShader::sCurBoundShaderPtr->getOrCreateVkPipelineForBoundRT(mode);
-                    if (pipeline != VK_NULL_HANDLE)
+                    if (pipeline == VK_NULL_HANDLE)
+                    {
+                        LLVKContract::drawSkipped(LLVKContract::C_PIPELINE_NULL,
+                                                  LLGLSLShader::sCurBoundShaderPtr->mName);
+                    }
+                    else
                     {
                         if (!LLVKLoader::isInRenderPassScope())
                         {
@@ -721,19 +711,15 @@ void LLVertexBuffer::drawRangeFast(U32 mode, U32 start, U32 end, U32 count, U32 
                         vkCmdDrawIndexed(cmd, count, 1, mVkIndexSlice.offset / mIndicesStride + indices_offset, (S32)mVkVertexSlice.first, LLVKLoader::getCurrentDrawDataID());
                         ++sVkDrawCallCount;
                         vk_fired = true;
+                        LLVKContract::drawFired();
                     }
                 }
             }
         }
-        if (!vk_fired)
+        if (!vk_fired && LLGLSLShader::sCurBoundShaderPtr == nullptr)
         {
-            static std::set<std::string> s_vk_nodraw_drawfast_shaders;
-            const std::string name = (LLGLSLShader::sCurBoundShaderPtr ? LLGLSLShader::sCurBoundShaderPtr->mName : std::string("(no-shader)"));
-            if (s_vk_nodraw_drawfast_shaders.insert(name).second)
-            {
-                LL_WARNS("Vulkan") << "GL fallback 廃止: drawRangeFast (GLTF scene) Vulkan 未描画 shader='"
-                                   << name << "' (count=" << (S32)count << ") = Vulkan 未配備 = 個別要 fix" << LL_ENDL;
-            }
+            LLVKContract::drawSkipped(LLVKContract::C_NO_SHADER_OR_LAYOUT,
+                                      std::string("(no-shader)"));
         }
         return;
     }
@@ -760,14 +746,8 @@ void LLVertexBuffer::drawArrays(U32 mode, U32 first, U32 count) const
 
         if (set_to_bind == VK_NULL_HANDLE)
         {
-            static U32 s_null_set_skips = 0;
-            ++s_null_set_skips;
-            if ((s_null_set_skips & (s_null_set_skips - 1)) == 0)
-            {
-                LL_WARNS("Vulkan") << "draw skipped: per-call descriptor NULL shader='"
-                                   << LLGLSLShader::sCurBoundShaderPtr->mName
-                                   << "' total_skips=" << s_null_set_skips << LL_ENDL;
-            }
+            LLVKContract::drawSkipped(LLVKContract::C_UNKNOWN,
+                                      LLGLSLShader::sCurBoundShaderPtr->mName);
         }
 
         if (set_to_bind != VK_NULL_HANDLE)
@@ -775,16 +755,8 @@ void LLVertexBuffer::drawArrays(U32 mode, U32 first, U32 count) const
             VkCommandBuffer cmd = LLVKLoader::getCurrentCommandBuffer();
             if (cmd == VK_NULL_HANDLE)
             {
-                static std::set<std::string> s_cmd_null_set_a;
-                const std::string& sn = LLGLSLShader::sCurBoundShaderPtr->mName;
-                if (s_cmd_null_set_a.insert(sn).second)
-                {
-                    LL_WARNS("Vulkan") << "drawArrays cmd NULL silent skip shader='" << sn
-                                       << "' mode=" << (S32)mode
-                                       << " (set_to_bind=alloc + sInFrame=false = present scope 外 fire)"
-                                       << " = atomic 11 真因 isolation 対象"
-                                       << LL_ENDL;
-                }
+                LLVKContract::drawSkipped(LLVKContract::C_CMD_NULL,
+                                          LLGLSLShader::sCurBoundShaderPtr->mName);
             }
             if (cmd != VK_NULL_HANDLE)
             {
@@ -792,15 +764,8 @@ void LLVertexBuffer::drawArrays(U32 mode, U32 first, U32 count) const
                     LLGLSLShader::sCurBoundShaderPtr->getOrCreateVkPipelineForBoundRT(mode);
                 if (pipeline == VK_NULL_HANDLE)
                 {
-                    static std::set<std::string> s_pipe_fail_set;
-                    const std::string& sn = LLGLSLShader::sCurBoundShaderPtr->mName;
-                    if (s_pipe_fail_set.insert(sn).second)
-                    {
-                        LL_WARNS("Vulkan") << "drawArrays Pipeline NULL shader='" << sn
-                                           << "' mode=" << (S32)mode
-                                           << " (VUID-vkCmdDraw-None-08606 回避) = 個別要 fix"
-                                           << LL_ENDL;
-                    }
+                    LLVKContract::drawSkipped(LLVKContract::C_PIPELINE_NULL,
+                                              LLGLSLShader::sCurBoundShaderPtr->mName);
                 }
                 else
                 {
@@ -844,6 +809,7 @@ void LLVertexBuffer::drawArrays(U32 mode, U32 first, U32 count) const
                     vkCmdDraw(cmd, count, 1, mVkVertexSlice.first + first, LLVKLoader::getCurrentDrawDataID());
                     ++sVkDrawCallCount;
                     vk_fired = true;
+                    LLVKContract::drawFired();
                 }
             }
         }
@@ -851,17 +817,11 @@ void LLVertexBuffer::drawArrays(U32 mode, U32 first, U32 count) const
 
     if (!vk_fired)
     {
-        if (LLVKLoader::shouldUseVulkanRender())
+        if (LLVKLoader::shouldUseVulkanRender()
+            && LLGLSLShader::sCurBoundShaderPtr == nullptr)
         {
-            static std::set<std::string> s_vk_nopipe_drawa_shaders;
-            const std::string name = (LLGLSLShader::sCurBoundShaderPtr ? LLGLSLShader::sCurBoundShaderPtr->mName : std::string("(no-shader)"));
-            if (s_vk_nopipe_drawa_shaders.insert(name).second)
-            {
-                LL_WARNS("Vulkan") << "GL fallback 廃止: Vulkan 未描画 shader='"
-                                   << name << "' (count=" << (S32)count
-                                   << ") = Vulkan pipeline 不成立 = 個別要 fix"
-                                   << LL_ENDL;
-            }
+            LLVKContract::drawSkipped(LLVKContract::C_NO_SHADER_OR_LAYOUT,
+                                      std::string("(no-shader)"));
         }
     }
 }

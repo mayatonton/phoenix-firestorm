@@ -52,6 +52,7 @@
 #include "gltfscenemanager.h"
 #include "lltoolmgr.h"
 #include "llvkloader.h"
+#include "llvkcontract.h"
 #include "llvkuboreg.h"
 #include "llimagegl.h"
 #include "llfetchedgltfmaterial.h"
@@ -616,6 +617,7 @@ inline bool IsEmissive(LLDrawInfo& params)
 
 inline void Draw(LLDrawInfo* draw, U32 mask)
 {
+    LLVKContract::DrawScope vkc_scope(draw, "alpha");
     draw->mVertexBuffer->setBuffer();
     LLRenderPass::applyModelMatrix(*draw);
     draw->mVertexBuffer->drawRange(LLRender::TRIANGLES, draw->mStart, draw->mEnd, draw->mCount, draw->mOffset);
@@ -710,6 +712,7 @@ void LLDrawPoolAlpha::RestoreTexSetup(bool tex_setup)
 
 void LLDrawPoolAlpha::drawEmissive(LLDrawInfo* draw)
 {
+    LLVKContract::DrawScope vkc_scope(draw, "alphaEmi");
     draw->mVertexBuffer->setBuffer();
     draw->mVertexBuffer->drawRange(LLRender::TRIANGLES, draw->mStart, draw->mEnd, draw->mCount, draw->mOffset);
 }
@@ -736,6 +739,7 @@ void LLDrawPoolAlpha::renderPbrEmissives(std::vector<LLDrawInfo*>& emissives)
         llassert(draw->mGLTFMaterial);
         LLGLDisable cull_face(draw->mGLTFMaterial->mDoubleSided ? GL_CULL_FACE : 0);
         draw->mGLTFMaterial->bind(draw->mTexture);
+        LLVKContract::DrawScope vkc_scope(draw, "alphaPbrEmi");
         draw->mVertexBuffer->setBuffer();
         draw->mVertexBuffer->drawRange(LLRender::TRIANGLES, draw->mStart, draw->mEnd, draw->mCount, draw->mOffset);
     }
@@ -782,6 +786,7 @@ void LLDrawPoolAlpha::renderRiggedPbrEmissives(std::vector<LLDrawInfo*>& emissiv
 
         LLGLDisable cull_face(draw->mGLTFMaterial->mDoubleSided ? GL_CULL_FACE : 0);
         draw->mGLTFMaterial->bind(draw->mTexture);
+        LLVKContract::DrawScope vkc_scope(draw, "alphaPbrEmi");
         draw->mVertexBuffer->setBuffer();
         draw->mVertexBuffer->drawRange(LLRender::TRIANGLES, draw->mStart, draw->mEnd, draw->mCount, draw->mOffset);
     }
@@ -944,19 +949,23 @@ void flushAlphaRun(AlphaRun& run)
     if (shader != nullptr)
     {
         gGL.syncMatrices();
+        LLVKContract::DrawScope vkc_scope(nullptr, "alphaRun");
         VkDescriptorSet set_to_bind = LLGLSLShader::vkResolvePerCallSetForDraw();
         VkCommandBuffer cmd = LLVKLoader::getCurrentCommandBuffer();
+        if (set_to_bind == VK_NULL_HANDLE)
+        {
+            LLVKContract::drawSkipped(LLVKContract::C_UNKNOWN, shader->mName);
+        }
+        else if (cmd == VK_NULL_HANDLE)
+        {
+            LLVKContract::drawSkipped(LLVKContract::C_CMD_NULL, shader->mName);
+        }
         if (set_to_bind != VK_NULL_HANDLE && cmd != VK_NULL_HANDLE)
         {
             VkPipeline pipeline = shader->getOrCreateVkPipelineForBoundRT(LLRender::TRIANGLES);
             if (pipeline == VK_NULL_HANDLE)
             {
-                static std::set<std::string> s_alpha_pipe_fail;
-                if (s_alpha_pipe_fail.insert(shader->mName).second)
-                {
-                    LL_WARNS("Vulkan") << "flushAlphaRun pipeline NULL shader='" << shader->mName
-                                       << "' = 個別要 fix" << LL_ENDL;
-                }
+                LLVKContract::drawSkipped(LLVKContract::C_PIPELINE_NULL, shader->mName);
             }
             else
             {
@@ -1461,6 +1470,7 @@ void LLDrawPoolAlpha::renderAlpha(U32 mask, bool depth_only, bool rigged, bool u
 
                         { U64 t2 = alp_now(); alp_us[5] += t2 - alp_t; alp_t = t2; }
 
+                        LLVKContract::DrawScope vkc_scope(&params, "alpha");
                         LLRenderPass::buildAndOverrideScenePerDrawSet(&params, true);
 
                         { U64 t2 = alp_now(); alp_us[6] += t2 - alp_t; alp_t = t2; }

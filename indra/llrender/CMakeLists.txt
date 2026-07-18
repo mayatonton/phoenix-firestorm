@@ -33,6 +33,7 @@ set(llrender_SOURCE_FILES
     lltexturemanagerbridge.cpp
     lluiimage.cpp
     llvertexbuffer.cpp
+    llvkcontract.cpp
     llvkloader.cpp
     llvkuboreg.cpp
     volk.c
@@ -66,6 +67,7 @@ set(llrender_HEADER_FILES
     lluiimage.h
     lluiimage.inl
     llvertexbuffer.h
+    llvkcontract.h
     llvkloader.h
     llvkuboreg.h
     volk.h

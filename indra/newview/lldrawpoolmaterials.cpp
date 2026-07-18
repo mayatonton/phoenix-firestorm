@@ -33,6 +33,7 @@
 #include "llvkbucket.h"
 #include "llvoavatar.h"
 #include "llvkloader.h"
+#include "llvkcontract.h"
 #include "llvkuboreg.h"
 #include "llimagegl.h"
 
@@ -228,6 +229,7 @@ void LLDrawPoolMaterials::renderDeferred(S32 pass)
             tex_setup = true;
         }
 
+        LLVKContract::DrawScope vkc_scope(&params, "materials");
         params.mVertexBuffer->setBuffer();
         params.mVertexBuffer->drawRange(LLRender::TRIANGLES, params.mStart, params.mEnd, params.mCount, params.mOffset);
 

@@ -44,6 +44,7 @@
 #endif
 
 #include "llvkloader.h"
+#include "llvkcontract.h"
 #include "llvkuboreg.h"
 #include "lltimer.h"
 #include <glslang/Public/ShaderLang.h>
@@ -3101,6 +3102,7 @@ void LLGLSLShader::vkRefreshDynamicOffsetsForDraw()
     LLGLSLShader* cur = sCurBoundShaderPtr;
     if (cur == nullptr)
     {
+        LLVKContract::cause(LLVKContract::C_REFRESH_NO_SHADER);
         sCurPerCallVkDescriptorSet = VK_NULL_HANDLE;
         return;
     }
@@ -3119,6 +3121,7 @@ void LLGLSLShader::vkRefreshDynamicOffsetsForDraw()
                 VkBuffer pp_buf = VK_NULL_HANDLE;
                 if (!cur->vkResolvePerProgramForDraw(pp_buf, off))
                 {
+                    LLVKContract::causeNamed(LLVKContract::C_REFRESH_PERPROGRAM_UBO, cur->mName);
                     sCurPerCallVkDescriptorSet = VK_NULL_HANDLE;
                     return;
                 }
@@ -3134,6 +3137,7 @@ void LLGLSLShader::vkRefreshDynamicOffsetsForDraw()
             }
             else
             {
+                LLVKContract::causeNamed(LLVKContract::C_REFRESH_SHARED_UBO, cur->mName);
                 sCurPerCallVkDescriptorSet = VK_NULL_HANDLE;
                 return;
             }
@@ -3226,8 +3230,10 @@ void LLGLSLShader::resetPerThreadRecordState()
 
 VkDescriptorSet LLGLSLShader::vkResolvePerCallSetForDraw()
 {
+    LLVKContract::resolveBegin();
     const bool authored = sCurPerCallAuthored;
     VkDescriptorSet set = sCurPerCallVkDescriptorSet;
+    const bool set_was_present = (set != VK_NULL_HANDLE);
     if (set != VK_NULL_HANDLE && sCurPerCallVkOffsetsDirty)
     {
         vkRefreshDynamicOffsetsForDraw();
@@ -3238,9 +3244,16 @@ VkDescriptorSet LLGLSLShader::vkResolvePerCallSetForDraw()
         sCurPerCallAuthored        = false;
         sCurPerCallVkDescriptorSet = VK_NULL_HANDLE;
     }
-    else if (set == VK_NULL_HANDLE)
+    if (set == VK_NULL_HANDLE)
     {
-        populateAndBindUniversalDescriptorSet();
+        if (authored && !set_was_present)
+        {
+            LLVKContract::causeNamed(LLVKContract::C_AUTHORED_EMPTY,
+                                     sCurBoundShaderPtr != nullptr
+                                         ? sCurBoundShaderPtr->mName
+                                         : std::string("(no-shader)"));
+        }
+        populateAndBindUniversalDescriptorSet(authored);
         set = sCurPerCallVkDescriptorSet;
     }
     return set;
@@ -3284,14 +3297,16 @@ void LLGLSLShader::clearVkImmediateSet1Pins()
     }
 }
 
-void LLGLSLShader::populateAndBindUniversalDescriptorSet()
+void LLGLSLShader::populateAndBindUniversalDescriptorSet(bool preserve_drawdata)
 {
     if (!LLVKLoader::isVulkanInitialized())
     {
+        LLVKContract::cause(LLVKContract::C_VK_NOT_INIT);
         return;
     }
     if (LLVKLoader::isRecordJobActive())
     {
+        LLVKContract::cause(LLVKContract::C_RECORD_JOB_PULL);
         static std::atomic<U32> s_record_populate_hits{0};
         const U32 n = ++s_record_populate_hits;
         if ((n & (n - 1)) == 0)
@@ -3305,11 +3320,13 @@ void LLGLSLShader::populateAndBindUniversalDescriptorSet()
     LLGLSLShader* cur = LLGLSLShader::sCurBoundShaderPtr;
     if (cur == nullptr || cur->mVkDescriptorSetLayout == VK_NULL_HANDLE)
     {
+        LLVKContract::cause(LLVKContract::C_NO_SHADER_OR_LAYOUT);
         return;
     }
     VkSampler sampler = LLVKLoader::getStandardLinearSampler();
     if (sampler == VK_NULL_HANDLE)
     {
+        LLVKContract::cause(LLVKContract::C_NO_SAMPLER);
         return;
     }
 
@@ -3390,7 +3407,7 @@ void LLGLSLShader::populateAndBindUniversalDescriptorSet()
 
     U32 per_program_dynamic_offset = 0;
 
-    if (cur->mVkUsesBindlessHeap)
+    if (cur->mVkUsesBindlessHeap && !preserve_drawdata)
     {
         U32 slots[4] = { 0, 0, 0, 0 };
         const U32 n = llmin((U32)cur->mFeatures.mIndexedTextureChannels, 4u);
@@ -3522,6 +3539,9 @@ void LLGLSLShader::populateAndBindUniversalDescriptorSet()
         }
         if (used_fallback)
         {
+            LLVKContract::note(resolved_unit == 0 ? LLVKContract::C_FB_VIEW_DIFFUSE
+                                                  : LLVKContract::C_FB_VIEW_AUX,
+                               cur->mName);
             const U8 sdim = cur->mVkBindingSamplerDim[N];
             view = (sdim == VKSD_CUBE_ARRAY) ? LLVKLoader::getDefaultFallbackCubeArrayVkImageView()
                  : (sdim == VKSD_CUBE)       ? LLVKLoader::getDefaultFallbackCubeVkImageView()
@@ -3635,6 +3655,7 @@ void LLGLSLShader::populateAndBindUniversalDescriptorSet()
     U32 dyn_offsets[LLGLSLShader::MAX_VK_DYNAMIC_BINDINGS] = {};
     if (!vkCollectDynamicUBOWrites(cur, bindings, per_program_dynamic_offset, dyn_offsets))
     {
+        LLVKContract::cause(LLVKContract::C_UBO_COLLECT_OVERFLOW);
         return;
     }
 
@@ -3684,6 +3705,10 @@ void LLGLSLShader::populateAndBindUniversalDescriptorSet()
             }
             if (LLVKLoader::perfLogEnabled()) { ++LLVKLoader::gVkPerf.populate_miss; }
         }
+    }
+    else
+    {
+        LLVKContract::cause(LLVKContract::C_ENSURE_SET_FAIL);
     }
 }
 

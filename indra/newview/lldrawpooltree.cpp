@@ -40,6 +40,7 @@
 #include "llviewerregion.h"
 #include "llenvironment.h"
 #include "llvkloader.h"
+#include "llvkcontract.h"
 #include "llvkuboreg.h"
 #include "llimagegl.h"
 
@@ -114,6 +115,7 @@ void LLDrawPoolTree::renderDeferred(S32 pass)
             llassert(gGL.getMatrixMode() == LLRender::MM_MODELVIEW);
             LLRenderPass::applyModelMatrix(model_matrix);
 
+            LLVKContract::DrawScope vkc_scope(nullptr, "tree");
             buff->setBuffer();
             buff->drawRange(LLRender::TRIANGLES, 0, buff->getNumVerts() - 1, buff->getNumIndices(), 0);
         }

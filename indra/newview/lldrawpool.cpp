@@ -59,10 +59,63 @@
 #include "llvoavatar.h"
 #include "llviewershadermgr.h"
 #include "llvkloader.h"
+#include "llvkcontract.h"
 #include "llvkuboreg.h"
 #include "llimagegl.h"
 
 S32 LLDrawPool::sNumDrawPools = 0;
+
+static std::string vkContractDescribeDrawInfo(const void* p)
+{
+    const LLDrawInfo* di = static_cast<const LLDrawInfo*>(p);
+    if (di == nullptr)
+    {
+        return std::string();
+    }
+    std::ostringstream os;
+    os << "obj=" << di->mFSPickerLocalID;
+    if (di->mTexture.notNull())
+    {
+        os << " tex=" << di->mTexture->getID();
+    }
+    if (di->mAvatar.notNull())
+    {
+        os << " av='" << di->mAvatar->getFullname() << "'";
+    }
+    else if (di->mAttachedToAvatar.notNull())
+    {
+        os << " wearer='" << di->mAttachedToAvatar->getFullname() << "'";
+    }
+    if (di->mMaterialID.notNull())
+    {
+        os << " mat=" << di->mMaterialID;
+    }
+    os << " idx=" << di->mCount;
+    return os.str();
+}
+
+static U64 vkContractDrawInfoKey(const void* p)
+{
+    const LLDrawInfo* di = static_cast<const LLDrawInfo*>(p);
+    if (di == nullptr)
+    {
+        return 0;
+    }
+    U64 k = 1469598103934665603ull;
+    k = k * 0x100000001B3ull ^ (U64)di->mFSPickerLocalID;
+    k = k * 0x100000001B3ull ^ (U64)(uintptr_t)di->mTexture.get();
+    k = k * 0x100000001B3ull ^ (U64)di->mCount;
+    return (k != 0) ? k : 1;
+}
+
+struct VkContractResolverInit
+{
+    VkContractResolverInit()
+    {
+        LLVKContract::setResolvers(&vkContractDescribeDrawInfo, &vkContractDrawInfoKey);
+    }
+};
+static VkContractResolverInit sVkContractResolverInit;
 
 LLDrawPool *LLDrawPool::createPool(const U32 type, LLViewerTexture *tex0)
 {
@@ -824,6 +877,9 @@ void LLRenderPass::buildAndOverrideScenePerDrawSet(LLDrawInfo* params, bool batc
         }
         if (need_typed_fallback)
         {
+            LLVKContract::note(resolved_unit == 0 ? LLVKContract::C_FB_VIEW_DIFFUSE
+                                                  : LLVKContract::C_FB_VIEW_AUX,
+                               cur->mName);
             const U8 sdim_fb = cur->mVkBindingSamplerDim[N];
             view = (sdim_fb == LLGLSLShader::VKSD_CUBE_ARRAY) ? LLVKLoader::getDefaultFallbackCubeArrayVkImageView()
                  : (sdim_fb == LLGLSLShader::VKSD_CUBE)       ? LLVKLoader::getDefaultFallbackCubeVkImageView()
@@ -1078,25 +1134,25 @@ void LLRenderPass::pushUntexturedBatches(U32 type)
 static bool pushIndirectSpans(LLVKBucket::Bucket& bucket, VkBuffer ring_buf, VkDeviceSize ring_offset)
 {
     LLGLSLShader* shader = LLGLSLShader::sCurBoundShaderPtr;
+    LLVKContract::DrawScope vkc_scope(nullptr, "mdi");
     VkDescriptorSet set_to_bind = LLGLSLShader::vkResolvePerCallSetForDraw();
     if (set_to_bind == VK_NULL_HANDLE)
     {
+        LLVKContract::drawSkipped(LLVKContract::C_UNKNOWN,
+                                  shader ? shader->mName : std::string("(no-shader)"));
         return false;
     }
     VkCommandBuffer cmd = LLVKLoader::getCurrentCommandBuffer();
     if (cmd == VK_NULL_HANDLE)
     {
+        LLVKContract::drawSkipped(LLVKContract::C_CMD_NULL,
+                                  shader ? shader->mName : std::string("(no-shader)"));
         return false;
     }
     VkPipeline pipeline = shader->getOrCreateVkPipelineForBoundRT(LLRender::TRIANGLES);
     if (pipeline == VK_NULL_HANDLE)
     {
-        static std::set<std::string> s_mdi_pipe_fail;
-        if (s_mdi_pipe_fail.insert(shader->mName).second)
-        {
-            LL_WARNS("Vulkan") << "pushIndirectSpans pipeline NULL shader='" << shader->mName
-                               << "' = 個別要 fix" << LL_ENDL;
-        }
+        LLVKContract::drawSkipped(LLVKContract::C_PIPELINE_NULL, shader->mName);
         return false;
     }
     if (!LLVKLoader::isInRenderPassScope())
@@ -1403,6 +1459,7 @@ void LLRenderPass::pushBatch(LLDrawInfo& params, bool texture, bool batch_textur
         return;
     }
     // </FS:Beq>
+    LLVKContract::DrawScope vkc_scope(&params, "scene");
     params.mVertexBuffer->setBuffer();
     params.mVertexBuffer->drawRange(LLRender::TRIANGLES, params.mStart, params.mEnd, params.mCount, params.mOffset);
     if (tex_setup)
@@ -1438,6 +1495,7 @@ void LLRenderPass::pushUntexturedBatch(LLDrawInfo& params)
 
     applyModelMatrix(params);
 
+    LLVKContract::DrawScope vkc_scope(&params, "scene");
     params.mVertexBuffer->setBuffer();
     params.mVertexBuffer->drawRange(LLRender::TRIANGLES, params.mStart, params.mEnd, params.mCount, params.mOffset);
 }
@@ -1604,6 +1662,7 @@ void LLRenderPass::pushVelocityBatches(U32 type)
             }
         }
 
+        LLVKContract::DrawScope vkc_scope(&params, "scene");
         params.mVertexBuffer->setBuffer();
         params.mVertexBuffer->drawRange(LLRender::TRIANGLES, params.mStart, params.mEnd, params.mCount, params.mOffset);
 
@@ -1651,6 +1710,7 @@ void LLRenderPass::pushRiggedVelocityBatches(U32 type)
 
         applyModelMatrix(params);
 
+        LLVKContract::DrawScope vkc_scope(&params, "scene");
         params.mVertexBuffer->setBuffer();
         params.mVertexBuffer->drawRange(LLRender::TRIANGLES, params.mStart, params.mEnd, params.mCount, params.mOffset);
     }
@@ -1707,6 +1767,7 @@ void LLRenderPass::pushVelocityBatchesTextured(U32 type)
 
         LLRenderPass::buildAndOverrideScenePerDrawSet(&params, false);
 
+        LLVKContract::DrawScope vkc_scope(&params, "scene");
         params.mVertexBuffer->setBuffer();
         params.mVertexBuffer->drawRange(LLRender::TRIANGLES, params.mStart, params.mEnd, params.mCount, params.mOffset);
 
@@ -1761,6 +1822,7 @@ void LLRenderPass::pushRiggedVelocityBatchesTextured(U32 type)
 
         LLRenderPass::buildAndOverrideScenePerDrawSet(&params, false);
 
+        LLVKContract::DrawScope vkc_scope(&params, "scene");
         params.mVertexBuffer->setBuffer();
         params.mVertexBuffer->drawRange(LLRender::TRIANGLES, params.mStart, params.mEnd, params.mCount, params.mOffset);
     }
@@ -1879,6 +1941,7 @@ void LLRenderPass::pushGLTFBatch(LLDrawInfo& params)
     }
     // </FS:AYA>
 
+    LLVKContract::DrawScope vkc_scope(&params, "scene");
     params.mVertexBuffer->setBuffer();
 
     params.mVertexBuffer->drawRange(LLRender::TRIANGLES, params.mStart, params.mEnd, params.mCount, params.mOffset);
@@ -1905,6 +1968,7 @@ void LLRenderPass::pushUntexturedGLTFBatch(LLDrawInfo& params)
 
     applyModelMatrix(params);
 
+    LLVKContract::DrawScope vkc_scope(&params, "scene");
     params.mVertexBuffer->setBuffer();
     params.mVertexBuffer->drawRange(LLRender::TRIANGLES, params.mStart, params.mEnd, params.mCount, params.mOffset);
 }

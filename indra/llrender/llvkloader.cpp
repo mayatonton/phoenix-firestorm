@@ -21,6 +21,7 @@
 
 #include "linden_common.h"
 #include "llvkloader.h"
+#include "llvkcontract.h"
 
 #include "volk.h"
 #include "lldir.h"
@@ -4133,6 +4134,7 @@ bool beginFrame(bool acquire_swapchain)
     }
 
     ++sMonotonicFrameCount;
+    LLVKContract::frameBegin();
 
     sFrameIndex = (sFrameIndex + 1) % FRAMES_IN_FLIGHT;
 

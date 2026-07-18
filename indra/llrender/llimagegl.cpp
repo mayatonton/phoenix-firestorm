@@ -39,6 +39,7 @@
 #include "llrender.h"
 #include "llrendertarget.h"
 #include "llvkloader.h"
+#include "llvkcontract.h"
 #include "llwindow.h"
 #include "llframetimer.h"
 #include <unordered_set>
@@ -1387,6 +1388,13 @@ U32 LLImageGL::vkHeapSlotOrDefault(LLImageGL* gl)
         {
             return gl->mVkHeapSlot;
         }
+    }
+    if (gl != nullptr && LLVKLoader::isBindlessActiveVk())
+    {
+        LLVKContract::note(LLVKContract::C_FB_HEAP_DEFAULT,
+                           LLGLSLShader::sCurBoundShaderPtr != nullptr
+                               ? LLGLSLShader::sCurBoundShaderPtr->mName
+                               : std::string("(no-shader)"));
     }
     const LLImageGL* def = sDefaultGLTexture;
     if (def != nullptr && def->getVkHeapSlot() != LLVKLoader::BINDLESS_INVALID_SLOT)
