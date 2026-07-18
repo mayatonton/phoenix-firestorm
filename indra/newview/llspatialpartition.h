@@ -42,6 +42,7 @@
 #include "llvector4a.h"
 #include "llvoavatar.h"
 #include "llfetchedgltfmaterial.h"
+#include <unordered_set>
 
 //<FS:Beq> needed to resolve render_hull dep
 #include "llmodel.h"
@@ -354,6 +355,9 @@ public:
     bool isHUDGroup() ;
 
     void clearDrawMap(U32 evict_site);
+    void clearDrawMapStaged(const std::unordered_set<LLDrawable*>& preserve,
+                            const std::unordered_set<LLDrawable*>& staged,
+                            U32 evict_site);
     void stripDrawRecords(LLDrawable* drawablep, U32 evict_site);
     void validate();
     void validateDrawMap();

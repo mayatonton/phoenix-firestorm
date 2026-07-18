@@ -5764,6 +5764,24 @@ namespace
         }
     }
 
+    bool geoDrawableEligible(LLDrawable* drawablep)
+    {
+        if (drawablep == nullptr || drawablep->isDead() || drawablep->isState(LLDrawable::FORCE_INVISIBLE))
+        {
+            return false;
+        }
+        if (LLPipeline::isParcelHideAlive(drawablep))
+        {
+            return false;
+        }
+        LLVOVolume* vobj = drawablep->getVOVolume();
+        if (vobj == nullptr || vobj->isDead() || vobj->mGLTFAsset)
+        {
+            return false;
+        }
+        return true;
+    }
+
     bool applyGeoStaged(LLSpatialGroup* group, LLGeoStagedRebuild& staged)
     {
         for (const LLGeoFaceApply& e : staged.mFaces)
@@ -5791,7 +5809,34 @@ namespace
             }
         }
 
-        group->clearDrawMap(LLVKContract::SITE_CLEAR_APPLY);
+        std::unordered_set<LLDrawable*> staged_drawables;
+        staged_drawables.reserve(staged.mFaces.size());
+        for (const LLGeoFaceApply& e : staged.mFaces)
+        {
+            staged_drawables.insert(e.mDrawable.get());
+        }
+
+        std::unordered_set<LLDrawable*> preserve;
+        if (!group->mDrawMap.empty())
+        {
+            for (auto& pass : group->mDrawMap)
+            {
+                for (const LLPointer<LLDrawInfo>& info : pass.second)
+                {
+                    if (info.isNull() || info->mSrcDrawable.isNull())
+                    {
+                        continue;
+                    }
+                    LLDrawable* d = info->mSrcDrawable.get();
+                    if (staged_drawables.find(d) == staged_drawables.end() && geoDrawableEligible(d))
+                    {
+                        preserve.insert(d);
+                    }
+                }
+            }
+        }
+
+        group->clearDrawMapStaged(preserve, staged_drawables, LLVKContract::SITE_CLEAR_APPLY);
 
         for (LLGeoFaceApply& e : staged.mFaces)
         {

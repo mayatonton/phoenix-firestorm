@@ -38,6 +38,7 @@ const char* CAUSE_NAMES[CAUSE_COUNT] =
     "flicker",
     "map_evict_unpaired",
     "map_evict_long",
+    "map_evict_unpaired_hide",
     "geoab_input_drift",
     "geoab_kernel_mismatch",
     "geoab_source_drift",
@@ -74,6 +75,7 @@ struct SentEntry
     U32 records = 0;
     U64 frame = 0;
     U8 stage = 0;
+    bool eligible = true;
 };
 
 std::mutex sSentMutex;
@@ -265,7 +267,7 @@ void noteDetail(ECause c, const char* key, const std::string& detail)
     }
 }
 
-void sentinelEvict(U32 site, const void* drawable, U32 obj_local_id, U32 record_count, bool drawable_dead)
+void sentinelEvict(U32 site, const void* drawable, U32 obj_local_id, U32 record_count, bool drawable_dead, bool eligible)
 {
     if (drawable == nullptr || site >= SITE_COUNT || !verboseEnabled())
     {
@@ -285,6 +287,7 @@ void sentinelEvict(U32 site, const void* drawable, U32 obj_local_id, U32 record_
     e.objId = obj_local_id;
     e.records = record_count;
     e.frame = sFrame.load(std::memory_order_relaxed);
+    e.eligible = eligible;
     if (sSentPending.emplace(drawable, e).second)
     {
         sSentPendingCount.fetch_add(1, std::memory_order_relaxed);
@@ -453,6 +456,14 @@ void frameBegin()
             if (age >= 1 && e.stage == 0)
             {
                 e.stage = 1;
+                if (!e.eligible)
+                {
+                    sCauseWin[C_MAP_EVICT_UNPAIRED_HIDE].fetch_add(1, std::memory_order_relaxed);
+                    sCauseTot[C_MAP_EVICT_UNPAIRED_HIDE].fetch_add(1, std::memory_order_relaxed);
+                    it = sSentPending.erase(it);
+                    sSentPendingCount.fetch_sub(1, std::memory_order_relaxed);
+                    continue;
+                }
                 sCauseWin[C_MAP_EVICT_UNPAIRED].fetch_add(1, std::memory_order_relaxed);
                 sCauseTot[C_MAP_EVICT_UNPAIRED].fetch_add(1, std::memory_order_relaxed);
                 sSiteWin[e.site].fetch_add(1, std::memory_order_relaxed);

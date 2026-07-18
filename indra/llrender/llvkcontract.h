@@ -28,6 +28,7 @@ enum ECause : U32
     C_FLICKER,
     C_MAP_EVICT_UNPAIRED,
     C_MAP_EVICT_LONG,
+    C_MAP_EVICT_UNPAIRED_HIDE,
     C_GEOAB_INPUT_DRIFT,
     C_GEOAB_KERNEL_MISMATCH,
     C_GEOAB_SRC_DRIFT,
@@ -75,7 +76,7 @@ void drawSkipped(ECause fire_cause, const std::string& shader_name);
 void drawFired();
 void frameBegin();
 
-void sentinelEvict(U32 site, const void* drawable, U32 obj_local_id, U32 record_count, bool drawable_dead);
+void sentinelEvict(U32 site, const void* drawable, U32 obj_local_id, U32 record_count, bool drawable_dead, bool eligible);
 void sentinelRegister(const void* drawable);
 
 }
