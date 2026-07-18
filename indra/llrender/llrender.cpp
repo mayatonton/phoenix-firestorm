@@ -31,6 +31,7 @@
 #include "llvertexbuffer.h"
 #include "llcubemap.h"
 #include "llglslshader.h"
+#include "llvkcontract.h"
 #include "llimagegl.h"
 #include "llrendertarget.h"
 #include "lltexture.h"
@@ -132,6 +133,7 @@ void LLTexUnit::vkNotifyShaderChannelBound()
         return;
     }
     LLGLSLShader::sCurPerCallVkDescriptorSet = VK_NULL_HANDLE;
+    LLVKContract::pokeSite(1);
     LLGLSLShader* sh = LLGLSLShader::sCurBoundShaderPtr;
     if (sh == nullptr)
     {
@@ -151,6 +153,7 @@ void LLTexUnit::bindFast(LLTexture* texture)
         texture->forceImmediateUpdate();
         gl_tex->forceUpdateBindStats();
         texture->bindDefaultImage(mIndex);
+        return;
     }
     const bool same_state = (mCurrImageGL == gl_tex)
                             && mCurrRenderTarget == nullptr
@@ -464,6 +467,7 @@ bool LLTexUnit::bindManual(eTextureType type, U32 texture, bool hasMips)
     mCurrRenderTarget = nullptr;
     mCurrCubeMap = nullptr;
     LLGLSLShader::sCurPerCallVkDescriptorSet = VK_NULL_HANDLE;
+    LLVKContract::pokeSite(2);
     return true;
 }
 
@@ -514,6 +518,7 @@ void LLTexUnit::setTextureAddressModeFast(eTextureAddressMode mode, eTextureType
 {
     mCurrAddressMode = mode;
     LLGLSLShader::sCurPerCallVkDescriptorSet = VK_NULL_HANDLE;
+    LLVKContract::pokeSite(3);
 }
 
 void LLTexUnit::setTextureFilteringOption(LLTexUnit::eTextureFilterOptions option)
@@ -529,6 +534,7 @@ void LLTexUnit::setTextureFilteringOptionFast(LLTexUnit::eTextureFilterOptions o
 {
     mCurrFilterOption = option;
     LLGLSLShader::sCurPerCallVkDescriptorSet = VK_NULL_HANDLE;
+    LLVKContract::pokeSite(4);
 }
 
 LLLightState::LLLightState(S32 index)
@@ -1447,6 +1453,7 @@ void LLRender::clearStaleImageGLRefs(LLImageGL* victim)
         {
             gGL.mTexUnits[i].mCurrImageGL = nullptr;
             LLGLSLShader::sCurPerCallVkDescriptorSet = VK_NULL_HANDLE;
+    LLVKContract::pokeSite(5);
         }
     }
     if (gGL.mDummyTexUnit.mCurrImageGL == victim)
@@ -1477,6 +1484,7 @@ void LLRender::clearStaleCubeMapRefs(LLCubeMap* victim)
         {
             gGL.mTexUnits[i].mCurrCubeMap = nullptr;
             LLGLSLShader::sCurPerCallVkDescriptorSet = VK_NULL_HANDLE;
+    LLVKContract::pokeSite(6);
         }
     }
     if (gGL.mDummyTexUnit.mCurrCubeMap == victim)
@@ -1666,6 +1674,7 @@ void LLRender::flush()
             drawBuffer(vb, mMode, count);
 
             LLGLSLShader::sCurPerCallVkDescriptorSet = VK_NULL_HANDLE;
+    LLVKContract::pokeSite(7);
         }
         else
         {

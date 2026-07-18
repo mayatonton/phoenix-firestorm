@@ -177,6 +177,7 @@ void LLSpatialGroup::stripDrawRecords(LLDrawable* drawablep)
     }
     if (removed)
     {
+        mVkForceInlineRebuild = true;
         LLVKBucket::patchGroup(this);
     }
 }

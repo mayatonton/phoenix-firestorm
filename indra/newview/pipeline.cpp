@@ -1474,6 +1474,11 @@ void LLPipeline::refreshCachedSettings()
             (!gUseWireframe
             && LLFeatureManager::getInstance()->isFeatureAvailable("UseOcclusion")
             && gSavedSettings.getBOOL("UseOcclusion")) ? 2 : 0;
+    static const bool s_no_occlusion_pin = (getenv("AYASTORM_NO_OCCLUSION") != nullptr);
+    if (s_no_occlusion_pin)
+    {
+        LLPipeline::sUseOcclusion = 0;
+    }
 
     WindLightUseAtmosShaders = true; // DEPRECATED -- gSavedSettings.getBOOL("WindLightUseAtmosShaders");
     RenderDeferred = true; // DEPRECATED -- gSavedSettings.getBOOL("RenderDeferred");
@@ -4132,12 +4137,30 @@ void LLPipeline::stateSort(LLCamera& camera, LLCullResult &result)
     }
     {
         LL_PROFILE_ZONE_NAMED_CATEGORY_PIPELINE("StateSort: visible groups");
+    U32 vkc_empty_inflight = 0;
+    U32 vkc_empty_dirty    = 0;
+    U32 vkc_empty_other    = 0;
     for (LLCullResult::sg_iterator iter = getFrameCull()->beginVisibleGroups(); iter != getFrameCull()->endVisibleGroups(); ++iter)
     {
         LLSpatialGroup* group = *iter;
         if (group->isDead())
         {
             continue;
+        }
+        if (group->mDrawMap.empty() && group->getElementCount() > 0)
+        {
+            if (group->mVkGeoInflight)
+            {
+                ++vkc_empty_inflight;
+            }
+            else if (group->hasState(LLSpatialGroup::GEOM_DIRTY | LLSpatialGroup::ALPHA_DIRTY))
+            {
+                ++vkc_empty_dirty;
+            }
+            else
+            {
+                ++vkc_empty_other;
+            }
         }
         group->checkOcclusion();
         if (sUseOcclusion > 1 && group->isOcclusionState(LLSpatialGroup::OCCLUDED))
@@ -4152,6 +4175,23 @@ void LLPipeline::stateSort(LLCamera& camera, LLCullResult &result)
             { //rebuild mesh as soon as we know it's visible
                 group->rebuildMesh();
             }
+        }
+    }
+    if (vkc_empty_inflight + vkc_empty_dirty + vkc_empty_other > 0)
+    {
+        static U32 s_vkc_empty_frames = 0;
+        static U32 s_acc_inflight = 0;
+        static U32 s_acc_dirty = 0;
+        static U32 s_acc_other = 0;
+        s_acc_inflight += vkc_empty_inflight;
+        s_acc_dirty    += vkc_empty_dirty;
+        s_acc_other    += vkc_empty_other;
+        if ((++s_vkc_empty_frames % 60) == 1)
+        {
+            LL_WARNS("VKGeo") << "visible empty-drawmap groups (60f acc): inflight=" << s_acc_inflight
+                              << " dirty=" << s_acc_dirty
+                              << " other=" << s_acc_other << LL_ENDL;
+            s_acc_inflight = s_acc_dirty = s_acc_other = 0;
         }
     }}
 

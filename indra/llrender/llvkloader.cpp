@@ -424,6 +424,14 @@ namespace
     void*                 sSharedSMAABlendWeightsFUBOAllocation   = nullptr;
     void*                 sSharedSMAABlendWeightsFUBOMapped       = nullptr;
 
+    struct PerDrawUBOOverflowBlock
+    {
+        VkBuffer     buffer     = VK_NULL_HANDLE;
+        void*        allocation = nullptr;
+        void*        mapped     = nullptr;
+        VkDeviceSize capacity   = 0;
+        VkDeviceSize cursor     = 0;
+    };
     struct PerDrawUBOArena
     {
         VkBuffer     buffer           = VK_NULL_HANDLE;
@@ -433,6 +441,7 @@ namespace
         std::atomic<VkDeviceSize> cursor{0};
         U64          frame            = ~0ull;
         VkDeviceSize pending_capacity = 0;
+        std::vector<PerDrawUBOOverflowBlock> overflow;
     };
     PerDrawUBOArena sPerDrawUBOArena[FRAMES_IN_FLIGHT];
     constexpr VkDeviceSize PER_DRAW_UBO_ARENA_INITIAL = 4 * 1024 * 1024;
@@ -789,6 +798,10 @@ namespace
     {
         const char* e = getenv("AYASTORM_MT_THREADS");
         sPEThreaded = (e == nullptr) || (atoi(e) > 1);
+        if (getenv("AYASTORM_PE_INLINE") != nullptr)
+        {
+            sPEThreaded = false;
+        }
         if (!sPEThreaded)
         {
             return;
@@ -4093,6 +4106,7 @@ bool beginFrame(bool acquire_swapchain)
     }
 
     LLGLSLShader::sCurPerCallVkDescriptorSet = VK_NULL_HANDLE;
+    LLVKContract::pokeSite(10);
     LLGLSLShader::sCurPerCallVkOffsetsDirty  = true;
 
     sLastBoundGraphicsPipeline = VK_NULL_HANDLE;
@@ -5444,10 +5458,6 @@ thread_local float sCurrentModelviewMatrix[16] = {
 
 void pushCurrentModelviewMatrix(const float modelview_matrix[16])
 {
-    if (!sInitialized || currentRecordCmd() == VK_NULL_HANDLE)
-    {
-        return;
-    }
     if (modelview_matrix != nullptr)
     {
         std::memcpy(sCurrentModelviewMatrix, modelview_matrix, sizeof(sCurrentModelviewMatrix));
@@ -5727,6 +5737,15 @@ static bool ensurePerDrawUBOArenaCurrent(PerDrawUBOArena& a)
     {
         a.frame  = sMonotonicFrameCount;
         a.cursor = 0;
+        if (!a.overflow.empty())
+        {
+            for (PerDrawUBOOverflowBlock& ob : a.overflow)
+            {
+                destroyBufferVk(ob.buffer, ob.allocation);
+            }
+            a.overflow.clear();
+            ++gVkPerDrawTopologyGen;
+        }
         if (a.buffer == VK_NULL_HANDLE || a.pending_capacity > a.capacity)
         {
             VkDeviceSize want = llmax(a.pending_capacity, PER_DRAW_UBO_ARENA_INITIAL);
@@ -5787,7 +5806,37 @@ bool allocPerDrawUBOSlice(U32 size_bytes, VkBuffer& out_buffer, U32& out_offset,
         {
             std::lock_guard<std::mutex> lk(sPerDrawArenaGrowthMutex);
             a.pending_capacity = llmax(a.pending_capacity, llmax(a.capacity * 2, next));
-            return false;
+            if (!a.overflow.empty())
+            {
+                PerDrawUBOOverflowBlock& blk = a.overflow.back();
+                VkDeviceSize boff = (blk.cursor + align - 1) & ~(align - 1);
+                if (boff + size_bytes <= blk.capacity)
+                {
+                    blk.cursor = boff + size_bytes;
+                    out_buffer = blk.buffer;
+                    out_offset = (U32)boff;
+                    out_mapped = (U8*)blk.mapped + boff;
+                    return true;
+                }
+            }
+            PerDrawUBOOverflowBlock nb;
+            VkDeviceSize want = llmax((VkDeviceSize)size_bytes,
+                                      llmax(a.capacity, PER_DRAW_UBO_ARENA_INITIAL));
+            void* nb_mapped = nullptr;
+            if (!createBufferVkImpl((U32)want,
+                                    VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT,
+                                    nb.buffer, nb.allocation, &nb_mapped))
+            {
+                return false;
+            }
+            nb.mapped   = nb_mapped;
+            nb.capacity = want;
+            nb.cursor   = size_bytes;
+            a.overflow.push_back(nb);
+            out_buffer = nb.buffer;
+            out_offset = 0;
+            out_mapped = (U8*)nb_mapped;
+            return true;
         }
         if (a.cursor.compare_exchange_weak(expected, next, std::memory_order_relaxed))
         {
@@ -6102,6 +6151,7 @@ void clearDeferredUtilOverrideSlot()
         sCur##BindName##Buf[f]    = slot.buffer;                                                       \
         sCur##BindName##Mapped[f] = slot.mapped;                                                       \
         LLGLSLShader::sCurPerCallVkDescriptorSet = VK_NULL_HANDLE;                                     \
+        LLVKContract::pokeSite(11);                                                                     \
     }                                                                                                  \
     bool getShared##BindName##UBO(VkBuffer& out_buffer, void*& out_mapped)                             \
     {                                                                                                  \
@@ -7380,6 +7430,7 @@ void destroyImageVk(VkImage image, VkImageView view, void* allocation)
         return;
     }
     LLGLSLShader::sCurPerCallVkDescriptorSet = VK_NULL_HANDLE;
+    LLVKContract::pokeSite(12);
     PendingImageFree pending;
     pending.image         = image;
     pending.view          = view;
@@ -7582,6 +7633,7 @@ bool createTextureImageVk(U32          width,
     if (created)
     {
         LLGLSLShader::sCurPerCallVkDescriptorSet = VK_NULL_HANDLE;
+        LLVKContract::pokeSite(13);
     }
     return created;
 }
@@ -8252,6 +8304,7 @@ bool createTexture3DImageVk(U32          width,
     out_view       = view;
     out_allocation = reinterpret_cast<void*>(allocation);
     LLGLSLShader::sCurPerCallVkDescriptorSet = VK_NULL_HANDLE;
+    LLVKContract::pokeSite(18);
     return true;
 }
 

@@ -5621,6 +5621,7 @@ struct LLGeoStagedRebuild
 {
     bool mInline = false;
     bool mDefer = false;
+    bool mHadFailedFace = false;
     std::vector<LLGeoFaceApply> mFaces;
     std::vector<LLGeoFaceFill> mFills;
     std::vector<std::pair<U32, LLSpatialGroup::buffer_texture_map_t> > mBufferMaps;
@@ -5641,6 +5642,7 @@ namespace
         LLGeoStagedRebuild mStaged;
         std::vector<LLPointer<LLVolume> > mPinned;
         U64 mBytes = 0;
+        bool mFillFailed = false;
         std::atomic<U32> mState{ GEO_JOB_QUEUED };
     };
 
@@ -5700,7 +5702,10 @@ namespace
             job->mState.store(GEO_JOB_EXECUTING);
             for (LLGeoFaceFill& fill : job->mStaged.mFills)
             {
-                LLFace::runVkGeoFill(fill);
+                if (!LLFace::runVkGeoFill(fill))
+                {
+                    job->mFillFailed = true;
+                }
             }
             job->mState.store(GEO_JOB_DONE);
 
@@ -5831,6 +5836,10 @@ namespace
 bool LLVolumeGeometryManager::geoWorkerEnabled()
 {
     static const bool s_enabled = []() -> bool {
+        if (getenv("AYASTORM_T2_INLINE") != nullptr)
+        {
+            return false;
+        }
         return LLVKLoader::isVulkanInitialized() && LLVKLoader::recordWorkerCount() > 0;
     }();
     return s_enabled;
@@ -5957,7 +5966,7 @@ void LLVolumeGeometryManager::drainGeoPublishQueue()
 
         LLSpatialGroup* group = job->mGroup.get();
         bool applied = false;
-        if (group != nullptr && !group->isDead())
+        if (group != nullptr && !group->isDead() && !job->mFillFailed)
         {
             applied = applyGeoStaged(group, job->mStaged);
         }
@@ -5969,7 +5978,7 @@ void LLVolumeGeometryManager::drainGeoPublishQueue()
             group->mVkGeoInflight = false;
             if (!group->isDead())
             {
-                if (!applied)
+                if (!applied || job->mStaged.mHadFailedFace)
                 {
                     group->setState(LLSpatialGroup::GEOM_DIRTY);
                 }
@@ -6395,6 +6404,7 @@ void LLVolumeGeometryManager::rebuildGeom(LLSpatialGroup* group)
     if (geoWorkerEnabled()
         && group->hasState(LLSpatialGroup::GEOM_DIRTY | LLSpatialGroup::ALPHA_DIRTY)
         && !group->isHUDGroup()
+        && !group->mDrawMap.empty()
         && LLVKLoader::gVkGeoInflightBytes.load() > GEO_INFLIGHT_BYTE_CAP)
     {
         ++LLVKLoader::gVkPerf.geo_defer;
@@ -6931,7 +6941,8 @@ void LLVolumeGeometryManager::rebuildGeom(LLSpatialGroup* group)
 
     U32 geometryBytes = 0;
 
-    staged.mInline = !geoWorkerEnabled() || group->isHUDGroup() || group_has_selected;
+    staged.mInline = !geoWorkerEnabled() || group->isHUDGroup() || group_has_selected
+                     || group->mDrawMap.empty() || group->mVkForceInlineRebuild;
 
     // generate render batches for static geometry
     U32 extra_mask = LLVertexBuffer::MAP_TEXTURE_INDEX;
@@ -6980,6 +6991,7 @@ void LLVolumeGeometryManager::rebuildGeom(LLSpatialGroup* group)
     if (staged.mInline || staged.mFills.empty())
     {
         applyGeoStaged(group, staged);
+        group->mVkForceInlineRebuild = false;
         ++LLVKLoader::gVkPerf.geo_inl;
         return;
     }
@@ -7518,6 +7530,11 @@ U32 LLVolumeGeometryManager::genDrawInfo(LLSpatialGroup* group, U32 mask, LLFace
                         else if (built == LLFace::GEO_FILL_FAIL)
                         {
                             staged->mFills.pop_back();
+                            if (apply != nullptr)
+                            {
+                                apply->mAllocFailed = true;
+                            }
+                            staged->mHadFailedFace = true;
                             LL_WARNS() << "Failed to get geometry for face!" << LL_ENDL;
                         }
                     }

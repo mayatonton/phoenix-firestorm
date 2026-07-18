@@ -600,6 +600,7 @@ void LLRenderPass::buildAndOverrideScenePerDrawSet(LLDrawInfo* params, bool batc
                 LLGLSLShader::sCurPerCallVkOffsetsDirty = true;
                 LLGLSLShader::sCurPerCallVkSetShape     = set_shape;
                 LLGLSLShader::sCurPerCallAuthored       = true;
+                LLVKContract::pokeClear();
                 ++LLVKLoader::gVkPerf.set_memo;
                 return;
             }
@@ -617,6 +618,7 @@ void LLRenderPass::buildAndOverrideScenePerDrawSet(LLDrawInfo* params, bool batc
         LLGLSLShader::sCurPerCallVkOffsetsDirty  = true;
         LLGLSLShader::sCurPerCallVkSetShape      = set_shape;
         LLGLSLShader::sCurPerCallAuthored        = true;
+        LLVKContract::pokeClear();
         ++LLVKLoader::gVkPerf.set_memo;
         return;
     }
@@ -1004,6 +1006,7 @@ void LLRenderPass::buildAndOverrideScenePerDrawSet(LLDrawInfo* params, bool batc
                                                   ? set_shape
                                                   : 0xFFFFFFFFu;
         LLGLSLShader::sCurPerCallAuthored = true;
+        LLVKContract::pokeClear();
         ++LLVKLoader::gVkPerf.set_build;
 
         if (memo_fill

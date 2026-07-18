@@ -2665,13 +2665,21 @@ LLFace::EGeoFillBuild LLFace::buildVkGeoFill(LLGeoFaceFill& out,
     return GEO_FILL_OK;
 }
 
-void LLFace::runVkGeoFill(LLGeoFaceFill& f)
+bool LLFace::runVkGeoFill(LLGeoFaceFill& f)
 {
     if (f.mVolume.isNull() || f.mFaceIndex < 0 || f.mFaceIndex >= f.mVolume->getNumVolumeFaces())
     {
-        return;
+        return false;
     }
     const LLVolumeFace& vf = f.mVolume->getVolumeFace(f.mFaceIndex);
+    if (vf.mPositions == nullptr || vf.mIndices == nullptr)
+    {
+        return false;
+    }
+    if ((S32)vf.mNumVertices < f.mNumVertices || (S32)vf.mNumIndices < f.mNumIndices)
+    {
+        return false;
+    }
     const S32 num_vertices = f.mNumVertices;
     const S32 num_indices = f.mNumIndices;
 
@@ -3103,6 +3111,7 @@ void LLFace::runVkGeoFill(LLGeoFaceFill& f)
             dst += 4;
         }
     }
+    return true;
 }
 
 void LLFace::renderIndexed()

@@ -2142,6 +2142,7 @@ void LLGLSLShader::bind()
         }
 
         sCurPerCallVkDescriptorSet = VK_NULL_HANDLE;
+        LLVKContract::pokeSite(8);
 
         if (LLVKLoader::isVulkanInitialized() && mVkPipelineLayout != VK_NULL_HANDLE)
         {
@@ -3027,7 +3028,17 @@ void LLGLSLShader::rotatePerProgramUBOSlot()
     mVkActivePerProgramUBOMapped  = mVkPerProgramUBORing[f][idx].mapped;
     if (sCurBoundShaderPtr == this)
     {
-        sCurPerCallVkDescriptorSet = VK_NULL_HANDLE;
+        const bool arena_path = (mVkPerProgramUBOBinding == 0 && mVkSet1DynamicCount > 0
+                                 && mVkPerProgramShadow.size() >= mVkPerProgramUBOSize);
+        if (arena_path)
+        {
+            sCurPerCallVkOffsetsDirty = true;
+        }
+        else
+        {
+            sCurPerCallVkDescriptorSet = VK_NULL_HANDLE;
+            LLVKContract::pokeSite(9);
+        }
     }
 }
 

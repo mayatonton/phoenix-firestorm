@@ -31,6 +31,7 @@
 #include "llgl.h"
 #include "llvkloader.h"
 #include "llglslshader.h"
+#include "llvkcontract.h"
 
 thread_local LLRenderTarget* LLRenderTarget::sBoundTarget = NULL;
 U32 LLRenderTarget::sBytesAllocated = 0;
@@ -468,6 +469,7 @@ void LLRenderTarget::bindTarget()
     sBoundTarget = this;
 
     LLGLSLShader::sCurPerCallVkDescriptorSet = VK_NULL_HANDLE;
+    LLVKContract::pokeSite(14);
 
     if (LLVKLoader::isVulkanInitialized())
     {
@@ -802,6 +804,7 @@ void LLRenderTarget::flush()
     llassert(sBoundTarget == this);
 
     LLGLSLShader::sCurPerCallVkDescriptorSet = VK_NULL_HANDLE;
+    LLVKContract::pokeSite(15);
 
     if (LLVKLoader::isVulkanInitialized())
     {

@@ -238,7 +238,7 @@ public:
                                  U16 index_offset,
                                  U32 geom_index,
                                  U32 indices_index);
-    static void runVkGeoFill(LLGeoFaceFill& fill);
+    static bool runVkGeoFill(LLGeoFaceFill& fill);
 
     // For volumes, etc.
     U16             getGeometry(LLStrider<LLVector3> &vertices,

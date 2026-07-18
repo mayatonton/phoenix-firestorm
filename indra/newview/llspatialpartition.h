@@ -446,6 +446,7 @@ public:
     U32 mVkBucketIndexCount = 0;
     std::vector<std::pair<LLVKBucket::Bucket*, U32> > mVkBucketSlots;
     bool mVkGeoInflight = false;
+    bool mVkForceInlineRebuild = false;
 } LL_ALIGN_POSTFIX(16);
 
 class LLGeometryManager
