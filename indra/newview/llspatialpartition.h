@@ -353,8 +353,8 @@ public:
 
     bool isHUDGroup() ;
 
-    void clearDrawMap();
-    void stripDrawRecords(LLDrawable* drawablep);
+    void clearDrawMap(U32 evict_site);
+    void stripDrawRecords(LLDrawable* drawablep, U32 evict_site);
     void validate();
     void validateDrawMap();
 

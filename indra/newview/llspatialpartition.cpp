@@ -49,6 +49,7 @@
 #include "llrender.h"
 #include "llvkbucket.h"
 #include "llvkloader.h"
+#include "llvkcontract.h"
 #include "lldrawpool.h"
 #include "lloctree.h"
 #include "llphysicsshapebuilderutil.h"
@@ -136,23 +137,50 @@ LLSpatialGroup::~LLSpatialGroup()
 
     sNodeCount--;
 
-    clearDrawMap();
+    clearDrawMap(LLVKContract::SITE_CLEAR_GROUP_DTOR);
     LLVKBucket::onGroupDestroyed(this);
 }
 
-void LLSpatialGroup::clearDrawMap()
+void LLSpatialGroup::clearDrawMap(U32 evict_site)
 {
+    if (!mDrawMap.empty() && LLVKContract::verboseEnabled())
+    {
+        std::unordered_map<LLDrawable*, std::pair<U32, U32> > evicted;
+        for (draw_map_t::iterator it = mDrawMap.begin(); it != mDrawMap.end(); ++it)
+        {
+            drawmap_elem_t& vec = it->second;
+            for (size_t r = 0; r < vec.size(); ++r)
+            {
+                if (vec[r].isNull() || vec[r]->mSrcDrawable.isNull())
+                {
+                    continue;
+                }
+                auto& e = evicted[vec[r]->mSrcDrawable.get()];
+                if (e.second == 0)
+                {
+                    e.first = vec[r]->mFSPickerLocalID;
+                }
+                ++e.second;
+            }
+        }
+        for (auto& e : evicted)
+        {
+            LLVKContract::sentinelEvict(evict_site, e.first, e.second.first, e.second.second, e.first->isDead());
+        }
+    }
     mDrawMap.clear();
     LLVKBucket::evictGroup(this);
 }
 
-void LLSpatialGroup::stripDrawRecords(LLDrawable* drawablep)
+void LLSpatialGroup::stripDrawRecords(LLDrawable* drawablep, U32 evict_site)
 {
     if (drawablep == nullptr || mDrawMap.empty())
     {
         return;
     }
     bool removed = false;
+    U32 removed_count = 0;
+    U32 removed_obj = 0;
     for (draw_map_t::iterator it = mDrawMap.begin(); it != mDrawMap.end(); ++it)
     {
         drawmap_elem_t& vec = it->second;
@@ -162,6 +190,11 @@ void LLSpatialGroup::stripDrawRecords(LLDrawable* drawablep)
             if (vec[r].notNull() && vec[r]->mSrcDrawable.get() == drawablep)
             {
                 removed = true;
+                ++removed_count;
+                if (removed_obj == 0)
+                {
+                    removed_obj = vec[r]->mFSPickerLocalID;
+                }
                 continue;
             }
             if (w != r)
@@ -177,6 +210,7 @@ void LLSpatialGroup::stripDrawRecords(LLDrawable* drawablep)
     }
     if (removed)
     {
+        LLVKContract::sentinelEvict(evict_site, drawablep, removed_obj, removed_count, drawablep->isDead());
         mVkForceInlineRebuild = true;
         LLVKBucket::patchGroup(this);
     }
@@ -399,7 +433,7 @@ void LLSpatialPartition::rebuildGeom(LLSpatialGroup* group)
 
     LL_PROFILE_ZONE_SCOPED_CATEGORY_SPATIAL;
 
-    group->clearDrawMap();
+    group->clearDrawMap(LLVKContract::SITE_CLEAR_REBUILD_GENERIC);
 
     //get geometry count
     U32 index_count = 0;
@@ -488,7 +522,7 @@ bool LLSpatialGroup::removeObject(LLDrawable *drawablep, bool from_octree)
 
         if (getElementCount() == 0)
         { //delete draw map on last element removal since a rebuild might never happen
-            clearDrawMap();
+            clearDrawMap(LLVKContract::SITE_CLEAR_LAST_ELEMENT);
         }
     }
     return true;
@@ -848,7 +882,7 @@ void LLSpatialGroup::handleDestruction(const TreeNode* node)
         }
     }
 
-    clearDrawMap();
+    clearDrawMap(LLVKContract::SITE_CLEAR_ZOMBIE);
     mVertexBuffer = NULL;
     mBufferMap.clear();
     sZombieGroups++;
@@ -924,7 +958,7 @@ void LLSpatialGroup::destroyGLState(bool keep_occlusion)
     mVertexBuffer = NULL;
     mBufferMap.clear();
 
-    clearDrawMap();
+    clearDrawMap(LLVKContract::SITE_CLEAR_DESTROY_GL);
 
     if (!keep_occlusion)
     {

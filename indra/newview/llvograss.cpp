@@ -42,6 +42,7 @@
 #include "llviewertexturelist.h"
 #include "llviewerregion.h"
 #include "pipeline.h"
+#include "llvkcontract.h"
 #include "llspatialpartition.h"
 #include "llworld.h"
 #include "lldir.h"
@@ -701,7 +702,7 @@ void LLGrassPartition::getGeometry(LLSpatialGroup* group)
     U32 index_count = 0;
     U32 vertex_count = 0;
 
-    group->clearDrawMap();
+    group->clearDrawMap(LLVKContract::SITE_CLEAR_REBUILD_GENERIC);
 
     LLVertexBuffer* buffer = group->mVertexBuffer;
 

@@ -2644,6 +2644,7 @@ LLFace::EGeoFillBuild LLFace::buildVkGeoFill(LLGeoFaceFill& out,
     }
 
     out.mVolume = volumep;
+    out.mSrcFace = this;
     out.mFaceIndex = face_index;
     out.mNumVertices = num_vertices;
     out.mNumIndices = num_indices;

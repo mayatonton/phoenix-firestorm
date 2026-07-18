@@ -323,6 +323,9 @@ public:
     const LLVKLoader::MegaSliceV& getVkVertexSlice() const { return mVkVertexSlice; }
     const LLVKLoader::MegaSliceI& getVkIndexSlice() const { return mVkIndexSlice; }
 
+    std::vector<MappedRegion>& vkMappedVertexRegions() { return mMappedVertexRegions; }
+    std::vector<MappedRegion>& vkMappedIndexRegions() { return mMappedIndexRegions; }
+
     U8* getVkVertexWritePtr(AttributeType type, U32 index) const
     {
         if (mVkVertexSlice.mapped == nullptr || !(mTypeMask & (1u << type)))

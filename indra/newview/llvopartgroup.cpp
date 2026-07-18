@@ -42,6 +42,7 @@
 #include "llviewerpartsim.h"
 #include "llviewerregion.h"
 #include "pipeline.h"
+#include "llvkcontract.h"
 #include "llspatialpartition.h"
 
 extern U64MicrosecondsImplicit gFrameTime;
@@ -690,7 +691,7 @@ void LLParticlePartition::rebuildGeom(LLSpatialGroup* group)
         group->mLastUpdateViewAngle = group->mViewAngle;
     }
 
-    group->clearDrawMap();
+    group->clearDrawMap(LLVKContract::SITE_CLEAR_REBUILD_GENERIC);
 
     //get geometry count
     U32 index_count = 0;
@@ -802,7 +803,7 @@ void LLParticlePartition::getGeometry(LLSpatialGroup* group)
 
     std::sort(mFaceList.begin(), mFaceList.end(), LLFace::CompareDistanceGreater());
 
-    group->clearDrawMap();
+    group->clearDrawMap(LLVKContract::SITE_CLEAR_REBUILD_GENERIC);
 
     LLVertexBuffer* buffer = group->mVertexBuffer;
 

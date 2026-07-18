@@ -4,6 +4,8 @@
 #include "lltimer.h"
 
 #include <atomic>
+#include <cstdlib>
+#include <cstring>
 #include <mutex>
 #include <set>
 #include <sstream>
@@ -33,8 +35,52 @@ const char* CAUSE_NAMES[CAUSE_COUNT] =
     "fb_view_diffuse",
     "fb_view_aux",
     "fb_heap_default",
-    "flicker"
+    "flicker",
+    "map_evict_unpaired",
+    "map_evict_long",
+    "geoab_input_drift",
+    "geoab_kernel_mismatch",
+    "geoab_source_drift",
+    "geoab_ref_fail"
 };
+
+const char* SITE_NAMES[SITE_COUNT] =
+{
+    "none",
+    "strip_destroy",
+    "strip_cleanup",
+    "strip_delete_faces",
+    "clear_group_dtor",
+    "clear_rebuild_generic",
+    "clear_last_element",
+    "clear_zombie",
+    "clear_destroy_gl",
+    "clear_apply"
+};
+
+bool siteTerminal(U32 s)
+{
+    return s == SITE_STRIP_DESTROY
+        || s == SITE_STRIP_CLEANUP
+        || s == SITE_CLEAR_GROUP_DTOR
+        || s == SITE_CLEAR_LAST_ELEMENT
+        || s == SITE_CLEAR_ZOMBIE;
+}
+
+struct SentEntry
+{
+    U32 site = 0;
+    U32 objId = 0;
+    U32 records = 0;
+    U64 frame = 0;
+    U8 stage = 0;
+};
+
+std::mutex sSentMutex;
+std::unordered_map<const void*, SentEntry> sSentPending;
+std::atomic<U64> sSentPendingCount{0};
+std::atomic<U64> sSiteWin[SITE_COUNT] = {};
+std::atomic<U64> sGapWin[4] = {};
 
 std::string (*sDescribe)(const void*) = nullptr;
 U64 (*sKey)(const void*) = nullptr;
@@ -103,6 +149,15 @@ bool watchBitTest(const void* p)
 
 }
 
+bool verboseEnabled()
+{
+    static const bool s_on = []() -> bool {
+        const char* e = getenv("AYASTORM_VKC");
+        return e != nullptr && strcmp(e, "0") != 0;
+    }();
+    return s_on;
+}
+
 void setResolvers(std::string (*describe)(const void*), U64 (*key)(const void*))
 {
     sDescribe = describe;
@@ -167,6 +222,10 @@ void note(ECause c, const std::string& shader_name)
     }
     sCauseWin[c].fetch_add(1, std::memory_order_relaxed);
     sCauseTot[c].fetch_add(1, std::memory_order_relaxed);
+    if (!verboseEnabled())
+    {
+        return;
+    }
     if (c == C_FB_VIEW_DIFFUSE || c == C_FB_HEAP_DEFAULT)
     {
         U64 sn = 0;
@@ -189,6 +248,67 @@ void note(ECause c, const std::string& shader_name)
     }
 }
 
+void noteDetail(ECause c, const char* key, const std::string& detail)
+{
+    if (c >= CAUSE_COUNT)
+    {
+        return;
+    }
+    sCauseWin[c].fetch_add(1, std::memory_order_relaxed);
+    sCauseTot[c].fetch_add(1, std::memory_order_relaxed);
+    U64 sn = 0;
+    if (perShaderEscalate(c, key != nullptr ? key : "", sn))
+    {
+        LL_WARNS("VKContract") << "VKC " << CAUSE_NAMES[c]
+                               << ' ' << detail
+                               << " sn=" << sn << LL_ENDL;
+    }
+}
+
+void sentinelEvict(U32 site, const void* drawable, U32 obj_local_id, U32 record_count, bool drawable_dead)
+{
+    if (drawable == nullptr || site >= SITE_COUNT || !verboseEnabled())
+    {
+        return;
+    }
+    std::lock_guard<std::mutex> lock(sSentMutex);
+    if (siteTerminal(site) || drawable_dead)
+    {
+        if (sSentPending.erase(drawable) > 0)
+        {
+            sSentPendingCount.fetch_sub(1, std::memory_order_relaxed);
+        }
+        return;
+    }
+    SentEntry e;
+    e.site = site;
+    e.objId = obj_local_id;
+    e.records = record_count;
+    e.frame = sFrame.load(std::memory_order_relaxed);
+    if (sSentPending.emplace(drawable, e).second)
+    {
+        sSentPendingCount.fetch_add(1, std::memory_order_relaxed);
+    }
+}
+
+void sentinelRegister(const void* drawable)
+{
+    if (drawable == nullptr || sSentPendingCount.load(std::memory_order_relaxed) == 0 || !verboseEnabled())
+    {
+        return;
+    }
+    std::lock_guard<std::mutex> lock(sSentMutex);
+    auto it = sSentPending.find(drawable);
+    if (it == sSentPending.end())
+    {
+        return;
+    }
+    U64 gap = sFrame.load(std::memory_order_relaxed) - it->second.frame;
+    sGapWin[gap > 3 ? 3 : gap].fetch_add(1, std::memory_order_relaxed);
+    sSentPending.erase(it);
+    sSentPendingCount.fetch_sub(1, std::memory_order_relaxed);
+}
+
 void causeNamed(ECause c, const std::string& shader_name)
 {
     if (c >= CAUSE_COUNT)
@@ -196,6 +316,10 @@ void causeNamed(ECause c, const std::string& shader_name)
         return;
     }
     cause(c);
+    if (!verboseEnabled())
+    {
+        return;
+    }
     U64 sn = 0;
     if (perShaderEscalate(c, shader_name, sn))
     {
@@ -231,7 +355,7 @@ void drawSkipped(ECause fire_cause, const std::string& shader_name)
     sSkipWin.fetch_add(1, std::memory_order_relaxed);
     sSkipTot.fetch_add(1, std::memory_order_relaxed);
     U64 n = sSkipByCause[c].fetch_add(1, std::memory_order_relaxed) + 1;
-    if (pow2(n))
+    if (verboseEnabled() && pow2(n))
     {
         LL_WARNS("VKContract") << "VKC skip cause=" << CAUSE_NAMES[c]
                                << " shader='" << shader_name << "'"
@@ -252,7 +376,7 @@ void drawSkipped(ECause fire_cause, const std::string& shader_name)
                 ++e.flips;
                 sCauseWin[C_FLICKER].fetch_add(1, std::memory_order_relaxed);
                 U64 f = sCauseTot[C_FLICKER].fetch_add(1, std::memory_order_relaxed) + 1;
-                if (pow2(f))
+                if (verboseEnabled() && pow2(f))
                 {
                     LL_WARNS("VKContract") << "VKC flicker fire/skip oscillation cause=" << CAUSE_NAMES[c]
                                            << " shader='" << shader_name << "'"
@@ -302,7 +426,7 @@ void drawFired()
         ++e.flips;
         sCauseWin[C_FLICKER].fetch_add(1, std::memory_order_relaxed);
         U64 f = sCauseTot[C_FLICKER].fetch_add(1, std::memory_order_relaxed) + 1;
-        if (pow2(f))
+        if (verboseEnabled() && pow2(f))
         {
             LL_WARNS("VKContract") << "VKC flicker skip/fire oscillation"
                                    << " flips=" << e.flips
@@ -317,6 +441,50 @@ void drawFired()
 void frameBegin()
 {
     sFrame.fetch_add(1, std::memory_order_relaxed);
+
+    if (sSentPendingCount.load(std::memory_order_relaxed) != 0)
+    {
+        U64 frame = sFrame.load(std::memory_order_relaxed);
+        std::lock_guard<std::mutex> lock(sSentMutex);
+        for (auto it = sSentPending.begin(); it != sSentPending.end(); )
+        {
+            SentEntry& e = it->second;
+            U64 age = frame - e.frame;
+            if (age >= 1 && e.stage == 0)
+            {
+                e.stage = 1;
+                sCauseWin[C_MAP_EVICT_UNPAIRED].fetch_add(1, std::memory_order_relaxed);
+                sCauseTot[C_MAP_EVICT_UNPAIRED].fetch_add(1, std::memory_order_relaxed);
+                sSiteWin[e.site].fetch_add(1, std::memory_order_relaxed);
+                U64 sn = 0;
+                if (perShaderEscalate(C_MAP_EVICT_UNPAIRED, SITE_NAMES[e.site], sn))
+                {
+                    LL_WARNS("VKContract") << "VKC map_evict_unpaired site=" << SITE_NAMES[e.site]
+                                           << " obj=" << e.objId
+                                           << " recs=" << e.records
+                                           << " sn=" << sn << LL_ENDL;
+                }
+            }
+            if (age >= 4 && e.stage == 1)
+            {
+                sCauseWin[C_MAP_EVICT_LONG].fetch_add(1, std::memory_order_relaxed);
+                sCauseTot[C_MAP_EVICT_LONG].fetch_add(1, std::memory_order_relaxed);
+                U64 sn = 0;
+                if (perShaderEscalate(C_MAP_EVICT_LONG, SITE_NAMES[e.site], sn))
+                {
+                    LL_WARNS("VKContract") << "VKC map_evict_long site=" << SITE_NAMES[e.site]
+                                           << " obj=" << e.objId
+                                           << " recs=" << e.records
+                                           << " sn=" << sn << LL_ENDL;
+                }
+                it = sSentPending.erase(it);
+                sSentPendingCount.fetch_sub(1, std::memory_order_relaxed);
+                continue;
+            }
+            ++it;
+        }
+    }
+
     F64 now = LLTimer::getElapsedSeconds();
     if (sLastSummaryTime == 0.0)
     {
@@ -359,6 +527,46 @@ void frameBegin()
         first = false;
     }
     os << '}';
+
+    U64 site_win[SITE_COUNT];
+    U64 site_any = 0;
+    for (U32 i = 0; i < SITE_COUNT; ++i)
+    {
+        site_win[i] = sSiteWin[i].exchange(0, std::memory_order_relaxed);
+        site_any += site_win[i];
+    }
+    U64 gap_win[4];
+    U64 gap_any = 0;
+    for (U32 i = 0; i < 4; ++i)
+    {
+        gap_win[i] = sGapWin[i].exchange(0, std::memory_order_relaxed);
+        gap_any += gap_win[i];
+    }
+    if (site_any != 0)
+    {
+        os << " evict{";
+        bool sfirst = true;
+        for (U32 i = 0; i < SITE_COUNT; ++i)
+        {
+            if (site_win[i] == 0)
+            {
+                continue;
+            }
+            if (!sfirst)
+            {
+                os << ' ';
+            }
+            os << SITE_NAMES[i] << '=' << site_win[i];
+            sfirst = false;
+        }
+        os << '}';
+    }
+    if (gap_any != 0)
+    {
+        os << " gap{0=" << gap_win[0] << " 1=" << gap_win[1]
+           << " 2=" << gap_win[2] << " 3+=" << gap_win[3] << '}';
+    }
+
     LL_WARNS("VKContract") << os.str() << LL_ENDL;
 }
 

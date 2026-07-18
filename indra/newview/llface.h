@@ -87,6 +87,7 @@ public:
     LLMatrix4 mTexMat;
     LLQuaternion mBumpQuat;
     LLPointer<LLVolume> mVolume;
+    LLFace* mSrcFace = nullptr;
 
     S32 mFaceIndex = 0;
     S32 mNumVertices = 0;

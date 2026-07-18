@@ -55,6 +55,7 @@
 #include "llvocache.h"
 #include "llcontrolavatar.h"
 #include "lldrawpoolavatar.h"
+#include "llvkcontract.h"
 
 // <FS:ND> Tentatively ignoring mismatched new/delete from the MemTrackableNonVirtual. I think according to the docs
 // they are properly matched
@@ -197,7 +198,7 @@ void LLDrawable::destroy()
 
     if (LLSpatialGroup* group = getSpatialGroup())
     {
-        group->stripDrawRecords(this);
+        group->stripDrawRecords(this, LLVKContract::SITE_STRIP_DESTROY);
     }
 
     std::for_each(mFaces.begin(), mFaces.end(), DeletePointer());
@@ -270,7 +271,7 @@ void LLDrawable::cleanupReferences()
 
     if (LLSpatialGroup* group = getSpatialGroup())
     {
-        group->stripDrawRecords(this);
+        group->stripDrawRecords(this, LLVKContract::SITE_STRIP_CLEANUP);
     }
 
     std::for_each(mFaces.begin(), mFaces.end(), DeletePointer());
@@ -503,7 +504,7 @@ void LLDrawable::deleteFaces(S32 offset, S32 count)
 {
     if (LLSpatialGroup* group = getSpatialGroup())
     {
-        group->stripDrawRecords(this);
+        group->stripDrawRecords(this, LLVKContract::SITE_STRIP_DELETE_FACES);
     }
 
     face_list_t::iterator face_begin = mFaces.begin() + offset;

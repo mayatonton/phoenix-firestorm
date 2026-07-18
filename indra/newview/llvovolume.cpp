@@ -74,6 +74,7 @@
 #include "llselectmgr.h"
 #include "pipeline.h"
 #include "llvkbucket.h"
+#include "llvkcontract.h"
 #include "llpipelineframecontext.h"
 #include "llsdutil.h"
 #include "llmatrix4a.h"
@@ -5790,7 +5791,7 @@ namespace
             }
         }
 
-        group->clearDrawMap();
+        group->clearDrawMap(LLVKContract::SITE_CLEAR_APPLY);
 
         for (LLGeoFaceApply& e : staged.mFaces)
         {
@@ -5830,6 +5831,441 @@ namespace
 
         LLVKBucket::patchGroup(group);
         return true;
+    }
+
+    U32 geoAbMode()
+    {
+        static const U32 s_mode = []() -> U32 {
+            const char* e = getenv("AYASTORM_GEOAB");
+            if (e == nullptr)
+            {
+                return LLVKContract::verboseEnabled() ? 1u : 0u;
+            }
+            if (strcmp(e, "0") == 0)
+            {
+                return 0u;
+            }
+            if (strcmp(e, "full") == 0)
+            {
+                return 2u;
+            }
+            return 1u;
+        }();
+        return s_mode;
+    }
+
+    U64 geoAbParamDrift(const LLGeoFaceFill& a, const LLGeoFaceFill& b)
+    {
+        U64 bits = 0;
+        auto neq = [](const void* x, const void* y, size_t n) { return memcmp(x, y, n) != 0; };
+        if (a.mNumVertices != b.mNumVertices || a.mNumIndices != b.mNumIndices
+            || a.mIndexOffset != b.mIndexOffset || a.mGeomCount != b.mGeomCount
+            || a.mFaceIndex != b.mFaceIndex)
+        {
+            bits |= 1ull << 0;
+        }
+        if (a.mVolume.get() != b.mVolume.get())
+        {
+            bits |= 1ull << 1;
+        }
+        if (a.mDoNormal != b.mDoNormal || a.mDoTangent != b.mDoTangent || a.mDoWeights != b.mDoWeights
+            || a.mDoEmissive != b.mDoEmissive || a.mDoTC != b.mDoTC || a.mPlanar != b.mPlanar
+            || a.mDoTexMat != b.mDoTexMat || a.mExpTexMat != b.mExpTexMat || a.mCheapXform != b.mCheapXform
+            || a.mExpensiveTC != b.mExpensiveTC || a.mDoBumpOffset != b.mDoBumpOffset
+            || a.mBumpActive != b.mBumpActive)
+        {
+            bits |= 1ull << 2;
+        }
+        if (neq(&a.mMatVert, &b.mMatVert, sizeof(LLMatrix4a)))
+        {
+            bits |= 1ull << 3;
+        }
+        if ((a.mDoNormal || a.mDoTangent || a.mDoBumpOffset) && (b.mDoNormal || b.mDoTangent || b.mDoBumpOffset)
+            && neq(&a.mMatNormal, &b.mMatNormal, sizeof(LLMatrix4a)))
+        {
+            bits |= 1ull << 4;
+        }
+        if (neq(&a.mScale, &b.mScale, sizeof(LLVector4a)))
+        {
+            bits |= 1ull << 5;
+        }
+        if (a.mDoBumpOffset && b.mDoBumpOffset
+            && (neq(&a.mBinormalDir, &b.mBinormalDir, sizeof(LLVector4a))
+                || neq(&a.mBumpSRay, &b.mBumpSRay, sizeof(LLVector4a))
+                || neq(&a.mBumpTRay, &b.mBumpTRay, sizeof(LLVector4a))
+                || neq(a.mBumpQuat.mQ, b.mBumpQuat.mQ, sizeof(F32) * 4)))
+        {
+            bits |= 1ull << 6;
+        }
+        if ((a.mDoTexMat || a.mExpTexMat) && (b.mDoTexMat || b.mExpTexMat)
+            && neq(&a.mTexMat, &b.mTexMat, sizeof(LLMatrix4)))
+        {
+            bits |= 1ull << 7;
+        }
+        if (a.mTexIdxF != b.mTexIdxF)
+        {
+            bits |= 1ull << 8;
+        }
+        if (a.mColorRGBA != b.mColorRGBA)
+        {
+            bits |= 1ull << 9;
+        }
+        if (a.mDoEmissive && b.mDoEmissive && a.mGlowRGBA != b.mGlowRGBA)
+        {
+            bits |= 1ull << 10;
+        }
+        for (U32 ch = 0; ch < 3; ++ch)
+        {
+            const LLGeoFaceFill::TCChannel& x = a.mTC[ch];
+            const LLGeoFaceFill::TCChannel& y = b.mTC[ch];
+            if (x.mEnabled != y.mEnabled)
+            {
+                bits |= 1ull << (11 + ch);
+                continue;
+            }
+            if (!x.mEnabled)
+            {
+                continue;
+            }
+            if (x.mXform != y.mXform || x.mCos != y.mCos || x.mSin != y.mSin
+                || x.mOs != y.mOs || x.mOt != y.mOt || x.mMs != y.mMs || x.mMt != y.mMt)
+            {
+                bits |= 1ull << (11 + ch);
+            }
+        }
+        if (a.mDstIndex != b.mDstIndex || a.mDstPos != b.mDstPos || a.mDstNormal != b.mDstNormal
+            || a.mDstTangent != b.mDstTangent || a.mDstWeights != b.mDstWeights
+            || a.mDstColor != b.mDstColor || a.mDstEmissive != b.mDstEmissive
+            || a.mDstTC[0] != b.mDstTC[0] || a.mDstTC[1] != b.mDstTC[1] || a.mDstTC[2] != b.mDstTC[2])
+        {
+            bits |= 1ull << 14;
+        }
+        return bits;
+    }
+
+    void geoAbReportRegion(const char* attr, const U8* ref, const U8* out, U32 bytes, bool f32_lanes,
+                           const char* verdict, LLVKContract::ECause cause, const std::string& prov)
+    {
+        U32 first = 0;
+        while (first < bytes && ref[first] == out[first])
+        {
+            ++first;
+        }
+        U32 diff = 0;
+        for (U32 i = 0; i < bytes; ++i)
+        {
+            diff += (ref[i] != out[i]) ? 1 : 0;
+        }
+        std::ostringstream os;
+        os << "attr=" << attr << " bytes=" << diff << '/' << bytes << " first=" << first;
+        if (f32_lanes)
+        {
+            const F32* r = (const F32*)ref;
+            const F32* o = (const F32*)out;
+            F32 maxd = 0.f;
+            bool nan_seen = false;
+            for (U32 i = 0; i < bytes / 4; ++i)
+            {
+                F32 d = fabsf(r[i] - o[i]);
+                if (d != d)
+                {
+                    nan_seen = true;
+                }
+                else if (d > maxd)
+                {
+                    maxd = d;
+                }
+            }
+            os << " maxdiff=" << maxd;
+            if (nan_seen)
+            {
+                os << " nan=1";
+            }
+        }
+        os << " verdict=" << verdict << ' ' << prov;
+        LLVKContract::noteDetail(cause, attr, os.str());
+    }
+
+    void geoAbCheckFill(LLGeoStagedRebuild& staged, LLGeoFaceFill& fill)
+    {
+        LLFace* facep = fill.mSrcFace;
+        if (facep == nullptr)
+        {
+            return;
+        }
+        const LLGeoFaceApply* entry = nullptr;
+        for (const LLGeoFaceApply& e : staged.mFaces)
+        {
+            if (e.mFace == facep)
+            {
+                entry = &e;
+                break;
+            }
+        }
+        if (entry == nullptr || entry->mAllocFailed || entry->mBuffer.isNull())
+        {
+            return;
+        }
+        LLDrawable* drawablep = entry->mDrawable.get();
+        if (drawablep == nullptr || drawablep->isDead())
+        {
+            return;
+        }
+        if (entry->mTEOffset < 0 || entry->mTEOffset >= drawablep->getNumFaces()
+            || drawablep->getFace(entry->mTEOffset) != facep)
+        {
+            return;
+        }
+        if (facep->getVertexBuffer() != entry->mBuffer.get())
+        {
+            return;
+        }
+        LLVOVolume* vobj = drawablep->getVOVolume();
+        if (vobj == nullptr)
+        {
+            return;
+        }
+        const LLTextureEntry* tep = facep->getTextureEntry();
+        if (tep == nullptr || tep->isSelected())
+        {
+            return;
+        }
+
+        std::ostringstream ps;
+        ps << "obj=" << vobj->getLocalID() << " te=" << fill.mFaceIndex
+           << " nv=" << fill.mNumVertices
+           << " lod=" << vobj->getLOD()
+           << " fl=" << (facep->isState(LLFace::RIGGED) ? "R" : "")
+           << (fill.mPlanar ? "P" : "") << (fill.mExpensiveTC ? "X" : "")
+           << (fill.mDoTexMat ? "M" : "") << (fill.mDoBumpOffset ? "B" : "")
+           << (facep->isState(LLFace::TEXTURE_ANIM) ? "A" : "");
+        std::string prov = ps.str();
+
+        if (vobj->getVolume() != fill.mVolume.get())
+        {
+            LLVKContract::noteDetail(LLVKContract::C_GEOAB_INPUT_DRIFT, "volume", "volume swapped " + prov);
+            return;
+        }
+
+        bool animated = drawablep->isState(LLDrawable::ANIMATED_CHILD);
+        if (animated)
+        {
+            vobj->updateRelativeXform(true);
+        }
+
+        LLGeoFaceFill chk;
+        LLFace::EGeoFillBuild built = facep->buildVkGeoFill(chk, entry->mBuffer.get(),
+            vobj->getRelativeXform(), vobj->getRelativeXformInvTrans(),
+            fill.mIndexOffset, entry->mGeomIndex, entry->mIndicesIndex);
+        if (built != LLFace::GEO_FILL_OK)
+        {
+            LLVKContract::noteDetail(LLVKContract::C_GEOAB_INPUT_DRIFT, "rebuild",
+                std::string("rebuild=") + (built == LLFace::GEO_FILL_DEFER ? "defer " : "fail ") + prov);
+            if (animated)
+            {
+                vobj->updateRelativeXform(false);
+            }
+            return;
+        }
+        U64 drift = geoAbParamDrift(fill, chk);
+        if (drift != 0)
+        {
+            std::ostringstream os;
+            os << "fields=0x" << std::hex << drift << std::dec << ' ' << prov;
+            LLVKContract::noteDetail(LLVKContract::C_GEOAB_INPUT_DRIFT, "fields", os.str());
+            if (animated)
+            {
+                vobj->updateRelativeXform(false);
+            }
+            return;
+        }
+
+        LLVertexBuffer* buffer = entry->mBuffer.get();
+        if (!buffer->vkMappedVertexRegions().empty() || !buffer->vkMappedIndexRegions().empty())
+        {
+            if (animated)
+            {
+                vobj->updateRelativeXform(false);
+            }
+            return;
+        }
+
+        const U32 nv = (U32)fill.mNumVertices;
+        const U32 ni = (U32)fill.mNumIndices;
+
+        struct Region
+        {
+            const char* name;
+            U8* ref;
+            const U8* out;
+            U32 bytes;
+            bool f32;
+            U8** chk_slot;
+        };
+        Region regions[10];
+        U32 nregions = 0;
+        auto add = [&](const char* name, U8* ref, const U8* out, U32 bytes, bool f32, U8** chk_slot)
+        {
+            if (ref != nullptr && out != nullptr && bytes > 0)
+            {
+                regions[nregions++] = { name, ref, out, bytes, f32, chk_slot };
+            }
+        };
+        add("index", buffer->mapIndexBuffer(entry->mIndicesIndex, ni), fill.mDstIndex, ni * 2, false, &chk.mDstIndex);
+        add("pos", buffer->mapVertexBuffer(LLVertexBuffer::TYPE_VERTEX, entry->mGeomIndex, fill.mGeomCount), fill.mDstPos, fill.mGeomCount * 16, true, &chk.mDstPos);
+        if (fill.mDoNormal)
+        {
+            add("norm", buffer->mapVertexBuffer(LLVertexBuffer::TYPE_NORMAL, entry->mGeomIndex, nv), fill.mDstNormal, nv * 16, true, &chk.mDstNormal);
+        }
+        if (fill.mDoTangent)
+        {
+            add("tangent", buffer->mapVertexBuffer(LLVertexBuffer::TYPE_TANGENT, entry->mGeomIndex, nv), fill.mDstTangent, nv * 16, true, &chk.mDstTangent);
+        }
+        if (fill.mDoWeights)
+        {
+            add("weights", buffer->mapVertexBuffer(LLVertexBuffer::TYPE_WEIGHT4, entry->mGeomIndex, nv), fill.mDstWeights, nv * 16, true, &chk.mDstWeights);
+        }
+        if (fill.mDstColor != nullptr)
+        {
+            add("color", buffer->mapVertexBuffer(LLVertexBuffer::TYPE_COLOR, entry->mGeomIndex, nv), fill.mDstColor, nv * 4, false, &chk.mDstColor);
+        }
+        if (fill.mDoEmissive)
+        {
+            add("emissive", buffer->mapVertexBuffer(LLVertexBuffer::TYPE_EMISSIVE, entry->mGeomIndex, nv), fill.mDstEmissive, nv * 4, false, &chk.mDstEmissive);
+        }
+        if (fill.mDoTC && fill.mDstTC[0] != nullptr)
+        {
+            add("tc0", buffer->mapVertexBuffer(LLVertexBuffer::TYPE_TEXCOORD0, entry->mGeomIndex, nv), fill.mDstTC[0], nv * 8, true, &chk.mDstTC[0]);
+        }
+        if (fill.mDstTC[1] != nullptr)
+        {
+            add("tc1", buffer->mapVertexBuffer(LLVertexBuffer::TYPE_TEXCOORD1, entry->mGeomIndex, nv), fill.mDstTC[1], nv * 8, true, &chk.mDstTC[1]);
+        }
+        if (fill.mDstTC[2] != nullptr)
+        {
+            add("tc2", buffer->mapVertexBuffer(LLVertexBuffer::TYPE_TEXCOORD2, entry->mGeomIndex, nv), fill.mDstTC[2], nv * 8, true, &chk.mDstTC[2]);
+        }
+
+        for (U32 i = 0; i < nregions; ++i)
+        {
+            memcpy(regions[i].ref, regions[i].out, regions[i].bytes);
+        }
+
+        bool ref_ok = facep->getGeometryVolume(*fill.mVolume, fill.mFaceIndex,
+            vobj->getRelativeXform(), vobj->getRelativeXformInvTrans(), fill.mIndexOffset, true, true);
+
+        if (animated)
+        {
+            vobj->updateRelativeXform(false);
+        }
+
+        if (!ref_ok)
+        {
+            LLVKContract::noteDetail(LLVKContract::C_GEOAB_REF_FAIL, "ref", prov);
+            buffer->vkMappedVertexRegions().clear();
+            buffer->vkMappedIndexRegions().clear();
+            return;
+        }
+
+        bool mism[10] = {};
+        bool any_mismatch = false;
+        for (U32 i = 0; i < nregions; ++i)
+        {
+            if (memcmp(regions[i].ref, regions[i].out, regions[i].bytes) != 0)
+            {
+                mism[i] = true;
+                any_mismatch = true;
+            }
+        }
+
+        if (any_mismatch)
+        {
+            chk.mDstIndex = nullptr;
+            chk.mDstPos = nullptr;
+            chk.mDstNormal = nullptr;
+            chk.mDstTangent = nullptr;
+            chk.mDstWeights = nullptr;
+            chk.mDstColor = nullptr;
+            chk.mDstEmissive = nullptr;
+            chk.mDstTC[0] = nullptr;
+            chk.mDstTC[1] = nullptr;
+            chk.mDstTC[2] = nullptr;
+
+            size_t total = 16;
+            for (U32 i = 0; i < nregions; ++i)
+            {
+                total += ((regions[i].bytes + 15u) & ~15u) + 16;
+            }
+            std::vector<U8> scratch(total);
+            U8* p = scratch.data();
+            for (U32 i = 0; i < nregions; ++i)
+            {
+                p = (U8*)(((uintptr_t)p + 15u) & ~(uintptr_t)15u);
+                *regions[i].chk_slot = p;
+                p += (regions[i].bytes + 15u) & ~15u;
+            }
+
+            bool now_ok = LLFace::runVkGeoFill(chk);
+
+            for (U32 i = 0; i < nregions; ++i)
+            {
+                if (!mism[i])
+                {
+                    continue;
+                }
+                const char* verdict = "unknown";
+                LLVKContract::ECause cause = LLVKContract::C_GEOAB_KERNEL_MISMATCH;
+                if (now_ok)
+                {
+                    bool c_eq_a = memcmp(*regions[i].chk_slot, regions[i].out, regions[i].bytes) == 0;
+                    bool c_eq_b = memcmp(*regions[i].chk_slot, regions[i].ref, regions[i].bytes) == 0;
+                    if (c_eq_b && !c_eq_a)
+                    {
+                        verdict = "src";
+                        cause = LLVKContract::C_GEOAB_SRC_DRIFT;
+                    }
+                    else if (c_eq_a && !c_eq_b)
+                    {
+                        verdict = "kernel";
+                    }
+                    else
+                    {
+                        verdict = "both";
+                    }
+                }
+                geoAbReportRegion(regions[i].name, regions[i].ref, regions[i].out, regions[i].bytes, regions[i].f32,
+                                  verdict, cause, prov);
+            }
+        }
+
+        buffer->vkMappedVertexRegions().clear();
+        buffer->vkMappedIndexRegions().clear();
+    }
+
+    void geoAbCheckJob(LLGeoRebuildJob* job)
+    {
+        U32 mode = geoAbMode();
+        if (mode == 0)
+        {
+            return;
+        }
+        LLGeoStagedRebuild& staged = job->mStaged;
+        size_t n = staged.mFills.size();
+        if (n == 0)
+        {
+            return;
+        }
+        static U32 s_cursor = 0;
+        size_t count = (mode == 2) ? n : llmin((size_t)4, n);
+        for (size_t k = 0; k < count; ++k)
+        {
+            size_t fi = (mode == 2) ? k : ((s_cursor + k) % n);
+            geoAbCheckFill(staged, staged.mFills[fi]);
+        }
+        if (mode != 2)
+        {
+            s_cursor += (U32)count;
+        }
     }
 }
 
@@ -5969,6 +6405,11 @@ void LLVolumeGeometryManager::drainGeoPublishQueue()
         if (group != nullptr && !group->isDead() && !job->mFillFailed)
         {
             applied = applyGeoStaged(group, job->mStaged);
+        }
+
+        if (applied)
+        {
+            geoAbCheckJob(job);
         }
 
         geoUnpinJob(job);
@@ -6347,6 +6788,8 @@ void LLVolumeGeometryManager::registerFace(LLSpatialGroup* group, LLFace* facep,
         }
         draw_info->validate();
     }
+
+    LLVKContract::sentinelRegister(drawable);
 
     llassert(info->mGLTFMaterial == nullptr || (info->mVertexBuffer->getTypeMask() & LLVertexBuffer::MAP_TANGENT) != 0);
     llassert(type != LLPipeline::RENDER_TYPE_PASS_GLTF_PBR || info->mGLTFMaterial != nullptr);
