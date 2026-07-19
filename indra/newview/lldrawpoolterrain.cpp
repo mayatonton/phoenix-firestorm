@@ -50,6 +50,7 @@
 #include "llviewershadermgr.h"
 #include "llrender.h"
 #include "llvkloader.h"
+#include "llvkcontract.h"
 #include "llvkuboreg.h"
 #include "llimagegl.h"
 #include "llenvironment.h"
@@ -253,9 +254,138 @@ void LLDrawPoolTerrain::renderMotionBlur(S32 pass)
 // </AYAstorm r30 P2>
 
 
+namespace
+{
+
+constexpr size_t TERRAIN_RUN_MAX_CMDS = 4096;
+
+struct TerrainRun
+{
+    std::vector<VkDrawIndexedIndirectCommand> mCmds;
+    LLVertexBuffer* mVB = nullptr;
+    LLMatrix4* mMatrix = nullptr;
+
+    bool empty() const { return mCmds.empty(); }
+
+    void reset()
+    {
+        mCmds.clear();
+        mVB = nullptr;
+        mMatrix = nullptr;
+    }
+};
+
+void appendTerrainRunCmd(TerrainRun& run, LLFace* facep)
+{
+    LLVertexBuffer* vb = facep->getVertexBuffer();
+    const LLVKLoader::MegaSliceV& vs = vb->getVkVertexSlice();
+    const LLVKLoader::MegaSliceI& is = vb->getVkIndexSlice();
+    VkDrawIndexedIndirectCommand dc;
+    dc.indexCount    = facep->getIndicesCount();
+    dc.instanceCount = 1;
+    dc.firstIndex    = is.offset / vb->getIndicesStride() + facep->getIndicesStart();
+    dc.vertexOffset  = (S32)vs.first;
+    dc.firstInstance = LLVKLoader::getCurrentDrawDataID();
+    run.mCmds.push_back(dc);
+}
+
+void flushTerrainRun(TerrainRun& run)
+{
+    if (run.empty())
+    {
+        run.reset();
+        return;
+    }
+    LLGLSLShader* shader = LLGLSLShader::sCurBoundShaderPtr;
+    if (shader != nullptr)
+    {
+        LLRenderPass::applyModelMatrix(run.mMatrix);
+        gGL.syncMatrices();
+        LLVKContract::DrawScope vkc_scope(nullptr, "terrainRun");
+        VkDescriptorSet set_to_bind = LLGLSLShader::vkResolvePerCallSetForDraw();
+        VkCommandBuffer cmd = LLVKLoader::getCurrentCommandBuffer();
+        if (set_to_bind == VK_NULL_HANDLE)
+        {
+            LLVKContract::drawSkipped(LLVKContract::C_UNKNOWN, shader->mName);
+        }
+        else if (cmd == VK_NULL_HANDLE)
+        {
+            LLVKContract::drawSkipped(LLVKContract::C_CMD_NULL, shader->mName);
+        }
+        if (set_to_bind != VK_NULL_HANDLE && cmd != VK_NULL_HANDLE)
+        {
+            VkPipeline pipeline = shader->getOrCreateVkPipelineForBoundRT(LLRender::TRIANGLES);
+            if (pipeline == VK_NULL_HANDLE)
+            {
+                LLVKContract::drawSkipped(LLVKContract::C_PIPELINE_NULL, shader->mName);
+            }
+            else
+            {
+                if (!LLVKLoader::isInRenderPassScope())
+                {
+                    LLRenderTarget* bound_rt = LLRenderTarget::getCurrentBoundTarget();
+                    if (bound_rt == nullptr)
+                    {
+                        LLVKLoader::beginSwapchainRendering();
+                    }
+                    else
+                    {
+                        bound_rt->resumeVkDynamicRendering();
+                    }
+                }
+                LLVKLoader::bindGraphicsPipelineOnce(cmd, pipeline);
+                {
+                    const bool vk_screen_space_copy = LLGLSLShader::vkUsePositiveViewport(
+                        LLRenderTarget::getCurrentBoundTarget() != nullptr,
+                        LLGLSLShader::vkCaptureRegimeActive());
+                    LLVKLoader::setupViewportAndScissor(cmd, vk_screen_space_copy);
+                }
+                LLVKLoader::bindDrawDescriptorSetsOnce(cmd,
+                                                       shader->mVkPipelineLayout,
+                                                       LLVKLoader::getCurrentPerFrameDescriptorSet(),
+                                                       set_to_bind,
+                                                       shader->mVkSet1DynamicCount,
+                                                       LLGLSLShader::sCurPerCallVkDynamicOffsets);
+                LLVKLoader::pushModelviewOnce(cmd,
+                                              shader->mVkPipelineLayout,
+                                              LLVKLoader::getCurrentModelviewMatrix());
+                run.mVB->setBuffer();
+                VkBuffer     ring_buf    = VK_NULL_HANDLE;
+                VkDeviceSize ring_offset = 0;
+                void*        ring_mapped = nullptr;
+                if (LLVKLoader::indirectRingAlloc((U32)run.mCmds.size(), ring_buf, ring_offset, ring_mapped))
+                {
+                    std::memcpy(ring_mapped, run.mCmds.data(),
+                                run.mCmds.size() * sizeof(VkDrawIndexedIndirectCommand));
+                    vkCmdDrawIndexedIndirect(cmd, ring_buf, ring_offset,
+                                             (U32)run.mCmds.size(),
+                                             sizeof(VkDrawIndexedIndirectCommand));
+                    ++LLVKLoader::gVkPerf.mdi_call;
+                    LLVKLoader::gVkPerf.mdi_rec += (U64)run.mCmds.size();
+                }
+                else
+                {
+                    for (const VkDrawIndexedIndirectCommand& dc : run.mCmds)
+                    {
+                        vkCmdDrawIndexed(cmd, dc.indexCount, 1, dc.firstIndex, dc.vertexOffset, dc.firstInstance);
+                    }
+                }
+            }
+        }
+    }
+    run.reset();
+}
+
+}
+
 void LLDrawPoolTerrain::drawLoop()
 {
-    if (!mDrawFace.empty())
+    if (mDrawFace.empty())
+    {
+        return;
+    }
+
+    if (!LLVKLoader::isIndirectDrawEnabled())
     {
         for (std::vector<LLFace*>::iterator iter = mDrawFace.begin();
              iter != mDrawFace.end(); iter++)
@@ -267,7 +397,41 @@ void LLDrawPoolTerrain::drawLoop()
 
             facep->renderIndexed();
         }
+        return;
     }
+
+    static TerrainRun run;
+    run.reset();
+
+    for (std::vector<LLFace*>::iterator iter = mDrawFace.begin();
+         iter != mDrawFace.end(); iter++)
+    {
+        LLFace *facep = *iter;
+        LLVertexBuffer* vb = facep->getVertexBuffer();
+        if (vb == nullptr)
+        {
+            continue;
+        }
+        LLDrawable* drawable = facep->getDrawable();
+        if (drawable == nullptr)
+        {
+            continue;
+        }
+        LLMatrix4* matrix = &drawable->getRegion()->mRenderMatrix;
+
+        if (!run.empty()
+            && (vb != run.mVB || matrix != run.mMatrix || run.mCmds.size() >= TERRAIN_RUN_MAX_CMDS))
+        {
+            flushTerrainRun(run);
+        }
+        if (run.empty())
+        {
+            run.mVB = vb;
+            run.mMatrix = matrix;
+        }
+        appendTerrainRunCmd(run, facep);
+    }
+    flushTerrainRun(run);
 }
 
 void LLDrawPoolTerrain::renderFullShader()
