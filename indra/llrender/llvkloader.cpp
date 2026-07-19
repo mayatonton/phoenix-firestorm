@@ -4497,6 +4497,11 @@ bool endFrame()
                                             (unsigned long long)gVkPerf.lgt_nl.load(),
                                             (unsigned long long)gVkPerf.lgt_ns.load());
                                         return s; }()
+                                   << llformat(" | e3 rig=%.2f/%.2f/%.2f pal=%.2f",
+                                        gVkPerf.e3_rig_us[0].load() / 1000.0,
+                                        gVkPerf.e3_rig_us[1].load() / 1000.0,
+                                        gVkPerf.e3_rig_us[2].load() / 1000.0,
+                                        gVkPerf.e3_pal_us.load() / 1000.0)
                                    << " | tex enq=" << gVkPerf.tex_enq.load()
                                    << " pub=" << gVkPerf.tex_pub.load()
                                    << " fail=" << gVkPerf.tex_fail.load()

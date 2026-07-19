@@ -134,6 +134,39 @@ struct VkContractResolverInit
 };
 static VkContractResolverInit sVkContractResolverInit;
 
+static U32 e3RigBucket()
+{
+    if (gCubeSnapshot || gHeroProbeMirrorRender)
+    {
+        return 2u;
+    }
+    const U32 tag = LLVKLoader::gVkPerfPassTag;
+    return tag == 0u ? 0u : (tag == 1u ? 1u : 2u);
+}
+
+namespace
+{
+struct E3PalTimer
+{
+    U64  mT0;
+    bool mOn;
+    E3PalTimer() : mT0(0), mOn(LLVKLoader::perfLogEnabled())
+    {
+        if (mOn)
+        {
+            mT0 = (U64)LLTimer::getTotalTime();
+        }
+    }
+    ~E3PalTimer()
+    {
+        if (mOn)
+        {
+            LLVKLoader::gVkPerf.e3_pal_us += (U64)LLTimer::getTotalTime() - mT0;
+        }
+    }
+};
+}
+
 LLDrawPool *LLDrawPool::createPool(const U32 type, LLViewerTexture *tex0)
 {
     LLDrawPool *poolp = NULL;
@@ -505,6 +538,8 @@ void LLRenderPass::renderGroup(LLSpatialGroup* group, U32 type, bool texture)
 void LLRenderPass::renderRiggedGroup(LLSpatialGroup* group, U32 type, bool texture)
 {
     LL_PROFILE_ZONE_SCOPED_CATEGORY_DRAWPOOL;
+    const bool e3on = LLVKLoader::perfLogEnabled();
+    const U64  e3t0 = e3on ? (U64)LLTimer::getTotalTime() : 0;
     group->mVkLastFireFrame = gFrameCount;
     LLSpatialGroup::drawmap_elem_t& draw_info = group->mDrawMap[type];
     const LLVOAvatar* lastAvatar = nullptr;
@@ -521,6 +556,10 @@ void LLRenderPass::renderRiggedGroup(LLSpatialGroup* group, U32 type, bool textu
                 pushBatch(*pparams, texture);
             }
         }
+    }
+    if (e3on)
+    {
+        LLVKLoader::gVkPerf.e3_rig_us[e3RigBucket()] += (U64)LLTimer::getTotalTime() - e3t0;
     }
 }
 
@@ -1334,6 +1373,8 @@ void LLRenderPass::pushIndirectBucket(LLVKBucket::Bucket& bucket, const std::vec
 void LLRenderPass::pushRiggedBatches(U32 type, bool texture, bool batch_textures)
 {
     LL_PROFILE_ZONE_SCOPED_CATEGORY_DRAWPOOL;
+    const bool e3on = LLVKLoader::perfLogEnabled();
+    const U64  e3t0 = e3on ? (U64)LLTimer::getTotalTime() : 0;
 
     if (texture)
     {
@@ -1357,6 +1398,10 @@ void LLRenderPass::pushRiggedBatches(U32 type, bool texture, bool batch_textures
     else
     {
         pushUntexturedRiggedBatches(type);
+    }
+    if (e3on)
+    {
+        LLVKLoader::gVkPerf.e3_rig_us[e3RigBucket()] += (U64)LLTimer::getTotalTime() - e3t0;
     }
 }
 
@@ -1398,6 +1443,8 @@ void LLRenderPass::pushMaskBatches(U32 type, bool texture, bool batch_textures)
 void LLRenderPass::pushRiggedMaskBatches(U32 type, bool texture, bool batch_textures)
 {
     LL_PROFILE_ZONE_SCOPED_CATEGORY_DRAWPOOL;
+    const bool e3on = LLVKLoader::perfLogEnabled();
+    const U64  e3t0 = e3on ? (U64)LLTimer::getTotalTime() : 0;
     const LLVOAvatar* lastAvatar = nullptr;
     U64 lastMeshId = 0;
     bool skipLastSkin = false;
@@ -1418,6 +1465,10 @@ void LLRenderPass::pushRiggedMaskBatches(U32 type, bool texture, bool batch_text
             ++LLVKLoader::gVkPerf.rigged_rec;
             pushBatch(*pparams, texture, batch_textures);
         }
+    }
+    if (e3on)
+    {
+        LLVKLoader::gVkPerf.e3_rig_us[e3RigBucket()] += (U64)LLTimer::getTotalTime() - e3t0;
     }
 }
 
@@ -1581,6 +1632,7 @@ bool LLRenderPass::uploadMatrixPalette(LLDrawInfo& params)
 bool LLRenderPass::uploadMatrixPalette(LLVOAvatar* avatar, const LLMeshSkinInfo* skinInfo) // <FS:Beq/> be defensive about UAF with skinInfo during LocalMesh
 {
     LL_PROFILE_ZONE_SCOPED_CATEGORY_AVATAR;
+    E3PalTimer _e3pal;
 
     if (!avatar)
     {
@@ -1603,6 +1655,7 @@ bool LLRenderPass::uploadMatrixPalette(LLVOAvatar* avatar, const LLMeshSkinInfo*
 bool LLRenderPass::uploadMatrixPalette(LLVOAvatar* avatar, const LLMeshSkinInfo* skinInfo, const LLVOAvatar*& lastAvatar, U64& lastMeshId, bool& skipLastSkin)// <FS:Beq/> be defensive about UAF with skinInfo during LocalMesh
 {
     LL_PROFILE_ZONE_SCOPED_CATEGORY_AVATAR;
+    E3PalTimer _e3pal;
 
     llassert(skinInfo);
     llassert(LLGLSLShader::sCurBoundShaderPtr);
@@ -1635,6 +1688,7 @@ bool LLRenderPass::uploadMatrixPalette(LLVOAvatar* avatar, const LLMeshSkinInfo*
 bool LLRenderPass::uploadMatrixPalette(LLVOAvatar* avatar, const LLMeshSkinInfo* skinInfo, const LLVOAvatar*& lastAvatar, U64& lastMeshId, const LLGLSLShader*& lastAvatarShader, bool& skipLastSkin)// <FS:Beq/> be defensive about UAF with skinInfo during LocalMesh
 {
     LL_PROFILE_ZONE_SCOPED_CATEGORY_AVATAR;
+    E3PalTimer _e3pal;
 
     llassert(skinInfo);
     llassert(LLGLSLShader::sCurBoundShaderPtr);
