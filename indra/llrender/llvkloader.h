@@ -1481,6 +1481,10 @@ namespace LLVKLoader
         std::atomic<U64> als_n[4] = {};
         std::atomic<U64> als_us[4] = {};
         std::atomic<U64> als_cause[8] = {};
+        std::atomic<U64> als_val_pass[5] = {};
+        std::atomic<U64> als_val_ring{0};
+        std::atomic<U64> als_val_l3{0};
+        std::atomic<U64> ring_hw[16] = {};
         std::atomic<U64> setb_us[4] = {};
         std::atomic<U64> ens_hit{0};
         std::atomic<U64> ens_alloc{0};
@@ -1536,6 +1540,9 @@ namespace LLVKLoader
             for (auto& v : als_n) v = 0;
             for (auto& v : als_us) v = 0;
             for (auto& v : als_cause) v = 0;
+            for (auto& v : als_val_pass) v = 0;
+            als_val_ring = 0; als_val_l3 = 0;
+            for (auto& v : ring_hw) v = 0;
             for (auto& v : setb_us) v = 0;
             ens_hit = 0; ens_alloc = 0;
             for (auto& v : phase_us) v = 0;
@@ -1554,6 +1561,8 @@ namespace LLVKLoader
     extern thread_local U32 gVkPerfShadowMapIndex;
     extern thread_local U32 gVkPerfSetPath;
     extern thread_local U32 gVkPerfSetCause;
+    extern thread_local U32 gVkPerfValFailKind;
+    U32 perfPassBucket();
 
     constexpr U32 MAX_PERCALL_L3 = 16;
 
@@ -1575,6 +1584,25 @@ namespace LLVKLoader
         VKPERF_SETCZ_VAL         = 6,
         VKPERF_SETCZ_MHDR        = 7,
         VKPERF_SETCZ_MVAL        = 8,
+    };
+    enum : U32
+    {
+        RINGHW_WLATMOS      = 0,
+        RINGHW_WLSKY        = 1,
+        RINGHW_AOUTIL       = 2,
+        RINGHW_GLOBALF      = 3,
+        RINGHW_WATERFOG     = 4,
+        RINGHW_WATERV       = 5,
+        RINGHW_RP           = 6,
+        RINGHW_RPS          = 7,
+        RINGHW_RPF          = 8,
+        RINGHW_SSRUTIL      = 9,
+        RINGHW_LIGHTS       = 10,
+        RINGHW_LIGHTSSPEC   = 11,
+        RINGHW_PBRTERRAINF  = 12,
+        RINGHW_PBRTERRAIN   = 13,
+        RINGHW_SHADOWUTIL   = 14,
+        RINGHW_DEFERREDUTIL = 15,
     };
 
     extern std::atomic<U64> gVkPerDrawTopologyGen;

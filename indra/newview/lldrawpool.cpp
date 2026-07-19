@@ -1027,6 +1027,16 @@ void LLRenderPass::buildAndOverrideScenePerDrawSet(LLDrawInfo* params, bool batc
         ++bindings.ubo_count;
     }
 
+    const bool sig_audit = LLVKContract::verboseEnabled();
+    const U32  SIG_AUDIT_MAX = 32;
+    U8       audit_old_bind[SIG_AUDIT_MAX];
+    VkBuffer audit_old_buf[SIG_AUDIT_MAX];
+    bool     audit_old_decl[SIG_AUDIT_MAX];
+    U8       audit_new_bind[SIG_AUDIT_MAX];
+    VkBuffer audit_new_buf[SIG_AUDIT_MAX];
+    U32      audit_old_n = 0;
+    U32      audit_new_n = 0;
+
     for (const auto& layout_binding : cur->mVkLayoutBindings)
     {
         if (layout_binding.descriptorType != VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER
@@ -1064,6 +1074,21 @@ void LLRenderPass::buildAndOverrideScenePerDrawSet(LLDrawInfo* params, bool batc
             LLGLSLShader::SharedUBOAccessor accessor = cur->mVkBindingToUBOAccessor[N];
             if (accessor)
             {
+                const bool declared_ubo = (cur->mVkBindingDeclaredType[N] & LLGLSLShader::VKBD_UBO) != 0;
+                if (sig_audit && audit_old_n < SIG_AUDIT_MAX)
+                {
+                    void*    am = nullptr;
+                    VkBuffer ab = VK_NULL_HANDLE;
+                    accessor(ab, am);
+                    audit_old_bind[audit_old_n] = (U8)N;
+                    audit_old_buf[audit_old_n]  = ab;
+                    audit_old_decl[audit_old_n] = declared_ubo;
+                    ++audit_old_n;
+                }
+                if (!declared_ubo)
+                {
+                    continue;
+                }
                 void* mapped = nullptr;
                 if (accessor(ubo_buf, mapped))
                 {
@@ -1074,6 +1099,12 @@ void LLRenderPass::buildAndOverrideScenePerDrawSet(LLDrawInfo* params, bool batc
                     cur->mVkAccessorBindingListLanes[lane].push_back((U8)N);
                 }
                 memo_ring_sig = memo_ring_sig * 0x100000001B3ull ^ (U64)(uintptr_t)ubo_buf;
+                if (sig_audit && audit_new_n < SIG_AUDIT_MAX)
+                {
+                    audit_new_bind[audit_new_n] = (U8)N;
+                    audit_new_buf[audit_new_n]  = ubo_buf;
+                    ++audit_new_n;
+                }
             }
         }
 
@@ -1085,6 +1116,34 @@ void LLRenderPass::buildAndOverrideScenePerDrawSet(LLDrawInfo* params, bool batc
             entry.offset  = 0;
             entry.size    = ubo_sz;
             ++bindings.ubo_count;
+        }
+    }
+
+    if (sig_audit)
+    {
+        U32  fi = 0;
+        bool sig_mismatch = false;
+        for (U32 i = 0; i < audit_old_n && !sig_mismatch; ++i)
+        {
+            if (!audit_old_decl[i])
+            {
+                continue;
+            }
+            if (fi >= audit_new_n
+                || audit_old_bind[i] != audit_new_bind[fi]
+                || audit_old_buf[i] != audit_new_buf[fi])
+            {
+                sig_mismatch = true;
+            }
+            ++fi;
+        }
+        if (fi != audit_new_n)
+        {
+            sig_mismatch = true;
+        }
+        if (sig_mismatch)
+        {
+            LLVKContract::causeNamed(LLVKContract::C_SIG_DIET_MISMATCH, cur->mName);
         }
     }
 

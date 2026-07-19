@@ -1614,6 +1614,13 @@ void LLDrawPoolAlpha::renderAlpha(U32 mask, bool depth_only, bool rigged, bool u
                           if (sp == LLVKLoader::VKPERF_SETPATH_BUILD && sc >= 1 && sc <= 8)
                           {
                               ++LLVKLoader::gVkPerf.als_cause[sc - 1];
+                              if (sc == LLVKLoader::VKPERF_SETCZ_VAL)
+                              {
+                                  ++LLVKLoader::gVkPerf.als_val_pass[LLVKLoader::perfPassBucket()];
+                                  const U32 vk = LLVKLoader::gVkPerfValFailKind;
+                                  if (vk == 1) { ++LLVKLoader::gVkPerf.als_val_ring; }
+                                  else if (vk == 2) { ++LLVKLoader::gVkPerf.als_val_l3; }
+                              }
                           }
                           alp_t = t2; }
                         appendAlphaRunCmd(run, params);
@@ -1647,6 +1654,13 @@ void LLDrawPoolAlpha::renderAlpha(U32 mask, bool depth_only, bool rigged, bool u
                           if (sp == LLVKLoader::VKPERF_SETPATH_BUILD && sc >= 1 && sc <= 8)
                           {
                               ++LLVKLoader::gVkPerf.als_cause[sc - 1];
+                              if (sc == LLVKLoader::VKPERF_SETCZ_VAL)
+                              {
+                                  ++LLVKLoader::gVkPerf.als_val_pass[LLVKLoader::perfPassBucket()];
+                                  const U32 vk = LLVKLoader::gVkPerfValFailKind;
+                                  if (vk == 1) { ++LLVKLoader::gVkPerf.als_val_ring; }
+                                  else if (vk == 2) { ++LLVKLoader::gVkPerf.als_val_l3; }
+                              }
                           }
                           alp_t = t2; }
 

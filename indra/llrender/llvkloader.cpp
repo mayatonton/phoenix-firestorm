@@ -1648,6 +1648,7 @@ namespace
                            << " heap=" << sBindlessHeapCapacity
                            << " mdi=" << (sMultiDrawIndirectEnabled ? 1 : 0)
                            << " mdi_fi=" << (sDrawIndirectFirstInstanceEnabled ? 1 : 0)
+                           << " dynUBO=" << sPhysicalDeviceProperties.limits.maxDescriptorSetUniformBuffersDynamic
                            << LL_ENDL;
 
         volkLoadDevice(sDevice);
@@ -4294,6 +4295,14 @@ std::atomic<U64> gVkGeoInflightBytes{0};
 thread_local U32 gVkPerfPassTag = 0;
 thread_local U32 gVkPerfSetPath = 0;
 thread_local U32 gVkPerfSetCause = 0;
+thread_local U32 gVkPerfValFailKind = 0;
+
+U32 perfPassBucket()
+{
+    return gHeroProbeMirrorRender ? 4u
+           : gCubeSnapshot ? 3u
+           : (gVkPerfPassTag < 3u ? gVkPerfPassTag : 0u);
+}
 thread_local U32 gVkPerfShadowMapIndex = 0;
 
 std::atomic<U64> gVkPerDrawTopologyGen{1};
@@ -4479,6 +4488,14 @@ bool endFrame()
                                             s += llformat(" %s=%llu", cn[i],
                                                           (unsigned long long)gVkPerf.als_cause[i].load());
                                         }
+                                        s += llformat(" vp=%llu/%llu/%llu/%llu/%llu vk=r%llu/l%llu",
+                                                      (unsigned long long)gVkPerf.als_val_pass[0].load(),
+                                                      (unsigned long long)gVkPerf.als_val_pass[1].load(),
+                                                      (unsigned long long)gVkPerf.als_val_pass[2].load(),
+                                                      (unsigned long long)gVkPerf.als_val_pass[3].load(),
+                                                      (unsigned long long)gVkPerf.als_val_pass[4].load(),
+                                                      (unsigned long long)gVkPerf.als_val_ring.load(),
+                                                      (unsigned long long)gVkPerf.als_val_l3.load());
                                         s += llformat(" | setb asm=%.1f dyn=%.1f ens=%.1f fill=%.1f ehit=%llu ealloc=%llu",
                                                       gVkPerf.setb_us[0].load() / 1000.0,
                                                       gVkPerf.setb_us[1].load() / 1000.0,
@@ -4486,6 +4503,18 @@ bool endFrame()
                                                       gVkPerf.setb_us[3].load() / 1000.0,
                                                       (unsigned long long)gVkPerf.ens_hit.load(),
                                                       (unsigned long long)gVkPerf.ens_alloc.load());
+                                        return s; }()
+                                   << [](){ std::string s = " | rhw";
+                                        static const char* rn[16] = {
+                                            "atm","sky","ao","glb","wfg","wtv","rp","rps",
+                                            "rpf","ssr","lt","lts","ptf","pt","shu","dfu" };
+                                        for (U32 i = 0; i < 16; ++i) {
+                                            const U64 hw = gVkPerf.ring_hw[i].load();
+                                            if (hw != 0) {
+                                                s += llformat(" %s=%llu", rn[i],
+                                                              (unsigned long long)hw);
+                                            }
+                                        }
                                         return s; }()
                                    << " | emi grp=" << gVkPerf.emi_grp.load()
                                    << " rtn=" << gVkPerf.emi_rtn.load()
@@ -6102,6 +6131,8 @@ void writeCurrentShadowUtilUBO(const ShadowUtil_PerProgramBind& data)
         return;
     }
     sShadowUtilRingIdx[f] = idx + 1;
+    if ((U64)(idx + 1) > gVkPerf.ring_hw[RINGHW_SHADOWUTIL].load())
+        gVkPerf.ring_hw[RINGHW_SHADOWUTIL] = (U64)(idx + 1);
     DeferredUtilOverrideSlot& slot = sShadowUtilRing[f][idx];
     std::memcpy(slot.mapped, &data, sizeof(ShadowUtil_PerProgramBind));
     sCurShadowUtilBuf[f]    = slot.buffer;
@@ -6178,6 +6209,8 @@ void writeCurrentDeferredUtilUBO(const DeferredUtil_PerProgramBind& data)
         return;
     }
     sDeferredUtilRingIdx[f] = idx + 1;
+    if ((U64)(idx + 1) > gVkPerf.ring_hw[RINGHW_DEFERREDUTIL].load())
+        gVkPerf.ring_hw[RINGHW_DEFERREDUTIL] = (U64)(idx + 1);
     DeferredUtilOverrideSlot& slot = sDeferredUtilRing[f][idx];
     std::memcpy(slot.mapped, &data, sizeof(DeferredUtil_PerProgramBind));
     sCurDeferredUtilBuf[f]    = slot.buffer;
@@ -6234,7 +6267,7 @@ void clearDeferredUtilOverrideSlot()
     sDuOverrideActiveMapped = nullptr;
 }
 
-#define LLVK_SHARED_UBO_RING_IMPL(BindName, StructType, BindingNumber)                                  \
+#define LLVK_SHARED_UBO_RING_IMPL(BindName, StructType, BindingNumber, RingHwEnum)                       \
     static bool ensure##BindName##RingSlot(U32 f, U32 idx)                                              \
     {                                                                                                  \
         while (s##BindName##Ring[f].size() <= (size_t)idx)                                             \
@@ -6261,6 +6294,8 @@ void clearDeferredUtilOverrideSlot()
         const U32 idx = s##BindName##RingIdx[f];                                                       \
         if (!ensure##BindName##RingSlot(f, idx)) return;                                               \
         s##BindName##RingIdx[f] = idx + 1;                                                             \
+        if ((U64)(idx + 1) > gVkPerf.ring_hw[RingHwEnum].load())                                       \
+            gVkPerf.ring_hw[RingHwEnum] = (U64)(idx + 1);                                              \
         DeferredUtilOverrideSlot& slot = s##BindName##Ring[f][idx];                                    \
         std::memcpy(slot.mapped, &data, sizeof(StructType));                                           \
         sCur##BindName##Buf[f]    = slot.buffer;                                                       \
@@ -6289,20 +6324,20 @@ void clearDeferredUtilOverrideSlot()
         return true;                                                                                   \
     }
 
-LLVK_SHARED_UBO_RING_IMPL(WindlightSky,     WindlightSky_PerProgramBind,     9)
-LLVK_SHARED_UBO_RING_IMPL(WindlightAtmos,   WindlightAtmos_PerProgramBind,   8)
-LLVK_SHARED_UBO_RING_IMPL(AoUtil,           AoUtil_PerProgramBind,           22)
-LLVK_SHARED_UBO_RING_IMPL(GlobalF,          GlobalF_PerProgramBind,          18)
-LLVK_SHARED_UBO_RING_IMPL(WaterFog,         WaterFog_PerProgramBind,         14)
-LLVK_SHARED_UBO_RING_IMPL(WaterV,           Water_PerProgramBind,            15)
-LLVK_SHARED_UBO_RING_IMPL(ReflectionProbe,  ReflectionProbe_PerProgramBind,  16)
-LLVK_SHARED_UBO_RING_IMPL(ReflectionProbes, ReflectionProbes_PerProgramBind, 38)
-LLVK_SHARED_UBO_RING_IMPL(ReflectionProbeF, ReflectionProbeF_PerProgramBind, 39)
-LLVK_SHARED_UBO_RING_IMPL(SSRUtil,          SSRUtil_PerProgramBind,          49)
-LLVK_SHARED_UBO_RING_IMPL(Lights,           Lights_PerProgramBind,           12)
-LLVK_SHARED_UBO_RING_IMPL(LightsSpecular,   LightsSpecular_PerProgramBind,   12)
-LLVK_SHARED_UBO_RING_IMPL(PbrTerrainF,      PbrTerrainF_PerProgramBind,      28)
-LLVK_SHARED_UBO_RING_IMPL(PbrTerrain,       PbrTerrain_PerShaderBind,        52)
+LLVK_SHARED_UBO_RING_IMPL(WindlightSky,     WindlightSky_PerProgramBind,     9,  RINGHW_WLSKY)
+LLVK_SHARED_UBO_RING_IMPL(WindlightAtmos,   WindlightAtmos_PerProgramBind,   8,  RINGHW_WLATMOS)
+LLVK_SHARED_UBO_RING_IMPL(AoUtil,           AoUtil_PerProgramBind,           22, RINGHW_AOUTIL)
+LLVK_SHARED_UBO_RING_IMPL(GlobalF,          GlobalF_PerProgramBind,          18, RINGHW_GLOBALF)
+LLVK_SHARED_UBO_RING_IMPL(WaterFog,         WaterFog_PerProgramBind,         14, RINGHW_WATERFOG)
+LLVK_SHARED_UBO_RING_IMPL(WaterV,           Water_PerProgramBind,            15, RINGHW_WATERV)
+LLVK_SHARED_UBO_RING_IMPL(ReflectionProbe,  ReflectionProbe_PerProgramBind,  16, RINGHW_RP)
+LLVK_SHARED_UBO_RING_IMPL(ReflectionProbes, ReflectionProbes_PerProgramBind, 38, RINGHW_RPS)
+LLVK_SHARED_UBO_RING_IMPL(ReflectionProbeF, ReflectionProbeF_PerProgramBind, 39, RINGHW_RPF)
+LLVK_SHARED_UBO_RING_IMPL(SSRUtil,          SSRUtil_PerProgramBind,          49, RINGHW_SSRUTIL)
+LLVK_SHARED_UBO_RING_IMPL(Lights,           Lights_PerProgramBind,           12, RINGHW_LIGHTS)
+LLVK_SHARED_UBO_RING_IMPL(LightsSpecular,   LightsSpecular_PerProgramBind,   12, RINGHW_LIGHTSSPEC)
+LLVK_SHARED_UBO_RING_IMPL(PbrTerrainF,      PbrTerrainF_PerProgramBind,      28, RINGHW_PBRTERRAINF)
+LLVK_SHARED_UBO_RING_IMPL(PbrTerrain,       PbrTerrain_PerShaderBind,        52, RINGHW_PBRTERRAIN)
 #undef LLVK_SHARED_UBO_RING_IMPL
 
 #define LLVK_SHARED_UBO_DYNAMIC_IMPL(BindName, StructType)                                              \
@@ -10713,9 +10748,7 @@ void bindDrawDescriptorSetsOnce(VkCommandBuffer cmd, VkPipelineLayout layout,
                                 VkDescriptorSet set0, VkDescriptorSet set1,
                                 U32 dyn_count, const U32* offsets)
 {
-    const U32 pass_bucket = gHeroProbeMirrorRender ? 4u
-                            : gCubeSnapshot ? 3u
-                            : (gVkPerfPassTag < 3u ? gVkPerfPassTag : 0u);
+    const U32 pass_bucket = perfPassBucket();
     ++gVkPerf.draws_pass[pass_bucket];
     if (pass_bucket == 1u)
     {

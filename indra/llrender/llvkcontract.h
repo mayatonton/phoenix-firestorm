@@ -55,6 +55,7 @@ enum ECause : U32
     C_UUID_ABSENT,
     C_UUID_FB_DIFFUSE,
     C_UUID_FB_AUX,
+    C_SIG_DIET_MISMATCH,
     CAUSE_COUNT
 };
 

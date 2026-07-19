@@ -65,7 +65,8 @@ const char* CAUSE_NAMES[CAUSE_COUNT] =
     "list_absent_long",
     "uuid_absent",
     "uuid_fb_diffuse",
-    "uuid_fb_aux"
+    "uuid_fb_aux",
+    "sig_diet_mismatch"
 };
 
 const char* SITE_NAMES[SITE_COUNT] =
