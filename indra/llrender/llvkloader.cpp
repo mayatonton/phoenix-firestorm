@@ -6365,6 +6365,41 @@ static U32 sObjectSkinUpOffset[FRAMES_IN_FLIGHT] = { 0, 0, 0 };
 static VkBuffer sObjectSkinUpBuf[FRAMES_IN_FLIGHT] = { VK_NULL_HANDLE, VK_NULL_HANDLE, VK_NULL_HANDLE };
 static U64 sObjectSkinUpHash[FRAMES_IN_FLIGHT] = { 0, 0, 0 };
 
+struct ObjectSkinFrameCacheKey
+{
+    const void* avatar;
+    U64         skin_hash;
+    bool operator==(const ObjectSkinFrameCacheKey& o) const
+    {
+        return avatar == o.avatar && skin_hash == o.skin_hash;
+    }
+};
+struct ObjectSkinFrameCacheKeyHash
+{
+    std::size_t operator()(const ObjectSkinFrameCacheKey& k) const
+    {
+        std::size_t h = std::hash<const void*>()(k.avatar);
+        h ^= std::hash<U64>()(k.skin_hash) + 0x9e3779b97f4a7c15ull + (h << 6) + (h >> 2);
+        return h;
+    }
+};
+struct ObjectSkinFrameCacheVal
+{
+    VkBuffer buf;
+    U32      off;
+};
+static std::unordered_map<ObjectSkinFrameCacheKey, ObjectSkinFrameCacheVal, ObjectSkinFrameCacheKeyHash> sObjectSkinFrameCache;
+static U64 sObjectSkinFrameCacheStamp = ~0ull;
+
+static void objectSkinFrameCacheGuard()
+{
+    if (sObjectSkinFrameCacheStamp != sMonotonicFrameCount)
+    {
+        sObjectSkinFrameCache.clear();
+        sObjectSkinFrameCacheStamp = sMonotonicFrameCount;
+    }
+}
+
 static bool peekObjectSkinState(const void*& out_shadow, U32& out_size,
                                 U32& out_off, bool& out_current, U64& out_up_hash)
 {
@@ -6470,6 +6505,65 @@ void* rotateObjectSkinSlotForWrite()
     ++sObjectSkinWriteGen;
     LLGLSLShader::sCurPerCallVkOffsetsDirty = true;
     return &sObjectSkinShadow;
+}
+
+bool objectSkinTryAdopt(const void* avatar, U64 skin_hash)
+{
+    if (!sInitialized)
+    {
+        return false;
+    }
+    if (LLVKContract::verboseEnabled())
+    {
+        return false;
+    }
+    const U32 f = sFrameIndex;
+    if (f >= FRAMES_IN_FLIGHT)
+    {
+        return false;
+    }
+    objectSkinFrameCacheGuard();
+    auto it = sObjectSkinFrameCache.find(ObjectSkinFrameCacheKey{ avatar, skin_hash });
+    if (it == sObjectSkinFrameCache.end())
+    {
+        return false;
+    }
+    sObjectSkinUpBuf[f]    = it->second.buf;
+    sObjectSkinUpOffset[f] = it->second.off;
+    sObjectSkinUpFrame[f]  = sMonotonicFrameCount;
+    ++sObjectSkinWriteGen;
+    sObjectSkinUpGen[f]    = sObjectSkinWriteGen;
+    sObjectSkinUpHash[f]   = 0;
+    LLGLSLShader::sCurPerCallVkOffsetsDirty = true;
+    return true;
+}
+
+void objectSkinStoreCache(const void* avatar, U64 skin_hash)
+{
+    if (!sInitialized)
+    {
+        return;
+    }
+    const U32 f = sFrameIndex;
+    if (f >= FRAMES_IN_FLIGHT)
+    {
+        return;
+    }
+    objectSkinFrameCacheGuard();
+    VkBuffer buf = VK_NULL_HANDLE;
+    U32      off = 0;
+    const bool current = (sObjectSkinUpFrame[f] == sMonotonicFrameCount
+                          && sObjectSkinUpGen[f] == sObjectSkinWriteGen);
+    if (current)
+    {
+        buf = sObjectSkinUpBuf[f];
+        off = sObjectSkinUpOffset[f];
+    }
+    else if (!ensureObjectSkinUploaded(buf, off))
+    {
+        return;
+    }
+    sObjectSkinFrameCache[ObjectSkinFrameCacheKey{ avatar, skin_hash }] = ObjectSkinFrameCacheVal{ buf, off };
 }
 
 bool getSharedObjectSkinUBO(VkBuffer& out_buffer, void*& out_mapped)

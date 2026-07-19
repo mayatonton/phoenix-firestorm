@@ -564,6 +564,8 @@ namespace LLVKLoader
                   "ObjectSkin_PerProgramBind must match class1/avatar/objectSkinV.glsl std140 layout (10560 B = mat3x4[110] × 2)");
     void* rotateObjectSkinSlotForWrite();
     bool getSharedObjectSkinUBO(VkBuffer& out_buffer, void*& out_mapped);
+    bool objectSkinTryAdopt(const void* avatar, U64 skin_hash);
+    void objectSkinStoreCache(const void* avatar, U64 skin_hash);
 
     struct Lights_PerProgramBind
     {

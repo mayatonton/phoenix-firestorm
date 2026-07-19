@@ -1647,12 +1647,16 @@ bool LLRenderPass::uploadMatrixPalette(LLVOAvatar* avatar, const LLMeshSkinInfo*
         return false;
     }
 
-    writeObjectSkinUBO(*LLGLSLShader::sCurBoundShaderPtr, (F32*)&(mpc.mGLMp[0]), count);
+    if (!LLVKLoader::objectSkinTryAdopt(avatar, skinInfo->mHash))
+    {
+        writeObjectSkinUBO(*LLGLSLShader::sCurBoundShaderPtr, (F32*)&(mpc.mGLMp[0]), count);
+        LLVKLoader::objectSkinStoreCache(avatar, skinInfo->mHash);
+    }
 
     return true;
 }
 
-bool LLRenderPass::uploadMatrixPalette(LLVOAvatar* avatar, const LLMeshSkinInfo* skinInfo, const LLVOAvatar*& lastAvatar, U64& lastMeshId, bool& skipLastSkin)// <FS:Beq/> be defensive about UAF with skinInfo during LocalMesh
+bool LLRenderPass::uploadMatrixPalette(LLVOAvatar* avatar, const LLMeshSkinInfo* skinInfo, const LLVOAvatar*& lastAvatar, U64& lastMeshId, bool& skipLastSkin, bool allow_dedup)// <FS:Beq/> be defensive about UAF with skinInfo during LocalMesh
 {
     LL_PROFILE_ZONE_SCOPED_CATEGORY_AVATAR;
     E3PalTimer _e3pal;
@@ -1679,7 +1683,15 @@ bool LLRenderPass::uploadMatrixPalette(LLVOAvatar* avatar, const LLMeshSkinInfo*
 
     if (!skipLastSkin)
     {
-        writeObjectSkinUBO(*LLGLSLShader::sCurBoundShaderPtr, (F32*)&(mpc.mGLMp[0]), count);
+        if (!allow_dedup)
+        {
+            writeObjectSkinUBO(*LLGLSLShader::sCurBoundShaderPtr, (F32*)&(mpc.mGLMp[0]), count);
+        }
+        else if (!LLVKLoader::objectSkinTryAdopt(avatar, skinInfo->mHash))
+        {
+            writeObjectSkinUBO(*LLGLSLShader::sCurBoundShaderPtr, (F32*)&(mpc.mGLMp[0]), count);
+            LLVKLoader::objectSkinStoreCache(avatar, skinInfo->mHash);
+        }
     }
 
     return !skipLastSkin;
@@ -1713,7 +1725,11 @@ bool LLRenderPass::uploadMatrixPalette(LLVOAvatar* avatar, const LLMeshSkinInfo*
 
     if (!skipLastSkin)
     {
-        writeObjectSkinUBO(*LLGLSLShader::sCurBoundShaderPtr, (F32*)&(mpc.mGLMp[0]), count);
+        if (!LLVKLoader::objectSkinTryAdopt(avatar, skinInfo->mHash))
+        {
+            writeObjectSkinUBO(*LLGLSLShader::sCurBoundShaderPtr, (F32*)&(mpc.mGLMp[0]), count);
+            LLVKLoader::objectSkinStoreCache(avatar, skinInfo->mHash);
+        }
     }
 
     return !skipLastSkin;
@@ -1827,7 +1843,7 @@ void LLRenderPass::pushRiggedVelocityBatches(U32 type)
             continue;
         }
 
-        if (!uploadMatrixPalette(params.mAvatar, params.mSkinInfo, lastAvatar, lastMeshId, skipLastSkin))
+        if (!uploadMatrixPalette(params.mAvatar, params.mSkinInfo, lastAvatar, lastMeshId, skipLastSkin, false))
         {
             continue;
         }
@@ -1932,7 +1948,7 @@ void LLRenderPass::pushRiggedVelocityBatchesTextured(U32 type)
             continue;
         }
 
-        if (!uploadMatrixPalette(params.mAvatar, params.mSkinInfo, lastAvatar, lastMeshId, skipLastSkin))
+        if (!uploadMatrixPalette(params.mAvatar, params.mSkinInfo, lastAvatar, lastMeshId, skipLastSkin, false))
         {
             continue;
         }
