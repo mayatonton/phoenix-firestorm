@@ -706,47 +706,100 @@ void LLDrawPoolAlpha::RestoreTexSetup(bool tex_setup)
 void LLDrawPoolAlpha::drawEmissive(LLDrawInfo* draw)
 {
     LLVKContract::DrawScope vkc_scope(draw, "alphaEmi");
+    const bool ep = LLVKLoader::perfLogEnabled();
+    U64 t0 = ep ? (U64)LLTimer::getTotalTime() : 0;
     LLRenderPass::applyModelMatrix(*draw);
     draw->mVertexBuffer->setBuffer();
+    U64 t1 = ep ? (U64)LLTimer::getTotalTime() : 0;
     draw->mVertexBuffer->drawRange(LLRender::TRIANGLES, draw->mStart, draw->mEnd, draw->mCount, draw->mOffset);
     LLRenderPass::vkcVerifyDrawModelview(*draw);
+    if (ep)
+    {
+        U64 t2 = (U64)LLTimer::getTotalTime();
+        LLVKLoader::gVkPerf.emi_us[6] += t1 - t0;
+        LLVKLoader::gVkPerf.emi_us[7] += t2 - t1;
+    }
 }
 
 
 void LLDrawPoolAlpha::renderEmissives(std::vector<LLDrawInfo*>& emissives)
 {
+    const bool ep = LLVKLoader::perfLogEnabled();
+    U64 t0 = ep ? (U64)LLTimer::getTotalTime() : 0;
     emissive_shader->bind();
+    if (ep)
+    {
+        LLVKLoader::gVkPerf.emi_us[2] += (U64)LLTimer::getTotalTime() - t0;
+        LLVKLoader::gVkPerf.emi_n[0] += emissives.size();
+    }
 
     for (LLDrawInfo* draw : emissives)
     {
+        U64 t1 = ep ? (U64)LLTimer::getTotalTime() : 0;
         bool tex_setup = TexSetup(draw, false);
+        if (ep)
+        {
+            LLVKLoader::gVkPerf.emi_us[4] += (U64)LLTimer::getTotalTime() - t1;
+        }
         drawEmissive(draw);
-        RestoreTexSetup(tex_setup);
+        if (tex_setup)
+        {
+            U64 t2 = ep ? (U64)LLTimer::getTotalTime() : 0;
+            RestoreTexSetup(tex_setup);
+            if (ep)
+            {
+                LLVKLoader::gVkPerf.emi_us[4] += (U64)LLTimer::getTotalTime() - t2;
+            }
+        }
     }
 }
 
 void LLDrawPoolAlpha::renderPbrEmissives(std::vector<LLDrawInfo*>& emissives)
 {
+    const bool ep = LLVKLoader::perfLogEnabled();
+    U64 t0 = ep ? (U64)LLTimer::getTotalTime() : 0;
     pbr_emissive_shader->bind();
+    if (ep)
+    {
+        LLVKLoader::gVkPerf.emi_us[2] += (U64)LLTimer::getTotalTime() - t0;
+        LLVKLoader::gVkPerf.emi_n[1] += emissives.size();
+    }
 
     for (LLDrawInfo* draw : emissives)
     {
         llassert(draw->mGLTFMaterial);
         LLGLDisable cull_face(draw->mGLTFMaterial->mDoubleSided ? GL_CULL_FACE : 0);
+        U64 t1 = ep ? (U64)LLTimer::getTotalTime() : 0;
         draw->mGLTFMaterial->bind(draw->mTexture);
+        U64 t2 = ep ? (U64)LLTimer::getTotalTime() : 0;
         LLVKContract::DrawScope vkc_scope(draw, "alphaPbrEmi");
         LLRenderPass::applyModelMatrix(*draw);
         draw->mVertexBuffer->setBuffer();
+        U64 t3 = ep ? (U64)LLTimer::getTotalTime() : 0;
         draw->mVertexBuffer->drawRange(LLRender::TRIANGLES, draw->mStart, draw->mEnd, draw->mCount, draw->mOffset);
         LLRenderPass::vkcVerifyDrawModelview(*draw);
+        if (ep)
+        {
+            U64 t4 = (U64)LLTimer::getTotalTime();
+            LLVKLoader::gVkPerf.emi_us[5] += t2 - t1;
+            LLVKLoader::gVkPerf.emi_us[6] += t3 - t2;
+            LLVKLoader::gVkPerf.emi_us[7] += t4 - t3;
+        }
     }
 }
 
 void LLDrawPoolAlpha::renderRiggedEmissives(std::vector<LLDrawInfo*>& emissives)
 {
     LLGLDepthTest depth(GL_TRUE, GL_FALSE); //disable depth writes since "emissive" is additive so sorting doesn't matter
+    const bool ep = LLVKLoader::perfLogEnabled();
+    U64 t0 = ep ? (U64)LLTimer::getTotalTime() : 0;
     LLGLSLShader* shader = emissive_shader->mRiggedVariant;
     shader->bind();
+    if (ep)
+    {
+        LLVKLoader::gVkPerf.emi_us[2] += (U64)LLTimer::getTotalTime() - t0;
+        LLVKLoader::gVkPerf.emi_n[2] += emissives.size();
+    }
 
     const LLVOAvatar* lastAvatar = nullptr;
     U64 lastMeshId = 0;
@@ -756,11 +809,30 @@ void LLDrawPoolAlpha::renderRiggedEmissives(std::vector<LLDrawInfo*>& emissives)
     {
         LL_PROFILE_ZONE_NAMED_CATEGORY_DRAWPOOL("Emissives");
 
-        if (uploadMatrixPalette(draw->mAvatar, draw->mSkinInfo, lastAvatar, lastMeshId, skipLastSkin))
+        U64 t1 = ep ? (U64)LLTimer::getTotalTime() : 0;
+        bool skinned = uploadMatrixPalette(draw->mAvatar, draw->mSkinInfo, lastAvatar, lastMeshId, skipLastSkin);
+        if (ep)
         {
+            LLVKLoader::gVkPerf.emi_us[3] += (U64)LLTimer::getTotalTime() - t1;
+        }
+        if (skinned)
+        {
+            U64 t2 = ep ? (U64)LLTimer::getTotalTime() : 0;
             bool tex_setup = TexSetup(draw, false);
+            if (ep)
+            {
+                LLVKLoader::gVkPerf.emi_us[4] += (U64)LLTimer::getTotalTime() - t2;
+            }
             drawEmissive(draw);
-            RestoreTexSetup(tex_setup);
+            if (tex_setup)
+            {
+                U64 t3 = ep ? (U64)LLTimer::getTotalTime() : 0;
+                RestoreTexSetup(tex_setup);
+                if (ep)
+                {
+                    LLVKLoader::gVkPerf.emi_us[4] += (U64)LLTimer::getTotalTime() - t3;
+                }
+            }
         }
     }
 }
@@ -768,7 +840,14 @@ void LLDrawPoolAlpha::renderRiggedEmissives(std::vector<LLDrawInfo*>& emissives)
 void LLDrawPoolAlpha::renderRiggedPbrEmissives(std::vector<LLDrawInfo*>& emissives)
 {
     LLGLDepthTest depth(GL_TRUE, GL_FALSE); //disable depth writes since "emissive" is additive so sorting doesn't matter
+    const bool ep = LLVKLoader::perfLogEnabled();
+    U64 t0 = ep ? (U64)LLTimer::getTotalTime() : 0;
     pbr_emissive_shader->bind(true);
+    if (ep)
+    {
+        LLVKLoader::gVkPerf.emi_us[2] += (U64)LLTimer::getTotalTime() - t0;
+        LLVKLoader::gVkPerf.emi_n[3] += emissives.size();
+    }
 
     const LLVOAvatar* lastAvatar = nullptr;
     U64 lastMeshId = 0;
@@ -776,17 +855,33 @@ void LLDrawPoolAlpha::renderRiggedPbrEmissives(std::vector<LLDrawInfo*>& emissiv
 
     for (LLDrawInfo* draw : emissives)
     {
-        if (!uploadMatrixPalette(draw->mAvatar, draw->mSkinInfo, lastAvatar, lastMeshId, skipLastSkin))
+        U64 t1 = ep ? (U64)LLTimer::getTotalTime() : 0;
+        bool skinned = uploadMatrixPalette(draw->mAvatar, draw->mSkinInfo, lastAvatar, lastMeshId, skipLastSkin);
+        if (ep)
+        {
+            LLVKLoader::gVkPerf.emi_us[3] += (U64)LLTimer::getTotalTime() - t1;
+        }
+        if (!skinned)
         { // failed to upload matrix palette, skip rendering
             continue;
         }
 
         LLGLDisable cull_face(draw->mGLTFMaterial->mDoubleSided ? GL_CULL_FACE : 0);
+        U64 t2 = ep ? (U64)LLTimer::getTotalTime() : 0;
         draw->mGLTFMaterial->bind(draw->mTexture);
+        U64 t3 = ep ? (U64)LLTimer::getTotalTime() : 0;
         LLVKContract::DrawScope vkc_scope(draw, "alphaPbrEmi");
         draw->mVertexBuffer->setBuffer();
+        U64 t4 = ep ? (U64)LLTimer::getTotalTime() : 0;
         draw->mVertexBuffer->drawRange(LLRender::TRIANGLES, draw->mStart, draw->mEnd, draw->mCount, draw->mOffset);
         LLRenderPass::vkcVerifyDrawModelview(*draw);
+        if (ep)
+        {
+            U64 t5 = (U64)LLTimer::getTotalTime();
+            LLVKLoader::gVkPerf.emi_us[5] += t3 - t2;
+            LLVKLoader::gVkPerf.emi_us[6] += t4 - t3;
+            LLVKLoader::gVkPerf.emi_us[7] += t5 - t4;
+        }
     }
 }
 
@@ -1102,6 +1197,16 @@ void LLDrawPoolAlpha::renderAlpha(U32 mask, bool depth_only, bool rigged, bool u
 
     static AlphaRun run;
 
+    static std::vector<LLDrawInfo*> emissives;
+    static std::vector<LLDrawInfo*> rigged_emissives;
+    static std::vector<LLDrawInfo*> pbr_emissives;
+    static std::vector<LLDrawInfo*> pbr_rigged_emissives;
+
+    emissives.resize(0);
+    rigged_emissives.resize(0);
+    pbr_emissives.resize(0);
+    pbr_rigged_emissives.resize(0);
+
     const bool alp_perf = LLVKLoader::perfLogEnabled();
     U64 alp_us[11] = {};
     auto alp_now = [&]() -> U64 { return alp_perf ? (U64)LLTimer::getTotalTime() : 0; };
@@ -1143,16 +1248,6 @@ void LLDrawPoolAlpha::renderAlpha(U32 mask, bool depth_only, bool rigged, bool u
                     }
                 }
             }
-
-            static std::vector<LLDrawInfo*> emissives;
-            static std::vector<LLDrawInfo*> rigged_emissives;
-            static std::vector<LLDrawInfo*> pbr_emissives;
-            static std::vector<LLDrawInfo*> pbr_rigged_emissives;
-
-            emissives.resize(0);
-            rigged_emissives.resize(0);
-            pbr_emissives.resize(0);
-            pbr_rigged_emissives.resize(0);
 
             bool is_particle_or_hud_particle = group->getSpatialPartition()->mPartitionType == LLViewerRegion::PARTITION_PARTICLE
                                                       || group->getSpatialPartition()->mPartitionType == LLViewerRegion::PARTITION_HUD_PARTICLE;
@@ -1524,92 +1619,114 @@ void LLDrawPoolAlpha::renderAlpha(U32 mask, bool depth_only, bool rigged, bool u
             }
 
             flushAlphaRun(run);
-
-            // render emissive faces into alpha channel for bloom effects
-            if (!depth_only)
-            {
-                U64 emi_t = alp_now();
-
-                gPipeline.enableLightsDynamic();
-
-                // <AYAstorm r30 P5 fix glow-lost-in-plate 2026-05-23>
-                // Emissive pass uses (BF_ZERO, BF_ONE) for color (no-op) and
-                // (BF_ONE, BF_ONE) for alpha (additive glow). When the BLEND
-                // pass above was redirected to mAYAAlphaColor (plate), the
-                // currently-bound FBO is the plate — leaving it bound here
-                // makes emissive ADD glow into plate.a, which is the plate's
-                // coverage channel used by dofCombineF's over-composite. That
-                // both corrupts coverage AND prevents glow from ever reaching
-                // mRT->screen.a (the scene glow channel combineGlow reads).
-                // Net effect: alpha BLEND material loses its glow entirely.
-                //
-                // Fix: temporarily pop the plate so the emissive pass targets
-                // mRT->screen, where glow accumulation belongs. flush() pops
-                // the plate off LLRenderTarget's FBO stack, leaving the
-                // pre-pushed screen on top; bindTarget() re-pushes the plate
-                // after the emissive pass so subsequent BLEND in the second
-                // forwardRender() call continues to write to the plate.
-                const bool emissive_to_screen = mForwardToAlphaRT;
-                if (emissive_to_screen)
-                {
-                    gPipeline.mAYAAlphaColor.flush();
-                }
-                // </AYAstorm r30 P5 fix glow-lost-in-plate>
-
-                // install glow-accumulating blend mode
-                // don't touch color, add to alpha (glow)
-                gGL.blendFunc(LLRender::BF_ZERO, LLRender::BF_ONE, LLRender::BF_ONE, LLRender::BF_ONE);
-
-                bool rebind = false;
-                LLGLSLShader* lastShader = current_shader;
-                if (!emissives.empty())
-                {
-                    light_enabled = true;
-                    renderEmissives(emissives);
-                    rebind = true;
-                }
-
-                if (!pbr_emissives.empty())
-                {
-                    light_enabled = true;
-                    renderPbrEmissives(pbr_emissives);
-                    rebind = true;
-                }
-
-                if (!rigged_emissives.empty())
-                {
-                    light_enabled = true;
-                    renderRiggedEmissives(rigged_emissives);
-                    rebind = true;
-                }
-
-                if (!pbr_rigged_emissives.empty())
-                {
-                    light_enabled = true;
-                    renderRiggedPbrEmissives(pbr_rigged_emissives);
-                    rebind = true;
-                }
-
-                // restore our alpha blend mode
-                gGL.blendFunc(mColorSFactor, mColorDFactor, mAlphaSFactor, mAlphaDFactor);
-
-                if (lastShader && rebind)
-                {
-                    lastShader->bind();
-                }
-
-                // <AYAstorm r30 P5 fix glow-lost-in-plate 2026-05-23>
-                // Re-push plate so subsequent BLEND (second forwardRender call
-                // or other consumers) continues writing into the plate.
-                if (emissive_to_screen)
-                {
-                    gPipeline.mAYAAlphaColor.bindTarget();
-                }
-                // </AYAstorm r30 P5 fix glow-lost-in-plate>
-
-                alp_us[10] += alp_now() - emi_t;
-            }
         }
+    }
+
+    // render emissive faces into alpha channel for bloom effects
+    if (!depth_only &&
+        !(emissives.empty() && pbr_emissives.empty() &&
+          rigged_emissives.empty() && pbr_rigged_emissives.empty()))
+    {
+        U64 emi_t = alp_now();
+        U64 e_t = emi_t;
+        U64 e_rt = 0, e_lgt = 0, e_bnd = 0;
+
+        gPipeline.enableLightsDynamic();
+        { U64 t2 = alp_now(); e_lgt += t2 - e_t; e_t = t2; }
+
+        // <AYAstorm r30 P5 fix glow-lost-in-plate 2026-05-23>
+        // Emissive pass uses (BF_ZERO, BF_ONE) for color (no-op) and
+        // (BF_ONE, BF_ONE) for alpha (additive glow). When the BLEND
+        // pass above was redirected to mAYAAlphaColor (plate), the
+        // currently-bound FBO is the plate — leaving it bound here
+        // makes emissive ADD glow into plate.a, which is the plate's
+        // coverage channel used by dofCombineF's over-composite. That
+        // both corrupts coverage AND prevents glow from ever reaching
+        // mRT->screen.a (the scene glow channel combineGlow reads).
+        // Net effect: alpha BLEND material loses its glow entirely.
+        //
+        // Fix: temporarily pop the plate so the emissive pass targets
+        // mRT->screen, where glow accumulation belongs. flush() pops
+        // the plate off LLRenderTarget's FBO stack, leaving the
+        // pre-pushed screen on top; bindTarget() re-pushes the plate
+        // after the emissive pass so subsequent BLEND in the second
+        // forwardRender() call continues to write to the plate.
+        const bool emissive_to_screen = mForwardToAlphaRT;
+        if (emissive_to_screen)
+        {
+            gPipeline.mAYAAlphaColor.flush();
+            { U64 t2 = alp_now(); e_rt += t2 - e_t; e_t = t2; }
+        }
+        // </AYAstorm r30 P5 fix glow-lost-in-plate>
+
+        // install glow-accumulating blend mode
+        // don't touch color, add to alpha (glow)
+        gGL.blendFunc(LLRender::BF_ZERO, LLRender::BF_ONE, LLRender::BF_ONE, LLRender::BF_ONE);
+        { U64 t2 = alp_now(); e_bnd += t2 - e_t; e_t = t2; }
+
+        bool rebind = false;
+        LLGLSLShader* lastShader = current_shader;
+        if (!emissives.empty())
+        {
+            light_enabled = true;
+            renderEmissives(emissives);
+            rebind = true;
+        }
+
+        if (!pbr_emissives.empty())
+        {
+            light_enabled = true;
+            renderPbrEmissives(pbr_emissives);
+            rebind = true;
+        }
+
+        if (!rigged_emissives.empty())
+        {
+            light_enabled = true;
+            renderRiggedEmissives(rigged_emissives);
+            rebind = true;
+        }
+
+        if (!pbr_rigged_emissives.empty())
+        {
+            light_enabled = true;
+            renderRiggedPbrEmissives(pbr_rigged_emissives);
+            rebind = true;
+        }
+
+        // restore our alpha blend mode
+        e_t = alp_now();
+        gGL.blendFunc(mColorSFactor, mColorDFactor, mAlphaSFactor, mAlphaDFactor);
+
+        if (lastShader && rebind)
+        {
+            lastShader->bind();
+        }
+        { U64 t2 = alp_now(); e_bnd += t2 - e_t; e_t = t2; }
+
+        // <AYAstorm r30 P5 fix glow-lost-in-plate 2026-05-23>
+        // Re-push plate so subsequent BLEND (second forwardRender call
+        // or other consumers) continues writing into the plate.
+        if (emissive_to_screen)
+        {
+            gPipeline.mAYAAlphaColor.bindTarget();
+            { U64 t2 = alp_now(); e_rt += t2 - e_t; }
+        }
+        // </AYAstorm r30 P5 fix glow-lost-in-plate>
+
+        if (alp_perf)
+        {
+            LLVKLoader::gVkPerf.emi_grp++;
+            if (emissive_to_screen)
+            {
+                LLVKLoader::gVkPerf.emi_rtn++;
+            }
+            if (e_rt) { LLVKLoader::gVkPerf.emi_us[0] += e_rt; }
+            if (e_lgt) { LLVKLoader::gVkPerf.emi_us[1] += e_lgt; }
+            if (e_bnd) { LLVKLoader::gVkPerf.emi_us[2] += e_bnd; }
+        }
+
+        alp_us[10] += alp_now() - emi_t;
     }
 
     gGL.setSceneBlendType(LLRender::BT_ALPHA);

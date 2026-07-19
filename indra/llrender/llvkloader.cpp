@@ -4464,6 +4464,22 @@ bool endFrame()
                                             }
                                         }
                                         return s; }()
+                                   << " | emi grp=" << gVkPerf.emi_grp.load()
+                                   << " rtn=" << gVkPerf.emi_rtn.load()
+                                   << " n=" << gVkPerf.emi_n[0].load()
+                                   << "/" << gVkPerf.emi_n[1].load()
+                                   << "/" << gVkPerf.emi_n[2].load()
+                                   << "/" << gVkPerf.emi_n[3].load()
+                                   << [](){ std::string s;
+                                        static const char* names[8] = {
+                                            "rt","lgt","bnd","pal","tex","mat","buf","drw" };
+                                        for (U32 i = 0; i < 8; ++i) {
+                                            const U64 us = gVkPerf.emi_us[i].load();
+                                            if (us != 0) {
+                                                s += llformat(" %s=%.1f", names[i], us / 1000.0);
+                                            }
+                                        }
+                                        return s; }()
                                    << " | lgt " << [](){ std::string s;
                                         static const char* names[8] = {
                                             "sun","blur","atm","loc","spot","fsl","fwd","bindD" };
