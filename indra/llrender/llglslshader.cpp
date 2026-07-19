@@ -3469,8 +3469,8 @@ void LLGLSLShader::populateAndBindUniversalDescriptorSet(bool preserve_drawdata)
 
     S32   imm_max_unit          = -1;
     bool  imm_uncacheable_build = false;
-    void* imm_l3_views[6]       = {};
-    S16   imm_l3_enums[6]       = {};
+    void* imm_l3_views[LLVKLoader::MAX_PERCALL_L3] = {};
+    S16   imm_l3_enums[LLVKLoader::MAX_PERCALL_L3] = {};
     U8    imm_l3_cnt            = 0;
     U64   imm_ring_sig          = 0;
     const bool imm_build_acc    = imm_cache && !cur->mVkAccessorBindingListBuiltLanes[imm_lane];
@@ -3576,7 +3576,7 @@ void LLGLSLShader::populateAndBindUniversalDescriptorSet(bool preserve_drawdata)
         }
         else if (l3_hit)
         {
-            if (imm_l3_cnt < 6)
+            if (imm_l3_cnt < LLVKLoader::MAX_PERCALL_L3)
             {
                 imm_l3_enums[imm_l3_cnt] = (S16)enum_value;
                 imm_l3_views[imm_l3_cnt] = (void*)view;

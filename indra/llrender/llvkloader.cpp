@@ -4292,6 +4292,8 @@ bool beginFrame(bool acquire_swapchain)
 VkPerfCounters gVkPerf;
 std::atomic<U64> gVkGeoInflightBytes{0};
 thread_local U32 gVkPerfPassTag = 0;
+thread_local U32 gVkPerfSetPath = 0;
+thread_local U32 gVkPerfSetCause = 0;
 thread_local U32 gVkPerfShadowMapIndex = 0;
 
 std::atomic<U64> gVkPerDrawTopologyGen{1};
@@ -4463,6 +4465,27 @@ bool endFrame()
                                                 s += llformat(" %s=%.1f", names[i], us / 1000.0);
                                             }
                                         }
+                                        return s; }()
+                                   << [](){ std::string s = " | als";
+                                        static const char* pn[4] = { "ear","mem","h1","bld" };
+                                        for (U32 i = 0; i < 4; ++i) {
+                                            s += llformat(" %s=%llu/%.1f", pn[i],
+                                                          (unsigned long long)gVkPerf.als_n[i].load(),
+                                                          gVkPerf.als_us[i].load() / 1000.0);
+                                        }
+                                        s += " cz";
+                                        static const char* cn[8] = { "nb","gltf","lane","set","topo","val","mhdr","mval" };
+                                        for (U32 i = 0; i < 8; ++i) {
+                                            s += llformat(" %s=%llu", cn[i],
+                                                          (unsigned long long)gVkPerf.als_cause[i].load());
+                                        }
+                                        s += llformat(" | setb asm=%.1f dyn=%.1f ens=%.1f fill=%.1f ehit=%llu ealloc=%llu",
+                                                      gVkPerf.setb_us[0].load() / 1000.0,
+                                                      gVkPerf.setb_us[1].load() / 1000.0,
+                                                      gVkPerf.setb_us[2].load() / 1000.0,
+                                                      gVkPerf.setb_us[3].load() / 1000.0,
+                                                      (unsigned long long)gVkPerf.ens_hit.load(),
+                                                      (unsigned long long)gVkPerf.ens_alloc.load());
                                         return s; }()
                                    << " | emi grp=" << gVkPerf.emi_grp.load()
                                    << " rtn=" << gVkPerf.emi_rtn.load()
@@ -5108,6 +5131,7 @@ bool ensureScenePerDrawDescriptorSet(const ScenePerDrawBindings& b,
             *out_token = &cache_it->second;
         }
         *out_set = cache_it->second.sets[getCurrentFrameIndex()];
+        ++gVkPerf.ens_hit;
         return true;
     }
 
@@ -5397,6 +5421,7 @@ bool ensureScenePerDrawDescriptorSet(const ScenePerDrawBindings& b,
         *out_token = &entry;
     }
     *out_set = entry.sets[getCurrentFrameIndex()];
+    ++gVkPerf.ens_alloc;
     return true;
 }
 

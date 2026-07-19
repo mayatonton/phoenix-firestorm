@@ -1606,7 +1606,16 @@ void LLDrawPoolAlpha::renderAlpha(U32 mask, bool depth_only, bool rigged, bool u
                         }
                         { U64 t2 = alp_now(); alp_us[5] += t2 - alp_t; alp_t = t2; }
                         LLRenderPass::buildAndOverrideScenePerDrawSet(&params, true);
-                        { U64 t2 = alp_now(); alp_us[6] += t2 - alp_t; alp_t = t2; }
+                        { U64 t2 = alp_now(); alp_us[6] += t2 - alp_t;
+                          const U32 sp = LLVKLoader::gVkPerfSetPath;
+                          ++LLVKLoader::gVkPerf.als_n[sp];
+                          LLVKLoader::gVkPerf.als_us[sp] += t2 - alp_t;
+                          const U32 sc = LLVKLoader::gVkPerfSetCause;
+                          if (sp == LLVKLoader::VKPERF_SETPATH_BUILD && sc >= 1 && sc <= 8)
+                          {
+                              ++LLVKLoader::gVkPerf.als_cause[sc - 1];
+                          }
+                          alp_t = t2; }
                         appendAlphaRunCmd(run, params);
                         ++LLVKLoader::gVkPerf.alp_col;
                         if (run.mCmds.size() >= ALPHA_RUN_MAX_CMDS)
@@ -1630,7 +1639,16 @@ void LLDrawPoolAlpha::renderAlpha(U32 mask, bool depth_only, bool rigged, bool u
                         LLVKContract::DrawScope vkc_scope(&params, "alpha");
                         LLRenderPass::buildAndOverrideScenePerDrawSet(&params, true);
 
-                        { U64 t2 = alp_now(); alp_us[6] += t2 - alp_t; alp_t = t2; }
+                        { U64 t2 = alp_now(); alp_us[6] += t2 - alp_t;
+                          const U32 sp = LLVKLoader::gVkPerfSetPath;
+                          ++LLVKLoader::gVkPerf.als_n[sp];
+                          LLVKLoader::gVkPerf.als_us[sp] += t2 - alp_t;
+                          const U32 sc = LLVKLoader::gVkPerfSetCause;
+                          if (sp == LLVKLoader::VKPERF_SETPATH_BUILD && sc >= 1 && sc <= 8)
+                          {
+                              ++LLVKLoader::gVkPerf.als_cause[sc - 1];
+                          }
+                          alp_t = t2; }
 
                         params.mVertexBuffer->drawRange(LLRender::TRIANGLES, params.mStart, params.mEnd, params.mCount, params.mOffset);
                         LLRenderPass::vkcVerifyDrawModelview(params);

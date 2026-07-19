@@ -1478,6 +1478,12 @@ namespace LLVKLoader
         std::atomic<U64> skin_up{0};
         std::atomic<U64> e3_rig_us[3] = {};
         std::atomic<U64> e3_pal_us{0};
+        std::atomic<U64> als_n[4] = {};
+        std::atomic<U64> als_us[4] = {};
+        std::atomic<U64> als_cause[8] = {};
+        std::atomic<U64> setb_us[4] = {};
+        std::atomic<U64> ens_hit{0};
+        std::atomic<U64> ens_alloc{0};
         std::atomic<U64> phase_us[16] = {};
         std::atomic<U64> idle_us[32] = {};
         std::atomic<U64> img_us[12] = {};
@@ -1527,6 +1533,11 @@ namespace LLVKLoader
             skin_up = 0;
             for (auto& v : e3_rig_us) v = 0;
             e3_pal_us = 0;
+            for (auto& v : als_n) v = 0;
+            for (auto& v : als_us) v = 0;
+            for (auto& v : als_cause) v = 0;
+            for (auto& v : setb_us) v = 0;
+            ens_hit = 0; ens_alloc = 0;
             for (auto& v : phase_us) v = 0;
             for (auto& v : idle_us) v = 0;
             for (auto& v : img_us) v = 0;
@@ -1541,6 +1552,30 @@ namespace LLVKLoader
     extern std::atomic<U64> gVkGeoInflightBytes;
     extern thread_local U32 gVkPerfPassTag;
     extern thread_local U32 gVkPerfShadowMapIndex;
+    extern thread_local U32 gVkPerfSetPath;
+    extern thread_local U32 gVkPerfSetCause;
+
+    constexpr U32 MAX_PERCALL_L3 = 16;
+
+    enum : U32
+    {
+        VKPERF_SETPATH_EARLY    = 0,
+        VKPERF_SETPATH_MEMO     = 1,
+        VKPERF_SETPATH_BINDLESS = 2,
+        VKPERF_SETPATH_BUILD    = 3,
+    };
+    enum : U32
+    {
+        VKPERF_SETCZ_NONE        = 0,
+        VKPERF_SETCZ_NONBINDLESS = 1,
+        VKPERF_SETCZ_GLTF        = 2,
+        VKPERF_SETCZ_LANE        = 3,
+        VKPERF_SETCZ_NOSET       = 4,
+        VKPERF_SETCZ_TOPO        = 5,
+        VKPERF_SETCZ_VAL         = 6,
+        VKPERF_SETCZ_MHDR        = 7,
+        VKPERF_SETCZ_MVAL        = 8,
+    };
 
     extern std::atomic<U64> gVkPerDrawTopologyGen;
     extern std::atomic<U64> gVkViewDestroyGen;

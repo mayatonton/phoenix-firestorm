@@ -159,8 +159,8 @@ public:
     void* mVkSetMemoEntryTok[3] = {};
     U64   mVkSetMemoPinEpoch = 0;
     U64   mVkSetMemoRingSig[3] = {};
-    void* mVkSetMemoL3Views[6] = {};
-    S16   mVkSetMemoL3Enums[6] = {};
+    void* mVkSetMemoL3Views[LLVKLoader::MAX_PERCALL_L3] = {};
+    S16   mVkSetMemoL3Enums[LLVKLoader::MAX_PERCALL_L3] = {};
     U32   mVkSetMemoShape = 0;
     U8    mVkSetMemoL3Count = 0;
 

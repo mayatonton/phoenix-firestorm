@@ -411,8 +411,8 @@ public:
         U64             ringSig[3] = {};
         U64             pinEpoch   = 0;
         U64             topoGen    = 0;
-        void*           l3Views[6] = {};
-        S16             l3Enums[6] = {};
+        void*           l3Views[LLVKLoader::MAX_PERCALL_L3] = {};
+        S16             l3Enums[LLVKLoader::MAX_PERCALL_L3] = {};
         U8              l3Count    = 0;
     };
     VkBindlessSet1LaneState mVkBindlessSet1Lanes[LLVKLoader::MAX_RECORD_LANES];
@@ -425,8 +425,8 @@ public:
         U64             sig[3]     = {};
         U64             ringSig[3] = {};
         U64             topoGen    = 0;
-        void*           l3Views[6] = {};
-        S16             l3Enums[6] = {};
+        void*           l3Views[LLVKLoader::MAX_PERCALL_L3] = {};
+        S16             l3Enums[LLVKLoader::MAX_PERCALL_L3] = {};
         U8              l3Count    = 0;
         U64             pinEpoch   = 0;
     };
