@@ -373,6 +373,7 @@ public:
 
     std::vector<U8> mVkAccessorBindingListLanes[LLVKLoader::MAX_RECORD_LANES];
     bool            mVkAccessorBindingListBuiltLanes[LLVKLoader::MAX_RECORD_LANES] = {};
+    bool            mVkSigListLogged = false;
 
     static void populateAndBindUniversalDescriptorSet(bool preserve_drawdata = false);
 

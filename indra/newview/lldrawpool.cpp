@@ -1150,6 +1150,17 @@ void LLRenderPass::buildAndOverrideScenePerDrawSet(LLDrawInfo* params, bool batc
     if (build_accessor_list)
     {
         cur->mVkAccessorBindingListBuiltLanes[lane] = true;
+        if (lane == 0 && !cur->mVkSigListLogged && LLVKLoader::perfLogEnabled())
+        {
+            cur->mVkSigListLogged = true;
+            std::string sig_list;
+            for (U8 b : cur->mVkAccessorBindingListLanes[lane])
+            {
+                if (!sig_list.empty()) sig_list += ' ';
+                sig_list += std::to_string((U32)b);
+            }
+            LL_INFOS() << "SIGLIST " << cur->mName << " = [" << sig_list << "]" << LL_ENDL;
+        }
     }
 
     if (sb_on) { U64 t2 = (U64)LLTimer::getTotalTime(); LLVKLoader::gVkPerf.setb_us[0] += t2 - sb_t; sb_t = t2; }

@@ -452,8 +452,6 @@ namespace
     LLVK_SHARED_UBO_RING_STORAGE(WaterV)
     LLVK_SHARED_UBO_RING_STORAGE(ReflectionProbe)
     LLVK_SHARED_UBO_RING_STORAGE(ReflectionProbes)
-    LLVK_SHARED_UBO_RING_STORAGE(ReflectionProbeF)
-    LLVK_SHARED_UBO_RING_STORAGE(SSRUtil)
     LLVK_SHARED_UBO_RING_STORAGE(Lights)
     LLVK_SHARED_UBO_RING_STORAGE(LightsSpecular)
     LLVK_SHARED_UBO_RING_STORAGE(PbrTerrainF)
@@ -1650,6 +1648,13 @@ namespace
                            << " mdi_fi=" << (sDrawIndirectFirstInstanceEnabled ? 1 : 0)
                            << " dynUBO=" << sPhysicalDeviceProperties.limits.maxDescriptorSetUniformBuffersDynamic
                            << LL_ENDL;
+        if (sPhysicalDeviceProperties.limits.maxDescriptorSetUniformBuffersDynamic < LLGLSLShader::MAX_VK_DYNAMIC_BINDINGS)
+        {
+            LL_WARNS("Vulkan") << "dynamic UBO budget: device maxDescriptorSetUniformBuffersDynamic="
+                               << sPhysicalDeviceProperties.limits.maxDescriptorSetUniformBuffersDynamic
+                               << " < required " << LLGLSLShader::MAX_VK_DYNAMIC_BINDINGS
+                               << " (scene per-draw dynamic bindings may exceed device limit)" << LL_ENDL;
+        }
 
         volkLoadDevice(sDevice);
         vkGetDeviceQueue(sDevice, sGraphicsQueueFamily, 0, &sGraphicsQueue);
@@ -4014,8 +4019,6 @@ void shutdownVulkan()
             LLVK_SHARED_UBO_RING_TEARDOWN(WaterV)
             LLVK_SHARED_UBO_RING_TEARDOWN(ReflectionProbe)
             LLVK_SHARED_UBO_RING_TEARDOWN(ReflectionProbes)
-            LLVK_SHARED_UBO_RING_TEARDOWN(ReflectionProbeF)
-            LLVK_SHARED_UBO_RING_TEARDOWN(SSRUtil)
             LLVK_SHARED_UBO_RING_TEARDOWN(Lights)
             LLVK_SHARED_UBO_RING_TEARDOWN(LightsSpecular)
             LLVK_SHARED_UBO_RING_TEARDOWN(PbrTerrainF)
@@ -5426,8 +5429,6 @@ bool ensureScenePerDrawDescriptorSet(const ScenePerDrawBindings& b,
         if (getSharedDeferredUtilUBO(sbuf, smap))   add_shared_ubo(30, sbuf, sizeof(DeferredUtil_PerProgramBind));
         sbuf = VK_NULL_HANDLE; smap = nullptr;
         if (getSharedShadowUtilUBO(sbuf, smap))     add_shared_ubo(31, sbuf, sizeof(ShadowUtil_PerProgramBind));
-        sbuf = VK_NULL_HANDLE; smap = nullptr;
-        if (getSharedSSRUtilUBO(sbuf, smap))        add_shared_ubo(49, sbuf, sizeof(SSRUtil_PerProgramBind));
 
         if (shared_count > 0)
         {
@@ -6332,8 +6333,6 @@ LLVK_SHARED_UBO_RING_IMPL(WaterFog,         WaterFog_PerProgramBind,         14,
 LLVK_SHARED_UBO_RING_IMPL(WaterV,           Water_PerProgramBind,            15, RINGHW_WATERV)
 LLVK_SHARED_UBO_RING_IMPL(ReflectionProbe,  ReflectionProbe_PerProgramBind,  16, RINGHW_RP)
 LLVK_SHARED_UBO_RING_IMPL(ReflectionProbes, ReflectionProbes_PerProgramBind, 38, RINGHW_RPS)
-LLVK_SHARED_UBO_RING_IMPL(ReflectionProbeF, ReflectionProbeF_PerProgramBind, 39, RINGHW_RPF)
-LLVK_SHARED_UBO_RING_IMPL(SSRUtil,          SSRUtil_PerProgramBind,          49, RINGHW_SSRUTIL)
 LLVK_SHARED_UBO_RING_IMPL(Lights,           Lights_PerProgramBind,           12, RINGHW_LIGHTS)
 LLVK_SHARED_UBO_RING_IMPL(LightsSpecular,   LightsSpecular_PerProgramBind,   12, RINGHW_LIGHTSSPEC)
 LLVK_SHARED_UBO_RING_IMPL(PbrTerrainF,      PbrTerrainF_PerProgramBind,      28, RINGHW_PBRTERRAINF)
@@ -6411,10 +6410,12 @@ LLVK_SHARED_UBO_RING_IMPL(PbrTerrain,       PbrTerrain_PerShaderBind,        52,
         out_mapped = &s##BindName##Shadow;                                                              \
         return true;                                                                                   \
     }
-LLVK_SHARED_UBO_DYNAMIC_IMPL(AvatarSkin,   AvatarSkin_PerProgramBind)
-LLVK_SHARED_UBO_DYNAMIC_IMPL(PBRMaterial,  PBRMaterial_PerMaterial)
-LLVK_SHARED_UBO_DYNAMIC_IMPL(DrawColor,    DrawColor_PerShaderBind)
-LLVK_SHARED_UBO_DYNAMIC_IMPL(ShadowParams, ShadowParams_PerShaderBind)
+LLVK_SHARED_UBO_DYNAMIC_IMPL(AvatarSkin,       AvatarSkin_PerProgramBind)
+LLVK_SHARED_UBO_DYNAMIC_IMPL(PBRMaterial,      PBRMaterial_PerMaterial)
+LLVK_SHARED_UBO_DYNAMIC_IMPL(DrawColor,        DrawColor_PerShaderBind)
+LLVK_SHARED_UBO_DYNAMIC_IMPL(ShadowParams,     ShadowParams_PerShaderBind)
+LLVK_SHARED_UBO_DYNAMIC_IMPL(ReflectionProbeF, ReflectionProbeF_PerProgramBind)
+LLVK_SHARED_UBO_DYNAMIC_IMPL(SSRUtil,          SSRUtil_PerProgramBind)
 #undef LLVK_SHARED_UBO_DYNAMIC_IMPL
 
 static ObjectSkin_PerProgramBind sObjectSkinShadow;
@@ -6517,9 +6518,11 @@ bool getSharedDynamicUBOForBinding(U32 binding, VkBuffer& out_buf, U32& out_off)
 {
     switch (binding)
     {
+        case 39: return ensureReflectionProbeFUploaded(out_buf, out_off);
         case 45: return ensureAvatarSkinUploaded(out_buf, out_off);
         case 46: return ensureObjectSkinUploaded(out_buf, out_off);
         case 48: return ensurePBRMaterialUploaded(out_buf, out_off);
+        case 49: return ensureSSRUtilUploaded(out_buf, out_off);
         case 51: return ensureDrawColorUploaded(out_buf, out_off);
         case 53: return ensureShadowParamsUploaded(out_buf, out_off);
         default: return false;
@@ -6550,9 +6553,11 @@ bool peekSharedDynamicUBO(U32 binding, const void*& out_shadow, U32& out_size,
 {
     switch (binding)
     {
+        case 39: return peekReflectionProbeFState(out_shadow, out_size, out_off, out_current, out_up_hash);
         case 45: return peekAvatarSkinState(out_shadow, out_size, out_off, out_current, out_up_hash);
         case 46: return peekObjectSkinState(out_shadow, out_size, out_off, out_current, out_up_hash);
         case 48: return peekPBRMaterialState(out_shadow, out_size, out_off, out_current, out_up_hash);
+        case 49: return peekSSRUtilState(out_shadow, out_size, out_off, out_current, out_up_hash);
         case 51: return peekDrawColorState(out_shadow, out_size, out_off, out_current, out_up_hash);
         case 53: return peekShadowParamsState(out_shadow, out_size, out_off, out_current, out_up_hash);
         default: return false;

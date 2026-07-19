@@ -2817,7 +2817,8 @@ bool LLGLSLShader::createVkPipeline(U32 perProgramUBOSize, bool needsSharedWater
     {
         add_sampler(40, VK_SHADER_STAGE_FRAGMENT_BIT, LLShaderMgr::REFLECTION_PROBES, VKSD_CUBE_ARRAY);
         add_sampler(41, VK_SHADER_STAGE_FRAGMENT_BIT, LLShaderMgr::IRRADIANCE_PROBES, VKSD_CUBE_ARRAY);
-        add_ubo    (39, VK_SHADER_STAGE_FRAGMENT_BIT, LLVKLoader::getSharedReflectionProbeFUBO);
+        add_ubo    (39, VK_SHADER_STAGE_FRAGMENT_BIT, LLVKLoader::getSharedReflectionProbeFUBO,
+                        VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER_DYNAMIC);
     }
     {
         auto hero_it = sGlobalDefines.find("HERO_PROBES");
@@ -2829,7 +2830,8 @@ bool LLGLSLShader::createVkPipeline(U32 perProgramUBOSize, bool needsSharedWater
     }
     add_ubo    (48, VK_SHADER_STAGE_VERTEX_BIT, LLVKLoader::getSharedPBRMaterialUBO,
                     VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER_DYNAMIC);
-    add_ubo    (49, VK_SHADER_STAGE_FRAGMENT_BIT, LLVKLoader::getSharedSSRUtilUBO);
+    add_ubo    (49, VK_SHADER_STAGE_FRAGMENT_BIT, LLVKLoader::getSharedSSRUtilUBO,
+                    VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER_DYNAMIC);
     add_ubo    (51, VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT, LLVKLoader::getSharedDrawColorUBO,
                     VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER_DYNAMIC);
     add_ubo    (53, VK_SHADER_STAGE_VERTEX_BIT, LLVKLoader::getSharedShadowParamsUBO,
@@ -2929,6 +2931,12 @@ bool LLGLSLShader::createVkPipeline(U32 perProgramUBOSize, bool needsSharedWater
         }
     }
     std::sort(mVkDynamicBindings.begin(), mVkDynamicBindings.end());
+    if (mVkDynamicBindings.size() > MAX_VK_DYNAMIC_BINDINGS)
+    {
+        LL_WARNS("Vulkan") << "dynamic UBO overflow: shader " << mName << " declares "
+                           << mVkDynamicBindings.size() << " dynamic bindings > MAX_VK_DYNAMIC_BINDINGS="
+                           << MAX_VK_DYNAMIC_BINDINGS << " (excess offsets silently dropped at bind)" << LL_ENDL;
+    }
 
     VkDescriptorSetLayoutCreateInfo dsl_info = {};
     dsl_info.sType        = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO;
@@ -3795,6 +3803,17 @@ void LLGLSLShader::populateAndBindUniversalDescriptorSet(bool preserve_drawdata)
     if (imm_build_acc)
     {
         cur->mVkAccessorBindingListBuiltLanes[imm_lane] = true;
+        if (imm_lane == 0 && !cur->mVkSigListLogged && LLVKLoader::perfLogEnabled())
+        {
+            cur->mVkSigListLogged = true;
+            std::string sig_list;
+            for (U8 b : cur->mVkAccessorBindingListLanes[imm_lane])
+            {
+                if (!sig_list.empty()) sig_list += ' ';
+                sig_list += std::to_string((U32)b);
+            }
+            LL_INFOS() << "SIGLIST " << cur->mName << " = [" << sig_list << "]" << LL_ENDL;
+        }
     }
     if (imm_cache)
     {
