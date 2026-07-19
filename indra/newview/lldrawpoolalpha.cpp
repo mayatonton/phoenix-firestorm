@@ -722,38 +722,6 @@ void LLDrawPoolAlpha::drawEmissive(LLDrawInfo* draw)
 }
 
 
-void LLDrawPoolAlpha::renderEmissives(std::vector<LLDrawInfo*>& emissives)
-{
-    const bool ep = LLVKLoader::perfLogEnabled();
-    U64 t0 = ep ? (U64)LLTimer::getTotalTime() : 0;
-    emissive_shader->bind();
-    if (ep)
-    {
-        LLVKLoader::gVkPerf.emi_us[2] += (U64)LLTimer::getTotalTime() - t0;
-        LLVKLoader::gVkPerf.emi_n[0] += emissives.size();
-    }
-
-    for (LLDrawInfo* draw : emissives)
-    {
-        U64 t1 = ep ? (U64)LLTimer::getTotalTime() : 0;
-        bool tex_setup = TexSetup(draw, false);
-        if (ep)
-        {
-            LLVKLoader::gVkPerf.emi_us[4] += (U64)LLTimer::getTotalTime() - t1;
-        }
-        drawEmissive(draw);
-        if (tex_setup)
-        {
-            U64 t2 = ep ? (U64)LLTimer::getTotalTime() : 0;
-            RestoreTexSetup(tex_setup);
-            if (ep)
-            {
-                LLVKLoader::gVkPerf.emi_us[4] += (U64)LLTimer::getTotalTime() - t2;
-            }
-        }
-    }
-}
-
 void LLDrawPoolAlpha::renderPbrEmissives(std::vector<LLDrawInfo*>& emissives)
 {
     const bool ep = LLVKLoader::perfLogEnabled();
@@ -1130,6 +1098,101 @@ void flushAlphaRun(AlphaRun& run)
     run.reset();
 }
 
+}
+
+void LLDrawPoolAlpha::renderEmissives(std::vector<LLDrawInfo*>& emissives)
+{
+    const bool ep = LLVKLoader::perfLogEnabled();
+    U64 t0 = ep ? (U64)LLTimer::getTotalTime() : 0;
+    emissive_shader->bind();
+    if (ep)
+    {
+        LLVKLoader::gVkPerf.emi_us[2] += (U64)LLTimer::getTotalTime() - t0;
+        LLVKLoader::gVkPerf.emi_n[0] += emissives.size();
+    }
+
+    const bool collapse = LLVKLoader::isIndirectDrawEnabled()
+        && emissive_shader != nullptr
+        && emissive_shader->mVkUsesBindlessHeap;
+
+    if (!collapse)
+    {
+        for (LLDrawInfo* draw : emissives)
+        {
+            U64 t1 = ep ? (U64)LLTimer::getTotalTime() : 0;
+            bool tex_setup = TexSetup(draw, false);
+            if (ep)
+            {
+                LLVKLoader::gVkPerf.emi_us[4] += (U64)LLTimer::getTotalTime() - t1;
+            }
+            drawEmissive(draw);
+            if (tex_setup)
+            {
+                U64 t2 = ep ? (U64)LLTimer::getTotalTime() : 0;
+                RestoreTexSetup(tex_setup);
+                if (ep)
+                {
+                    LLVKLoader::gVkPerf.emi_us[4] += (U64)LLTimer::getTotalTime() - t2;
+                }
+            }
+        }
+        return;
+    }
+
+    static AlphaRun run;
+
+    for (LLDrawInfo* draw : emissives)
+    {
+        LLVertexBuffer* vb = draw->mVertexBuffer.get();
+        const bool cand = draw->mTextureMatrix == nullptr
+            && vb != nullptr && draw->mCount != 0
+            && vb->getVkVertexSlice().buffer != VK_NULL_HANDLE
+            && vb->getVkIndexSlice().buffer != VK_NULL_HANDLE;
+
+        if (!run.empty() && (!cand || draw->mModelMatrix != run.mModelMatrix))
+        {
+            flushAlphaRun(run);
+        }
+
+        U64 t1 = ep ? (U64)LLTimer::getTotalTime() : 0;
+        bool tex_setup = TexSetup(draw, false);
+        if (ep)
+        {
+            LLVKLoader::gVkPerf.emi_us[4] += (U64)LLTimer::getTotalTime() - t1;
+        }
+
+        if (cand)
+        {
+            LLRenderPass::applyModelMatrix(*draw);
+            if (run.empty())
+            {
+                run.mShader = emissive_shader;
+                run.mModelMatrix = draw->mModelMatrix;
+            }
+            LLRenderPass::buildAndOverrideScenePerDrawSet(draw, true);
+            appendAlphaRunCmd(run, *draw);
+            ++LLVKLoader::gVkPerf.alp_col;
+            if (run.mCmds.size() >= ALPHA_RUN_MAX_CMDS)
+            {
+                flushAlphaRun(run);
+            }
+        }
+        else
+        {
+            drawEmissive(draw);
+            if (tex_setup)
+            {
+                U64 t2 = ep ? (U64)LLTimer::getTotalTime() : 0;
+                RestoreTexSetup(tex_setup);
+                if (ep)
+                {
+                    LLVKLoader::gVkPerf.emi_us[4] += (U64)LLTimer::getTotalTime() - t2;
+                }
+            }
+        }
+    }
+
+    flushAlphaRun(run);
 }
 
 void LLDrawPoolAlpha::renderAlpha(U32 mask, bool depth_only, bool rigged, bool unified)
