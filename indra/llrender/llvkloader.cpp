@@ -5395,6 +5395,10 @@ bool ensureScenePerDrawDescriptorSet(const ScenePerDrawBindings& b,
             {
                 return;
             }
+            if (binding < 64 && ((b.layout_binding_mask >> binding) & 1) == 0)
+            {
+                return;
+            }
             shared_ubo_infos[shared_count].buffer = buf;
             shared_ubo_infos[shared_count].offset = 0;
             shared_ubo_infos[shared_count].range  = size;

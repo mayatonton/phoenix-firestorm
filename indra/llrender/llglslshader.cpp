@@ -2712,6 +2712,13 @@ bool LLGLSLShader::createVkPipeline(U32 perProgramUBOSize, bool needsSharedWater
     auto add_ubo = [&](U32 binding, VkShaderStageFlags stage, LLGLSLShader::SharedUBOAccessor accessor,
                        VkDescriptorType type = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER)
     {
+        const bool keep = (binding == 0 || binding == 7 || binding == 44);
+        const bool declared = (binding < MAX_VK_BINDING)
+                              && (mVkBindingDeclaredType[binding] & VKBD_UBO) != 0;
+        if (!keep && !declared)
+        {
+            return;
+        }
         VkDescriptorSetLayoutBinding b = {};
         b.binding         = binding;
         b.descriptorType  = type;
@@ -2914,6 +2921,15 @@ bool LLGLSLShader::createVkPipeline(U32 perProgramUBOSize, bool needsSharedWater
     }
 
     mVkLayoutBindings = bindings;
+
+    mVkSet1LayoutBindingMask = 0;
+    for (const auto& b : bindings)
+    {
+        if (b.binding < 64)
+        {
+            mVkSet1LayoutBindingMask |= (1ull << b.binding);
+        }
+    }
 
     mVkSet1DynamicCount   = 0;
     mVkDynamicBindingMask = 0;
@@ -3496,6 +3512,7 @@ void LLGLSLShader::populateAndBindUniversalDescriptorSet(bool preserve_drawdata)
     bindings.layout       = cur->mVkDescriptorSetLayout;
     bindings.sampler      = sampler;
     bindings.dynamic_mask = cur->mVkDynamicBindingMask;
+    bindings.layout_binding_mask = cur->mVkSet1LayoutBindingMask;
 
     U32 per_program_dynamic_offset = 0;
 

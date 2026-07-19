@@ -1651,6 +1651,7 @@ namespace LLVKLoader
         VkDescriptorSetLayout layout      = VK_NULL_HANDLE;
 
         U64                   dynamic_mask = 0;
+        U64                   layout_binding_mask = 0;
 
         VkBuffer              ubo         = VK_NULL_HANDLE;
         U32                   ubo_binding = 0;

@@ -733,6 +733,7 @@ void LLRenderPass::buildAndOverrideScenePerDrawSet(LLDrawInfo* params, bool batc
     bindings.layout       = cur->mVkDescriptorSetLayout;
     bindings.sampler      = sampler;
     bindings.dynamic_mask = cur->mVkDynamicBindingMask;
+    bindings.layout_binding_mask = cur->mVkSet1LayoutBindingMask;
 
     U32 per_program_dynamic_offset = 0;
     if (cur->mVkPerProgramUBO != VK_NULL_HANDLE && cur->mVkPerProgramUBOSize > 0)

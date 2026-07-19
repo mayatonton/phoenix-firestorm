@@ -454,6 +454,7 @@ public:
 
     U32                        mVkSet1DynamicCount        = 0;
     U64                        mVkDynamicBindingMask      = 0;
+    U64                        mVkSet1LayoutBindingMask   = 0;
     std::vector<U32>           mVkDynamicBindings;
     U64                        mVkPerProgramUBOGeneration = 0;
     void*                      mVkPerProgramUBOBaseMapped = nullptr;
