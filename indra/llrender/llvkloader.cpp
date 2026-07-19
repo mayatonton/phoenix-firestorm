@@ -4464,6 +4464,23 @@ bool endFrame()
                                             }
                                         }
                                         return s; }()
+                                   << " | lgt " << [](){ std::string s;
+                                        static const char* names[8] = {
+                                            "sun","blur","atm","loc","spot","fsl","fwd","bindD" };
+                                        for (U32 i = 0; i < 8; ++i) {
+                                            const U64 us = gVkPerf.lgt_us[i].load();
+                                            if (us != 0) {
+                                                s += llformat(" %s=%.1f", names[i], us / 1000.0);
+                                            }
+                                        }
+                                        U64 disjoint = 0;
+                                        for (U32 i = 0; i < 7; ++i) disjoint += gVkPerf.lgt_us[i].load();
+                                        const U64 ph = gVkPerf.phase_us[11].load();
+                                        const F64 misc = (ph > disjoint) ? (ph - disjoint) / 1000.0 : 0.0;
+                                        s += llformat(" misc=%.1f nl=%llu ns=%llu", misc,
+                                            (unsigned long long)gVkPerf.lgt_nl.load(),
+                                            (unsigned long long)gVkPerf.lgt_ns.load());
+                                        return s; }()
                                    << " | tex enq=" << gVkPerf.tex_enq.load()
                                    << " pub=" << gVkPerf.tex_pub.load()
                                    << " fail=" << gVkPerf.tex_fail.load()
