@@ -4511,8 +4511,9 @@ bool endFrame()
                                                     (unsigned long long)us, (unsigned long long)d);
                                             }
                                         }
-                                        s += llformat("rig=%llu",
-                                            (unsigned long long)gVkPerf.rigged_rec.load());
+                                        s += llformat("rig=%llu skin_up=%llu",
+                                            (unsigned long long)gVkPerf.rigged_rec.load(),
+                                            (unsigned long long)gVkPerf.skin_up.load());
                                         return s; }()
                                    << " | ph " << [](){ std::string s;
                                         static const char* names[16] = {
@@ -6383,6 +6384,7 @@ static bool ensureObjectSkinUploaded(VkBuffer& out_buf, U32& out_off)
             return false;
         }
         std::memcpy(p, &sObjectSkinShadow, sizeof(ObjectSkin_PerProgramBind));
+        gVkPerf.skin_up.fetch_add(1, std::memory_order_relaxed);
         sObjectSkinUpBuf[f]    = b;
         sObjectSkinUpHash[f]   = LLVKContract::verboseEnabled()
             ? sharedUBOContentHash(&sObjectSkinShadow, (U32)sizeof(ObjectSkin_PerProgramBind)) : 0;

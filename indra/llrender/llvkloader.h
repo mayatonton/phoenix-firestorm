@@ -1469,6 +1469,7 @@ namespace LLVKLoader
         std::atomic<U64> fam_us[24] = {};
         std::atomic<U64> fam_draws[24] = {};
         std::atomic<U64> rigged_rec{0};
+        std::atomic<U64> skin_up{0};
         std::atomic<U64> phase_us[16] = {};
         std::atomic<U64> idle_us[32] = {};
         std::atomic<U64> img_us[12] = {};
@@ -1512,6 +1513,7 @@ namespace LLVKLoader
             for (auto& v : fam_us) v = 0;
             for (auto& v : fam_draws) v = 0;
             rigged_rec = 0;
+            skin_up = 0;
             for (auto& v : phase_us) v = 0;
             for (auto& v : idle_us) v = 0;
             for (auto& v : img_us) v = 0;
