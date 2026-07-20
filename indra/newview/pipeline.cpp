@@ -109,6 +109,7 @@
 #include "llworld.h"
 #include "llcubemap.h"
 #include "llviewershadermgr.h"
+#include "llreloadqueue.h"
 #include "llviewerstats.h"
 #include "llviewerjoystick.h"
 #include "llviewerdisplay.h"
@@ -397,7 +398,6 @@ S32     LLPipeline::sCompiles = 0;
 
 bool    LLPipeline::sPickAvatar = true;
 bool    LLPipeline::sDynamicLOD = true;
-bool    LLPipeline::sGLBufferRebuildPending = false;
 bool    LLPipeline::sShowHUDAttachments = true;
 bool    LLPipeline::sRenderMOAPBeacons = false;
 bool    LLPipeline::sRenderPhysicalBeacons = true;
@@ -962,11 +962,6 @@ void LLPipeline::requestResizeScreenTexture()
 void LLPipeline::requestResizeShadowTexture()
 {
     gResizeShadowTexture = true;
-}
-
-void LLPipeline::requestGLBufferRebuild()
-{
-    sGLBufferRebuildPending = true;
 }
 
 void LLPipeline::resizeShadowTexture()
@@ -15684,7 +15679,7 @@ void LLPipeline::handleShadowDetailChanged()
     }
     // else <FS:Beq/> Ghosting fix for Whirly to try. just remove this for now.
     {
-        LLViewerShaderMgr::instance()->requestSetShaders();
+        LLReloadQueue::request(LLReloadQueue::RK_Shaders);
     }
 }
 

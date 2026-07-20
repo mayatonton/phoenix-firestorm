@@ -36,6 +36,7 @@
 
 #include "llrender.h"
 #include "llvkloader.h"
+#include "llreloadqueue.h"
 #include "llvkuboreg.h"
 #include "llenvironment.h"
 #include "llerrorcontrol.h"
@@ -60,7 +61,6 @@ using std::string;
 
 bool                LLViewerShaderMgr::sInitialized = false;
 bool                LLViewerShaderMgr::sSkipReload = false;
-bool                LLViewerShaderMgr::sPendingSetShaders = false;
 
 LLVector4           gShinyOrigin;
 
@@ -827,21 +827,6 @@ S32 LLViewerShaderMgr::getShaderLevel(S32 type)
 
 // Shader Management
 
-void LLViewerShaderMgr::requestSetShaders()
-{
-    sPendingSetShaders = true;
-}
-
-void LLViewerShaderMgr::tickPendingSetShaders()
-{
-    if (!sPendingSetShaders)
-    {
-        return;
-    }
-    sPendingSetShaders = false;
-    instance()->setShaders();
-}
-
 void LLViewerShaderMgr::setShaders()
 {
     LL_PROFILE_ZONE_SCOPED;
@@ -855,7 +840,7 @@ void LLViewerShaderMgr::setShaders()
 
     if (LLVKLoader::isInFrame())
     {
-        sPendingSetShaders = true;
+        LLReloadQueue::request(LLReloadQueue::RK_Shaders);
         return;
     }
 

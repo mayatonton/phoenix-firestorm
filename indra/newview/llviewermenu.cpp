@@ -152,6 +152,7 @@
 #include <boost/json.hpp>
 #include "llcleanup.h"
 #include "llviewershadermgr.h"
+#include "llreloadqueue.h"
 #include "gltfscenemanager.h"
 #include "gltf/asset.h"
 // [RLVa:KB] - Checked: 2011-05-22 (RLVa-1.3.1a)
@@ -2606,7 +2607,7 @@ class LLAdvancedPurgeShaderCache : public view_listener_t
     bool handleEvent(const LLSD& userdata)
     {
         LLViewerShaderMgr::instance()->clearShaderCache();
-        LLViewerShaderMgr::instance()->requestSetShaders();
+        LLReloadQueue::request(LLReloadQueue::RK_Shaders);
         return true;
     }
 };
@@ -10457,7 +10458,7 @@ class LLToggleShaderControl : public view_listener_t
         bool checked = gSavedSettings.getBOOL( control_name );
         gSavedSettings.setBOOL( control_name, !checked );
         LLPipeline::refreshCachedSettings();
-        LLViewerShaderMgr::instance()->requestSetShaders();
+        LLReloadQueue::request(LLReloadQueue::RK_Shaders);
         return !checked;
     }
 };

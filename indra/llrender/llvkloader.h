@@ -1570,8 +1570,6 @@ namespace LLVKLoader
     extern thread_local U32 gVkPerfValFailKind;
     U32 perfPassBucket();
 
-    constexpr U32 MAX_PERCALL_L3 = 16;
-
     enum : U32
     {
         VKPERF_SETPATH_EARLY    = 0,
@@ -1613,6 +1611,29 @@ namespace LLVKLoader
 
     extern std::atomic<U64> gVkPerDrawTopologyGen;
     extern std::atomic<U64> gVkViewDestroyGen;
+    extern std::atomic<U64> gVkReloadEpoch;
+
+    static constexpr U32 PDC_MAX_REFS = 16;
+    struct PerDrawEvidence
+    {
+        const void* shader        = nullptr;
+        U64         reloadEpoch   = 0;
+        U64         topoGen       = 0;
+        U64         attachmentSig = 0;
+        U64         ringSig       = 0;
+        U32         shape         = 0;
+        U8          refCount      = 0;
+        bool        pinnable      = false;
+        S16         refSource[PDC_MAX_REFS] = {};
+        void*       refView[PDC_MAX_REFS]   = {};
+    };
+    struct PerDrawCacheLane
+    {
+        VkDescriptorSet set[3]      = {};
+        void*           tok[3]      = {};
+        U64             pinEpoch[3] = {};
+        PerDrawEvidence ev[3];
+    };
 
     struct VkPerfPassScope
     {

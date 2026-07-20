@@ -641,42 +641,7 @@ void LLRenderPass::buildAndOverrideScenePerDrawSet(LLDrawInfo* params, bool batc
     const bool memo_eligible = (params != nullptr && is_indexed && set_shape >= 1
                                 && gltf_materials_ubo == 0 && gltf_geometry_ubo == 0);
     const U32  memo_frame    = LLVKLoader::getCurrentFrameIndex();
-    U64        memo_sig      = 0;
     const U32  lane          = LLVKLoader::getCurrentRecordLane();
-
-    if (memo_eligible)
-    {
-        for (U32 i = 0; i < set_shape; ++i)
-        {
-            LLTexUnit* tu = gGL.getTexUnit((S32)i);
-            memo_sig = memo_sig * 0x100000001B3ull ^ (U64)(uintptr_t)tu->getLiveVkImageView();
-            memo_sig = memo_sig * 0x100000001B3ull ^ (U64)(uintptr_t)tu->getLiveVkSampler();
-            memo_sig = memo_sig * 0x100000001B3ull ^ (U64)(uintptr_t)tu->mCurrImageGL;
-        }
-
-        const bool memo_hdr_ok =
-            params->mVkSetMemoShader == cur
-            && params->mVkSetMemoShape == set_shape
-            && params->mVkSetMemoSet[memo_frame] != nullptr
-            && params->mVkSetMemoTexSig == memo_sig
-            && cur->mVkAccessorBindingListBuiltLanes[lane]
-            && params->mVkSetMemoTopoGen == LLVKLoader::gVkPerDrawTopologyGen.load(std::memory_order_relaxed);
-        if (memo_hdr_ok
-            && LLGLSLShader::vkValidatePerCallCache(cur, params->mVkSetMemoRingSig[memo_frame],
-                   params->mVkSetMemoL3Views, params->mVkSetMemoL3Enums, params->mVkSetMemoL3Count))
-        {
-            LLGLSLShader::sCurPerCallVkDescriptorSet =
-                (VkDescriptorSet)params->mVkSetMemoSet[memo_frame];
-            LLGLSLShader::sCurPerCallVkOffsetsDirty = true;
-            LLGLSLShader::sCurPerCallVkSetShape     = set_shape;
-            LLGLSLShader::sCurPerCallAuthored       = true;
-            ++LLVKLoader::gVkPerf.set_memo;
-            LLVKLoader::gVkPerfSetPath = LLVKLoader::VKPERF_SETPATH_MEMO;
-            return;
-        }
-        LLVKLoader::gVkPerfSetCause = memo_hdr_ok ? LLVKLoader::VKPERF_SETCZ_MVAL
-                                                  : LLVKLoader::VKPERF_SETCZ_MHDR;
-    }
 
     if (cur->mVkUsesBindlessHeap)
     {
@@ -688,46 +653,68 @@ void LLRenderPass::buildAndOverrideScenePerDrawSet(LLDrawInfo* params, bool batc
         {
             LLVKLoader::gVkPerfSetCause = LLVKLoader::VKPERF_SETCZ_LANE;
         }
-        else if (cur->mVkBindlessSet1Lanes[lane].set[memo_frame] == nullptr)
-        {
-            LLVKLoader::gVkPerfSetCause = LLVKLoader::VKPERF_SETCZ_NOSET;
-        }
-        else if (cur->mVkBindlessSet1Lanes[lane].topoGen != LLVKLoader::gVkPerDrawTopologyGen.load(std::memory_order_relaxed))
-        {
-            LLVKLoader::gVkPerfSetCause = LLVKLoader::VKPERF_SETCZ_TOPO;
-        }
-        else if (!LLGLSLShader::vkValidatePerCallCache(cur, cur->mVkBindlessSet1Lanes[lane].ringSig[memo_frame],
-                     cur->mVkBindlessSet1Lanes[lane].l3Views, cur->mVkBindlessSet1Lanes[lane].l3Enums, cur->mVkBindlessSet1Lanes[lane].l3Count))
-        {
-            LLVKLoader::gVkPerfSetCause = LLVKLoader::VKPERF_SETCZ_VAL;
-        }
         else
         {
-            LLGLSLShader::sCurPerCallVkDescriptorSet = cur->mVkBindlessSet1Lanes[lane].set[memo_frame];
+            LLVKLoader::PerDrawCacheLane& bl = cur->mVkPerDrawLane[lane];
+            if (bl.set[memo_frame] != VK_NULL_HANDLE
+                && bl.ev[memo_frame].shape == set_shape
+                && LLGLSLShader::vkValidatePerDrawSlot(cur, bl.ev[memo_frame]))
+            {
+                LLGLSLShader::sCurPerCallVkDescriptorSet = bl.set[memo_frame];
+                LLGLSLShader::sCurPerCallVkOffsetsDirty  = true;
+                LLGLSLShader::sCurPerCallVkSetShape      = set_shape;
+                LLGLSLShader::sCurPerCallAuthored        = true;
+                ++LLVKLoader::gVkPerf.set_memo;
+                LLVKLoader::gVkPerfSetPath = LLVKLoader::VKPERF_SETPATH_BINDLESS;
+                return;
+            }
+            LLVKLoader::gVkPerfSetCause = LLVKLoader::VKPERF_SETCZ_VAL;
+        }
+    }
+    else if (memo_eligible && cur->mVkAccessorBindingListBuiltLanes[lane])
+    {
+        LLVKLoader::PerDrawCacheLane& mc = params->mVkPerDrawCache;
+        if (mc.set[memo_frame] != VK_NULL_HANDLE
+            && mc.ev[memo_frame].shape == set_shape
+            && LLGLSLShader::vkValidatePerDrawSlot(cur, mc.ev[memo_frame]))
+        {
+            LLGLSLShader::sCurPerCallVkDescriptorSet = mc.set[memo_frame];
             LLGLSLShader::sCurPerCallVkOffsetsDirty  = true;
             LLGLSLShader::sCurPerCallVkSetShape      = set_shape;
             LLGLSLShader::sCurPerCallAuthored        = true;
             ++LLVKLoader::gVkPerf.set_memo;
-            LLVKLoader::gVkPerfSetPath = LLVKLoader::VKPERF_SETPATH_BINDLESS;
+            LLVKLoader::gVkPerfSetPath = LLVKLoader::VKPERF_SETPATH_MEMO;
             return;
         }
-    }
-    else if (LLVKLoader::gVkPerfSetCause == LLVKLoader::VKPERF_SETCZ_NONE)
-    {
-        LLVKLoader::gVkPerfSetCause = LLVKLoader::VKPERF_SETCZ_NONBINDLESS;
+        LLVKLoader::gVkPerfSetCause = LLVKLoader::VKPERF_SETCZ_MVAL;
     }
 
     LLVKLoader::gVkPerfSetPath = LLVKLoader::VKPERF_SETPATH_BUILD;
     const bool sb_on = LLVKLoader::perfLogEnabled();
     U64 sb_t = sb_on ? (U64)LLTimer::getTotalTime() : 0;
 
-    bool memo_fill     = memo_eligible;
-    bool bindless_fill = cur->mVkUsesBindlessHeap && gltf_materials_ubo == 0 && gltf_geometry_ubo == 0;
+    LLVKLoader::PerDrawEvidence ev;
+    ev.shader = cur;
+    ev.shape  = set_shape;
+    bool can_pin = memo_eligible || (cur->mVkUsesBindlessHeap
+                                     && gltf_materials_ubo == 0 && gltf_geometry_ubo == 0);
+    auto record_ref = [&](S16 source, VkImageView view)
+    {
+        if (!can_pin)
+        {
+            return;
+        }
+        if (ev.refCount >= LLVKLoader::PDC_MAX_REFS)
+        {
+            can_pin = false;
+            return;
+        }
+        ev.refSource[ev.refCount] = source;
+        ev.refView[ev.refCount]   = (void*)view;
+        ++ev.refCount;
+    };
     U64  memo_ring_sig = 0;
     const bool build_accessor_list = !cur->mVkAccessorBindingListBuiltLanes[lane];
-    U8   memo_l3_cnt   = 0;
-    S16  memo_l3_enums[LLVKLoader::MAX_PERCALL_L3] = {};
-    void* memo_l3_views[LLVKLoader::MAX_PERCALL_L3] = {};
 
     LLVKLoader::ScenePerDrawBindings bindings;
     bindings.layout       = cur->mVkDescriptorSetLayout;
@@ -781,6 +768,10 @@ void LLRenderPass::buildAndOverrideScenePerDrawSet(LLDrawInfo* params, bool batc
             {
                 view_to_write = fallback_view;
             }
+            if (i < real_count && view_to_write != fallback_view)
+            {
+                record_ref((S16)(-(S32)i - 2), view_to_write);
+            }
             bindings.sampler_bindings[i] = 100 + i;
             bindings.sampler_views[i]    = view_to_write;
             bindings.sampler_sources[i]  = 'I';
@@ -811,6 +802,10 @@ void LLRenderPass::buildAndOverrideScenePerDrawSet(LLDrawInfo* params, bool batc
             else
             {
                 view_to_write = fallback_view;
+            }
+            if (i == 0 && view_to_write != fallback_view)
+            {
+                record_ref((S16)(-2), view_to_write);
             }
             bindings.sampler_bindings[i] = 100 + i;
             bindings.sampler_views[i]    = view_to_write;
@@ -863,6 +858,10 @@ void LLRenderPass::buildAndOverrideScenePerDrawSet(LLDrawInfo* params, bool batc
             if (view_to_write == VK_NULL_HANDLE)
             {
                 view_to_write = fallback_view;
+            }
+            if (view_to_write != fallback_view)
+            {
+                record_ref(l3_hit ? (S16)enum1 : (S16)(-(S32)unit1 - 2), view_to_write);
             }
             bindings.sampler_bindings[0] = 1;
             bindings.sampler_views[0]    = view_to_write;
@@ -921,30 +920,12 @@ void LLRenderPass::buildAndOverrideScenePerDrawSet(LLDrawInfo* params, bool batc
         if (l3_hit)
         {
             view = cur->vkResolveEnumBoundView(enum_value);
-            if (memo_fill || bindless_fill)
-            {
-                if (memo_l3_cnt < LLVKLoader::MAX_PERCALL_L3)
-                {
-                    memo_l3_enums[memo_l3_cnt] = (S16)enum_value;
-                    memo_l3_views[memo_l3_cnt] = (void*)view;
-                    ++memo_l3_cnt;
-                }
-                else
-                {
-                    memo_fill = false;
-                    bindless_fill = false;
-                }
-            }
         }
         else if (channel >= 0)
         {
             resolved_unit = channel;
             view = gGL.getTexUnit((S32)channel)->getLiveVkImageView();
             LLGLSLShader::vkWarnL3Fallback(cur, N, enum_value, view);
-            if (view != VK_NULL_HANDLE)
-            {
-                memo_fill = false;
-            }
         }
         else if (enum_value >= 0 && enum_value < (S32)cur->mTexture.size())
         {
@@ -954,11 +935,15 @@ void LLRenderPass::buildAndOverrideScenePerDrawSet(LLDrawInfo* params, bool batc
                 resolved_unit = unit;
                 view = gGL.getTexUnit((S32)unit)->getLiveVkImageView();
                 LLGLSLShader::vkWarnL3Fallback(cur, N, enum_value, view);
-                if (view != VK_NULL_HANDLE)
-                {
-                    memo_fill = false;
-                }
             }
+        }
+        if (l3_hit)
+        {
+            record_ref((S16)enum_value, view);
+        }
+        else if (resolved_unit >= 0)
+        {
+            record_ref((S16)(-(S32)resolved_unit - 2), view);
         }
 
         const char* vkc_fb_reason = nullptr;
@@ -989,28 +974,11 @@ void LLRenderPass::buildAndOverrideScenePerDrawSet(LLDrawInfo* params, bool batc
         }
         if (need_typed_fallback)
         {
-            if (!l3_hit && (channel >= 0 || resolved_unit >= 0))
-            {
-                memo_fill = false;
-            }
             LLVKContract::note(resolved_unit == 0 ? LLVKContract::C_FB_VIEW_DIFFUSE
                                                   : LLVKContract::C_FB_VIEW_AUX,
                                cur->mName);
             LLVKContract::watchFbProbe(resolved_unit == 0, vkc_fb_reason);
             LLVKContract::noteFbSlot(cur, cur->mName, N, vkc_fb_reason);
-            if (resolved_unit != 0 && LLVKLoader::perfLogEnabled())
-            {
-                static thread_local U32 s_aux_fb_dump2 = 0;
-                if ((++s_aux_fb_dump2 & 4095) == 1)
-                {
-                    LL_WARNS("Vulkan") << "AUXFB2 shader='" << cur->mName
-                                       << "' b" << N << " enum=" << enum_value
-                                       << " channel=" << channel
-                                       << " resolved_unit=" << resolved_unit
-                                       << " l3_hit=" << (l3_hit ? 1 : 0)
-                                       << " reason=" << (vkc_fb_reason ? vkc_fb_reason : "?") << LL_ENDL;
-                }
-            }
             const U8 sdim_fb = cur->mVkBindingSamplerDim[N];
             view = cur->mVkBindingSamplerShadow[N] ? LLVKLoader::getDefaultFallbackShadowVkImageView()
                  : (sdim_fb == LLGLSLShader::VKSD_CUBE_ARRAY) ? LLVKLoader::getDefaultFallbackCubeArrayVkImageView()
@@ -1064,16 +1032,6 @@ void LLRenderPass::buildAndOverrideScenePerDrawSet(LLDrawInfo* params, bool batc
         ++bindings.ubo_count;
     }
 
-    const bool sig_audit = LLVKContract::verboseEnabled();
-    const U32  SIG_AUDIT_MAX = 32;
-    U8       audit_old_bind[SIG_AUDIT_MAX];
-    VkBuffer audit_old_buf[SIG_AUDIT_MAX];
-    bool     audit_old_decl[SIG_AUDIT_MAX];
-    U8       audit_new_bind[SIG_AUDIT_MAX];
-    VkBuffer audit_new_buf[SIG_AUDIT_MAX];
-    U32      audit_old_n = 0;
-    U32      audit_new_n = 0;
-
     for (const auto& layout_binding : cur->mVkLayoutBindings)
     {
         if (layout_binding.descriptorType != VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER
@@ -1112,16 +1070,6 @@ void LLRenderPass::buildAndOverrideScenePerDrawSet(LLDrawInfo* params, bool batc
             if (accessor)
             {
                 const bool declared_ubo = (cur->mVkBindingDeclaredType[N] & LLGLSLShader::VKBD_UBO) != 0;
-                if (sig_audit && audit_old_n < SIG_AUDIT_MAX)
-                {
-                    void*    am = nullptr;
-                    VkBuffer ab = VK_NULL_HANDLE;
-                    accessor(ab, am);
-                    audit_old_bind[audit_old_n] = (U8)N;
-                    audit_old_buf[audit_old_n]  = ab;
-                    audit_old_decl[audit_old_n] = declared_ubo;
-                    ++audit_old_n;
-                }
                 if (!declared_ubo)
                 {
                     continue;
@@ -1136,12 +1084,6 @@ void LLRenderPass::buildAndOverrideScenePerDrawSet(LLDrawInfo* params, bool batc
                     cur->mVkAccessorBindingListLanes[lane].push_back((U8)N);
                 }
                 memo_ring_sig = memo_ring_sig * 0x100000001B3ull ^ (U64)(uintptr_t)ubo_buf;
-                if (sig_audit && audit_new_n < SIG_AUDIT_MAX)
-                {
-                    audit_new_bind[audit_new_n] = (U8)N;
-                    audit_new_buf[audit_new_n]  = ubo_buf;
-                    ++audit_new_n;
-                }
             }
         }
 
@@ -1153,34 +1095,6 @@ void LLRenderPass::buildAndOverrideScenePerDrawSet(LLDrawInfo* params, bool batc
             entry.offset  = 0;
             entry.size    = ubo_sz;
             ++bindings.ubo_count;
-        }
-    }
-
-    if (sig_audit)
-    {
-        U32  fi = 0;
-        bool sig_mismatch = false;
-        for (U32 i = 0; i < audit_old_n && !sig_mismatch; ++i)
-        {
-            if (!audit_old_decl[i])
-            {
-                continue;
-            }
-            if (fi >= audit_new_n
-                || audit_old_bind[i] != audit_new_bind[fi]
-                || audit_old_buf[i] != audit_new_buf[fi])
-            {
-                sig_mismatch = true;
-            }
-            ++fi;
-        }
-        if (fi != audit_new_n)
-        {
-            sig_mismatch = true;
-        }
-        if (sig_mismatch)
-        {
-            LLVKContract::causeNamed(LLVKContract::C_SIG_DIET_MISMATCH, cur->mName);
         }
     }
 
@@ -1229,119 +1143,31 @@ void LLRenderPass::buildAndOverrideScenePerDrawSet(LLDrawInfo* params, bool batc
         LLGLSLShader::sCurPerCallAuthored = true;
         ++LLVKLoader::gVkPerf.set_build;
 
-        if (memo_fill
-            && memo_token != nullptr
-            && (bindings.ubo == VK_NULL_HANDLE
-                || bindings.ubo == LLVKLoader::getPerDrawUBOArenaBuffer()))
+        LLVKLoader::PerDrawCacheLane* home =
+            cur->mVkUsesBindlessHeap ? &cur->mVkPerDrawLane[lane]
+            : memo_eligible          ? &params->mVkPerDrawCache
+            :                          nullptr;
+        const bool ubo_cacheable = (bindings.ubo == VK_NULL_HANDLE
+                                    || bindings.ubo == LLVKLoader::getPerDrawUBOArenaBuffer());
+        if (home != nullptr && can_pin && memo_token != nullptr && ubo_cacheable)
         {
-            const U64 topo_gen  = LLVKLoader::gVkPerDrawTopologyGen.load(std::memory_order_relaxed);
-            const bool header_same =
-                params->mVkSetMemoShader == cur
-                && params->mVkSetMemoShape == set_shape
-                && params->mVkSetMemoTexSig == memo_sig
-                && params->mVkSetMemoTopoGen == topo_gen
-                && params->mVkSetMemoL3Count == memo_l3_cnt
-                && std::memcmp(params->mVkSetMemoL3Enums, memo_l3_enums, sizeof(memo_l3_enums)) == 0
-                && std::memcmp(params->mVkSetMemoL3Views, memo_l3_views, sizeof(memo_l3_views)) == 0;
-            if (!header_same)
-            {
-                params->clearVkSetMemoPins();
-                params->mVkSetMemoShader   = cur;
-                params->mVkSetMemoShape    = set_shape;
-                params->mVkSetMemoTexSig   = memo_sig;
-                params->mVkSetMemoTopoGen  = topo_gen;
-                params->mVkSetMemoL3Count   = memo_l3_cnt;
-                std::memcpy(params->mVkSetMemoL3Enums, memo_l3_enums, sizeof(memo_l3_enums));
-                std::memcpy(params->mVkSetMemoL3Views, memo_l3_views, sizeof(memo_l3_views));
-            }
-            if (params->mVkSetMemoEntryTok[memo_frame] != memo_token)
-            {
-                LLVKLoader::releaseScenePerDrawEntry(params->mVkSetMemoEntryTok[memo_frame],
-                                                     params->mVkSetMemoPinEpoch);
-                LLVKLoader::pinScenePerDrawEntry(memo_token);
-                params->mVkSetMemoEntryTok[memo_frame] = memo_token;
-                params->mVkSetMemoPinEpoch = LLVKLoader::getScenePerDrawCacheEpoch();
-            }
-            params->mVkSetMemoRingSig[memo_frame] = memo_ring_sig;
-            params->mVkSetMemoSet[memo_frame] = (void*)per_draw_set;
-            ++LLVKLoader::gVkPerf.set_memo_fill;
-        }
-        else if (bindless_fill
-            && memo_token != nullptr
-            && (bindings.ubo == VK_NULL_HANDLE
-                || bindings.ubo == LLVKLoader::getPerDrawUBOArenaBuffer())
-            && [&]() -> bool
-               {
-                   U32 l3_backed = 0;
-                   for (U32 i = 0; i < bindings.sampler_count; ++i)
-                   {
-                       const char src = bindings.sampler_sources[i];
-                       if (src == 'L' || src == 'E')
-                       {
-                           ++l3_backed;
-                           continue;
-                       }
-                       if (src == 'R')
-                       {
-                           ++LLVKLoader::gVkPerf.pin_refuse_live;
-                           return false;
-                       }
-                       const VkImageView v = bindings.sampler_views[i];
-                       if (v != fallback_view
-                           && v != LLVKLoader::getDefaultFallbackVkImageView()
-                           && v != LLVKLoader::getDefaultFallbackCubeVkImageView()
-                           && v != LLVKLoader::getDefaultFallbackCubeArrayVkImageView()
-                           && v != LLVKLoader::getDefaultFallback3DVkImageView()
-                           && v != LLVKLoader::getDefaultFallbackShadowVkImageView())
-                       {
-                           ++LLVKLoader::gVkPerf.pin_refuse_live;
-                           return false;
-                       }
-                   }
-                   if (l3_backed != (U32)memo_l3_cnt)
-                   {
-                       ++LLVKLoader::gVkPerf.pin_refuse_cover;
-                       return false;
-                   }
-                   return true;
-               }())
-        {
+            ev.reloadEpoch   = LLVKLoader::gVkReloadEpoch.load(std::memory_order_relaxed);
+            ev.topoGen       = LLVKLoader::gVkPerDrawTopologyGen.load(std::memory_order_relaxed);
+            ev.attachmentSig = LLVKLoader::currentPassAttachmentSig();
+            ev.ringSig       = memo_ring_sig;
+            ev.pinnable      = true;
+            LLGLSLShader::vkPinPerDrawSlot(*home, memo_frame, per_draw_set, memo_token, ev);
             ++LLVKLoader::gVkPerf.pin_store;
-            const U64 topo_gen = LLVKLoader::gVkPerDrawTopologyGen.load(std::memory_order_relaxed);
-            auto& bl = cur->mVkBindlessSet1Lanes[lane];
-            const bool evidence_same =
-                bl.topoGen == topo_gen
-                && bl.l3Count == memo_l3_cnt
-                && std::memcmp(bl.l3Enums, memo_l3_enums, sizeof(memo_l3_enums)) == 0
-                && std::memcmp(bl.l3Views, memo_l3_views, sizeof(memo_l3_views)) == 0;
-            if (!evidence_same)
-            {
-                for (U32 s = 0; s < 3; ++s)
-                {
-                    LLVKLoader::releaseScenePerDrawEntry(bl.tok[s], bl.pinEpoch);
-                    bl.tok[s] = nullptr;
-                    bl.set[s] = VK_NULL_HANDLE;
-                }
-                bl.topoGen = topo_gen;
-                bl.l3Count = memo_l3_cnt;
-                std::memcpy(bl.l3Enums, memo_l3_enums, sizeof(memo_l3_enums));
-                std::memcpy(bl.l3Views, memo_l3_views, sizeof(memo_l3_views));
-            }
-            bl.ringSig[memo_frame] = memo_ring_sig;
-            if (bl.tok[memo_frame] != memo_token)
-            {
-                LLVKLoader::releaseScenePerDrawEntry(bl.tok[memo_frame], bl.pinEpoch);
-                LLVKLoader::pinScenePerDrawEntry(memo_token);
-                bl.tok[memo_frame] = memo_token;
-                bl.pinEpoch = LLVKLoader::getScenePerDrawCacheEpoch();
-            }
-            bl.set[memo_frame] = per_draw_set;
             ++LLVKLoader::gVkPerf.set_memo_fill;
         }
-        else if (params != nullptr)
+        else if (home != nullptr)
         {
-            params->clearVkSetMemoPins();
-            params->mVkSetMemoShader = nullptr;
+            if (home->tok[memo_frame] != nullptr)
+            {
+                LLVKLoader::releaseScenePerDrawEntry(home->tok[memo_frame], home->pinEpoch[memo_frame]);
+                home->tok[memo_frame] = nullptr;
+            }
+            home->set[memo_frame] = VK_NULL_HANDLE;
         }
     }
 

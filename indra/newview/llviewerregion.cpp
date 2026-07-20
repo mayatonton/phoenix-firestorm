@@ -75,6 +75,7 @@
 #include "llvkbucket.h"
 #include "stringize.h"
 #include "llviewercontrol.h"
+#include "llreloadqueue.h"
 #include "llsdserialize.h"
 #include "llfloaterperms.h"
 #include "llvieweroctree.h"
@@ -2689,7 +2690,7 @@ void LLViewerRegion::setSimulatorFeatures(const LLSD& sim_features)
                     gSavedSettings.setBOOL("GLTFEnabled", enabled);
                     if (enabled)
                     {
-                        LLViewerShaderMgr::instance()->requestSetShaders();
+                        LLReloadQueue::request(LLReloadQueue::RK_Shaders);
                     }
                 }
             }

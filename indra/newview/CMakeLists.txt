@@ -703,6 +703,7 @@ set(viewer_SOURCE_FILES
     llheroprobemanager.cpp
     llregioninfomodel.cpp
     llregionposition.cpp
+    llreloadqueue.cpp
     llremoteparcelrequest.cpp
     llsaveoutfitcombobtn.cpp
     #llsaveoutfitcombobtn.cpp #<FS:Ansariel> Unused
@@ -1569,6 +1570,7 @@ set(viewer_HEADER_FILES
     llheroprobemanager.h
     llregioninfomodel.h
     llregionposition.h
+    llreloadqueue.h
     llremoteparcelrequest.h
     llresourcedata.h
     llrootview.h

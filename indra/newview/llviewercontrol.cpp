@@ -54,6 +54,7 @@
 #include "llflexibleobject.h"
 #include "llfeaturemanager.h"
 #include "llviewershadermgr.h"
+#include "llreloadqueue.h"
 #include "llvkloader.h"
 
 #include "llsky.h"
@@ -278,7 +279,7 @@ bool handleSetShaderChanged(const LLSD& newvalue)
     }
 
     // else, leave terrain detail as is
-    LLViewerShaderMgr::instance()->requestSetShaders();
+    LLReloadQueue::request(LLReloadQueue::RK_Shaders);
     return true;
 }
 
@@ -322,7 +323,7 @@ bool handleRenderTransparentWaterChanged(const LLSD& newvalue)
     if (gPipeline.isInit())
     {
         gPipeline.updateRenderTransparentWater();
-        LLViewerShaderMgr::instance()->requestSetShaders();
+        LLReloadQueue::request(LLReloadQueue::RK_Shaders);
     }
     LLWorld::getInstance()->updateWaterObjects();
     return true;
@@ -368,7 +369,7 @@ static bool handleReleaseGLBufferChanged(const LLSD& newvalue)
 {
     if (gPipeline.isInit())
     {
-        LLPipeline::requestGLBufferRebuild();
+        LLReloadQueue::request(LLReloadQueue::RK_GLBuffers);
     }
     return true;
 }
@@ -425,7 +426,7 @@ static bool handleLUTBufferChanged(const LLSD& newvalue)
 {
     if (gPipeline.isInit())
     {
-        LLPipeline::requestGLBufferRebuild();
+        LLReloadQueue::request(LLReloadQueue::RK_GLBuffers);
     }
     return true;
 }
@@ -767,7 +768,7 @@ static bool handleReflectionProbeDetailChanged(const LLSD& newvalue)
         }();
         if (!skip_ss)
         {
-            LLViewerShaderMgr::instance()->requestSetShaders();
+            LLReloadQueue::request(LLReloadQueue::RK_Shaders);
         }
     }
     return true;
@@ -796,7 +797,7 @@ static bool handleHeroProbeResolutionChanged(const LLSD &newvalue)
     {
         LLPipeline::refreshCachedSettings();
         gPipeline.mHeroProbeManager.reset();
-        LLPipeline::requestGLBufferRebuild();
+        LLReloadQueue::request(LLReloadQueue::RK_GLBuffers);
     }
     return true;
 }

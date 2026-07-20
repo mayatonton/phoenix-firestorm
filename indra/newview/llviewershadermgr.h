@@ -37,7 +37,6 @@ class LLViewerShaderMgr: public LLShaderMgr
 public:
     static bool sInitialized;
     static bool sSkipReload;
-    static bool sPendingSetShaders;
 
     LLViewerShaderMgr();
     /* virtual */ ~LLViewerShaderMgr();
@@ -49,8 +48,6 @@ public:
 
     void initAttribsAndUniforms(void);
     void setShaders();
-    void requestSetShaders();
-    static void tickPendingSetShaders();
     void unloadShaders();
     S32  getShaderLevel(S32 type);
 

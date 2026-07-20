@@ -35,6 +35,7 @@
 #include "llrefcount.h"
 #include "llvertexbuffer.h"
 #include "llgltypes.h"
+#include "llvkloader.h"
 #include "llcubemap.h"
 #include "lldrawpool.h"
 #include "llface.h"
@@ -152,17 +153,7 @@ public:
     LLVector4a mBatchExtents[2];
     F32 mBoundRadius = -1.f;
 
-    LLGLSLShader* mVkSetMemoShader = nullptr;
-    U64   mVkSetMemoTopoGen = 0;
-    U64   mVkSetMemoTexSig = 0;
-    void* mVkSetMemoSet[3] = {};
-    void* mVkSetMemoEntryTok[3] = {};
-    U64   mVkSetMemoPinEpoch = 0;
-    U64   mVkSetMemoRingSig[3] = {};
-    void* mVkSetMemoL3Views[LLVKLoader::MAX_PERCALL_L3] = {};
-    S16   mVkSetMemoL3Enums[LLVKLoader::MAX_PERCALL_L3] = {};
-    U32   mVkSetMemoShape = 0;
-    U8    mVkSetMemoL3Count = 0;
+    LLVKLoader::PerDrawCacheLane mVkPerDrawCache;
 
     U32   mVkDrawDataSlot = 0xFFFFFFFFu;
     U32   mVkDrawDataSlots[4] = {};
@@ -171,7 +162,7 @@ public:
     LLVKBucket::Bucket* mVkTplBucket = nullptr;
     U32   mVkTplCmdIndex = 0;
 
-    void clearVkSetMemoPins();
+    void clearVkPerDrawCachePins();
 
     LLUUID mMaterialID; // id of LLGLTFMaterial or LLMaterial applied to this draw info
 

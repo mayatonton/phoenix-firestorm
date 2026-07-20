@@ -77,6 +77,7 @@
 #include "llviewerparcelaskplay.h"
 #include "llviewerparcelmedia.h"
 #include "llviewershadermgr.h"
+#include "llreloadqueue.h"
 #include "llviewermediafocus.h"
 #include "llviewermessage.h"
 #include "llviewerobjectlist.h"
@@ -1753,33 +1754,7 @@ bool LLAppViewer::doFrame()
                 LL_PROFILE_ZONE_NAMED_CATEGORY_APP("df Display");
                 pingMainloopTimeout("Main:Display");
 
-                LLViewerShaderMgr::tickPendingSetShaders();
-                if (gWindowResized)
-                {
-                    LLPipeline::refreshCachedSettings();
-                    gPipeline.resizeScreenTexture();
-                    gResizeScreenTexture = false;
-                    gWindowResized      = false;
-                }
-                if (LLPipeline::sGLBufferRebuildPending)
-                {
-                    LLPipeline::sGLBufferRebuildPending = false;
-                    if (gPipeline.isInit())
-                    {
-                        gPipeline.releaseGLBuffers();
-                        gPipeline.createGLBuffers();
-                    }
-                }
-                gViewerWindow->checkSettings();
-                if (gResizeScreenTexture)
-                {
-                    gPipeline.resizeScreenTexture();
-                    gResizeScreenTexture = false;
-                }
-                if (gResizeShadowTexture)
-                {
-                    gPipeline.resizeShadowTexture();
-                }
+                LLReloadQueue::drain();
 
                 bool vk_begin_ok = LLVKLoader::beginFrame();
                 if (!vk_begin_ok && LLVKLoader::isVulkanInitialized())

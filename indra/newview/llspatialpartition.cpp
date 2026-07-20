@@ -4182,7 +4182,7 @@ LLDrawInfo::LLDrawInfo(U16 start, U16 end, U32 count, U32 offset,
 
 LLDrawInfo::~LLDrawInfo()
 {
-    clearVkSetMemoPins();
+    clearVkPerDrawCachePins();
     if (mVkDrawDataSlot != 0xFFFFFFFFu)
     {
         LLVKLoader::drawDataReleaseSlotDeferred(mVkDrawDataSlot);
@@ -4194,13 +4194,14 @@ LLDrawInfo::~LLDrawInfo()
     }
 }
 
-void LLDrawInfo::clearVkSetMemoPins()
+void LLDrawInfo::clearVkPerDrawCachePins()
 {
     for (U32 i = 0; i < 3; ++i)
     {
-        LLVKLoader::releaseScenePerDrawEntry(mVkSetMemoEntryTok[i], mVkSetMemoPinEpoch);
-        mVkSetMemoEntryTok[i] = nullptr;
-        mVkSetMemoSet[i]      = nullptr;
+        LLVKLoader::releaseScenePerDrawEntry(mVkPerDrawCache.tok[i], mVkPerDrawCache.pinEpoch[i]);
+        mVkPerDrawCache.tok[i] = nullptr;
+        mVkPerDrawCache.set[i] = VK_NULL_HANDLE;
+        mVkPerDrawCache.ev[i]  = LLVKLoader::PerDrawEvidence();
     }
 }
 

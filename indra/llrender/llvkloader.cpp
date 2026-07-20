@@ -4605,6 +4605,7 @@ thread_local U32 gVkPerfShadowMapIndex = 0;
 
 std::atomic<U64> gVkPerDrawTopologyGen{1};
 std::atomic<U64> gVkViewDestroyGen{1};
+std::atomic<U64> gVkReloadEpoch{1};
 
 U64 getScenePerDrawCacheEpoch()
 {

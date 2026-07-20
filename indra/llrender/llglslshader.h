@@ -406,39 +406,17 @@ public:
     void*                      mVkPerProgramUBOMapped   = nullptr;
     U32                        mVkPerProgramUBOSize     = 0;
 
-    struct VkBindlessSet1LaneState
-    {
-        VkDescriptorSet set[3]     = {};
-        void*           tok[3]     = {};
-        U64             ringSig[3] = {};
-        U64             pinEpoch   = 0;
-        U64             topoGen    = 0;
-        void*           l3Views[LLVKLoader::MAX_PERCALL_L3] = {};
-        S16             l3Enums[LLVKLoader::MAX_PERCALL_L3] = {};
-        U8              l3Count    = 0;
-    };
-    VkBindlessSet1LaneState mVkBindlessSet1Lanes[LLVKLoader::MAX_RECORD_LANES];
-    void clearVkBindlessSet1Pins();
-
-    struct VkImmediateSet1LaneState
-    {
-        VkDescriptorSet set[3]     = {};
-        void*           tok[3]     = {};
-        U64             sig[3]     = {};
-        U64             ringSig[3] = {};
-        U64             topoGen    = 0;
-        void*           l3Views[LLVKLoader::MAX_PERCALL_L3] = {};
-        S16             l3Enums[LLVKLoader::MAX_PERCALL_L3] = {};
-        U8              l3Count    = 0;
-        U64             pinEpoch   = 0;
-    };
-    VkImmediateSet1LaneState mVkImmediateSet1Lanes[LLVKLoader::MAX_RECORD_LANES];
-    U32  mVkImmediateSigUnits = 0xFFFFFFFFu;
-    bool mVkImmediateUncacheable = false;
     U32  mVkImmediateHits  = 0;
     U32  mVkImmediateFills = 0;
     bool mVkImmediateNoFill = false;
-    void clearVkImmediateSet1Pins();
+
+    LLVKLoader::PerDrawCacheLane mVkPerDrawLane[LLVKLoader::MAX_RECORD_LANES];
+    void clearVkPerDrawLanePins();
+
+    static bool vkValidatePerDrawSlot(LLGLSLShader* cur, const LLVKLoader::PerDrawEvidence& ev);
+    static U64  vkComputePerDrawRingSig(LLGLSLShader* cur);
+    static void vkPinPerDrawSlot(LLVKLoader::PerDrawCacheLane& lane, U32 frame,
+                                 VkDescriptorSet set, void* tok, const LLVKLoader::PerDrawEvidence& ev);
 
     VkBuffer                   mVkActivePerProgramUBO       = VK_NULL_HANDLE;
     void*                      mVkActivePerProgramUBOMapped = nullptr;
@@ -465,10 +443,6 @@ public:
                                           LLVKLoader::ScenePerDrawBindings& bindings,
                                           U32                               per_program_dynamic_offset,
                                           U32*                              out_offsets);
-    static bool vkValidatePerCallCache(LLGLSLShader* cur, U64 stored_ring_sig,
-                                       const void* const* stored_l3_views,
-                                       const S16* stored_l3_enums, U8 stored_l3_count);
-    static U64  vkComputeImmediateSig(LLGLSLShader* cur);
 
     bool                       mWritePerProgramUBOMinimumAlpha = false;
 

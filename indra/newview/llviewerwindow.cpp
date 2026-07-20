@@ -188,6 +188,7 @@
 #include "llviewerparcelmgr.h"
 #include "llviewerregion.h"
 #include "llviewershadermgr.h"
+#include "llreloadqueue.h"
 #include "llviewerstats.h"
 #include "llvoavatarself.h"
 #include "llvopartgroup.h"
@@ -7225,7 +7226,7 @@ void LLViewerWindow::checkSettings()
     if (mStatesDirty)
     {
         gGL.refreshState();
-        LLViewerShaderMgr::instance()->requestSetShaders();
+        LLReloadQueue::request(LLReloadQueue::RK_Shaders);
         mStatesDirty = false;
     }
 

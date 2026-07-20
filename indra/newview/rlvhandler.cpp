@@ -51,6 +51,7 @@
 #include "lltoolmgr.h"                  // @edit
 #include "llviewercamera.h"             // @setcam and related
 #include "llviewershadermgr.h"          // @setsphere
+#include "llreloadqueue.h"
 #include "llworldmapmessage.h"          // @tpto
 #include "llviewertexturelist.h"        // @setcam_texture
 #include "pipeline.h"                   // @setsphere
@@ -2171,7 +2172,7 @@ ERlvCmdRet RlvBehaviourHandler<RLV_BHVR_SETSPHERE>::onCommand(const RlvCommand& 
             if (!LLPipelineFrameContext::getInstance().getActiveRT()->deferredLight.isComplete())
             {
                 // In case of deferred with no shadows, no ambient occlusion, no depth of field, and no antialiasing
-                LLPipeline::requestGLBufferRebuild();
+                LLReloadQueue::request(LLReloadQueue::RK_GLBuffers);
             }
         }
         else
