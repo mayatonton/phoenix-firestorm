@@ -335,6 +335,7 @@ public:
 
     enum VkBindingSamplerDim : U8 { VKSD_2D = 0, VKSD_CUBE = 1, VKSD_CUBE_ARRAY = 2, VKSD_3D = 3 };
     std::array<U8, MAX_VK_BINDING> mVkBindingSamplerDim = {};
+    std::array<U8, MAX_VK_BINDING> mVkBindingSamplerShadow = {};
 
     std::array<bool, MAX_VK_BINDING> mVkBindingSamplerUsed = {};
 

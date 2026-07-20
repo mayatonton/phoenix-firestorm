@@ -3,6 +3,7 @@
 #include "llerror.h"
 #include "lltimer.h"
 
+#include <algorithm>
 #include <atomic>
 #include <cstdlib>
 #include <cstring>
@@ -11,6 +12,7 @@
 #include <sstream>
 #include <unordered_map>
 #include <unordered_set>
+#include <vector>
 
 namespace LLVKContract
 {
@@ -262,6 +264,16 @@ struct WatchEvictEv
 std::unordered_map<U32, WatchStageEv> sWatchStage;
 std::unordered_map<U32, WatchEvictEv> sWatchEvict;
 
+struct FbSlotStat
+{
+    U64         count = 0;
+    std::string shader;
+    U32         binding = 0;
+    const char* reason  = nullptr;
+};
+std::mutex sFbSlotMutex;
+std::unordered_map<U64, FbSlotStat> sFbSlotWin;
+
 bool watchContainsLocked(U32 localid)
 {
     return sWatchLocals.find(localid) != sWatchLocals.end();
@@ -277,6 +289,22 @@ void watchAddLocal(U32 localid)
     std::lock_guard<std::mutex> lock(sWatchLocalsMutex);
     sWatchLocals.insert(localid);
     sWatchLocalsAny.store(true, std::memory_order_relaxed);
+}
+
+void noteFbSlot(const void* shader_key, const std::string& shader_name, U32 binding, const char* reason)
+{
+    const U64 key = ((U64)(uintptr_t)shader_key * 0x100000001B3ull)
+                    ^ ((U64)binding << 32)
+                    ^ (U64)(uintptr_t)reason;
+    std::lock_guard<std::mutex> lock(sFbSlotMutex);
+    FbSlotStat& st = sFbSlotWin[key];
+    if (st.count == 0)
+    {
+        st.shader  = shader_name;
+        st.binding = binding;
+        st.reason  = reason;
+    }
+    ++st.count;
 }
 
 void watchFbProbe(bool diffuse, const char* reason)
@@ -625,6 +653,8 @@ void drawSkipped(ECause fire_cause, const std::string& shader_name)
     }
     sSkipWin.fetch_add(1, std::memory_order_relaxed);
     sSkipTot.fetch_add(1, std::memory_order_relaxed);
+    noteFbSlot((const void*)(uintptr_t)std::hash<std::string>{}(shader_name),
+               shader_name, (U32)c, "skip");
     U64 n = sSkipByCause[c].fetch_add(1, std::memory_order_relaxed) + 1;
     if (verboseEnabled() && pow2(n))
     {
@@ -936,6 +966,54 @@ void frameBegin()
             sWatchCamMin  = ~0ull;
             sWatchCamMax  = 0;
             sWatchTot     = 0;
+        }
+    }
+
+    {
+        std::vector<FbSlotStat> slots;
+        {
+            std::lock_guard<std::mutex> lock(sFbSlotMutex);
+            slots.reserve(sFbSlotWin.size());
+            for (auto& kv : sFbSlotWin)
+            {
+                slots.push_back(kv.second);
+            }
+            sFbSlotWin.clear();
+        }
+        if (!slots.empty())
+        {
+            std::sort(slots.begin(), slots.end(),
+                      [](const FbSlotStat& a, const FbSlotStat& b) { return a.count > b.count; });
+            os << " fbslot{";
+            const size_t top = slots.size() < 12 ? slots.size() : 12;
+            bool first_slot = true;
+            auto emit_slot = [&](const FbSlotStat& st)
+            {
+                if (!first_slot)
+                {
+                    os << ", ";
+                }
+                first_slot = false;
+                os << st.shader << ":b" << st.binding << ':'
+                   << (st.reason != nullptr ? st.reason : "?")
+                   << '=' << st.count;
+            };
+            for (size_t i = 0; i < top; ++i)
+            {
+                emit_slot(slots[i]);
+            }
+            for (size_t i = top; i < slots.size(); ++i)
+            {
+                if (slots[i].reason != nullptr && std::strcmp(slots[i].reason, "skip") == 0)
+                {
+                    emit_slot(slots[i]);
+                }
+            }
+            if (slots.size() > top)
+            {
+                os << " +" << (slots.size() - top);
+            }
+            os << '}';
         }
     }
 

@@ -515,6 +515,7 @@ bool LLGLSLShader::createShader()
     mVkBindingDeclaredType.fill(VKBD_NONE);
     mVkBindingStageMask.fill(0);
     mVkBindingSamplerDim.fill(VKSD_2D);
+    mVkBindingSamplerShadow.fill(0);
     mVkBindingSamplerUsed.fill(false);
 
     mVkReflBindingSamplerNames.clear();
@@ -1049,6 +1050,7 @@ struct VkSpirvSet1Sampler
     std::string name;
     unsigned int dim;
     unsigned int arrayed;
+    unsigned int depth;
 };
 
 static U32 reflectVertexInputMaskFromSpirv(const std::vector<unsigned int>& spirv)
@@ -1210,7 +1212,7 @@ static void reflectVkSet1BindingsFromSpirv(const std::vector<unsigned int>& spir
     std::map<unsigned int, unsigned int> pointer_pointee;
     std::map<unsigned int, unsigned int> sampled_image_image;
     std::map<unsigned int, unsigned int> array_element;
-    std::map<unsigned int, std::pair<unsigned int, unsigned int>> image_dim_arrayed;
+    std::map<unsigned int, std::array<unsigned int, 3>> image_dim_arrayed;
 
     for (size_t i = 5; i < n; )
     {
@@ -1249,7 +1251,7 @@ static void reflectVkSet1BindingsFromSpirv(const std::vector<unsigned int>& spir
         case 25u:
             if (wordCount >= 6)
             {
-                image_dim_arrayed[w[i + 1]] = { w[i + 3], w[i + 5] };
+                image_dim_arrayed[w[i + 1]] = { w[i + 3], w[i + 4], w[i + 5] };
             }
             break;
         case 27u:
@@ -1330,7 +1332,7 @@ static void reflectVkSet1BindingsFromSpirv(const std::vector<unsigned int>& spir
                                 {
                                     var_name = nit->second;
                                 }
-                                out_samplers.push_back({ bit->second, var_name, iit->second.first, iit->second.second });
+                                out_samplers.push_back({ bit->second, var_name, iit->second[0], iit->second[2], iit->second[1] });
                             }
                         }
                     }
@@ -1983,6 +1985,10 @@ bool LLGLSLShader::generatePerProgramSPIRV(const std::vector<StageSource>& stage
                 dim = VKSD_3D;
             }
             mVkBindingSamplerDim[smp.binding] = dim;
+            if (smp.depth == 1u)
+            {
+                mVkBindingSamplerShadow[smp.binding] = 1;
+            }
             mVkReflBindingSamplerNames.emplace_back(smp.binding, smp.name);
         }
         for (S32 ub : ubo_bindings)
@@ -2326,6 +2332,12 @@ bool LLGLSLShader::vkValidatePerCallCache(LLGLSLShader* cur, U64 stored_ring_sig
                                           const void* const* stored_l3_views,
                                           const S16* stored_l3_enums, U8 stored_l3_count)
 {
+    if (stored_l3_count > 0
+        && LLVKLoader::anyViewHandleDead(stored_l3_views, stored_l3_count))
+    {
+        LLVKLoader::gVkPerfValFailKind = 2;
+        return false;
+    }
     U64 ring_sig = 0;
     for (U8 b : cur->mVkAccessorBindingListLanes[LLVKLoader::getCurrentRecordLane()])
     {
@@ -2927,6 +2939,13 @@ bool LLGLSLShader::createVkPipeline(U32 perProgramUBOSize, bool needsSharedWater
         }
     }
 
+    if (mVkPerProgramUBOBinding != 0 && (mVkBindingDeclaredType[0] & VKBD_UBO) == 0)
+    {
+        bindings.erase(std::remove_if(bindings.begin(), bindings.end(),
+                                      [](const VkDescriptorSetLayoutBinding& b) { return b.binding == 0; }),
+                       bindings.end());
+    }
+
     mVkLayoutBindings = bindings;
 
     mVkSet1LayoutBindingMask = 0;
@@ -2959,6 +2978,27 @@ bool LLGLSLShader::createVkPipeline(U32 perProgramUBOSize, bool needsSharedWater
         LL_WARNS("Vulkan") << "dynamic UBO overflow: shader " << mName << " declares "
                            << mVkDynamicBindings.size() << " dynamic bindings > MAX_VK_DYNAMIC_BINDINGS="
                            << MAX_VK_DYNAMIC_BINDINGS << " (excess offsets silently dropped at bind)" << LL_ENDL;
+    }
+    if (LLVKLoader::perfLogEnabled())
+    {
+        std::string dyn;
+        bool any_unresolvable = false;
+        for (U32 db : mVkDynamicBindings)
+        {
+            const bool resolvable = (db == 0)
+                || db == 39 || db == 45 || db == 46
+                || db == 48 || db == 49 || db == 51 || db == 53;
+            dyn += std::to_string(db);
+            dyn += resolvable ? " " : "!* ";
+            if (!resolvable)
+            {
+                any_unresolvable = true;
+            }
+        }
+        LL_INFOS("Vulkan") << "CLASSIFY_AUDIT shader='" << mName
+                           << "' perProg=" << mVkPerProgramUBOBinding
+                           << (any_unresolvable ? " UNRESOLVABLE" : " ok")
+                           << " dyn=[" << dyn << "]" << LL_ENDL;
     }
 
     VkDescriptorSetLayoutCreateInfo dsl_info = {};
@@ -3204,6 +3244,24 @@ void LLGLSLShader::vkRefreshDynamicOffsetsForDraw()
             }
             else
             {
+                if (LLVKLoader::perfLogEnabled())
+                {
+                    static thread_local U32 s_refresh_fail_dump = 0;
+                    if ((++s_refresh_fail_dump & 127) == 1)
+                    {
+                        std::string dyn;
+                        for (U32 x : cur->mVkDynamicBindings)
+                        {
+                            dyn += std::to_string(x);
+                            dyn += ' ';
+                        }
+                        LL_WARNS("Vulkan") << "REFRESH_FAIL shader='" << cur->mName
+                                           << "' failing_db=" << db
+                                           << " perProgBinding=" << cur->mVkPerProgramUBOBinding
+                                           << " dynCount=" << cur->mVkDynamicBindings.size()
+                                           << " dyn=[" << dyn << "]" << LL_ENDL;
+                    }
+                }
                 LLVKContract::causeNamed(LLVKContract::C_REFRESH_SHARED_UBO, cur->mName);
                 sCurPerCallVkDescriptorSet = VK_NULL_HANDLE;
                 return;
@@ -3671,15 +3729,36 @@ void LLGLSLShader::populateAndBindUniversalDescriptorSet(bool preserve_drawdata)
                                                   : LLVKContract::C_FB_VIEW_AUX,
                                cur->mName);
             LLVKContract::watchFbProbe(resolved_unit == 0, vkc_fb_reason);
+            LLVKContract::noteFbSlot(cur, cur->mName, N, vkc_fb_reason);
+            if (resolved_unit != 0 && LLVKLoader::perfLogEnabled())
+            {
+                static thread_local U32 s_aux_fb_dump = 0;
+                if ((++s_aux_fb_dump & 4095) == 1)
+                {
+                    LL_WARNS("Vulkan") << "AUXFB shader='" << cur->mName
+                                       << "' b" << N << " enum=" << enum_value
+                                       << " channel=" << channel
+                                       << " resolved_unit=" << resolved_unit
+                                       << " l3_hit=" << (l3_hit ? 1 : 0)
+                                       << " reason=" << (vkc_fb_reason ? vkc_fb_reason : "?") << LL_ENDL;
+                }
+            }
             const U8 sdim = cur->mVkBindingSamplerDim[N];
-            view = (sdim == VKSD_CUBE_ARRAY) ? LLVKLoader::getDefaultFallbackCubeArrayVkImageView()
+            view = cur->mVkBindingSamplerShadow[N] ? LLVKLoader::getDefaultFallbackShadowVkImageView()
+                 : (sdim == VKSD_CUBE_ARRAY) ? LLVKLoader::getDefaultFallbackCubeArrayVkImageView()
                  : (sdim == VKSD_CUBE)       ? LLVKLoader::getDefaultFallbackCubeVkImageView()
                  : (sdim == VKSD_3D)         ? LLVKLoader::getDefaultFallback3DVkImageView()
                  :                             fallback_view;
         }
 
         VkSampler binding_sampler = VK_NULL_HANDLE;
-        if (l3_hit)
+        if (used_fallback && cur->mVkBindingSamplerShadow[N])
+        {
+            binding_sampler = LLVKLoader::getSamplerForState((U32)LLTexUnit::TAM_CLAMP,
+                                                             (U32)LLTexUnit::TFO_BILINEAR,
+                                                             false, true);
+        }
+        else if (l3_hit)
         {
             binding_sampler = cur->mVkEnumBoundView[enum_value].sampler;
         }
@@ -3694,6 +3773,11 @@ void LLGLSLShader::populateAndBindUniversalDescriptorSet(bool preserve_drawdata)
 
         bindings.sampler_bindings[bindings.sampler_count] = N;
         bindings.sampler_views[bindings.sampler_count]    = view;
+        bindings.sampler_sources[bindings.sampler_count]  = used_fallback      ? 'f'
+                                                          : (enum_value == -2) ? 'i'
+                                                          : l3_hit             ? 'l'
+                                                          : (channel >= 0)     ? 'c'
+                                                          : (resolved_unit >= 0) ? 't' : 'n';
         bindings.sampler_samplers[bindings.sampler_count] = binding_sampler;
         ++bindings.sampler_count;
     }

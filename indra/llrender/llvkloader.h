@@ -37,6 +37,8 @@ namespace LLVKLoader
     void shutdownVulkan();
 
     bool isVulkanInitialized();
+    bool isInFrame();
+    bool anyViewHandleDead(const void* const* views, U32 count);
 
     bool beginFrame(bool acquire_swapchain = true);
     bool endFrame();
@@ -1484,6 +1486,9 @@ namespace LLVKLoader
         std::atomic<U64> als_val_pass[5] = {};
         std::atomic<U64> als_val_ring{0};
         std::atomic<U64> als_val_l3{0};
+        std::atomic<U64> pin_store{0};
+        std::atomic<U64> pin_refuse_live{0};
+        std::atomic<U64> pin_refuse_cover{0};
         std::atomic<U64> ring_hw[16] = {};
         std::atomic<U64> setb_us[4] = {};
         std::atomic<U64> ens_hit{0};
@@ -1542,6 +1547,7 @@ namespace LLVKLoader
             for (auto& v : als_cause) v = 0;
             for (auto& v : als_val_pass) v = 0;
             als_val_ring = 0; als_val_l3 = 0;
+            pin_store = 0; pin_refuse_live = 0; pin_refuse_cover = 0;
             for (auto& v : ring_hw) v = 0;
             for (auto& v : setb_us) v = 0;
             ens_hit = 0; ens_alloc = 0;
@@ -1663,6 +1669,7 @@ namespace LLVKLoader
         U32                   sampler_bindings[MAX_SAMPLERS] = {};
         VkImageView           sampler_views[MAX_SAMPLERS]    = {};
         VkSampler             sampler_samplers[MAX_SAMPLERS] = {};
+        char                  sampler_sources[MAX_SAMPLERS]  = {};
 
         struct UBOEntry
         {
@@ -1689,6 +1696,7 @@ namespace LLVKLoader
     VkImageView getDefaultFallbackCubeArrayVkImageView();
     VkImageView getDefaultFallbackCubeVkImageView();
     VkImageView getDefaultFallback3DVkImageView();
+    VkImageView getDefaultFallbackShadowVkImageView();
 }
 
 #endif // LL_LLVKLOADER_H

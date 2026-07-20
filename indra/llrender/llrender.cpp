@@ -40,6 +40,8 @@
 #include "hbxxh.h"
 #include "glm/gtc/type_ptr.hpp"
 #include <cstring>
+#include <mutex>
+#include <set>
 
 thread_local LLRender gGL;
 
@@ -126,6 +128,14 @@ void LLTexUnit::disable(void)
     }
 }
 
+static void vkNoteDefaultBind(LLImageGL* image, S32 unit, const char* reason)
+{
+    LLGLSLShader* sh = LLGLSLShader::sCurBoundShaderPtr;
+    LLVKContract::noteFbSlot(sh,
+                             sh != nullptr ? sh->mName : std::string("(noshader)"),
+                             (U32)llmax(unit, 0), reason);
+}
+
 void LLTexUnit::vkNotifyShaderChannelBound()
 {
     if (!LLVKLoader::isVulkanInitialized())
@@ -150,6 +160,7 @@ void LLTexUnit::bindFast(LLTexture* texture)
         LL_PROFILE_ZONE_NAMED_CATEGORY_PIPELINE("MISSING TEXTURE");
         texture->forceImmediateUpdate();
         gl_tex->forceUpdateBindStats();
+        vkNoteDefaultBind(gl_tex, mIndex, "bindfast_default");
         texture->bindDefaultImage(mIndex);
         return;
     }
@@ -231,6 +242,7 @@ bool LLTexUnit::bind(LLTexture* texture, bool for_rendering, bool forceBind)
                 texture->forceImmediateUpdate() ;
 
                 gl_tex->forceUpdateBindStats() ;
+                vkNoteDefaultBind(gl_tex, mIndex, "bindtex_default");
                 return texture->bindDefaultImage(mIndex);
             }
         }
@@ -270,6 +282,7 @@ bool LLTexUnit::bind(LLImageGL* texture, bool for_rendering, bool forceBind)
     {
         if(LLImageGL::sDefaultGLTexture && LLImageGL::sDefaultGLTexture->hasVkImage())
         {
+            vkNoteDefaultBind(texture, mIndex, "bind_default");
             return bind(LLImageGL::sDefaultGLTexture) ;
         }
         return false ;

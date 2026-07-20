@@ -783,6 +783,7 @@ void LLRenderPass::buildAndOverrideScenePerDrawSet(LLDrawInfo* params, bool batc
             }
             bindings.sampler_bindings[i] = 100 + i;
             bindings.sampler_views[i]    = view_to_write;
+            bindings.sampler_sources[i]  = 'I';
             bindings.sampler_samplers[i] = (i < real_count)
                                                ? gGL.getTexUnit((S32)i)->getLiveVkSampler()
                                                : VK_NULL_HANDLE;
@@ -813,6 +814,7 @@ void LLRenderPass::buildAndOverrideScenePerDrawSet(LLDrawInfo* params, bool batc
             }
             bindings.sampler_bindings[i] = 100 + i;
             bindings.sampler_views[i]    = view_to_write;
+            bindings.sampler_sources[i]  = 'I';
             bindings.sampler_samplers[i] = (i == 0)
                                                ? gGL.getTexUnit(0)->getLiveVkSampler()
                                                : VK_NULL_HANDLE;
@@ -825,6 +827,7 @@ void LLRenderPass::buildAndOverrideScenePerDrawSet(LLDrawInfo* params, bool batc
         {
             bindings.sampler_bindings[0] = 1;
             bindings.sampler_views[0]    = fallback_view;
+            bindings.sampler_sources[0]  = '1';
             bindings.sampler_samplers[0] = sampler;
             bindings.sampler_count       = 1;
         }
@@ -863,6 +866,7 @@ void LLRenderPass::buildAndOverrideScenePerDrawSet(LLDrawInfo* params, bool batc
             }
             bindings.sampler_bindings[0] = 1;
             bindings.sampler_views[0]    = view_to_write;
+            bindings.sampler_sources[0]  = '1';
             bindings.sampler_samplers[0] = sampler1;
             bindings.sampler_count       = 1;
         }
@@ -985,12 +989,31 @@ void LLRenderPass::buildAndOverrideScenePerDrawSet(LLDrawInfo* params, bool batc
         }
         if (need_typed_fallback)
         {
+            if (!l3_hit && (channel >= 0 || resolved_unit >= 0))
+            {
+                memo_fill = false;
+            }
             LLVKContract::note(resolved_unit == 0 ? LLVKContract::C_FB_VIEW_DIFFUSE
                                                   : LLVKContract::C_FB_VIEW_AUX,
                                cur->mName);
             LLVKContract::watchFbProbe(resolved_unit == 0, vkc_fb_reason);
+            LLVKContract::noteFbSlot(cur, cur->mName, N, vkc_fb_reason);
+            if (resolved_unit != 0 && LLVKLoader::perfLogEnabled())
+            {
+                static thread_local U32 s_aux_fb_dump2 = 0;
+                if ((++s_aux_fb_dump2 & 4095) == 1)
+                {
+                    LL_WARNS("Vulkan") << "AUXFB2 shader='" << cur->mName
+                                       << "' b" << N << " enum=" << enum_value
+                                       << " channel=" << channel
+                                       << " resolved_unit=" << resolved_unit
+                                       << " l3_hit=" << (l3_hit ? 1 : 0)
+                                       << " reason=" << (vkc_fb_reason ? vkc_fb_reason : "?") << LL_ENDL;
+                }
+            }
             const U8 sdim_fb = cur->mVkBindingSamplerDim[N];
-            view = (sdim_fb == LLGLSLShader::VKSD_CUBE_ARRAY) ? LLVKLoader::getDefaultFallbackCubeArrayVkImageView()
+            view = cur->mVkBindingSamplerShadow[N] ? LLVKLoader::getDefaultFallbackShadowVkImageView()
+                 : (sdim_fb == LLGLSLShader::VKSD_CUBE_ARRAY) ? LLVKLoader::getDefaultFallbackCubeArrayVkImageView()
                  : (sdim_fb == LLGLSLShader::VKSD_CUBE)       ? LLVKLoader::getDefaultFallbackCubeVkImageView()
                  : (sdim_fb == LLGLSLShader::VKSD_3D)         ? LLVKLoader::getDefaultFallback3DVkImageView()
                  :                                              fallback_view;
@@ -998,11 +1021,24 @@ void LLRenderPass::buildAndOverrideScenePerDrawSet(LLDrawInfo* params, bool batc
 
         bindings.sampler_bindings[bindings.sampler_count] = N;
         bindings.sampler_views[bindings.sampler_count]    = view;
+        bindings.sampler_sources[bindings.sampler_count]  = need_typed_fallback
+                                                              ? (l3_hit ? 'E'
+                                                                 : (channel >= 0 || resolved_unit >= 0) ? 'R' : 'F')
+                                                          : l3_hit              ? 'L'
+                                                          : (channel >= 0)      ? 'C'
+                                                          : (resolved_unit >= 0) ? 'T' : 'N';
         bindings.sampler_samplers[bindings.sampler_count] = l3_hit
                                                               ? cur->mVkEnumBoundView[enum_value].sampler
                                                               : (resolved_unit >= 0)
                                                                   ? gGL.getTexUnit(resolved_unit)->getLiveVkSampler()
                                                                   : VK_NULL_HANDLE;
+        if (need_typed_fallback && cur->mVkBindingSamplerShadow[N])
+        {
+            bindings.sampler_samplers[bindings.sampler_count] =
+                LLVKLoader::getSamplerForState((U32)LLTexUnit::TAM_CLAMP,
+                                               (U32)LLTexUnit::TFO_BILINEAR,
+                                               false, true);
+        }
 
         ++bindings.sampler_count;
     }
@@ -1233,23 +1269,73 @@ void LLRenderPass::buildAndOverrideScenePerDrawSet(LLDrawInfo* params, bool batc
         else if (bindless_fill
             && memo_token != nullptr
             && (bindings.ubo == VK_NULL_HANDLE
-                || bindings.ubo == LLVKLoader::getPerDrawUBOArenaBuffer()))
+                || bindings.ubo == LLVKLoader::getPerDrawUBOArenaBuffer())
+            && [&]() -> bool
+               {
+                   U32 l3_backed = 0;
+                   for (U32 i = 0; i < bindings.sampler_count; ++i)
+                   {
+                       const char src = bindings.sampler_sources[i];
+                       if (src == 'L' || src == 'E')
+                       {
+                           ++l3_backed;
+                           continue;
+                       }
+                       if (src == 'R')
+                       {
+                           ++LLVKLoader::gVkPerf.pin_refuse_live;
+                           return false;
+                       }
+                       const VkImageView v = bindings.sampler_views[i];
+                       if (v != fallback_view
+                           && v != LLVKLoader::getDefaultFallbackVkImageView()
+                           && v != LLVKLoader::getDefaultFallbackCubeVkImageView()
+                           && v != LLVKLoader::getDefaultFallbackCubeArrayVkImageView()
+                           && v != LLVKLoader::getDefaultFallback3DVkImageView()
+                           && v != LLVKLoader::getDefaultFallbackShadowVkImageView())
+                       {
+                           ++LLVKLoader::gVkPerf.pin_refuse_live;
+                           return false;
+                       }
+                   }
+                   if (l3_backed != (U32)memo_l3_cnt)
+                   {
+                       ++LLVKLoader::gVkPerf.pin_refuse_cover;
+                       return false;
+                   }
+                   return true;
+               }())
         {
+            ++LLVKLoader::gVkPerf.pin_store;
             const U64 topo_gen = LLVKLoader::gVkPerDrawTopologyGen.load(std::memory_order_relaxed);
-            cur->mVkBindlessSet1Lanes[lane].topoGen = topo_gen;
-            cur->mVkBindlessSet1Lanes[lane].l3Count = memo_l3_cnt;
-            std::memcpy(cur->mVkBindlessSet1Lanes[lane].l3Enums, memo_l3_enums, sizeof(memo_l3_enums));
-            std::memcpy(cur->mVkBindlessSet1Lanes[lane].l3Views, memo_l3_views, sizeof(memo_l3_views));
-            cur->mVkBindlessSet1Lanes[lane].ringSig[memo_frame] = memo_ring_sig;
-            if (cur->mVkBindlessSet1Lanes[lane].tok[memo_frame] != memo_token)
+            auto& bl = cur->mVkBindlessSet1Lanes[lane];
+            const bool evidence_same =
+                bl.topoGen == topo_gen
+                && bl.l3Count == memo_l3_cnt
+                && std::memcmp(bl.l3Enums, memo_l3_enums, sizeof(memo_l3_enums)) == 0
+                && std::memcmp(bl.l3Views, memo_l3_views, sizeof(memo_l3_views)) == 0;
+            if (!evidence_same)
             {
-                LLVKLoader::releaseScenePerDrawEntry(cur->mVkBindlessSet1Lanes[lane].tok[memo_frame],
-                                                     cur->mVkBindlessSet1Lanes[lane].pinEpoch);
-                LLVKLoader::pinScenePerDrawEntry(memo_token);
-                cur->mVkBindlessSet1Lanes[lane].tok[memo_frame] = memo_token;
-                cur->mVkBindlessSet1Lanes[lane].pinEpoch = LLVKLoader::getScenePerDrawCacheEpoch();
+                for (U32 s = 0; s < 3; ++s)
+                {
+                    LLVKLoader::releaseScenePerDrawEntry(bl.tok[s], bl.pinEpoch);
+                    bl.tok[s] = nullptr;
+                    bl.set[s] = VK_NULL_HANDLE;
+                }
+                bl.topoGen = topo_gen;
+                bl.l3Count = memo_l3_cnt;
+                std::memcpy(bl.l3Enums, memo_l3_enums, sizeof(memo_l3_enums));
+                std::memcpy(bl.l3Views, memo_l3_views, sizeof(memo_l3_views));
             }
-            cur->mVkBindlessSet1Lanes[lane].set[memo_frame] = per_draw_set;
+            bl.ringSig[memo_frame] = memo_ring_sig;
+            if (bl.tok[memo_frame] != memo_token)
+            {
+                LLVKLoader::releaseScenePerDrawEntry(bl.tok[memo_frame], bl.pinEpoch);
+                LLVKLoader::pinScenePerDrawEntry(memo_token);
+                bl.tok[memo_frame] = memo_token;
+                bl.pinEpoch = LLVKLoader::getScenePerDrawCacheEpoch();
+            }
+            bl.set[memo_frame] = per_draw_set;
             ++LLVKLoader::gVkPerf.set_memo_fill;
         }
         else if (params != nullptr)

@@ -1101,6 +1101,14 @@ void LLImageGL::syncVulkanMip0Image(U32 intformat, U32 primary, U32 type,
                                                   mVkImage, mVkImageView, mVkAllocation,
                                                   want_mips))
             {
+                static std::unordered_set<const void*> logged_create_fail;
+                if (logged_create_fail.insert(this).second)
+                {
+                    LL_WARNS("VKContract") << "VKC-VKCREATE-FAIL image=0x" << std::hex << (const void*)this << std::dec
+                                           << " " << w << "x" << h
+                                           << " vkfmt=" << (S32)vk_format
+                                           << " mips=" << want_mips << LL_ENDL;
+                }
                 return;
             }
             mVkImageWidth     = (U32)w;

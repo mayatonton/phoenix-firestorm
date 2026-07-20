@@ -39,6 +39,7 @@
 #include <list>
 #include <memory>
 #include <unordered_map>
+#include <unordered_set>
 #include <atomic>
 #include <chrono>
 #include <mutex>
@@ -125,6 +126,9 @@ namespace
     VkImage        sDefaultFallback3DImage     = VK_NULL_HANDLE;
     VkImageView    sDefaultFallback3DImageView = VK_NULL_HANDLE;
     void*          sDefaultFallback3DAlloc     = nullptr;
+    VkImage        sDefaultFallbackShadowImage     = VK_NULL_HANDLE;
+    VkDeviceMemory sDefaultFallbackShadowMemory    = VK_NULL_HANDLE;
+    VkImageView    sDefaultFallbackShadowImageView = VK_NULL_HANDLE;
     bool           sInFrame            = false;
 
     thread_local bool sInDynamicRendering = false;
@@ -406,15 +410,6 @@ namespace
     PerDrawDescLane sPerDrawDescLanes[MAX_RECORD_LANES];
 
 
-    VkBuffer              sSharedWindlightHDRUBO                  = VK_NULL_HANDLE;
-    void*                 sSharedWindlightHDRUBOAllocation        = nullptr;
-    void*                 sSharedWindlightHDRUBOMapped            = nullptr;
-    VkBuffer              sSharedWindlightLightUBO                = VK_NULL_HANDLE;
-    void*                 sSharedWindlightLightUBOAllocation      = nullptr;
-    void*                 sSharedWindlightLightUBOMapped          = nullptr;
-    VkBuffer              sSharedTonemapUtilFUBO                  = VK_NULL_HANDLE;
-    void*                 sSharedTonemapUtilFUBOAllocation        = nullptr;
-    void*                 sSharedTonemapUtilFUBOMapped            = nullptr;
     struct DeferredUtilOverrideSlot
     {
         VkBuffer buffer     = VK_NULL_HANDLE;
@@ -457,9 +452,6 @@ namespace
     LLVK_SHARED_UBO_RING_STORAGE(PbrTerrainF)
     LLVK_SHARED_UBO_RING_STORAGE(PbrTerrain)
     #undef LLVK_SHARED_UBO_RING_STORAGE
-    VkBuffer              sSharedSMAABlendWeightsFUBO             = VK_NULL_HANDLE;
-    void*                 sSharedSMAABlendWeightsFUBOAllocation   = nullptr;
-    void*                 sSharedSMAABlendWeightsFUBOMapped       = nullptr;
 
     struct PerDrawUBOOverflowBlock
     {
@@ -633,6 +625,7 @@ namespace
 
     std::mutex              sPEFailedMutex;
     std::vector<VkFence>    sPEFailedOneShotFences;
+    std::atomic<bool>       sVkDeviceLost{false};
 
     std::atomic<U64>        sPESubmitUs{0};
     std::atomic<U64>        sPEPresentUs{0};
@@ -695,6 +688,10 @@ namespace
 
         if (sr != VK_SUCCESS)
         {
+            if (sr == VK_ERROR_DEVICE_LOST)
+            {
+                sVkDeviceLost.store(true, std::memory_order_release);
+            }
             LL_WARNS("Vulkan") << "PresentEngine submit failed sr=" << (S32)sr
                                << " frame=" << (job.is_frame ? 1 : 0) << LL_ENDL;
         }
@@ -727,6 +724,10 @@ namespace
                 if (pr == VK_ERROR_OUT_OF_DATE_KHR || pr == VK_SUBOPTIMAL_KHR)
                 {
                     sSwapchainRecreatePending = true;
+                }
+                else if (pr == VK_ERROR_DEVICE_LOST)
+                {
+                    sVkDeviceLost.store(true, std::memory_order_release);
                 }
             }
         }
@@ -1120,6 +1121,123 @@ namespace
     };
     DeviceLimits sDeviceLimits;
 
+    struct Set1BirthInfo
+    {
+        U32         path        = 0;
+        U64         gen         = 0;
+        U64         frame       = 0;
+        U64         build_frame = 0;
+        U64         freed_frame = 0;
+        std::string shader;
+        std::string contents;
+    };
+    std::unordered_map<U64, Set1BirthInfo> sSet1BirthLedger;
+    std::mutex sSet1BirthMutex;
+
+    std::unordered_set<U64> sDeadViewHandles;
+    std::unordered_set<U64> sDeadBufferHandles;
+    std::mutex              sDeadHandleMutex;
+
+    std::mutex sVvlCountMutex;
+    std::unordered_map<S32, std::pair<std::string, U64>> sVvlCounts;
+
+    void noteViewHandleCreated(VkImageView v)
+    {
+        if (v == VK_NULL_HANDLE) return;
+        std::lock_guard<std::mutex> lk(sDeadHandleMutex);
+        sDeadViewHandles.erase((U64)v);
+    }
+
+    void noteBufferHandleCreated(VkBuffer b)
+    {
+        if (b == VK_NULL_HANDLE) return;
+        std::lock_guard<std::mutex> lk(sDeadHandleMutex);
+        sDeadBufferHandles.erase((U64)b);
+    }
+
+    struct ViewDeathInfo
+    {
+        U64 enqueue_frame   = 0;
+        U64 destroy_frame   = 0;
+        U64 enqueue_retaddr = 0;
+    };
+    std::unordered_map<U64, ViewDeathInfo> sViewDeathLedger;
+
+    std::string hex64(U64 v)
+    {
+        char buf[20];
+        snprintf(buf, sizeof(buf), "%llx", (unsigned long long)v);
+        return std::string(buf);
+    }
+
+    bool vkValidationRequested()
+    {
+        static const bool s_requested = []
+        {
+            const char* e = getenv("AYASTORM_VK_VALIDATION");
+            return e != nullptr && e[0] != '\0' && e[0] != '0';
+        }();
+        return s_requested;
+    }
+
+    std::string set1BirthLookup(const char* msg)
+    {
+        if (msg == nullptr || std::strstr(msg, "08114") == nullptr)
+        {
+            return std::string();
+        }
+        const char* p = std::strstr(msg, "VkDescriptorSet 0x");
+        if (p == nullptr)
+        {
+            return " | SETBIRTH no-handle";
+        }
+        const U64 h = std::strtoull(p + 16, nullptr, 16);
+        std::lock_guard<std::mutex> lk(sSet1BirthMutex);
+        auto it = sSet1BirthLedger.find(h);
+        if (it == sSet1BirthLedger.end())
+        {
+            return " | SETBIRTH unknown-set";
+        }
+        std::string out = " | SETBIRTH path=" + std::to_string(it->second.path)
+             + " shader=" + it->second.shader
+             + " gen=" + std::to_string(it->second.gen)
+             + " bindframe=" + std::to_string(it->second.frame)
+             + " buildframe=" + std::to_string(it->second.build_frame)
+             + " freedframe=" + std::to_string(it->second.freed_frame);
+        const char* bp = std::strstr(msg, ", binding ");
+        if (bp != nullptr)
+        {
+            const U32 bind_no = (U32)std::strtoul(bp + 10, nullptr, 10);
+            const std::string tag = "b" + std::to_string(bind_no) + "=";
+            const size_t pos = it->second.contents.find(tag);
+            if (pos == std::string::npos)
+            {
+                out += " | b" + std::to_string(bind_no) + "=UNWRITTEN contents{" + it->second.contents + "}";
+            }
+            else
+            {
+                const size_t tok_end = it->second.contents.find(',', pos);
+                out += " | " + it->second.contents.substr(pos, (tok_end == std::string::npos)
+                                                                   ? std::string::npos
+                                                                   : tok_end - pos);
+                const U64 vh = std::strtoull(it->second.contents.c_str() + pos + tag.size(), nullptr, 16);
+                auto dit = sViewDeathLedger.find(vh);
+                if (dit != sViewDeathLedger.end())
+                {
+                    out += " enq@" + std::to_string(dit->second.enqueue_frame)
+                         + " dead@" + std::to_string(dit->second.destroy_frame)
+                         + " enqfrom=0x" + hex64(dit->second.enqueue_retaddr)
+                         + " anchor=0x" + hex64((U64)(uintptr_t)&isVulkanInitialized);
+                }
+                else
+                {
+                    out += " no-death-record";
+                }
+            }
+        }
+        return out;
+    }
+
     VKAPI_ATTR VkBool32 VKAPI_CALL vkDebugCallback(
         VkDebugUtilsMessageSeverityFlagBitsEXT      severity,
         VkDebugUtilsMessageTypeFlagsEXT             types,
@@ -1131,13 +1249,27 @@ namespace
                                                                                           "GENERAL";
         const char* id  = (data && data->pMessageIdName) ? data->pMessageIdName : "";
         const char* msg = (data && data->pMessage) ? data->pMessage : "";
-        if (severity & VK_DEBUG_UTILS_MESSAGE_SEVERITY_ERROR_BIT_EXT)
+        if (severity & (VK_DEBUG_UTILS_MESSAGE_SEVERITY_ERROR_BIT_EXT | VK_DEBUG_UTILS_MESSAGE_SEVERITY_WARNING_BIT_EXT))
         {
-            LL_WARNS("VulkanValidation") << "[VK-ERROR][" << type_str << "][" << id << "] " << msg << LL_ENDL;
-        }
-        else if (severity & VK_DEBUG_UTILS_MESSAGE_SEVERITY_WARNING_BIT_EXT)
-        {
-            LL_WARNS("VulkanValidation") << "[VK-WARN][" << type_str << "][" << id << "] " << msg << LL_ENDL;
+            U64 n = 0;
+            {
+                std::lock_guard<std::mutex> lk(sVvlCountMutex);
+                auto& entry = sVvlCounts[data ? data->messageIdNumber : 0];
+                if (entry.first.empty())
+                {
+                    entry.first = id;
+                }
+                n = ++entry.second;
+            }
+            if (n > 16 && (n & (n - 1)) != 0)
+            {
+                return VK_FALSE;
+            }
+            const char* sev_str = (severity & VK_DEBUG_UTILS_MESSAGE_SEVERITY_ERROR_BIT_EXT) ? "[VK-ERROR]" : "[VK-WARN]";
+            LL_WARNS("VulkanValidation") << sev_str << "[" << type_str << "][" << id << "] n=" << n << " " << msg
+                                         << ((severity & VK_DEBUG_UTILS_MESSAGE_SEVERITY_ERROR_BIT_EXT)
+                                                 ? set1BirthLookup(msg) : std::string())
+                                         << LL_ENDL;
         }
         else
         {
@@ -1905,6 +2037,112 @@ namespace
         {
             return false;
         }
+        noteViewHandleCreated(sDefaultFallbackImageView);
+
+        return true;
+    }
+
+    bool createDefaultFallbackShadowImage()
+    {
+        VkImageCreateInfo image_info = {};
+        image_info.sType         = VK_STRUCTURE_TYPE_IMAGE_CREATE_INFO;
+        image_info.imageType     = VK_IMAGE_TYPE_2D;
+        image_info.format        = VK_FORMAT_D32_SFLOAT;
+        image_info.extent        = { 1, 1, 1 };
+        image_info.mipLevels     = 1;
+        image_info.arrayLayers   = 1;
+        image_info.samples       = VK_SAMPLE_COUNT_1_BIT;
+        image_info.tiling        = VK_IMAGE_TILING_OPTIMAL;
+        image_info.usage         = VK_IMAGE_USAGE_TRANSFER_DST_BIT | VK_IMAGE_USAGE_SAMPLED_BIT;
+        image_info.sharingMode   = VK_SHARING_MODE_EXCLUSIVE;
+        image_info.initialLayout = VK_IMAGE_LAYOUT_UNDEFINED;
+
+        if (vkCreateImage(sDevice, &image_info, nullptr, &sDefaultFallbackShadowImage) != VK_SUCCESS)
+        {
+            return false;
+        }
+
+        VkMemoryRequirements mem_req;
+        vkGetImageMemoryRequirements(sDevice, sDefaultFallbackShadowImage, &mem_req);
+
+        S32 mem_type = findMemoryType(mem_req.memoryTypeBits, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT);
+        if (mem_type < 0)
+        {
+            return false;
+        }
+
+        VkMemoryAllocateInfo alloc_info = {};
+        alloc_info.sType           = VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO;
+        alloc_info.allocationSize  = mem_req.size;
+        alloc_info.memoryTypeIndex = (U32)mem_type;
+
+        if (vkAllocateMemory(sDevice, &alloc_info, nullptr, &sDefaultFallbackShadowMemory) != VK_SUCCESS)
+        {
+            return false;
+        }
+        vkBindImageMemory(sDevice, sDefaultFallbackShadowImage, sDefaultFallbackShadowMemory, 0);
+
+        {
+            VkCommandBufferAllocateInfo cba = {};
+            cba.sType              = VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO;
+            cba.commandPool        = sCommandPool;
+            cba.level              = VK_COMMAND_BUFFER_LEVEL_PRIMARY;
+            cba.commandBufferCount = 1;
+            VkCommandBuffer one_cmd = VK_NULL_HANDLE;
+            vkAllocateCommandBuffers(sDevice, &cba, &one_cmd);
+
+            VkCommandBufferBeginInfo cbbi = {};
+            cbbi.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO;
+            cbbi.flags = VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT;
+            vkBeginCommandBuffer(one_cmd, &cbbi);
+
+            VkImageMemoryBarrier b1 = {};
+            b1.sType               = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER;
+            b1.oldLayout           = VK_IMAGE_LAYOUT_UNDEFINED;
+            b1.newLayout           = VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL;
+            b1.srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+            b1.dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+            b1.image               = sDefaultFallbackShadowImage;
+            b1.subresourceRange    = { VK_IMAGE_ASPECT_DEPTH_BIT, 0, 1, 0, 1 };
+            b1.srcAccessMask       = 0;
+            b1.dstAccessMask       = VK_ACCESS_TRANSFER_WRITE_BIT;
+            vkCmdPipelineBarrier(one_cmd,
+                                 VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT, VK_PIPELINE_STAGE_TRANSFER_BIT,
+                                 0, 0, nullptr, 0, nullptr, 1, &b1);
+
+            VkClearDepthStencilValue far_depth = { 1.f, 0 };
+            VkImageSubresourceRange depth_range = { VK_IMAGE_ASPECT_DEPTH_BIT, 0, 1, 0, 1 };
+            vkCmdClearDepthStencilImage(one_cmd, sDefaultFallbackShadowImage,
+                                        VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
+                                        &far_depth, 1, &depth_range);
+
+            VkImageMemoryBarrier b2 = b1;
+            b2.oldLayout     = VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL;
+            b2.newLayout     = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
+            b2.srcAccessMask = VK_ACCESS_TRANSFER_WRITE_BIT;
+            b2.dstAccessMask = VK_ACCESS_SHADER_READ_BIT;
+            vkCmdPipelineBarrier(one_cmd,
+                                 VK_PIPELINE_STAGE_TRANSFER_BIT, VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT,
+                                 0, 0, nullptr, 0, nullptr, 1, &b2);
+
+            vkEndCommandBuffer(one_cmd);
+
+            peSubmitBlocking(one_cmd, VK_NULL_HANDLE, true);
+
+            vkFreeCommandBuffers(sDevice, sCommandPool, 1, &one_cmd);
+        }
+
+        VkImageViewCreateInfo vci = {};
+        vci.sType                 = VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO;
+        vci.image                 = sDefaultFallbackShadowImage;
+        vci.viewType              = VK_IMAGE_VIEW_TYPE_2D;
+        vci.format                = VK_FORMAT_D32_SFLOAT;
+        vci.subresourceRange      = { VK_IMAGE_ASPECT_DEPTH_BIT, 0, 1, 0, 1 };
+        if (vkCreateImageView(sDevice, &vci, nullptr, &sDefaultFallbackShadowImageView) != VK_SUCCESS)
+        {
+            return false;
+        }
+        noteViewHandleCreated(sDefaultFallbackShadowImageView);
 
         return true;
     }
@@ -3137,6 +3375,7 @@ namespace
         {
             *out_mapped = info.pMappedData;
         }
+        noteBufferHandleCreated(buffer);
         return true;
     }
 
@@ -3248,6 +3487,7 @@ namespace
             vmaDestroyImage(sAllocator, image, allocation);
             return false;
         }
+        noteViewHandleCreated(view);
 
         out_image      = image;
         out_view       = view;
@@ -3490,6 +3730,7 @@ namespace
                 sSwapchainExtent = {0, 0};
                 return false;
             }
+            noteViewHandleCreated(sSwapchainImageViews[i]);
         }
 
         if (sSwapchainDepthImage != VK_NULL_HANDLE)
@@ -3611,6 +3852,8 @@ static void           shutdownSurface();
 static bool           initSharedDynamicPersistentUBOs();
 static void           teardownSharedDynamicPersistentUBOs();
 static void           tickSharedDynamicPersistentUBOs();
+static void           tickPerDrawUBOArena();
+static void           teardownSharedLatchedUBOs();
 extern thread_local float sCurrentModelviewMatrix[16];
 
 bool initVulkan()
@@ -3670,7 +3913,8 @@ bool initVulkan()
         return false;
     }
 
-    if (!createDefaultFallbackCubeArrayImage() || !createDefaultFallbackCubeImage() || !createDefaultFallback3DImage())
+    if (!createDefaultFallbackCubeArrayImage() || !createDefaultFallbackCubeImage() || !createDefaultFallback3DImage()
+        || !createDefaultFallbackShadowImage())
     {
         shutdownVulkan();
         return false;
@@ -3715,6 +3959,15 @@ bool initVulkan()
 
 void shutdownVulkan()
 {
+    {
+        std::lock_guard<std::mutex> lk(sVvlCountMutex);
+        for (const auto& entry : sVvlCounts)
+        {
+            LL_INFOS("VulkanValidation") << "VVL-TOTAL id=" << entry.second.first
+                                         << " n=" << entry.second.second << LL_ENDL;
+        }
+        sVvlCounts.clear();
+    }
     if (sBakeWorkerStopHook != nullptr)
     {
         void (*hook)() = sBakeWorkerStopHook;
@@ -3830,6 +4083,21 @@ void shutdownVulkan()
             vkFreeMemory(sDevice, sDefaultFallbackMemory, nullptr);
             sDefaultFallbackMemory = VK_NULL_HANDLE;
         }
+        if (sDefaultFallbackShadowImageView != VK_NULL_HANDLE)
+        {
+            vkDestroyImageView(sDevice, sDefaultFallbackShadowImageView, nullptr);
+            sDefaultFallbackShadowImageView = VK_NULL_HANDLE;
+        }
+        if (sDefaultFallbackShadowImage != VK_NULL_HANDLE)
+        {
+            vkDestroyImage(sDevice, sDefaultFallbackShadowImage, nullptr);
+            sDefaultFallbackShadowImage = VK_NULL_HANDLE;
+        }
+        if (sDefaultFallbackShadowMemory != VK_NULL_HANDLE)
+        {
+            vkFreeMemory(sDevice, sDefaultFallbackShadowMemory, nullptr);
+            sDefaultFallbackShadowMemory = VK_NULL_HANDLE;
+        }
         if (sDefaultFallbackCubeArrayImageView != VK_NULL_HANDLE)
         {
             vkDestroyImageView(sDevice, sDefaultFallbackCubeArrayImageView, nullptr);
@@ -3926,10 +4194,7 @@ void shutdownVulkan()
             alloc  = nullptr;
             mapped = nullptr;
         };
-        destroy_shared_ubo(sSharedWindlightHDRUBO,      sSharedWindlightHDRUBOAllocation,      sSharedWindlightHDRUBOMapped);
-        destroy_shared_ubo(sSharedWindlightLightUBO,    sSharedWindlightLightUBOAllocation,    sSharedWindlightLightUBOMapped);
-        destroy_shared_ubo(sSharedTonemapUtilFUBO,      sSharedTonemapUtilFUBOAllocation,      sSharedTonemapUtilFUBOMapped);
-        destroy_shared_ubo(sSharedSMAABlendWeightsFUBO, sSharedSMAABlendWeightsFUBOAllocation, sSharedSMAABlendWeightsFUBOMapped);
+        teardownSharedLatchedUBOs();
         for (U32 frame = 0; frame < FRAMES_IN_FLIGHT; ++frame)
         {
             if (sPerFrameUboMemory[frame] != VK_NULL_HANDLE && sPerFrameUboMapped[frame] != nullptr)
@@ -4123,6 +4388,23 @@ void shutdownVulkan()
 
         if (sAllocator != VK_NULL_HANDLE)
         {
+            for (auto& pending : sPendingBufferFrees)
+            {
+                vmaDestroyBuffer(sAllocator, pending.buffer, pending.allocation);
+            }
+            sPendingBufferFrees.clear();
+            for (auto& pending : sPendingImageFrees)
+            {
+                if (pending.view != VK_NULL_HANDLE && sDevice != VK_NULL_HANDLE)
+                {
+                    vkDestroyImageView(sDevice, pending.view, nullptr);
+                }
+                if (pending.image != VK_NULL_HANDLE)
+                {
+                    vmaDestroyImage(sAllocator, pending.image, pending.allocation);
+                }
+            }
+            sPendingImageFrees.clear();
             vmaDestroyAllocator(sAllocator);
             sAllocator = VK_NULL_HANDLE;
         }
@@ -4160,6 +4442,12 @@ bool beginFrame(bool acquire_swapchain)
     if (sInFrame)
     {
         return false;
+    }
+
+    if (sVkDeviceLost.load(std::memory_order_acquire))
+    {
+        LL_ERRS("Vulkan") << "GPU device lost (VK_ERROR_DEVICE_LOST) — terminating."
+                          << " Check kernel log for NVIDIA Xid details." << LL_ENDL;
     }
 
     LLGLSLShader::sCurPerCallVkOffsetsDirty  = true;
@@ -4277,6 +4565,7 @@ bool beginFrame(bool acquire_swapchain)
     tickOneShotFreeQueue();
 
     tickSharedDynamicPersistentUBOs();
+    tickPerDrawUBOArena();
     tickScenePerDrawDescriptorCache();
 
     sInFrame = true;
@@ -4505,6 +4794,10 @@ bool endFrame()
                                                       (unsigned long long)gVkPerf.als_val_pass[4].load(),
                                                       (unsigned long long)gVkPerf.als_val_ring.load(),
                                                       (unsigned long long)gVkPerf.als_val_l3.load());
+                                        s += llformat(" prf s=%llu lv=%llu cv=%llu",
+                                                      (unsigned long long)gVkPerf.pin_store.load(),
+                                                      (unsigned long long)gVkPerf.pin_refuse_live.load(),
+                                                      (unsigned long long)gVkPerf.pin_refuse_cover.load());
                                         s += llformat(" | setb asm=%.1f dyn=%.1f ens=%.1f fill=%.1f ehit=%llu ealloc=%llu",
                                                       gVkPerf.setb_us[0].load() / 1000.0,
                                                       gVkPerf.setb_us[1].load() / 1000.0,
@@ -5044,6 +5337,24 @@ bool isVulkanInitialized()
     return sInitialized;
 }
 
+bool isInFrame()
+{
+    return sInFrame;
+}
+
+bool anyViewHandleDead(const void* const* views, U32 count)
+{
+    std::lock_guard<std::mutex> lk(sDeadHandleMutex);
+    for (U32 i = 0; i < count; ++i)
+    {
+        if (views[i] != nullptr && sDeadViewHandles.count((U64)(uintptr_t)views[i]) != 0)
+        {
+            return true;
+        }
+    }
+    return false;
+}
+
 VkDevice getDevice()
 {
     return sDevice;
@@ -5160,6 +5471,54 @@ bool ensureScenePerDrawDescriptorSet(const ScenePerDrawBindings& b,
     auto cache_it = lane.cache.find(key);
     if (cache_it != lane.cache.end())
     {
+        bool stale_handle = false;
+        {
+            std::lock_guard<std::mutex> lk(sDeadHandleMutex);
+            if (key.ubo != VK_NULL_HANDLE && sDeadBufferHandles.count((U64)key.ubo) != 0)
+            {
+                stale_handle = true;
+            }
+            for (U32 i = 0; !stale_handle && i < clamped_ubo_count; ++i)
+            {
+                if (sDeadBufferHandles.count((U64)key.ubo_write_bufs[i]) != 0)
+                {
+                    stale_handle = true;
+                }
+            }
+            for (U32 i = 0; !stale_handle && i < clamped_count; ++i)
+            {
+                if (sDeadViewHandles.count((U64)key.sampler_views[i]) != 0)
+                {
+                    stale_handle = true;
+                }
+            }
+        }
+        if (stale_handle)
+        {
+            if (cache_it->second.refs.load(std::memory_order_relaxed) == 0)
+            {
+                ScenePerDrawDeferredFreeEntry deferred = {};
+                for (U32 i = 0; i < FRAMES_IN_FLIGHT; ++i)
+                {
+                    deferred.sets[i] = cache_it->second.sets[i];
+                }
+                deferred.pool_index    = cache_it->second.pool_index;
+                deferred.enqueue_frame = sMonotonicFrameCount;
+                lane.deferred_free.push_back(deferred);
+                lane.lru.erase(cache_it->second.lru_pos);
+                lane.cache.erase(cache_it);
+                cache_it = lane.cache.end();
+            }
+            else
+            {
+                LL_WARNS_ONCE("Vulkan") << "scene set cache: stale handle collision on pinned entry"
+                                        << " (served as-is; SETBIRTH will name it if consumed dead)"
+                                        << LL_ENDL;
+            }
+        }
+    }
+    if (cache_it != lane.cache.end())
+    {
         lane.lru.erase(cache_it->second.lru_pos);
         lane.lru.push_back(key);
         cache_it->second.lru_pos                   = std::prev(lane.lru.end());
@@ -5239,7 +5598,18 @@ bool ensureScenePerDrawDescriptorSet(const ScenePerDrawBindings& b,
         alloc_info.descriptorPool     = pool;
         alloc_info.descriptorSetCount = FRAMES_IN_FLIGHT;
         alloc_info.pSetLayouts        = layouts;
-        return vkAllocateDescriptorSets(sDevice, &alloc_info, new_sets) == VK_SUCCESS;
+        const bool alloc_ok = vkAllocateDescriptorSets(sDevice, &alloc_info, new_sets) == VK_SUCCESS;
+        if (alloc_ok && vkValidationRequested())
+        {
+            std::lock_guard<std::mutex> lk(sSet1BirthMutex);
+            for (U32 i = 0; i < FRAMES_IN_FLIGHT; ++i)
+            {
+                Set1BirthInfo& bi = sSet1BirthLedger[(U64)new_sets[i]];
+                bi.build_frame = sMonotonicFrameCount;
+                bi.freed_frame = 0;
+            }
+        }
+        return alloc_ok;
     };
 
     auto try_alloc_any_pool = [&]() -> bool
@@ -5356,6 +5726,19 @@ bool ensureScenePerDrawDescriptorSet(const ScenePerDrawBindings& b,
         if (write_count > 0)
         {
             vkUpdateDescriptorSets(sDevice, write_count, writes, 0, nullptr);
+        }
+        if (vkValidationRequested())
+        {
+            std::string dump;
+            for (U32 i = 0; i < clamped_count; ++i)
+            {
+                dump += "b" + std::to_string(b.sampler_bindings[i]) + "="
+                      + hex64((U64)b.sampler_views[i])
+                      + ":" + (b.sampler_sources[i] != '\0' ? std::string(1, b.sampler_sources[i]) : std::string("?"))
+                      + ",";
+            }
+            std::lock_guard<std::mutex> lk(sSet1BirthMutex);
+            sSet1BirthLedger[(U64)target_set].contents = dump;
         }
 
         {
@@ -5486,6 +5869,14 @@ void tickScenePerDrawDescriptorCache()
                 if (target_pool != VK_NULL_HANDLE)
                 {
                     vkFreeDescriptorSets(sDevice, target_pool, FRAMES_IN_FLIGHT, e.sets);
+                    if (vkValidationRequested())
+                    {
+                        std::lock_guard<std::mutex> lk(sSet1BirthMutex);
+                        for (U32 i = 0; i < FRAMES_IN_FLIGHT; ++i)
+                        {
+                            sSet1BirthLedger[(U64)e.sets[i]].freed_frame = sMonotonicFrameCount;
+                        }
+                    }
                 }
             }
             else
@@ -5924,6 +6315,20 @@ static bool ensurePerDrawUBOArenaCurrent(PerDrawUBOArena& a)
     return (a.buffer != VK_NULL_HANDLE && a.mapped != nullptr);
 }
 
+static void tickPerDrawUBOArena()
+{
+    if (!sInitialized)
+    {
+        return;
+    }
+    const U32 f = sFrameIndex;
+    if (f >= FRAMES_IN_FLIGHT)
+    {
+        return;
+    }
+    ensurePerDrawUBOArenaCurrent(sPerDrawUBOArena[f]);
+}
+
 bool allocPerDrawUBOSlice(U32 size_bytes, VkBuffer& out_buffer, U32& out_offset, void*& out_mapped)
 {
     out_buffer = VK_NULL_HANDLE;
@@ -6061,49 +6466,72 @@ void ensurePerAssetUBOVk(U32       needed_size,
     }
 }
 
-#define LLVK_SHARED_UBO_GETTER(BindName, StructType, StorageBuf, StorageAlloc, StorageMapped, BindingNumber) \
-    bool getShared##BindName##UBO(VkBuffer& out_buffer, void*& out_mapped)                                   \
-    {                                                                                                       \
-        if (!sInitialized) return false;                                                                    \
-        if (StorageBuf == VK_NULL_HANDLE)                                                                   \
-        {                                                                                                   \
-            if (!createBufferVkImpl(sizeof(StructType),                                                     \
-                                    VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT,                                     \
-                                    StorageBuf,                                                             \
-                                    StorageAlloc,                                                           \
-                                    &StorageMapped))                                                        \
-            {                                                                                               \
-                return false;                                                                               \
-            }                                                                                               \
-        }                                                                                                   \
-        out_buffer = StorageBuf;                                                                            \
-        out_mapped = StorageMapped;                                                                         \
-        return true;                                                                                        \
+#define LLVK_SHARED_UBO_LATCHED_IMPL(BindName, StructType)                                              \
+    static StructType sLatched##BindName##Shadow;                                                       \
+    static U64      sLatched##BindName##Gen = 1;                                                        \
+    static U64      sLatched##BindName##SlotGen[FRAMES_IN_FLIGHT] = { 0, 0, 0 };                        \
+    static VkBuffer sLatched##BindName##Buf[FRAMES_IN_FLIGHT] = { VK_NULL_HANDLE, VK_NULL_HANDLE, VK_NULL_HANDLE }; \
+    static void*    sLatched##BindName##Alloc[FRAMES_IN_FLIGHT]  = { nullptr, nullptr, nullptr };       \
+    static void*    sLatched##BindName##Mapped[FRAMES_IN_FLIGHT] = { nullptr, nullptr, nullptr };       \
+    void writeCurrent##BindName##UBO(const StructType& data)                                            \
+    {                                                                                                  \
+        sLatched##BindName##Shadow = data;                                                              \
+        ++sLatched##BindName##Gen;                                                                      \
+    }                                                                                                  \
+    bool getShared##BindName##UBO(VkBuffer& out_buffer, void*& out_mapped)                              \
+    {                                                                                                  \
+        if (!sInitialized) return false;                                                               \
+        const U32 f = sFrameIndex;                                                                     \
+        if (f >= FRAMES_IN_FLIGHT) return false;                                                        \
+        if (sLatched##BindName##Buf[f] == VK_NULL_HANDLE)                                              \
+        {                                                                                              \
+            if (!createBufferVkImpl((U32)sizeof(StructType),                                            \
+                                    VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT,                                 \
+                                    sLatched##BindName##Buf[f],                                         \
+                                    sLatched##BindName##Alloc[f],                                       \
+                                    &sLatched##BindName##Mapped[f]))                                    \
+            {                                                                                          \
+                return false;                                                                          \
+            }                                                                                          \
+        }                                                                                              \
+        if (sLatched##BindName##SlotGen[f] != sLatched##BindName##Gen)                                 \
+        {                                                                                              \
+            std::memcpy(sLatched##BindName##Mapped[f], &sLatched##BindName##Shadow,                     \
+                        sizeof(StructType));                                                            \
+            sLatched##BindName##SlotGen[f] = sLatched##BindName##Gen;                                  \
+        }                                                                                              \
+        out_buffer = sLatched##BindName##Buf[f];                                                        \
+        out_mapped = sLatched##BindName##Mapped[f];                                                     \
+        return true;                                                                                   \
     }
 
-LLVK_SHARED_UBO_GETTER(WindlightHDR,        WindlightHDR_PerProgramBind,        sSharedWindlightHDRUBO,        sSharedWindlightHDRUBOAllocation,        sSharedWindlightHDRUBOMapped,        10)
-LLVK_SHARED_UBO_GETTER(WindlightLight,      WindlightLight_PerProgramBind,      sSharedWindlightLightUBO,      sSharedWindlightLightUBOAllocation,      sSharedWindlightLightUBOMapped,      11)
-LLVK_SHARED_UBO_GETTER(TonemapUtilF,         TonemapUtilF_PerProgramBind,         sSharedTonemapUtilFUBO,         sSharedTonemapUtilFUBOAllocation,         sSharedTonemapUtilFUBOMapped,         26)
-LLVK_SHARED_UBO_GETTER(SMAABlendWeightsF,   SMAABlendWeightsF_PerProgramBind,   sSharedSMAABlendWeightsFUBO,   sSharedSMAABlendWeightsFUBOAllocation,   sSharedSMAABlendWeightsFUBOMapped,   4)
+LLVK_SHARED_UBO_LATCHED_IMPL(WindlightHDR,      WindlightHDR_PerProgramBind)
+LLVK_SHARED_UBO_LATCHED_IMPL(WindlightLight,    WindlightLight_PerProgramBind)
+LLVK_SHARED_UBO_LATCHED_IMPL(TonemapUtilF,       TonemapUtilF_PerProgramBind)
+LLVK_SHARED_UBO_LATCHED_IMPL(SMAABlendWeightsF, SMAABlendWeightsF_PerProgramBind)
 
-#undef LLVK_SHARED_UBO_GETTER
+#undef LLVK_SHARED_UBO_LATCHED_IMPL
 
-#define LLVK_SHARED_UBO_WRITER(BindName, StructType, StorageMapped, BindingNumber)                          \
-    void writeCurrent##BindName##UBO(const StructType& data)                                                \
-    {                                                                                                       \
-        if (!sInitialized || StorageMapped == nullptr)                                                      \
-        {                                                                                                   \
-            return;                                                                                         \
-        }                                                                                                   \
-        std::memcpy(StorageMapped, &data, sizeof(StructType));                                              \
-    }
-
-LLVK_SHARED_UBO_WRITER(WindlightHDR,      WindlightHDR_PerProgramBind,      sSharedWindlightHDRUBOMapped,      10)
-LLVK_SHARED_UBO_WRITER(WindlightLight,    WindlightLight_PerProgramBind,    sSharedWindlightLightUBOMapped,    11)
-LLVK_SHARED_UBO_WRITER(TonemapUtilF,       TonemapUtilF_PerProgramBind,       sSharedTonemapUtilFUBOMapped,       26)
-LLVK_SHARED_UBO_WRITER(SMAABlendWeightsF, SMAABlendWeightsF_PerProgramBind, sSharedSMAABlendWeightsFUBOMapped, 4)
-
-#undef LLVK_SHARED_UBO_WRITER
+static void teardownSharedLatchedUBOs()
+{
+    auto destroy_latched = [&](VkBuffer* bufs, void** allocs, void** mappeds)
+    {
+        for (U32 f = 0; f < FRAMES_IN_FLIGHT; ++f)
+        {
+            if (bufs[f] != VK_NULL_HANDLE && sAllocator != VK_NULL_HANDLE)
+            {
+                vmaDestroyBuffer(sAllocator, bufs[f], reinterpret_cast<VmaAllocation>(allocs[f]));
+            }
+            bufs[f]    = VK_NULL_HANDLE;
+            allocs[f]  = nullptr;
+            mappeds[f] = nullptr;
+        }
+    };
+    destroy_latched(sLatchedWindlightHDRBuf,      sLatchedWindlightHDRAlloc,      sLatchedWindlightHDRMapped);
+    destroy_latched(sLatchedWindlightLightBuf,    sLatchedWindlightLightAlloc,    sLatchedWindlightLightMapped);
+    destroy_latched(sLatchedTonemapUtilFBuf,       sLatchedTonemapUtilFAlloc,       sLatchedTonemapUtilFMapped);
+    destroy_latched(sLatchedSMAABlendWeightsFBuf, sLatchedSMAABlendWeightsFAlloc, sLatchedSMAABlendWeightsFMapped);
+}
 
 static bool ensureShadowUtilRingSlot(U32 f, U32 idx)
 {
@@ -6894,6 +7322,11 @@ void tickDeferredBufferFreeQueue()
         if (e.enqueue_frame <= sLastCompletedMonotonic)
         {
             vmaDestroyBuffer(sAllocator, e.buffer, e.allocation);
+            if (e.buffer != VK_NULL_HANDLE)
+            {
+                std::lock_guard<std::mutex> lk(sDeadHandleMutex);
+                sDeadBufferHandles.insert((U64)e.buffer);
+            }
         }
         else
         {
@@ -7855,6 +8288,7 @@ bool createColorAttachmentImageVk(U32          width,
         {
             return false;
         }
+        noteViewHandleCreated(attach_view);
         out_view = attach_view;
     }
 
@@ -7944,6 +8378,13 @@ void destroyImageVk(VkImage image, VkImageView view, void* allocation)
     pending.allocation    = reinterpret_cast<VmaAllocation>(allocation);
     pending.enqueue_frame = sMonotonicFrameCount;
     sPendingImageFrees.push_back(pending);
+    if (view != VK_NULL_HANDLE && vkValidationRequested())
+    {
+        std::lock_guard<std::mutex> lk(sSet1BirthMutex);
+        ViewDeathInfo& di  = sViewDeathLedger[(U64)view];
+        di.enqueue_frame   = sMonotonicFrameCount;
+        di.enqueue_retaddr = (U64)(uintptr_t)__builtin_return_address(0);
+    }
 }
 
 void tickDeferredImageFreeQueue()
@@ -7962,6 +8403,15 @@ void tickDeferredImageFreeQueue()
             if (e.view != VK_NULL_HANDLE && sDevice != VK_NULL_HANDLE)
             {
                 vkDestroyImageView(sDevice, e.view, nullptr);
+                {
+                    std::lock_guard<std::mutex> lk(sDeadHandleMutex);
+                    sDeadViewHandles.insert((U64)e.view);
+                }
+                if (vkValidationRequested())
+                {
+                    std::lock_guard<std::mutex> lk(sSet1BirthMutex);
+                    sViewDeathLedger[(U64)e.view].destroy_frame = sMonotonicFrameCount;
+                }
             }
             if (e.image != VK_NULL_HANDLE && sAllocator != VK_NULL_HANDLE)
             {
@@ -8801,6 +9251,7 @@ bool createTexture3DImageVk(U32          width,
         vmaDestroyImage(sAllocator, image, allocation);
         return false;
     }
+    noteViewHandleCreated(view);
 
     out_image      = image;
     out_view       = view;
@@ -9168,6 +9619,7 @@ bool createCubeImageVk(U32          resolution,
         vmaDestroyImage(sAllocator, image, allocation);
         return false;
     }
+    noteViewHandleCreated(view);
 
     out_image      = image;
     out_view       = view;
@@ -9396,6 +9848,7 @@ bool createCubeArrayImageVk(U32          resolution,
         vmaDestroyImage(sAllocator, image, allocation);
         return false;
     }
+    noteViewHandleCreated(view);
 
     VkCommandBufferAllocateInfo cbai = {};
     cbai.sType              = VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO;
@@ -10936,6 +11389,27 @@ void bindDrawDescriptorSetsOnce(VkCommandBuffer cmd, VkPipelineLayout layout,
                                 VkDescriptorSet set0, VkDescriptorSet set1,
                                 U32 dyn_count, const U32* offsets)
 {
+    if (vkValidationRequested())
+    {
+        LLGLSLShader* sh = LLGLSLShader::sCurBoundShaderPtr;
+        std::lock_guard<std::mutex> lk(sSet1BirthMutex);
+        if (set1 != VK_NULL_HANDLE)
+        {
+            Set1BirthInfo& bi = sSet1BirthLedger[(U64)set1];
+            bi.path   = gVkPerfSetPath;
+            bi.gen    = gVkPerDrawTopologyGen.load(std::memory_order_relaxed);
+            bi.frame  = sMonotonicFrameCount;
+            bi.shader = (sh != nullptr) ? sh->mName : std::string();
+        }
+        if (set0 != VK_NULL_HANDLE)
+        {
+            Set1BirthInfo& bi = sSet1BirthLedger[(U64)set0];
+            bi.path   = 99;
+            bi.gen    = gVkPerDrawTopologyGen.load(std::memory_order_relaxed);
+            bi.frame  = sMonotonicFrameCount;
+            bi.shader = (sh != nullptr) ? sh->mName : std::string();
+        }
+    }
     const U32 pass_bucket = perfPassBucket();
     ++gVkPerf.draws_pass[pass_bucket];
     if (pass_bucket == 1u)
@@ -11075,6 +11549,11 @@ VkImageView getDefaultFallbackCubeVkImageView()
 VkImageView getDefaultFallback3DVkImageView()
 {
     return sDefaultFallback3DImageView;
+}
+
+VkImageView getDefaultFallbackShadowVkImageView()
+{
+    return sDefaultFallbackShadowImageView;
 }
 
 }

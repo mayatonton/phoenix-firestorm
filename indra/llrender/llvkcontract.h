@@ -105,6 +105,7 @@ void causeIfNone(ECause c);
 void causeNamed(ECause c, const std::string& shader_name);
 void note(ECause c, const std::string& shader_name);
 void noteDetail(ECause c, const char* key, const std::string& detail);
+void noteFbSlot(const void* shader_key, const std::string& shader_name, U32 binding, const char* reason);
 void drawSkipped(ECause fire_cause, const std::string& shader_name);
 void drawFired();
 void frameBegin();
