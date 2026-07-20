@@ -2689,7 +2689,7 @@ void LLViewerRegion::setSimulatorFeatures(const LLSD& sim_features)
                     gSavedSettings.setBOOL("GLTFEnabled", enabled);
                     if (enabled)
                     {
-                        LLViewerShaderMgr::instance()->setShaders();
+                        LLViewerShaderMgr::instance()->requestSetShaders();
                     }
                 }
             }

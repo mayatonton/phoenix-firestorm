@@ -2606,7 +2606,7 @@ class LLAdvancedPurgeShaderCache : public view_listener_t
     bool handleEvent(const LLSD& userdata)
     {
         LLViewerShaderMgr::instance()->clearShaderCache();
-        LLViewerShaderMgr::instance()->setShaders();
+        LLViewerShaderMgr::instance()->requestSetShaders();
         return true;
     }
 };
@@ -10457,7 +10457,7 @@ class LLToggleShaderControl : public view_listener_t
         bool checked = gSavedSettings.getBOOL( control_name );
         gSavedSettings.setBOOL( control_name, !checked );
         LLPipeline::refreshCachedSettings();
-        LLViewerShaderMgr::instance()->setShaders();
+        LLViewerShaderMgr::instance()->requestSetShaders();
         return !checked;
     }
 };

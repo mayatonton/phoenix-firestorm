@@ -397,6 +397,7 @@ S32     LLPipeline::sCompiles = 0;
 
 bool    LLPipeline::sPickAvatar = true;
 bool    LLPipeline::sDynamicLOD = true;
+bool    LLPipeline::sGLBufferRebuildPending = false;
 bool    LLPipeline::sShowHUDAttachments = true;
 bool    LLPipeline::sRenderMOAPBeacons = false;
 bool    LLPipeline::sRenderPhysicalBeacons = true;
@@ -963,6 +964,11 @@ void LLPipeline::requestResizeShadowTexture()
     gResizeShadowTexture = true;
 }
 
+void LLPipeline::requestGLBufferRebuild()
+{
+    sGLBufferRebuildPending = true;
+}
+
 void LLPipeline::resizeShadowTexture()
 {
     releaseSunShadowTargets();
@@ -1194,6 +1200,9 @@ bool LLPipeline::allocateScreenBufferInternal(U32 resX, U32 resY)
                 if (!mVelocityMap.allocate(resX, resY, GL_RG16F, false)) return false;
                 getFrameRT()->deferredScreen.shareDepthBuffer(mVelocityMap);
                 if (!mSMAAHistory.allocate(resX, resY, GL_RGBA, false)) return false;
+                mSMAAHistory.bindTarget();
+                mSMAAHistory.clear();
+                mSMAAHistory.flush();
                 LL_INFOS("Pipeline") << "AYAstorm r30 P2: allocated mVelocityMap (RG16F) + mSMAAHistory (RGBA) at " << resX << "x" << resY << LL_ENDL;
             }
             else
@@ -2037,6 +2046,11 @@ void LLPipeline::createLUTBuffers()
     mLuminanceMap.allocate(256, 256, GL_R16F, false, LLTexUnit::TT_TEXTURE, LLTexUnit::TMG_AUTO);
 
     mLastExposure.allocate(1, 1, GL_R16F);
+    mLastExposure.bindTarget();
+    gGL.setClearColor(1, 1, 1, 0);
+    mLastExposure.clear();
+    gGL.setClearColor(0, 0, 0, 0);
+    mLastExposure.flush();
 }
 
 void LLPipeline::generateBrdfLut()
@@ -15670,7 +15684,7 @@ void LLPipeline::handleShadowDetailChanged()
     }
     // else <FS:Beq/> Ghosting fix for Whirly to try. just remove this for now.
     {
-        LLViewerShaderMgr::instance()->setShaders();
+        LLViewerShaderMgr::instance()->requestSetShaders();
     }
 }
 

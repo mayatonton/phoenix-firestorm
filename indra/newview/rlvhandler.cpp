@@ -2171,9 +2171,7 @@ ERlvCmdRet RlvBehaviourHandler<RLV_BHVR_SETSPHERE>::onCommand(const RlvCommand& 
             if (!LLPipelineFrameContext::getInstance().getActiveRT()->deferredLight.isComplete())
             {
                 // In case of deferred with no shadows, no ambient occlusion, no depth of field, and no antialiasing
-                gPipeline.releaseGLBuffers();
-                gPipeline.createGLBuffers();
-                RLV_ASSERT(LLPipelineFrameContext::getInstance().getActiveRT()->deferredLight.isComplete());
+                LLPipeline::requestGLBufferRebuild();
             }
         }
         else

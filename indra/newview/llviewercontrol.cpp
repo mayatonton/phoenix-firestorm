@@ -271,10 +271,6 @@ static bool handleAvatarHoverOffsetChanged(const LLSD& newvalue)
 bool handleSetShaderChanged(const LLSD& newvalue)
 // </FS:Ansariel>
 {
-    // changing shader level may invalidate existing cached bump maps, as the shader type determines the format of the bump map it expects - clear and repopulate the bump cache
-    gBumpImageList.destroyGL();
-    gBumpImageList.restoreGL();
-
     if (gPipeline.isInit())
     {
         // ALM depends onto atmospheric shaders, state might have changed
@@ -282,7 +278,7 @@ bool handleSetShaderChanged(const LLSD& newvalue)
     }
 
     // else, leave terrain detail as is
-    LLViewerShaderMgr::instance()->setShaders();
+    LLViewerShaderMgr::instance()->requestSetShaders();
     return true;
 }
 
@@ -326,9 +322,7 @@ bool handleRenderTransparentWaterChanged(const LLSD& newvalue)
     if (gPipeline.isInit())
     {
         gPipeline.updateRenderTransparentWater();
-        gPipeline.releaseGLBuffers();
-        gPipeline.createGLBuffers();
-        LLViewerShaderMgr::instance()->setShaders();
+        LLViewerShaderMgr::instance()->requestSetShaders();
     }
     LLWorld::getInstance()->updateWaterObjects();
     return true;
@@ -374,8 +368,7 @@ static bool handleReleaseGLBufferChanged(const LLSD& newvalue)
 {
     if (gPipeline.isInit())
     {
-        gPipeline.releaseGLBuffers();
-        gPipeline.createGLBuffers();
+        LLPipeline::requestGLBufferRebuild();
     }
     return true;
 }
@@ -432,8 +425,7 @@ static bool handleLUTBufferChanged(const LLSD& newvalue)
 {
     if (gPipeline.isInit())
     {
-        gPipeline.releaseLUTBuffers();
-        gPipeline.createLUTBuffers();
+        LLPipeline::requestGLBufferRebuild();
     }
     return true;
 }
@@ -769,9 +761,14 @@ static bool handleReflectionProbeDetailChanged(const LLSD& newvalue)
         LLPipeline::refreshCachedSettings();
         gPipeline.mReflectionMapManager.reset();
         gPipeline.mHeroProbeManager.reset();
-        gPipeline.releaseGLBuffers();
-        gPipeline.createGLBuffers();
-        LLViewerShaderMgr::instance()->setShaders();
+        static const bool skip_ss = []() {
+            const char* e = getenv("AYASTORM_SKIP_MIRROR_SS");
+            return (e != nullptr) && (atoi(e) != 0);
+        }();
+        if (!skip_ss)
+        {
+            LLViewerShaderMgr::instance()->requestSetShaders();
+        }
     }
     return true;
 }
@@ -799,8 +796,7 @@ static bool handleHeroProbeResolutionChanged(const LLSD &newvalue)
     {
         LLPipeline::refreshCachedSettings();
         gPipeline.mHeroProbeManager.reset();
-        gPipeline.releaseGLBuffers();
-        gPipeline.createGLBuffers();
+        LLPipeline::requestGLBufferRebuild();
     }
     return true;
 }

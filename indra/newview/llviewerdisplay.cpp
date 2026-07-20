@@ -468,24 +468,6 @@ void display(bool rebuild, F32 zoom_factor, int subfield, bool for_snapshot)
 
     LLViewerCamera& camera = LLViewerCamera::instance(); // <FS:Ansariel> Factor out calls to getInstance
 
-    if (gWindowResized)
-    { //skip render on frames where window has been resized
-        LL_DEBUGS("Window") << "Resizing window" << LL_ENDL;
-        LL_PROFILE_ZONE_NAMED_CATEGORY_DISPLAY("Resize Window");
-        gGL.flush();
-        gViewerWindow->getWindow()->swapBuffers();
-        LLPipeline::refreshCachedSettings();
-        gPipeline.resizeScreenTexture();
-        gResizeScreenTexture = false;
-        gWindowResized = false;
-        return;
-    }
-
-    if (gResizeShadowTexture)
-    { //skip render on frames where window has been resized
-        gPipeline.resizeShadowTexture();
-        // gResizeShadowTexture = false; // <FS:Beq/> This prevents the deferred resize from working properly.
-    }
 
     gSnapshot = for_snapshot;
 
@@ -561,8 +543,6 @@ void display(bool rebuild, F32 zoom_factor, int subfield, bool for_snapshot)
         }
         return;
     }
-
-    gViewerWindow->checkSettings();
 
     {
         LL_PROFILE_ZONE_NAMED_CATEGORY_DISPLAY("Picking");
@@ -875,12 +855,6 @@ void display(bool rebuild, F32 zoom_factor, int subfield, bool for_snapshot)
 
         {
             LL_PROFILE_ZONE_NAMED_CATEGORY_DISPLAY("display - 2")
-            if (gResizeScreenTexture)
-            {
-                gPipeline.resizeScreenTexture();
-                gResizeScreenTexture = false;
-            }
-
             gGL.setColorMask(true, true);
             gGL.setClearColor(0.f, 0.f, 0.f, 0.f);
 

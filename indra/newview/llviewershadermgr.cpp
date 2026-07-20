@@ -60,6 +60,7 @@ using std::string;
 
 bool                LLViewerShaderMgr::sInitialized = false;
 bool                LLViewerShaderMgr::sSkipReload = false;
+bool                LLViewerShaderMgr::sPendingSetShaders = false;
 
 LLVector4           gShinyOrigin;
 
@@ -826,6 +827,21 @@ S32 LLViewerShaderMgr::getShaderLevel(S32 type)
 
 // Shader Management
 
+void LLViewerShaderMgr::requestSetShaders()
+{
+    sPendingSetShaders = true;
+}
+
+void LLViewerShaderMgr::tickPendingSetShaders()
+{
+    if (!sPendingSetShaders)
+    {
+        return;
+    }
+    sPendingSetShaders = false;
+    instance()->setShaders();
+}
+
 void LLViewerShaderMgr::setShaders()
 {
     LL_PROFILE_ZONE_SCOPED;
@@ -834,6 +850,12 @@ void LLViewerShaderMgr::setShaders()
 
     if (!gPipeline.mInitialized || !sInitialized || reentrance || sSkipReload)
     {
+        return;
+    }
+
+    if (LLVKLoader::isInFrame())
+    {
+        sPendingSetShaders = true;
         return;
     }
 
@@ -909,7 +931,16 @@ void LLViewerShaderMgr::setShaders()
     reentrance = true;
 
     initAttribsAndUniforms();
-    gPipeline.releaseGLBuffers();
+    {
+        static const bool skip_relgl = []() {
+            const char* e = getenv("AYASTORM_SS_SKIP_RELEASEGL");
+            return (e != nullptr) && (atoi(e) != 0);
+        }();
+        if (!skip_relgl)
+        {
+            gPipeline.releaseGLBuffers();
+        }
+    }
 
     unloadShaders();
 

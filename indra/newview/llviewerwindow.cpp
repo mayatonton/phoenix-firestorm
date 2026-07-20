@@ -7225,7 +7225,7 @@ void LLViewerWindow::checkSettings()
     if (mStatesDirty)
     {
         gGL.refreshState();
-        LLViewerShaderMgr::instance()->setShaders();
+        LLViewerShaderMgr::instance()->requestSetShaders();
         mStatesDirty = false;
     }
 

@@ -116,6 +116,9 @@ public:
     void releaseScreenBuffers();
     void releaseShadowBuffers();
 
+    static void requestGLBufferRebuild();
+    static bool sGLBufferRebuildPending;
+
     void createGLBuffers();
     void createLUTBuffers();
     void generateBrdfLut();
