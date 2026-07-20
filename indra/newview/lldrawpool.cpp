@@ -819,7 +819,7 @@ void LLRenderPass::buildAndOverrideScenePerDrawSet(LLDrawInfo* params, bool batc
         }
         bindings.sampler_count = indexed_layout_count;
     }
-    else
+    else if (((cur->mVkSet1LayoutBindingMask >> 1) & 1) != 0)
     {
         if (cur->mVkUsesBindlessHeap)
         {

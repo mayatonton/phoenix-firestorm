@@ -2733,6 +2733,13 @@ bool LLGLSLShader::createVkPipeline(U32 perProgramUBOSize, bool needsSharedWater
     };
     auto add_sampler = [&](U32 binding, VkShaderStageFlags stage, S32 enum_value, U8 sampler_dim = VKSD_2D)
     {
+        const bool keep = (enum_value == -2);
+        const bool declared = (binding < MAX_VK_BINDING)
+                              && (mVkBindingDeclaredType[binding] & VKBD_SAMPLER) != 0;
+        if (!keep && !declared)
+        {
+            return;
+        }
         VkDescriptorSetLayoutBinding b = {};
         b.binding         = binding;
         b.descriptorType  = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;

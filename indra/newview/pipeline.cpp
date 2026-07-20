@@ -13354,11 +13354,6 @@ void LLPipeline::bindReflectionProbes(LLGLSLShader& shader)
     }
 
 
-    mPoissonOffset++;
-
-    if (mPoissonOffset > 128 - RenderScreenSpaceReflectionGlossySamples)
-        mPoissonOffset = 0;
-
     static LLCachedControl<F32> ssr_max_depth(gSavedSettings, "RenderScreenSpaceReflectionMaxDepth", 256.f);
     static LLCachedControl<F32> ssr_max_roughness(gSavedSettings, "RenderScreenSpaceReflectionMaxRoughness", 1.f);
 
@@ -13375,7 +13370,7 @@ void LLPipeline::bindReflectionProbes(LLGLSLShader& shader)
         ubo_data.depthRejectBias = RenderScreenSpaceReflectionDepthRejectBias;
         ubo_data.adaptiveStepMultiplier = RenderScreenSpaceReflectionAdaptiveStepMultiplier;
         ubo_data.glossySampleCount = (F32)RenderScreenSpaceReflectionGlossySamples;
-        ubo_data.noiseSine = (F32)mPoissonOffset;
+        ubo_data.noiseSine = 0.f;
         ubo_data.maxZDepth = llmax(1.f, (F32)ssr_max_depth);
         ubo_data.maxRoughness = llclamp((F32)ssr_max_roughness, 0.001f, 1.f);
         LLVKLoader::writeCurrentSSRUtilUBO(ubo_data);

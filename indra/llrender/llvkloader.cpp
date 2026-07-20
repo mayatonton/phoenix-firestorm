@@ -3608,6 +3608,9 @@ static bool           submitOneShotVkFromPool(VkCommandBuffer cmd, VkCommandPool
                                               VmaAllocation staging_allocation, U32 staging_bytes);
 static void           tickOneShotFreeQueue();
 static void           shutdownSurface();
+static bool           initSharedDynamicPersistentUBOs();
+static void           teardownSharedDynamicPersistentUBOs();
+static void           tickSharedDynamicPersistentUBOs();
 extern thread_local float sCurrentModelviewMatrix[16];
 
 bool initVulkan()
@@ -3675,6 +3678,7 @@ bool initVulkan()
 
     if (!createPerFrameDescriptorSetLayout() ||
         !createPerFrameUbos()                ||
+        !initSharedDynamicPersistentUBOs()   ||
         !createPerFrameDescriptorSets())
     {
         shutdownVulkan();
@@ -4038,6 +4042,7 @@ void shutdownVulkan()
             arena.frame            = ~0ull;
             arena.pending_capacity = 0;
         }
+        teardownSharedDynamicPersistentUBOs();
         if (sPerFrameDescriptorSetLayout != VK_NULL_HANDLE)
         {
             vkDestroyDescriptorSetLayout(sDevice, sPerFrameDescriptorSetLayout, nullptr);
@@ -4271,6 +4276,7 @@ bool beginFrame(bool acquire_swapchain)
     tickDeferredQueryReleaseQueue();
     tickOneShotFreeQueue();
 
+    tickSharedDynamicPersistentUBOs();
     tickScenePerDrawDescriptorCache();
 
     sInFrame = true;
@@ -6418,9 +6424,182 @@ LLVK_SHARED_UBO_DYNAMIC_IMPL(AvatarSkin,       AvatarSkin_PerProgramBind)
 LLVK_SHARED_UBO_DYNAMIC_IMPL(PBRMaterial,      PBRMaterial_PerMaterial)
 LLVK_SHARED_UBO_DYNAMIC_IMPL(DrawColor,        DrawColor_PerShaderBind)
 LLVK_SHARED_UBO_DYNAMIC_IMPL(ShadowParams,     ShadowParams_PerShaderBind)
-LLVK_SHARED_UBO_DYNAMIC_IMPL(ReflectionProbeF, ReflectionProbeF_PerProgramBind)
-LLVK_SHARED_UBO_DYNAMIC_IMPL(SSRUtil,          SSRUtil_PerProgramBind)
 #undef LLVK_SHARED_UBO_DYNAMIC_IMPL
+
+static constexpr U32 kSharedUBOPersistentInitialWrites = 256;
+#define LLVK_SHARED_UBO_DYNAMIC_PERSISTENT_IMPL(BindName, StructType)                                    \
+    static StructType s##BindName##Shadow;                                                              \
+    static U64 s##BindName##WriteGen = 1;                                                               \
+    static U64 s##BindName##UpFrame[FRAMES_IN_FLIGHT]  = { ~0ull, ~0ull, ~0ull };                       \
+    static U64 s##BindName##UpGen[FRAMES_IN_FLIGHT]    = { 0, 0, 0 };                                   \
+    static U32 s##BindName##UpOffset[FRAMES_IN_FLIGHT] = { 0, 0, 0 };                                   \
+    static std::atomic<U32> s##BindName##Cursor[FRAMES_IN_FLIGHT];                                      \
+    static std::atomic<U32> s##BindName##Wanted[FRAMES_IN_FLIGHT];                                      \
+    static U32 s##BindName##SliceStride = 0;                                                            \
+    static U32 s##BindName##Capacity[FRAMES_IN_FLIGHT] = { 0, 0, 0 };                                   \
+    static VkBuffer s##BindName##UpBuf[FRAMES_IN_FLIGHT] = { VK_NULL_HANDLE, VK_NULL_HANDLE, VK_NULL_HANDLE }; \
+    static U64 s##BindName##UpHash[FRAMES_IN_FLIGHT] = { 0, 0, 0 };                                     \
+    static VkBuffer s##BindName##PersistBuf[FRAMES_IN_FLIGHT] = { VK_NULL_HANDLE, VK_NULL_HANDLE, VK_NULL_HANDLE }; \
+    static void* s##BindName##PersistAlloc[FRAMES_IN_FLIGHT]  = { nullptr, nullptr, nullptr };          \
+    static void* s##BindName##PersistMapped[FRAMES_IN_FLIGHT] = { nullptr, nullptr, nullptr };          \
+    static bool create##BindName##PersistentBuffers()                                                   \
+    {                                                                                                  \
+        VkDeviceSize align = sPhysicalDeviceProperties.limits.minUniformBufferOffsetAlignment;          \
+        if (align < 16) { align = 16; }                                                                 \
+        const U32 stride = (U32)(((VkDeviceSize)sizeof(StructType) + align - 1) & ~(align - 1));         \
+        s##BindName##SliceStride = stride;                                                              \
+        for (U32 f = 0; f < FRAMES_IN_FLIGHT; ++f)                                                      \
+        {                                                                                              \
+            void* mapped = nullptr;                                                                     \
+            const U32 cap = stride * kSharedUBOPersistentInitialWrites;                                 \
+            if (!createBufferVkImpl(cap,                                                                \
+                                    VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT,                                 \
+                                    s##BindName##PersistBuf[f],                                         \
+                                    s##BindName##PersistAlloc[f],                                       \
+                                    &mapped))                                                           \
+            {                                                                                          \
+                return false;                                                                           \
+            }                                                                                          \
+            s##BindName##PersistMapped[f] = mapped;                                                     \
+            s##BindName##Capacity[f]      = cap;                                                        \
+            s##BindName##Cursor[f].store(0);                                                            \
+            s##BindName##Wanted[f].store(0);                                                            \
+        }                                                                                              \
+        return true;                                                                                    \
+    }                                                                                                  \
+    static void destroy##BindName##PersistentBuffers()                                                  \
+    {                                                                                                  \
+        for (U32 f = 0; f < FRAMES_IN_FLIGHT; ++f)                                                      \
+        {                                                                                              \
+            if (s##BindName##PersistBuf[f] != VK_NULL_HANDLE)                                           \
+            {                                                                                          \
+                destroyBufferVk(s##BindName##PersistBuf[f], s##BindName##PersistAlloc[f]);              \
+            }                                                                                          \
+            s##BindName##PersistBuf[f]    = VK_NULL_HANDLE;                                             \
+            s##BindName##PersistAlloc[f]  = nullptr;                                                    \
+            s##BindName##PersistMapped[f] = nullptr;                                                    \
+            s##BindName##Capacity[f]      = 0;                                                          \
+            s##BindName##UpBuf[f]         = VK_NULL_HANDLE;                                             \
+            s##BindName##UpFrame[f]       = ~0ull;                                                      \
+        }                                                                                              \
+    }                                                                                                  \
+    static void tick##BindName##Persistent()                                                           \
+    {                                                                                                  \
+        if (!sInitialized) return;                                                                     \
+        const U32 f = sFrameIndex;                                                                      \
+        if (f >= FRAMES_IN_FLIGHT) return;                                                             \
+        const U32 wanted = s##BindName##Wanted[f].load();                                               \
+        if (wanted > s##BindName##Capacity[f] && s##BindName##PersistBuf[f] != VK_NULL_HANDLE)          \
+        {                                                                                              \
+            const U32 want = wanted * 2;                                                                \
+            VkBuffer nb = VK_NULL_HANDLE; void* na = nullptr; void* nm = nullptr;                        \
+            if (createBufferVkImpl(want, VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT, nb, na, &nm))              \
+            {                                                                                          \
+                destroyBufferVk(s##BindName##PersistBuf[f], s##BindName##PersistAlloc[f]);              \
+                s##BindName##PersistBuf[f]    = nb;                                                     \
+                s##BindName##PersistAlloc[f]  = na;                                                     \
+                s##BindName##PersistMapped[f] = nm;                                                     \
+                s##BindName##Capacity[f]      = want;                                                   \
+                ++gVkPerDrawTopologyGen;                                                                \
+                LL_INFOS("Vulkan") << "grew persistent dynamic UBO " #BindName                          \
+                                   << " frame-slot " << f << " to " << want << " bytes" << LL_ENDL;     \
+            }                                                                                          \
+        }                                                                                              \
+        s##BindName##Cursor[f].store(0);                                                                \
+        s##BindName##Wanted[f].store(0);                                                                \
+    }                                                                                                  \
+    static bool peek##BindName##State(const void*& out_shadow, U32& out_size,                           \
+                                      U32& out_off, bool& out_current, U64& out_up_hash)                \
+    {                                                                                                  \
+        const U32 f = sFrameIndex;                                                                      \
+        if (f >= FRAMES_IN_FLIGHT)                                                                      \
+        {                                                                                              \
+            return false;                                                                               \
+        }                                                                                              \
+        out_shadow  = &s##BindName##Shadow;                                                             \
+        out_size    = (U32)sizeof(StructType);                                                          \
+        out_off     = s##BindName##UpOffset[f];                                                         \
+        out_up_hash = s##BindName##UpHash[f];                                                           \
+        out_current = (s##BindName##UpFrame[f] == sMonotonicFrameCount                                  \
+                       && s##BindName##UpGen[f] == s##BindName##WriteGen);                              \
+        return true;                                                                                   \
+    }                                                                                                  \
+    void writeCurrent##BindName##UBO(const StructType& data)                                            \
+    {                                                                                                  \
+        if (std::memcmp(&s##BindName##Shadow, &data, sizeof(StructType)) != 0)                           \
+        {                                                                                              \
+            s##BindName##Shadow = data;                                                                 \
+            ++s##BindName##WriteGen;                                                                    \
+            LLGLSLShader::sCurPerCallVkOffsetsDirty = true;                                             \
+        }                                                                                              \
+    }                                                                                                  \
+    static bool ensure##BindName##Uploaded(VkBuffer& out_buf, U32& out_off)                             \
+    {                                                                                                  \
+        out_buf = VK_NULL_HANDLE;                                                                       \
+        out_off = 0;                                                                                    \
+        if (!sInitialized)                                                                              \
+        {                                                                                              \
+            return false;                                                                               \
+        }                                                                                              \
+        const U32 f = sFrameIndex;                                                                      \
+        if (f >= FRAMES_IN_FLIGHT || s##BindName##PersistBuf[f] == VK_NULL_HANDLE)                      \
+        {                                                                                              \
+            return false;                                                                               \
+        }                                                                                              \
+        if (s##BindName##UpFrame[f] != sMonotonicFrameCount                                             \
+            || s##BindName##UpGen[f] != s##BindName##WriteGen)                                          \
+        {                                                                                              \
+            const U32 stride = s##BindName##SliceStride;                                                \
+            U32 off = s##BindName##Cursor[f].fetch_add(stride);                                         \
+            const U32 needed = off + stride;                                                            \
+            U32 prev = s##BindName##Wanted[f].load(std::memory_order_relaxed);                          \
+            while (needed > prev                                                                        \
+                   && !s##BindName##Wanted[f].compare_exchange_weak(prev, needed,                       \
+                                                                    std::memory_order_relaxed)) {}      \
+            if (needed > s##BindName##Capacity[f])                                                      \
+            {                                                                                          \
+                off = s##BindName##Capacity[f] - stride;                                                \
+            }                                                                                          \
+            std::memcpy((U8*)s##BindName##PersistMapped[f] + off,                                        \
+                        &s##BindName##Shadow, sizeof(StructType));                                       \
+            s##BindName##UpBuf[f]    = s##BindName##PersistBuf[f];                                      \
+            s##BindName##UpHash[f]   = LLVKContract::verboseEnabled()                                    \
+                ? sharedUBOContentHash(&s##BindName##Shadow, (U32)sizeof(StructType)) : 0;              \
+            s##BindName##UpOffset[f] = off;                                                             \
+            s##BindName##UpFrame[f]  = sMonotonicFrameCount;                                            \
+            s##BindName##UpGen[f]    = s##BindName##WriteGen;                                           \
+        }                                                                                              \
+        out_buf = s##BindName##UpBuf[f];                                                                \
+        out_off = s##BindName##UpOffset[f];                                                             \
+        return true;                                                                                   \
+    }                                                                                                  \
+    bool getShared##BindName##UBO(VkBuffer& out_buffer, void*& out_mapped)                              \
+    {                                                                                                  \
+        out_buffer = VK_NULL_HANDLE;                                                                    \
+        out_mapped = &s##BindName##Shadow;                                                              \
+        return true;                                                                                   \
+    }
+LLVK_SHARED_UBO_DYNAMIC_PERSISTENT_IMPL(ReflectionProbeF, ReflectionProbeF_PerProgramBind)
+LLVK_SHARED_UBO_DYNAMIC_PERSISTENT_IMPL(SSRUtil,          SSRUtil_PerProgramBind)
+#undef LLVK_SHARED_UBO_DYNAMIC_PERSISTENT_IMPL
+
+static bool initSharedDynamicPersistentUBOs()
+{
+    return createReflectionProbeFPersistentBuffers()
+        && createSSRUtilPersistentBuffers();
+}
+
+static void teardownSharedDynamicPersistentUBOs()
+{
+    destroyReflectionProbeFPersistentBuffers();
+    destroySSRUtilPersistentBuffers();
+}
+
+static void tickSharedDynamicPersistentUBOs()
+{
+    tickReflectionProbeFPersistent();
+    tickSSRUtilPersistent();
+}
 
 static ObjectSkin_PerProgramBind sObjectSkinShadow;
 static U64 sObjectSkinWriteGen = 1;
