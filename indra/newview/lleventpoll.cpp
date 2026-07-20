@@ -395,9 +395,9 @@ namespace Details
                             // convert data to string and pass that string.
                             const LLSD body = (*i)["body"];
                             (*i)["body"].clear();
-                            work = [this, msg_name, body]()
+                            work = [self = shared_from_this(), msg_name, body]()
                             {
-                                handleMessage(msg_name, body);
+                                self->handleMessage(msg_name, body);
                             };
                         }
                         main_queue->post(work);
