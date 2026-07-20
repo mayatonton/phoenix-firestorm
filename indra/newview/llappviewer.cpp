@@ -2452,6 +2452,8 @@ bool LLAppViewer::cleanup()
     {
         gViewerWindow->shutdownGL();
 
+        LLVKLoader::shutdownSwapchainAndSurface();
+
         // Destroy window, and make sure we're not fullscreen
         // This may generate window reshape and activation events.
         // Therefore must do this before destroying the message system.

@@ -1691,14 +1691,6 @@ namespace
             {
                 hqr_features_enable.hostQueryReset = VK_TRUE;
                 sHostQueryResetEnabled = true;
-                if (sProvokingVertexLastEnabled)
-                {
-                    pv_features_enable.pNext = &hqr_features_enable;
-                }
-                else
-                {
-                    dr_features_enable.pNext = &hqr_features_enable;
-                }
             }
         }
 
@@ -1755,11 +1747,23 @@ namespace
         device_info.sType = VK_STRUCTURE_TYPE_DEVICE_CREATE_INFO;
         if (sBindlessCapable)
         {
+            vk12_features_enable.hostQueryReset = sHostQueryResetEnabled ? VK_TRUE : VK_FALSE;
             vk12_features_enable.pNext = &dr_features_enable;
             device_info.pNext = &vk12_features_enable;
         }
         else
         {
+            if (sHostQueryResetEnabled)
+            {
+                if (sProvokingVertexLastEnabled)
+                {
+                    pv_features_enable.pNext = &hqr_features_enable;
+                }
+                else
+                {
+                    dr_features_enable.pNext = &hqr_features_enable;
+                }
+            }
             device_info.pNext = &dr_features_enable;
         }
         device_info.queueCreateInfoCount = 1;
@@ -4431,6 +4435,16 @@ void shutdownVulkan()
         volkFinalize();
         sInitialized = false;
     }
+}
+
+void shutdownSwapchainAndSurface()
+{
+    if (sDevice != VK_NULL_HANDLE)
+    {
+        vkDeviceWaitIdle(sDevice);
+        destroySwapchain();
+    }
+    shutdownSurface();
 }
 
 bool beginFrame(bool acquire_swapchain)

@@ -35,6 +35,7 @@ namespace LLVKLoader
 {
     bool initVulkan();
     void shutdownVulkan();
+    void shutdownSwapchainAndSurface();
 
     bool isVulkanInitialized();
     bool isInFrame();
