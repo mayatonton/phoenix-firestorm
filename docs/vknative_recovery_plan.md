@@ -86,8 +86,8 @@ per-draw 単価 ~0.9µs の中身(perf 実測・main thread): ScenePerDrawCache 
 
 - **M5b(GPU frustum cull)= 降格・無期限保留**: cull+sort 実測 2.1ms = 主敵でない。E 系完了後に残余があれば再起案。
 - **M5c の occlusion query 機構退役 = E 系の後に維持**(occl ~4.1k draws/frame の発行 + 状態機械が実在)。HiZ 化はその時に JIT 設計。
-- **M6(frame graph・旧経路削除・cvar 掃除)= 維持**。T/E 完了後の掃除段。
-- `AYASTORM_INDIRECT` switch は E 系工事の切り分け足場として存続 → E 系 gate 後に削除。
+- **M6(frame graph・旧経路削除・cvar 掃除)= 🔴 本命が BLOCKED(2026-07-21 trace)**。M6 の「旧経路」= per-draw descriptor 経路(`buildAndOverrideScenePerDrawSet`・GL ではない)だが、HEAD 実トレースで **load-bearing**(bucket MDI は 2/13 pass のみ・残 11 pass + rigged/alpha/materials/GLTF は per-draw 現役)。**M6 前提「bucket が全 pass 覆えば per-draw 削除可」は E 系裁定「13-pass MDI = 配当ゼロで作らない」と正面衝突** = per-draw は恒久共存物・旧経路削除は現戦略下で実行不能。**AYA 決裁要**: (a) per-draw 恒久受容 + M6 旧経路削除撤回 / (b) 非 bindless GPU 切り捨て(VK1.2 最低要件)で非 bindless 分岐のみ削除。cvar 掃除の内訳・状態は Task #1-10 参照(dead switch 4 本は実装→revert・reflog dd1d357774)。詳細 = memory `handoff_designer_dismissed_eseries_close_m6_blocked`。
+- ✅ `AYASTORM_INDIRECT` switch = E 系 gate 後 撤去済(`1c4f87ccbb`・collapse 恒久 ON)。
 
 ---
 
