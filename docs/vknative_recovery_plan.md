@@ -89,6 +89,10 @@ per-draw 単価 ~0.9µs の中身(perf 実測・main thread): ScenePerDrawCache 
 - **M6(旧経路削除)= 検証済で解決 =(a)per-draw 恒久受容・削除撤回(AYA 2026-07-21)**。M6 の「旧経路」= per-draw descriptor 経路(`buildAndOverrideScenePerDrawSet`・GL ではない)だが、HEAD 実トレースで **load-bearing**(現役 13 call site: gltfscenemanager 808/821・lldrawpooltree 120/208・lldrawpoolalpha 1172/1608/1647・lldrawpoolmaterials 233・lldrawpool 1600/1936/1991・llviewerjointmesh 254/263。bucket-MDI は lldrawpool.cpp:1182 の 7 条件 AND gate で、外れると per-draw に落ちる = per-draw が既定/fallback)。**M6 前提「bucket が全 pass 覆えば per-draw 削除可」は E 系裁定「13-pass MDI = 配当ゼロで作らない」と正面衝突** = per-draw は恒久共存物。∴ **旧経路削除は撤回**・per-draw を恒久受容(= 検証 → 削れない → 現状維持 → 検証足場 `AYASTORM_INDIRECT` は撤去済 `1c4f87ccbb` = E 系と同型の解決)。残る任意選択肢 =(b)非 bindless GPU 切り捨て(VK1.2 最低要件)で非 bindless 分岐のみ削除(product 判断・未着手)。詳細 = memory `handoff_designer_dismissed_eseries_close_m6_blocked`。
 - ✅ `AYASTORM_INDIRECT` switch = E 系 gate 後 撤去済(`1c4f87ccbb`・collapse 恒久 ON)。
 
+### 外挿事象(t-noami PR #134 査読から派生・2026-07-21)
+- **cmd bind memo の epoch 一本化 = 完結(`8e3894547c`)**: per-command bind memo(pipeline/desc/mv/viewport/VB/IB)の「fresh command buffer で無効化」不変条件が 3 機構にバラバラ(memoSyncCmd=handle / VB/IB=frame counter / 明示 reset)だったのを thread_local `tCmdRecordEpoch` 1 本へ統合。offscreen(gpu_benchmark)の同一 handle reset+再利用で全 memo が stale skip → 起動時 08606/02721/04007 を発生させていたのを根治(起動時オラクルでゼロ検証済)。
+- **🔴 次 TOP = C = TP 信頼性(device-lost teardown)**: device-lost(GPU fault @TP)後の teardown が lost device/解放済 texture/先落ち window を触り crash。patch 不可=teardown 順序の proper design が要る(資源解放順序・window 順序・全終了経路・product 分岐 clean 終了 vs device recovery)。詳細 = memory `handoff_c_tp_reliability_teardown`。
+
 ---
 
 ## 3. 全体検収(このプランの成功条件)
