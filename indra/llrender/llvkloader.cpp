@@ -10717,12 +10717,7 @@ bool perfLogEnabled()
 
 bool isIndirectDrawEnabled()
 {
-    static const bool s_switch = []()
-    {
-        const char* e = getenv("AYASTORM_INDIRECT");
-        return (e == nullptr) || (atoi(e) != 0);
-    }();
-    return s_switch && sMultiDrawIndirectEnabled && sDrawIndirectFirstInstanceEnabled;
+    return sMultiDrawIndirectEnabled && sDrawIndirectFirstInstanceEnabled;
 }
 
 bool indirectRingAlloc(U32 count, VkBuffer& out_buffer, VkDeviceSize& out_offset, void*& out_mapped)
