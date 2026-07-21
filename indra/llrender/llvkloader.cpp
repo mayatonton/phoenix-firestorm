@@ -8292,6 +8292,52 @@ void megaReclaimDomain(MegaDomain* md)
     }
 }
 
+void drawDataReclaimDomain(AllocDomain* d)
+{
+    VkcRaceProbe probe(d->mSlotOwner, LLVKContract::C_DRAWDATA_RACE);
+    std::lock_guard<std::mutex> lk(d->mPendMutex);
+    size_t w = 0;
+    const size_t n = d->mPendSlot.size();
+    for (size_t r = 0; r < n; ++r)
+    {
+        PendingSlotFree& e = d->mPendSlot[r];
+        if (reapReady(e.enqueue_frame))
+        {
+            d->mSlotFree.push_back(e.slot);
+        }
+        else
+        {
+            if (w != r)
+            {
+                d->mPendSlot[w] = e;
+            }
+            ++w;
+        }
+    }
+    d->mPendSlot.resize(w);
+}
+
+U32 createRenderDomain()
+{
+    std::lock_guard<std::mutex> lk(sAllocGrowthMutex);
+    U32 id = (U32)sAllocDomains.size();
+    sAllocDomains.push_back(new AllocDomain(id));
+    sMegaDomains.push_back(new MegaDomain(id));
+    return id;
+}
+
+void renderDomainReclaim(U32 id)
+{
+    if (id < sAllocDomains.size())
+    {
+        drawDataReclaimDomain(sAllocDomains[id]);
+    }
+    if (id < sMegaDomains.size())
+    {
+        megaReclaimDomain(sMegaDomains[id]);
+    }
+}
+
 bool allocDomainSelfTest();
 
 void tickMegaFreeQueue()
@@ -8632,30 +8678,7 @@ void tickDeferredImageFreeQueue()
         sPendingSlotFrees.resize(sw);
     }
 
-    {
-        AllocDomain* d = &sMainDomain;
-        VkcRaceProbe probe(d->mSlotOwner, LLVKContract::C_DRAWDATA_RACE);
-        std::lock_guard<std::mutex> lk(d->mPendMutex);
-        size_t dw = 0;
-        const size_t dn = d->mPendSlot.size();
-        for (size_t r = 0; r < dn; ++r)
-        {
-            PendingSlotFree& e = d->mPendSlot[r];
-            if (reapReady(e.enqueue_frame))
-            {
-                d->mSlotFree.push_back(e.slot);
-            }
-            else
-            {
-                if (dw != r)
-                {
-                    d->mPendSlot[dw] = e;
-                }
-                ++dw;
-            }
-        }
-        d->mPendSlot.resize(dw);
-    }
+    drawDataReclaimDomain(&sMainDomain);
 }
 
 void destroyPipelineVk(VkPipeline pipeline)
@@ -11043,19 +11066,10 @@ bool allocDomainSelfTest()
         LL_WARNS("Vulkan") << "allocSelfTest skip: allocators not ready" << LL_ENDL;
         return false;
     }
-    AllocDomain* sdA;
-    AllocDomain* sdB;
-    {
-        std::lock_guard<std::mutex> lk(sAllocGrowthMutex);
-        U32 idA = (U32)sAllocDomains.size();
-        sdA = new AllocDomain(idA);
-        sAllocDomains.push_back(sdA);
-        sMegaDomains.push_back(new MegaDomain(idA));
-        U32 idB = (U32)sAllocDomains.size();
-        sdB = new AllocDomain(idB);
-        sAllocDomains.push_back(sdB);
-        sMegaDomains.push_back(new MegaDomain(idB));
-    }
+    U32 idA = createRenderDomain();
+    U32 idB = createRenderDomain();
+    AllocDomain* sdA = sAllocDomains[idA];
+    AllocDomain* sdB = sAllocDomains[idB];
     constexpr U32 ITER = 3000;
     std::atomic<U32> fails{0};
     auto run = [&](AllocDomain* sd)
@@ -11116,6 +11130,8 @@ bool allocDomainSelfTest()
     std::thread tb([&]{ run(sdB); });
     ta.join();
     tb.join();
+    renderDomainReclaim(idA);
+    renderDomainReclaim(idB);
     const U32 f = fails.load();
     LL_INFOS("Vulkan") << "allocSelfTest domA=" << sdA->mId << " domB=" << sdB->mId
                        << " iters=" << ITER << " routing_fails=" << f
