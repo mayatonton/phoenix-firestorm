@@ -52,10 +52,11 @@ crowd の重い塊(avatar 描画)に対し、**並列化(塊を割って撒く)=
 
 ## 3. 設計不変条件(relocate の背骨)
 
-- **INV-1 disjoint render domain**: 各 avatar の描画ドメイン(本体 skeleton + attachment bridge 群 + palette cache)は他 avatar と render state を共有しない。共有例外が見つかれば設計で disjoint 化する(§6 OPEN)。
+- **INV-1 disjoint render domain**: **domain = 1 animation root + それに変換従属する attachment 群**(本体 skeleton + attachment bridge 群 + palette cache)は他 domain と render state を共有しない。**animesh**(`PARTITION_CONTROL_AV`/`LLControlAVBridge`/自前 control avatar+skeleton+palette・lldrawable.cpp:1278-1281・llvoavatar.cpp:11620): **着用 animesh = 着用者 domain**(変換が着用者 joint 従属 = 別 domain 化は本体と 1-frame 泳ぎ)・**単独 animesh = 独立 domain**。**⚠️ domain サイズ可変 = 着用 animesh 1 個 ≈ アバター 1 体分メモリ** → growth-on-demand が吸収するが総予算(slot 950K・mega)は animesh 膨張 worst-case で見積(Phase-2 flag)。共有例外が見つかれば設計で disjoint 化(§6 OPEN)。
 - **INV-2 per-domain 資源 shard**: off-main が触る global VK allocator は **per-render-domain の sub-pool に shard**(単一 global mutex は不可 = N core が lock を取り合い直列に退化 = 逃げた元に戻る)。fence で merge。
 - **INV-3 1-frame 契約**: production は back-buffer に生産、render は front を読む。pose/skinning/幾何は 1-frame 遅延可。**着脱・topology 変化は例外**(遅延で穴)= join 契約で別扱い(§6 OPEN)。
 - **INV-4 検出器 covered**: 越境は既存 race detector(C_DRAWDATA_RACE 等)が名指し(憲法の検出器は不変・盲目化しない)。
+- **INV-5 production 窓中の avatar state 排他**(P1-c で確定): domain が avatar render state(TE/face/pose/skeleton)を staging で読む窓の間、main は同 state を mutate しない。main の network mutation は sync-in(Update-Geom 境界)で drain。機構 = 既存 volume-pin(sGeoVolumePins llvovolume.cpp:5841)を avatar production 窓へ拡張。per-domain race probe で検出。
 
 ## 4. join 設計仕様(4 項)
 
@@ -74,9 +75,27 @@ crowd の重い塊(avatar 描画)に対し、**並列化(塊を割って撒く)=
 ## 5. 実装計画(分割・sequenced)
 
 ### Phase 1 = 1 avatar を off-main(gate = main が空いたか・速度非約束)
-- P1-a: avatar render domain の境界確定 + double-buffer 器(bridge group / mGLMp の front/back + swap fence)。既存 mVkGeoGen/mLastGLMp を土台に。
-- P1-b: global allocator 2 本(drawDataAcquireSlot・VB)を **per-domain sub-pool 化**(INV-2)。C_DRAWDATA_RACE で越境検証。
-- P1-c: 1 avatar 分の production(skinning palette build + genDrawInfo staging + apply)を avatar 領域 thread へ移し、main は published front を fold/render。
+- P1-a ✅ **設計確定(2026-07-22・source 実トレース)**:
+  - **INV-1 disjoint 確認**: bridge は root drawable が 1 個所有(lldrawable.cpp:1324)・attachment linkset は root の 1 bridge 共有(:1287)= 1 avatar 内。cross-region/HUD⇄animesh 遷移は markDead→新生成の **reparent**(:1253-1268)= 共有でない。**avatar 跨ぎ group 共有なし** = double-buffer 単位 = avatar domain で安全。
+  - **double-buffer 器**: 二重化対象 = ①bridge group の `mDrawMap` ②per-avatar `mGLMp`。avatar 領域が back 生産・render は front・swap = 生産完了点(既存 `mVkGeoGen`/`mLastGLMp` 土台)。fold(patchGroup)は swap 後 main の薄い step。
+  - **1-frame 契約(二層)**: **membership(attach/detach/despawn = どの draw record が存在するか)= 同期・即時**(front から force-evict/insert・pipeline を待たない = **detach ghost 封じ**。hook = detachObject llvoavatar.cpp:8399 / markDead)。**content(skin matrix・頂点・texture)= 1-frame pipeline**(不可視遅延)。lifetime = front の LLPointer(`mSrcDrawable`)で 1 frame 生存(reap 接続・既済)。
+  - **申告(P1-c で詰める)**: ①membership 即時 evict は render 中 front を触る = swap と evict の順序に mini-fence(evict は render 外 window 限定)②despawn の domain teardown 順序(bridge markDead 経由)は未トレース = P1-b で domain lifetime と確認。
+- P1-b ✅ **設計確定(2026-07-22・source 実トレース)= 二層 sub-pool**:
+  - **両 allocator が同一パターン**: mega(`sMegaVertexPools[typemask]`/`sMegaIndexPool` = chunk リスト・chunk 内 free_ranges・llvkloader.cpp:7902-8117)+ DrawData slot(`sDrawDataSlotNext` bump + `sDrawDataSlotFreeList`・:306-308/10812)。両方 pool-of-chunks / bump+freelist の二層 + 単独所有 `VkcRaceProbe`(lock 無し)。確保は現状 main(llvertexbuffer.cpp:962/976)。
+  - **common case(頻繁)= domain 所有の chunk/slab 内で lock なし sub-alloc**(他 domain 状態に不触 = 取り合いゼロ = Phase 2 ~N× 保持)。
+  - **growth(稀)= chunk 新規生成(megaNewChunk = 実 VkBuffer)/ slab 割当**のみ global。mutex or main-fence で直列化(稀ゆえ per-alloc 直列化に退化しない = INV-2 満たす)。
+  - **release = 既存 deferred free**(`sPendingMegaFrees`/`sPendingDrawDataSlotFrees`・frame タグ)を fence 点で batch。
+  - **検出器 = per-domain 化(憲法 4・AYA 承認 2026-07-22)**: `VkcRaceProbe(owner&, cause)` は owner を参照で取る(llvkloader.cpp:232)= **各 domain が自分の `atomic<U32>` owner を持ち、`C_MEGA_RACE`/`C_DRAWDATA_RACE` を domain 粒度で assert**。growth 共有経路は global probe。**`llvkcontract.*` 本体 diff ゼロ = 検出器盲目化なし・粒度を pool shard に合わせて複製するだけ**。
+  - **申告(P1-c で閉じる)**: domain 消滅(despawn)時に所有 chunk/slab を global へ返す順序 = P1-a 申告②の domain lifetime と同一問題。
+- P1-c ✅ **設計確定(2026-07-22・source 実トレース)= 既存機構の再配置(新プリミティブ不要)**:
+  - **既存の 1-frame パイプラインを延長**: display "Update Geom"(llviewerdisplay.cpp:817-825)= drainGeoPublishQueue(前 frame fill を apply)→ updateGeom(今 frame rebuild を stage + worker enqueue)。**stage(N)→worker fill→apply(N+1) が既存**。relocate は staging + skinning + apply も off-main 化し back-buffer 化するだけ。
+  - **avatar 領域 thread の production 周期**(Phase 1 = 1 avatar/1 thread): ①skeleton anim(updateCharacter idl28 から移設)②palette build → back mGLMp(render-lazy から移設)③geometry staging(genDrawInfo・per-domain allocator P1-b)④fill(runVkGeoFill・既 off-main)⑤apply → **back** group->mDrawMap。
+  - **fence 群 = 3 点・全て "Update Geom" 点(render は strictly 後)に置く**:
+    1. **swap fence**: domain 完了 signal で back→front(group + palette)。placement = drainGeoPublishQueue の位置(render 前の安全窓)= 既存 drain を swap に置換/拡張。
+    2. **membership 即時 evict(P1-a①)**: detach/despawn を "Update Geom" 点で front から force-evict。**現状も rebuild は updateGeom(render 前)= 視覚タイミング同一 = 無回帰**(Update-Geom 後着の detach は現行も次 frame 待ち)。
+    3. **teardown/lifetime(P1-a②/P1-b②)**: despawn = evict from front(sync)→ production 停止 → 所有 chunk/slab + front records を **既存 deferred-free(sPendingMegaFrees 等)+ reap** で GPU fence 後に返却 → domain 削除。順序は deferred-reclaim が保証(既済 fence-safe)。
+  - **⚠️ 本 Phase の唯一の真の新規リスク = avatar render STATE の共有**: domain は avatar 状態(TE/face/pose)を staging で読むが、main の network 処理も書く。→ **既存の volume-pin 機構(sGeoVolumePins llvovolume.cpp:5841 = worker fill 中の mutation 防止)を avatar production 窓へ拡張**。main の当該 avatar への mutation は sync-in(Update-Geom 境界)で drain・production 中は domain が排他 read。**設計不変条件 INV-5(追加)= production 窓中、main は domain の avatar render state を mutate しない**(per-domain race probe で検出)。
+  - **申告**: ①INV-5 の pin 対象(どの avatar 状態を pin するか = face/TE/skeleton の最小集合)は実装時に genDrawInfo/updateCharacter の read 集合を実トレースして確定。②Phase 1 は 1 avatar ゆえ swap/pin は単純だが、Phase 2 で N domain の swap を同 "Update Geom" 点に集約する際の main 側 fold コスト(patchGroup ×N)は Phase 2 の funnel 事項。
 - gate: **main-thread の avatar 費目(idl28 + pub_ms + palette)が ~0 へ**(直接計測・捏造不能)+ 視覚同一 + validation 0 + 装置全層沈黙 + C_PAR/C_DRAWDATA_RACE 発火 0。fps は非約束(動けば儲け)。
 - L3 型 A/B(GEOAB)必須(幾何経路変更ゆえ)。
 

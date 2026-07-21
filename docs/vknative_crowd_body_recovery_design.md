@@ -109,8 +109,9 @@ doctrine = VK が GL を超える原理は「毎 frame 同じ仕事をやり直�
 
 ## 5. geometry rebuild 有界化の再位置づけ(元 TOP → 信頼性安全弁)
 
-元 TOP は装置が cold burst 崩壊(gupd 6.6-7s → 切断)で名指し。LIVE 実データで **定常 gupd=0.9ms = 本体でない**と確定。有界化は crowd 入場の凍結/切断を防ぐ**信頼性の安全弁**であり、fps 11 の本体は §4。有界化の commit 判断は AYA(現状 uncommitted)。
-- **未 commit diff の申告(2026-07-22 監査で確定)**: ①有界化は **default 8ms ON**(llvovolume.cpp drainGeoPublishQueue・env `AYASTORM_GEO_APPLY_BUDGET_MS` は override)= product-visible な既定挙動変更として AYA 裁定要 ②diff は **VkPerf 欄追加(rsnA/rsnG・llvkloader.h/cpp)を含む = 憲法 4 対象 file** = 承認パッケージに明示 ③rsnG=1175/6985 vs rsnA=0/0(LIVE ログ)= 「burst は全新規幾何・差分化無効」主張をデータで支持。
+元 TOP は装置が cold burst 崩壊(gupd 6.6-7s → 切断)で名指し。LIVE 実データで **定常 gupd=0.9ms = 本体でない**と確定。有界化は crowd 入場の凍結/切断を防ぐ**信頼性の安全弁**であり、fps 11 の本体は §4。**有界化の default-ON = AYA 承認済(2026-07-22)・commit `9c1e641eaa`**。
+- **default-ON の挙動(AYA 承認時に確認)**: 8ms は「1 frame の apply 作業の上限」= 遅延を足すのでなく複数 frame に散らす。**定常時(apply<8ms/f で queue が捌ける)= 挙動変化ゼロ・遅延ゼロ**(打ち切り不発)。**burst 時のみ、はみ出た geometry が数 frame 遅れて完成**。env `AYASTORM_GEO_APPLY_BUDGET_MS` で override 可。
+- **diff の申告(2026-07-22 監査で確定)**: ①VkPerf 欄追加(rsnA/rsnG・llvkloader.h/cpp)を含む = **憲法 4 対象 file**(AYA 承認済で commit)②rsnG=1175/6985 vs rsnA=0/0(LIVE ログ)= 「burst は全新規幾何・差分化無効」主張をデータで支持。
 - **⚠️ 有界化の実証結果(2026-07-22 深夜 step0 走行 = cold burst 中に device lost で実測)= 現状の安全弁は GPU 死を防げていない。欠陥 2 点(コード + ログで確定)**:
   1. **job 粒度の下限**: budget 判定は `if (any && …)` = 最低 1 job は必ず apply。単一巨大 job は分割不能(最終 window: pub=3 で pub_ms=1404 = **~470ms/job**)。
   2. **inline 経路が予算外**: `staged.mInline` の同期 rebuild は publish queue を通らず budget 対象外(burst window で **inl=15534/79f = 197 件/frame** が素通り)。

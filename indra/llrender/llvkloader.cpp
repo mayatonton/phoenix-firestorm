@@ -303,9 +303,66 @@ namespace
     VkBuffer                 sDrawDataBuffer                         = VK_NULL_HANDLE;
     void*                    sDrawDataAllocation                     = nullptr;
     U32*                     sDrawDataMapped                         = nullptr;
-    U32                      sDrawDataSlotNext                       = 1;
-    std::vector<U32>         sDrawDataSlotFreeList;
-    std::vector<PendingSlotFree> sPendingDrawDataSlotFrees;
+    std::mutex               sAllocGrowthMutex;
+    constexpr U32            DRAWDATA_DOMAIN_SLAB                    = 2048;
+    constexpr U32            DRAWDATA_MAX_SLABS                      = DRAWDATA_TOTAL_SLOTS / DRAWDATA_DOMAIN_SLAB;
+    struct AllocDomain
+    {
+        std::atomic<U32>             mSlotOwner{0};
+        U32                          mSlotNext = 0;
+        U32                          mSlotEnd  = 0;
+        std::vector<U32>             mSlotFree;
+        std::vector<PendingSlotFree> mPendSlot;
+        std::mutex                   mPendMutex;
+        U32                          mId = 0;
+        explicit AllocDomain(U32 id) : mId(id) {}
+    };
+    AllocDomain              sMainDomain{0};
+    std::vector<AllocDomain*> sAllocDomains;
+    std::atomic<U32>         sSlotSlabOwner[DRAWDATA_MAX_SLABS];
+    U32                      sSlotSlabNextIdx                        = 0;
+    thread_local AllocDomain* tAllocDomain                          = &sMainDomain;
+    struct AllocDomainInit
+    {
+        AllocDomainInit()
+        {
+            sAllocDomains.reserve(256);
+            sAllocDomains.push_back(&sMainDomain);
+            for (U32 i = 0; i < DRAWDATA_MAX_SLABS; ++i)
+            {
+                sSlotSlabOwner[i].store(0xFFFFFFFFu, std::memory_order_relaxed);
+            }
+        }
+    } sAllocDomainInit;
+    bool slotSlabGrow(AllocDomain* d)
+    {
+        std::lock_guard<std::mutex> lk(sAllocGrowthMutex);
+        const U32 idx = sSlotSlabNextIdx;
+        const U64 first = (U64)idx * DRAWDATA_DOMAIN_SLAB;
+        if (idx >= DRAWDATA_MAX_SLABS || first + DRAWDATA_DOMAIN_SLAB > DRAWDATA_PERSISTENT_SLOTS)
+        {
+            return false;
+        }
+        sSlotSlabNextIdx = idx + 1;
+        sSlotSlabOwner[idx].store(d->mId, std::memory_order_release);
+        d->mSlotNext = (idx == 0) ? 1u : (U32)first;
+        d->mSlotEnd  = (U32)(first + DRAWDATA_DOMAIN_SLAB);
+        return true;
+    }
+    AllocDomain* allocDomainForSlot(U32 slot)
+    {
+        const U32 si = slot / DRAWDATA_DOMAIN_SLAB;
+        if (si >= DRAWDATA_MAX_SLABS)
+        {
+            return nullptr;
+        }
+        const U32 id = sSlotSlabOwner[si].load(std::memory_order_acquire);
+        if (id == 0xFFFFFFFFu || id >= sAllocDomains.size())
+        {
+            return nullptr;
+        }
+        return sAllocDomains[id];
+    }
     U32                      sDrawDataScratchCursor                  = 0;
     U32                      sDrawDataScratchFrame                   = 0xFFFFFFFFu;
     thread_local U32         tCurrentDrawDataID                      = 0;
@@ -2399,9 +2456,22 @@ namespace
             sDrawDataAllocation = nullptr;
             sDrawDataMapped     = nullptr;
         }
-        sDrawDataSlotNext = 1;
-        sDrawDataSlotFreeList.clear();
-        sPendingDrawDataSlotFrees.clear();
+        {
+            std::lock_guard<std::mutex> lk(sAllocGrowthMutex);
+            sSlotSlabNextIdx = 0;
+            for (U32 i = 0; i < DRAWDATA_MAX_SLABS; ++i)
+            {
+                sSlotSlabOwner[i].store(0xFFFFFFFFu, std::memory_order_relaxed);
+            }
+            for (AllocDomain* d : sAllocDomains)
+            {
+                d->mSlotNext = 0;
+                d->mSlotEnd  = 0;
+                d->mSlotFree.clear();
+                std::lock_guard<std::mutex> pl(d->mPendMutex);
+                d->mPendSlot.clear();
+            }
+        }
         if (sBindlessHeapPool != VK_NULL_HANDLE)
         {
             vkDestroyDescriptorPool(sDevice, sBindlessHeapPool, nullptr);
@@ -7862,6 +7932,7 @@ namespace
         U32      region_offsets[16] = {};
         std::vector<std::pair<U32, U32>> free_ranges;
         U64      id = 0;
+        U32      domainId = 0;
     };
 
     std::vector<U32> sMegaTypeSizes;
@@ -7878,6 +7949,31 @@ namespace
         U32 enqueue_frame;
     };
     std::vector<PendingMegaFree> sPendingMegaFrees;
+
+    struct MegaDomain
+    {
+        std::atomic<U32>                                 mMegaOwner{0};
+        std::unordered_map<U32, std::vector<MegaChunk*>> mVtxChunks;
+        std::vector<MegaChunk*>                          mIdxChunks;
+        std::vector<PendingMegaFree>                     mPendMega;
+        std::mutex                                       mPendMutex;
+        U32                                              mId = 0;
+        explicit MegaDomain(U32 id) : mId(id) {}
+    };
+    MegaDomain                    sMegaMain{0};
+    std::vector<MegaDomain*>      sMegaDomains;
+    struct MegaDomainInit
+    {
+        MegaDomainInit()
+        {
+            sMegaDomains.reserve(256);
+            sMegaDomains.push_back(&sMegaMain);
+        }
+    } sMegaDomainInit;
+    MegaDomain* megaDomainFor(U32 id)
+    {
+        return (id < sMegaDomains.size()) ? sMegaDomains[id] : &sMegaMain;
+    }
 
     constexpr U32 MEGA_V_CHUNK_INITIAL = 65536;
     constexpr U32 MEGA_V_CHUNK_MAX     = 1048576;
@@ -8000,6 +8096,38 @@ namespace
         }
         return c;
     }
+
+    MegaChunk* megaGrowChunk(MegaDomain* md, U32 typemask, U32 min_capacity, bool vertex_chunk)
+    {
+        std::lock_guard<std::mutex> lk(sAllocGrowthMutex);
+        MegaChunk* c = megaNewChunk(typemask, min_capacity, vertex_chunk);
+        if (c != nullptr)
+        {
+            c->domainId = md->mId;
+            if (vertex_chunk)
+            {
+                md->mVtxChunks[typemask].push_back(c);
+            }
+            else
+            {
+                md->mIdxChunks.push_back(c);
+            }
+        }
+        return c;
+    }
+
+    void megaEnqueueFree(U64 chunkId, U32 first, U32 count)
+    {
+        std::lock_guard<std::mutex> lk(sAllocGrowthMutex);
+        auto it = sMegaChunksById.find(chunkId);
+        if (it == sMegaChunksById.end())
+        {
+            return;
+        }
+        MegaDomain* md = megaDomainFor(it->second->domainId);
+        std::lock_guard<std::mutex> pl(md->mPendMutex);
+        md->mPendMega.push_back({ chunkId, first, count, sMonotonicFrameCount });
+    }
 }
 
 void megabufInit(const U32* type_sizes, U32 type_count)
@@ -8019,6 +8147,13 @@ void megabufShutdown()
     sMegaChunksById.clear();
     sMegaVertexPools.clear();
     sMegaIndexPool.clear();
+    for (MegaDomain* md : sMegaDomains)
+    {
+        md->mVtxChunks.clear();
+        md->mIdxChunks.clear();
+        std::lock_guard<std::mutex> pl(md->mPendMutex);
+        md->mPendMega.clear();
+    }
 }
 
 bool megabufAcquireVertex(U32 typemask, U32 nverts, MegaSliceV& out)
@@ -8029,20 +8164,25 @@ bool megabufAcquireVertex(U32 typemask, U32 nverts, MegaSliceV& out)
         return false;
     }
     const U32 count = (nverts + 3u) & ~3u;
-    VkcRaceProbe probe(sVkcMegaOwner, LLVKContract::C_MEGA_RACE);
+    MegaDomain* md = megaDomainFor(tAllocDomain->mId);
+    VkcRaceProbe probe(md->mMegaOwner, LLVKContract::C_MEGA_RACE);
     MegaChunk* chunk = nullptr;
     U32 first = 0;
-    for (MegaChunk* c : sMegaVertexPools[typemask])
+    auto pit = md->mVtxChunks.find(typemask);
+    if (pit != md->mVtxChunks.end())
     {
-        if (megaAllocRange(c, count, first))
+        for (MegaChunk* c : pit->second)
         {
-            chunk = c;
-            break;
+            if (megaAllocRange(c, count, first))
+            {
+                chunk = c;
+                break;
+            }
         }
     }
     if (chunk == nullptr)
     {
-        chunk = megaNewChunk(typemask, count, true);
+        chunk = megaGrowChunk(md, typemask, count, true);
         if (chunk == nullptr || !megaAllocRange(chunk, count, first))
         {
             return false;
@@ -8063,8 +8203,7 @@ void megabufReleaseVertex(const MegaSliceV& slice)
     {
         return;
     }
-    VkcRaceProbe probe(sVkcMegaOwner, LLVKContract::C_MEGA_RACE);
-    sPendingMegaFrees.push_back({ slice.chunk, slice.first, slice.count, sMonotonicFrameCount });
+    megaEnqueueFree(slice.chunk, slice.first, slice.count);
 }
 
 bool megabufAcquireIndex(U32 size_bytes, MegaSliceI& out)
@@ -8075,10 +8214,11 @@ bool megabufAcquireIndex(U32 size_bytes, MegaSliceI& out)
         return false;
     }
     const U32 count = (size_bytes + 3u) & ~3u;
-    VkcRaceProbe probe(sVkcMegaOwner, LLVKContract::C_MEGA_RACE);
+    MegaDomain* md = megaDomainFor(tAllocDomain->mId);
+    VkcRaceProbe probe(md->mMegaOwner, LLVKContract::C_MEGA_RACE);
     MegaChunk* chunk = nullptr;
     U32 first = 0;
-    for (MegaChunk* c : sMegaIndexPool)
+    for (MegaChunk* c : md->mIdxChunks)
     {
         if (megaAllocRange(c, count, first))
         {
@@ -8088,7 +8228,7 @@ bool megabufAcquireIndex(U32 size_bytes, MegaSliceI& out)
     }
     if (chunk == nullptr)
     {
-        chunk = megaNewChunk(0, count, false);
+        chunk = megaGrowChunk(md, 0, count, false);
         if (chunk == nullptr || !megaAllocRange(chunk, count, first))
         {
             return false;
@@ -8108,36 +8248,68 @@ void megabufReleaseIndex(const MegaSliceI& slice)
     {
         return;
     }
-    VkcRaceProbe probe(sVkcMegaOwner, LLVKContract::C_MEGA_RACE);
-    sPendingMegaFrees.push_back({ slice.chunk, slice.offset, slice.size, sMonotonicFrameCount });
+    megaEnqueueFree(slice.chunk, slice.offset, slice.size);
 }
+
+void megaReclaimDomain(MegaDomain* md)
+{
+    VkcRaceProbe probe(md->mMegaOwner, LLVKContract::C_MEGA_RACE);
+    std::vector<PendingMegaFree> ready;
+    {
+        std::lock_guard<std::mutex> lk(md->mPendMutex);
+        size_t w = 0;
+        const size_t n = md->mPendMega.size();
+        for (size_t r = 0; r < n; ++r)
+        {
+            PendingMegaFree& e = md->mPendMega[r];
+            if (reapReady(e.enqueue_frame))
+            {
+                ready.push_back(e);
+            }
+            else
+            {
+                if (w != r)
+                {
+                    md->mPendMega[w] = e;
+                }
+                ++w;
+            }
+        }
+        md->mPendMega.resize(w);
+    }
+    if (ready.empty())
+    {
+        return;
+    }
+    std::lock_guard<std::mutex> gl(sAllocGrowthMutex);
+    for (const PendingMegaFree& e : ready)
+    {
+        auto it = sMegaChunksById.find(e.chunk);
+        if (it != sMegaChunksById.end())
+        {
+            megaFreeRange(it->second, e.first, e.count);
+        }
+    }
+}
+
+bool allocDomainSelfTest();
 
 void tickMegaFreeQueue()
 {
-    VkcRaceProbe probe(sVkcMegaOwner, LLVKContract::C_MEGA_RACE);
-    size_t w = 0;
-    const size_t n = sPendingMegaFrees.size();
-    for (size_t r = 0; r < n; ++r)
+    static const bool s_selftest = []() -> bool {
+        const char* e = getenv("AYASTORM_ALLOC_SELFTEST");
+        return e != nullptr && e[0] != '\0' && e[0] != '0';
+    }();
+    if (s_selftest)
     {
-        PendingMegaFree& e = sPendingMegaFrees[r];
-        if (reapReady(e.enqueue_frame))
+        static bool s_ran = false;
+        if (!s_ran)
         {
-            auto it = sMegaChunksById.find(e.chunk);
-            if (it != sMegaChunksById.end())
-            {
-                megaFreeRange(it->second, e.first, e.count);
-            }
-        }
-        else
-        {
-            if (w != r)
-            {
-                sPendingMegaFrees[w] = e;
-            }
-            ++w;
+            s_ran = true;
+            allocDomainSelfTest();
         }
     }
-    sPendingMegaFrees.resize(w);
+    megaReclaimDomain(&sMegaMain);
 }
 
 void megabufStats(U64& chunks, U64& capacity_bytes, U64& used_bytes)
@@ -8461,25 +8633,28 @@ void tickDeferredImageFreeQueue()
     }
 
     {
+        AllocDomain* d = &sMainDomain;
+        VkcRaceProbe probe(d->mSlotOwner, LLVKContract::C_DRAWDATA_RACE);
+        std::lock_guard<std::mutex> lk(d->mPendMutex);
         size_t dw = 0;
-        const size_t dn = sPendingDrawDataSlotFrees.size();
+        const size_t dn = d->mPendSlot.size();
         for (size_t r = 0; r < dn; ++r)
         {
-            PendingSlotFree& e = sPendingDrawDataSlotFrees[r];
+            PendingSlotFree& e = d->mPendSlot[r];
             if (reapReady(e.enqueue_frame))
             {
-                sDrawDataSlotFreeList.push_back(e.slot);
+                d->mSlotFree.push_back(e.slot);
             }
             else
             {
                 if (dw != r)
                 {
-                    sPendingDrawDataSlotFrees[dw] = e;
+                    d->mPendSlot[dw] = e;
                 }
                 ++dw;
             }
         }
-        sPendingDrawDataSlotFrees.resize(dw);
+        d->mPendSlot.resize(dw);
     }
 }
 
@@ -10815,16 +10990,21 @@ U32 drawDataAcquireSlot(const U32* slots4)
     {
         return BINDLESS_INVALID_SLOT;
     }
-    VkcRaceProbe probe(sVkcSlotOwner, LLVKContract::C_DRAWDATA_RACE);
+    AllocDomain* d = tAllocDomain;
+    VkcRaceProbe probe(d->mSlotOwner, LLVKContract::C_DRAWDATA_RACE);
     U32 slot;
-    if (!sDrawDataSlotFreeList.empty())
+    if (!d->mSlotFree.empty())
     {
-        slot = sDrawDataSlotFreeList.back();
-        sDrawDataSlotFreeList.pop_back();
+        slot = d->mSlotFree.back();
+        d->mSlotFree.pop_back();
     }
-    else if (sDrawDataSlotNext < DRAWDATA_PERSISTENT_SLOTS)
+    else if (d->mSlotNext < d->mSlotEnd)
     {
-        slot = sDrawDataSlotNext++;
+        slot = d->mSlotNext++;
+    }
+    else if (slotSlabGrow(d) && d->mSlotNext < d->mSlotEnd)
+    {
+        slot = d->mSlotNext++;
     }
     else
     {
@@ -10847,11 +11027,100 @@ void drawDataReleaseSlotDeferred(U32 slot)
     {
         return;
     }
-    VkcRaceProbe probe(sVkcSlotOwner, LLVKContract::C_DRAWDATA_RACE);
-    PendingSlotFree p;
-    p.slot          = slot;
-    p.enqueue_frame = sMonotonicFrameCount;
-    sPendingDrawDataSlotFrees.push_back(p);
+    AllocDomain* d = allocDomainForSlot(slot);
+    if (d == nullptr)
+    {
+        return;
+    }
+    std::lock_guard<std::mutex> lk(d->mPendMutex);
+    d->mPendSlot.push_back({ slot, sMonotonicFrameCount });
+}
+
+bool allocDomainSelfTest()
+{
+    if (sDrawDataMapped == nullptr || sMegaTypeSizes.empty())
+    {
+        LL_WARNS("Vulkan") << "allocSelfTest skip: allocators not ready" << LL_ENDL;
+        return false;
+    }
+    AllocDomain* sdA;
+    AllocDomain* sdB;
+    {
+        std::lock_guard<std::mutex> lk(sAllocGrowthMutex);
+        U32 idA = (U32)sAllocDomains.size();
+        sdA = new AllocDomain(idA);
+        sAllocDomains.push_back(sdA);
+        sMegaDomains.push_back(new MegaDomain(idA));
+        U32 idB = (U32)sAllocDomains.size();
+        sdB = new AllocDomain(idB);
+        sAllocDomains.push_back(sdB);
+        sMegaDomains.push_back(new MegaDomain(idB));
+    }
+    constexpr U32 ITER = 3000;
+    std::atomic<U32> fails{0};
+    auto run = [&](AllocDomain* sd)
+    {
+        tAllocDomain = sd;
+        std::vector<U32> slots;
+        std::vector<MegaSliceV> vslices;
+        std::vector<MegaSliceI> islices;
+        for (U32 i = 0; i < ITER; ++i)
+        {
+            U32 dd[4] = { sd->mId, i, 0xA5A5A5A5u, i * 7u + 1u };
+            U32 s = drawDataAcquireSlot(dd);
+            if (s == BINDLESS_INVALID_SLOT)
+            {
+                fails.fetch_add(1);
+            }
+            else
+            {
+                if (allocDomainForSlot(s) != sd)
+                {
+                    fails.fetch_add(1);
+                }
+                slots.push_back(s);
+            }
+            if ((i & 3u) == 0u)
+            {
+                MegaSliceV mv;
+                if (megabufAcquireVertex(0x1u, 48, mv))
+                {
+                    vslices.push_back(mv);
+                }
+                MegaSliceI mi;
+                if (megabufAcquireIndex(96, mi))
+                {
+                    islices.push_back(mi);
+                }
+            }
+            if ((i & 15u) == 15u && !slots.empty())
+            {
+                drawDataReleaseSlotDeferred(slots.back());
+                slots.pop_back();
+            }
+        }
+        for (U32 s : slots)
+        {
+            drawDataReleaseSlotDeferred(s);
+        }
+        for (const MegaSliceV& mv : vslices)
+        {
+            megabufReleaseVertex(mv);
+        }
+        for (const MegaSliceI& mi : islices)
+        {
+            megabufReleaseIndex(mi);
+        }
+    };
+    std::thread ta([&]{ run(sdA); });
+    std::thread tb([&]{ run(sdB); });
+    ta.join();
+    tb.join();
+    const U32 f = fails.load();
+    LL_INFOS("Vulkan") << "allocSelfTest domA=" << sdA->mId << " domB=" << sdB->mId
+                       << " iters=" << ITER << " routing_fails=" << f
+                       << (f == 0u ? " OK" : " CORRUPTION") << LL_ENDL;
+    return f == 0u;
 }
 
 static thread_local U32 tDrawDataScratchMemoFrame   = 0xFFFFFFFFu;
