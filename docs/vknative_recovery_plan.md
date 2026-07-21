@@ -94,6 +94,10 @@ per-draw 単価 ~0.9µs の中身(perf 実測・main thread): ScenePerDrawCache 
 - **✅ C = TP 信頼性(VK 資源ライフサイクル統一)= 決着(commit `1c3f4513b2`・AYA PASS)**: TP churn / app close / device-lost を**単一 reap 機構の 3 モード**に束ねた。核 = 資源解放は fence 遅延破棄(`enqueue_frame ≤ sLastCompletedMonotonic`)で TP churn(create/destroy 最大)× device-lost(fence クロック凍結)が前提を両側から破る = Close は reap を全資源に回し切って device を手放す=タイミングだけ。実装 = S1 `reapAllDeferred(mode)` 統一 / S2 `vkQuiesceProducers()` を cleanup 最前へ / S3 `shutdownVulkan(device_lost)` の手書き reap 重複削除 / S4 device-lost を abort→graceful quit funnel。設計 = `docs/vknative_teardown_shutdown_design.md` / memory `handoff_c_teardown_reap_unified_impl`。**05137 = 所有者ライフタイム leak(reap 外・force-release 禁止)= AYA benign 台帳**。**device recovery(b)= 不採用・確定(AYA 2026-07-21)= device-lost は clean 終了 a で恒久受容**(device-lost = 描画中の GPU 実行障害 → 原因は我々の submit/TDR が大半で復帰は同 fault 再発。完全 crash-free な描画ソフトは無い)。
 - **✅ crash B(voice)= closed・触らない**(upstream 最近物): sSessions 同期は健全(main-thread-only + reentrancy-safe = ロック不要)・終了時 session close 検証済。10:34 の 1 回 SIGSEGV は稀 edge だが upstream 領分ゆえ追わない。
 
+### Phase 2(分散化)進行 + 次 TOP(2026-07-22)
+- **✅ Phase 2 = 真の分散化 Open・進行中**: 並列安全性検出器 D1-D4(commit `81b7b0aef4`・2 層 = bespoke guard〔self-test ALL PASS〕+ TSan〔USE_TSAN・未走行〕・設計 = `docs/vknative_phase2_safety_detector_design.md`)。**aChar per-avatar 並列 dispatch v1**(commit `3ef35b315a`・2 パス post-pass・設計 = `docs/vknative_achar_dispatch_brief.md`)= 95-av crowd で **C_PAR=0(安全オラクル)・crash 0**。性能移動/視覚同一/TSan は残(非崩壊 scene 待ち)。detail = memory `handoff_phase2_safety_detector`。
+- **🔴 次 TOP = geometry rebuild 有界化**: 装置が **LIVE 実機**で crowd 崩壊の犯人を確定名指し = **geometry rebuild(gupd 6.6-7s)→ frame 凍結 → HTTP cap timeout → SIM 切断**。= §0.1 の「無予算 rebuild(updateGeom mBuildQ1 / postSort 可視 dirty group)」を実機確定。**crowd の真の killer**(aChar は崩壊の 0.2%)。設計軸 = A 有界化(予算配給・§4/product 分岐)vs B worker 化(T2 拡張・doctrine 正道・検出器が入場ゲート)= 標的トレース後に設計。引き継ぎ = memory `handoff_geometry_rebuild_top`。
+
 ---
 
 ## 3. 全体検収(このプランの成功条件)
