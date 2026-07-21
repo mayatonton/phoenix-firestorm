@@ -1480,11 +1480,6 @@ void LLPipeline::refreshCachedSettings()
             (!gUseWireframe
             && LLFeatureManager::getInstance()->isFeatureAvailable("UseOcclusion")
             && gSavedSettings.getBOOL("UseOcclusion")) ? 2 : 0;
-    static const bool s_no_occlusion_pin = (getenv("AYASTORM_NO_OCCLUSION") != nullptr);
-    if (s_no_occlusion_pin)
-    {
-        LLPipeline::sUseOcclusion = 0;
-    }
 
     WindLightUseAtmosShaders = true; // DEPRECATED -- gSavedSettings.getBOOL("WindLightUseAtmosShaders");
     RenderDeferred = true; // DEPRECATED -- gSavedSettings.getBOOL("RenderDeferred");
