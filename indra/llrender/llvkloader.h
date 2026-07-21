@@ -1209,10 +1209,6 @@ namespace LLVKLoader
     void setVkBakeWorkerStopHook(void (*fn)());
     void setVkDeviceLostHook(void (*fn)());
     void parWorkerForbiddenCheck();
-    void parEpochBegin();
-    void parEpochEnd();
-    void parMarkWorker(bool is_worker);
-    void parDeadObjectCheck(bool is_dead);
     bool uploadTextureOneShotVk(U32          width,
                                 U32          height,
                                 VkFormat     format,
@@ -1478,6 +1474,7 @@ namespace LLVKLoader
         std::atomic<U64> phase_us[16] = {};
         std::atomic<U64> idle_us[32] = {};
         std::atomic<U64> img_us[12] = {};
+        std::atomic<U64> mlp_us[16] = {};
         std::atomic<U64> tex_enq{0};
         std::atomic<U64> tex_pub{0};
         std::atomic<U64> tex_fail{0};
@@ -1491,6 +1488,13 @@ namespace LLVKLoader
         std::atomic<U64> geo_inl{0};
         std::atomic<U64> geo_defer{0};
         std::atomic<U64> geo_snap_bytes{0};
+        std::atomic<U64> geo_rsn_alpha{0};
+        std::atomic<U64> geo_rsn_afill{0};
+        std::atomic<U64> geo_rsn_geom{0};
+        std::atomic<U64> geo_rsn_gfill{0};
+        std::atomic<U64> geo_dirty_site[24] = {};
+        std::atomic<U64> geo_rsn_geomb{0};
+        std::atomic<U64> geo_rsn_gbfill{0};
         std::atomic<U64> bake_enq{0};
         std::atomic<U64> bake_pub{0};
         std::atomic<U64> bake_defer{0};
@@ -1536,10 +1540,14 @@ namespace LLVKLoader
             for (auto& v : phase_us) v = 0;
             for (auto& v : idle_us) v = 0;
             for (auto& v : img_us) v = 0;
+            for (auto& v : mlp_us) v = 0;
             tex_enq = 0; tex_pub = 0; tex_fail = 0; tex_dec = 0;
             img_pri_skip = 0; img_pri_full = 0;
             geo_enq = 0; geo_pub = 0; geo_pub_us = 0; geo_dis = 0; geo_inl = 0; geo_defer = 0;
             geo_snap_bytes = 0;
+            geo_rsn_alpha = 0; geo_rsn_afill = 0; geo_rsn_geom = 0; geo_rsn_gfill = 0;
+            for (auto& v : geo_dirty_site) v = 0;
+            geo_rsn_geomb = 0; geo_rsn_gbfill = 0;
             bake_enq = 0; bake_pub = 0; bake_defer = 0; bake_drain_us = 0;
         }
     };
@@ -1646,6 +1654,14 @@ namespace LLVKLoader
         U32 mIdx;
         VkPerfImgScope(U32 idx);
         ~VkPerfImgScope();
+    };
+
+    struct VkPerfMainScope
+    {
+        U64 mT0;
+        U32 mIdx;
+        VkPerfMainScope(U32 idx);
+        ~VkPerfMainScope();
     };
 
     bool perfLogEnabled();

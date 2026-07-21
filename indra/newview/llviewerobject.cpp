@@ -94,6 +94,7 @@
 #include "llworld.h"
 #include "llui.h"
 #include "pipeline.h"
+#include "llvkloader.h"
 #include "llviewernetwork.h"
 #include "llvowlsky.h"
 #include "llmanip.h"
@@ -7431,6 +7432,7 @@ void LLViewerObject::dirtySpatialGroup() const
         if (group)
         {
             group->dirtyGeom();
+            ++LLVKLoader::gVkPerf.geo_dirty_site[6];
             gPipeline.markRebuild(group);
         }
     }

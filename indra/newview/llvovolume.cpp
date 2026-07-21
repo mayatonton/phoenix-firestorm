@@ -808,6 +808,7 @@ void LLVOVolume::animateTextures()
                         if (group)
                         {
                             group->dirtyGeom();
+                            ++LLVKLoader::gVkPerf.geo_dirty_site[5];
                             gPipeline.markRebuild(group);
                         }
                     }
@@ -1022,6 +1023,7 @@ void LLVOVolume::updateTextureVirtualSize(bool forced)
                 if (mDrawable->getSpatialGroup())
                 {
                     mDrawable->getSpatialGroup()->dirtyGeom();
+                    ++LLVKLoader::gVkPerf.geo_dirty_site[5];
                     gPipeline.markRebuild(mDrawable->getSpatialGroup());
                 }
             }
@@ -2355,6 +2357,14 @@ bool LLVOVolume::updateGeometry(LLDrawable *drawable)
 
     if (mVolumeChanged || mFaceMappingChanged)
     {
+        if (mVolumeChanged)
+        {
+            ++LLVKLoader::gVkPerf.geo_dirty_site[12];
+        }
+        if (mFaceMappingChanged)
+        {
+            ++LLVKLoader::gVkPerf.geo_dirty_site[17];
+        }
         dirtySpatialGroup();
 
         bool was_regen_faces = false;
@@ -2377,6 +2387,18 @@ bool LLVOVolume::updateGeometry(LLDrawable *drawable)
     }
     else if (mLODChanged || mSculptChanged || mColorChanged)
     {
+        if (mLODChanged)
+        {
+            ++LLVKLoader::gVkPerf.geo_dirty_site[13];
+        }
+        if (mSculptChanged)
+        {
+            ++LLVKLoader::gVkPerf.geo_dirty_site[18];
+        }
+        if (mColorChanged)
+        {
+            ++LLVKLoader::gVkPerf.geo_dirty_site[19];
+        }
         dirtySpatialGroup();
         compiled = true;
         lodOrSculptChanged(drawable, compiled, should_update_octree_bounds);
@@ -2495,6 +2517,74 @@ void LLVOVolume::setNumTEs(const U8 num_tes)
 }
 
 
+bool LLVOVolume::pokeTEImage(const U8 te, LLViewerTexture* new_tex)
+{
+    static const bool s_off = []() -> bool {
+        const char* e = getenv("AYASTORM_TEXPOKE");
+        return (e != nullptr && atoi(e) == 0);
+    }();
+    if (s_off || new_tex == nullptr || mDrawable.isNull())
+    {
+        return false;
+    }
+    if (new_tex->getComponents() == 0)
+    {
+        return false;
+    }
+    LLFace* facep = (te < mDrawable->getNumFaces()) ? mDrawable->getFace(te) : nullptr;
+    if (facep == nullptr || facep->getVertexBuffer() == nullptr)
+    {
+        return false;
+    }
+    LLSpatialGroup* group = mDrawable->getSpatialGroup();
+    if (group == nullptr || group->isDead())
+    {
+        return false;
+    }
+    if (group->hasState(LLSpatialGroup::GEOM_DIRTY))
+    {
+        return false;
+    }
+    LLViewerTexture* old_tex = facep->getTexture(LLRender::DIFFUSE_MAP);
+    if (old_tex == nullptr || old_tex == new_tex
+        || old_tex->getComponents() != new_tex->getComponents())
+    {
+        return false;
+    }
+
+    std::vector<LLDrawInfo*> hits;
+    for (LLSpatialGroup::draw_map_t::iterator i = group->mDrawMap.begin();
+         i != group->mDrawMap.end(); ++i)
+    {
+        for (LLSpatialGroup::drawmap_elem_t::iterator j = i->second.begin();
+             j != i->second.end(); ++j)
+        {
+            LLDrawInfo* info = j->get();
+            if (info->mVertexBuffer.get() == facep->getVertexBuffer()
+                && info->mOffset == (U32)facep->getIndicesStart()
+                && info->mCount == facep->getIndicesCount())
+            {
+                if (!info->mTextureList.empty() || info->mTexture.get() != old_tex)
+                {
+                    return false;
+                }
+                hits.push_back(info);
+            }
+        }
+    }
+    if (hits.empty())
+    {
+        return false;
+    }
+    for (LLDrawInfo* info : hits)
+    {
+        info->mTexture = new_tex;
+        info->clearVkPerDrawCachePins();
+    }
+    facep->setTexture(LLRender::DIFFUSE_MAP, new_tex);
+    return true;
+}
+
 //virtual
 void LLVOVolume::changeTEImage(S32 index, LLViewerTexture* imagep)
 {
@@ -2503,7 +2593,15 @@ void LLVOVolume::changeTEImage(S32 index, LLViewerTexture* imagep)
     if (changed)
     {
         gPipeline.markTextured(mDrawable);
-        mFaceMappingChanged = true;
+        if (pokeTEImage((U8)index, imagep))
+        {
+            ++LLVKLoader::gVkPerf.geo_dirty_site[20];
+        }
+        else
+        {
+            ++LLVKLoader::gVkPerf.geo_dirty_site[21];
+            mFaceMappingChanged = true;
+        }
     }
 }
 
@@ -2514,7 +2612,15 @@ void LLVOVolume::setTEImage(const U8 te, LLViewerTexture *imagep)
     if (changed)
     {
         gPipeline.markTextured(mDrawable);
-        mFaceMappingChanged = true;
+        if (pokeTEImage(te, imagep))
+        {
+            ++LLVKLoader::gVkPerf.geo_dirty_site[20];
+        }
+        else
+        {
+            ++LLVKLoader::gVkPerf.geo_dirty_site[21];
+            mFaceMappingChanged = true;
+        }
     }
 }
 
@@ -2523,13 +2629,25 @@ S32 LLVOVolume::setTETexture(const U8 te, const LLUUID &uuid)
     S32 res = LLViewerObject::setTETexture(te, uuid);
     if (res)
     {
-        if (mDrawable)
+        if (pokeTEImage(te, mTEImages[te].get()))
         {
-            // dynamic texture changes break batches, isolate in octree
-            shrinkWrap();
-            gPipeline.markTextured(mDrawable);
+            ++LLVKLoader::gVkPerf.geo_dirty_site[20];
+            if (mDrawable)
+            {
+                gPipeline.markTextured(mDrawable);
+            }
         }
-        mFaceMappingChanged = true;
+        else
+        {
+            ++LLVKLoader::gVkPerf.geo_dirty_site[21];
+            if (mDrawable)
+            {
+                // dynamic texture changes break batches, isolate in octree
+                shrinkWrap();
+                gPipeline.markTextured(mDrawable);
+            }
+            mFaceMappingChanged = true;
+        }
     }
     return res;
 }
@@ -6451,10 +6569,20 @@ void LLVolumeGeometryManager::stopGeoWorker()
 
 void LLVolumeGeometryManager::drainGeoPublishQueue()
 {
+    static const F32 s_apply_budget_ms = []() -> F32 {
+        const char* e = getenv("AYASTORM_GEO_APPLY_BUDGET_MS");
+        return (e != nullptr) ? (F32)atof(e) : 8.0f;
+    }();
+
     LLTimer pub_timer;
     bool any = false;
     for (;;)
     {
+        if (any && s_apply_budget_ms > 0.f
+            && pub_timer.getElapsedTimeF32() * 1000.f > s_apply_budget_ms)
+        {
+            break;
+        }
         LLGeoRebuildJob* job = nullptr;
         {
             std::lock_guard<std::mutex> lk(sGeoPublishMutex);
@@ -6500,6 +6628,7 @@ void LLVolumeGeometryManager::drainGeoPublishQueue()
                 if (!stale_gen && (!applied || job->mStaged.mHadFailedFace))
                 {
                     group->setState(LLSpatialGroup::GEOM_DIRTY);
+                    ++LLVKLoader::gVkPerf.geo_dirty_site[4];
                 }
                 if (group->hasState(LLSpatialGroup::GEOM_DIRTY))
                 {
@@ -6961,6 +7090,9 @@ void LLVolumeGeometryManager::rebuildGeom(LLSpatialGroup* group)
         }
         return;
     }
+
+    const bool rsn_geom = group->hasState(LLSpatialGroup::GEOM_DIRTY);
+    const bool rsn_alpha_only = !rsn_geom && group->hasState(LLSpatialGroup::ALPHA_DIRTY);
 
     group->mBuilt = 1.f;
 
@@ -7522,6 +7654,22 @@ void LLVolumeGeometryManager::rebuildGeom(LLSpatialGroup* group)
     group->mLastUpdateTime = gFrameTimeSeconds;
     group->mBuilt = 1.f;
     group->clearState(LLSpatialGroup::GEOM_DIRTY | LLSpatialGroup::ALPHA_DIRTY);
+
+    if (rsn_alpha_only)
+    {
+        ++LLVKLoader::gVkPerf.geo_rsn_alpha;
+        LLVKLoader::gVkPerf.geo_rsn_afill.fetch_add(staged.mFills.size());
+    }
+    else if (rsn_geom)
+    {
+        ++LLVKLoader::gVkPerf.geo_rsn_geom;
+        LLVKLoader::gVkPerf.geo_rsn_gfill.fetch_add(staged.mFills.size());
+        if (group->getSpatialPartition() && group->getSpatialPartition()->asBridge())
+        {
+            ++LLVKLoader::gVkPerf.geo_rsn_geomb;
+            LLVKLoader::gVkPerf.geo_rsn_gbfill.fetch_add(staged.mFills.size());
+        }
+    }
 
     if (staged.mInline || staged.mFills.empty())
     {

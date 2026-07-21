@@ -42,6 +42,7 @@
 #include "llviewertexturelist.h"
 #include "llviewerregion.h"
 #include "pipeline.h"
+#include "llvkloader.h"
 #include "llvkcontract.h"
 #include "llspatialpartition.h"
 #include "llworld.h"
@@ -418,6 +419,7 @@ bool LLVOGrass::updateGeometry(LLDrawable *drawable)
 {
     LL_RECORD_BLOCK_TIME(FTM_UPDATE_GRASS);
 
+    ++LLVKLoader::gVkPerf.geo_dirty_site[14];
     dirtySpatialGroup();
 
     if(!mNumBlades)//stop rendering grass

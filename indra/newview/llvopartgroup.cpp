@@ -42,6 +42,7 @@
 #include "llviewerpartsim.h"
 #include "llviewerregion.h"
 #include "pipeline.h"
+#include "llvkloader.h"
 #include "llvkcontract.h"
 #include "llspatialpartition.h"
 
@@ -232,6 +233,7 @@ bool LLVOPartGroup::updateGeometry(LLDrawable *drawable)
 {
     LL_PROFILE_ZONE_SCOPED;
 
+    ++LLVKLoader::gVkPerf.geo_dirty_site[8];
     dirtySpatialGroup();
 
     S32 num_parts = mViewerPartGroupp->getCount();
@@ -245,6 +247,7 @@ bool LLVOPartGroup::updateGeometry(LLDrawable *drawable)
 
     if (group && group->isVisible())
     {
+        ++LLVKLoader::gVkPerf.geo_dirty_site[8];
         dirtySpatialGroup();
     }
 
@@ -253,6 +256,7 @@ bool LLVOPartGroup::updateGeometry(LLDrawable *drawable)
         if (group && drawable->getNumFaces())
         {
             group->setState(LLSpatialGroup::GEOM_DIRTY);
+            ++LLVKLoader::gVkPerf.geo_dirty_site[8];
         }
         drawable->setNumFaces(0, NULL, getTEImage(0));
         LLPipeline::sCompiles++;

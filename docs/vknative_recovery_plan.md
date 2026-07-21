@@ -1,6 +1,7 @@
 # AYAstorm 全体処理回復計画(設計書 + 工程表)
 
 - 状態: **AYA approve 済(2026-07-17)・大順序確定 = T 系 → E 系(やり切る)→ Phase 2(並列処理)再開**
+- **🔴 本線更新(AYA 承認 2026-07-22)**: T 系・E 系完遂後の本体回復(crowd 使用可能化)の本線 = **avatar 描画を塊で main の外へ丸ごと退避(relocate)+ per-core 分散** = `docs/vknative_avatar_relocate_design.md`(引き継ぎ = memory `handoff_avatar_relocate_design`)。§0.1 の癌診断(単一 main 直列)は有効・その avatar 側の治療が relocate。doctrine [[project_vk_doctrine_eliminate_not_parallelize]] は regime 改定(off-main では parallelize 解禁)。
 - 起草: 2026-07-17 設計実装者(実測データ同日採取)
 - 位置づけ: `docs/vknative_architecture.md`(以下「基本設計」)の **§5 移行表の後半(M5b/M5c/M6)を実測に基づき再編成**する上位工程書。基本設計の §1〜§4(資源モデル: bindless / mega-buffer / DrawData / bucket)と doctrine は**有効のまま**。本書 approve 時に基本設計 §5 へ相互参照を追記する。
 - **本書の各段は独立セッションへの handoff を前提に切ってある**(§4 分担と依存)。
@@ -96,7 +97,7 @@ per-draw 単価 ~0.9µs の中身(perf 実測・main thread): ScenePerDrawCache 
 
 ### Phase 2(分散化)進行 + 次 TOP(2026-07-22)
 - **✅ Phase 2 = 真の分散化 Open・進行中**: 並列安全性検出器 D1-D4(commit `81b7b0aef4`・2 層 = bespoke guard〔self-test ALL PASS〕+ TSan〔USE_TSAN・未走行〕・設計 = `docs/vknative_phase2_safety_detector_design.md`)。**aChar per-avatar 並列 dispatch v1**(commit `3ef35b315a`・2 パス post-pass・設計 = `docs/vknative_achar_dispatch_brief.md`)= 95-av crowd で **C_PAR=0(安全オラクル)・crash 0**。性能移動/視覚同一/TSan は残(非崩壊 scene 待ち)。detail = memory `handoff_phase2_safety_detector`。
-- **🔴 次 TOP = geometry rebuild 有界化**: 装置が **LIVE 実機**で crowd 崩壊の犯人を確定名指し = **geometry rebuild(gupd 6.6-7s)→ frame 凍結 → HTTP cap timeout → SIM 切断**。= §0.1 の「無予算 rebuild(updateGeom mBuildQ1 / postSort 可視 dirty group)」を実機確定。**crowd の真の killer**(aChar は崩壊の 0.2%)。設計軸 = A 有界化(予算配給・§4/product 分岐)vs B worker 化(T2 拡張・doctrine 正道・検出器が入場ゲート)= 標的トレース後に設計。引き継ぎ = memory `handoff_geometry_rebuild_top`。
+- **🔴 本 TOP = crowd 本体回復(fps 11 → 使用可能)= 大規模・多軸の構造工事(AYA 2026-07-22 再スコープ)。専用設計書 = `docs/vknative_crowd_body_recovery_design.md`**。前「次 TOP = geometry rebuild 有界化」は前任の**矮小化ターゲットと判明・降格**: 装置が名指しした崩壊(gupd 16.6s freeze→SIM 切断)は **cold-burst の一過性**で、LIVE 実データ(95-av・fps 11.3・88ms/f・cpu main 96%)は **定常 gupd=0.9ms/f = 本体でない**と確定。本体 = ①display 30.8ms/f(draw 28k 毎frame 再記録+lighting/shadow)②idle 14.4ms/f(avatar aChar+object 全量)③**未計上 40.6ms/f=frame の 46%=CPU/GPU binding 未確定=枢軸**。工程 = step0 frame 会計閉鎖(binding 確定)→ stepA 記録保持 → stepB Phase2 更新並列化 → stepC GPU 削減。**有界化(旧 TOP)= 差分化は burst に無効(全新規幾何)と trace で証明済 → 信頼性安全弁として `drainGeoPublishQueue` 予算化のみ(実装済未 commit)**。引き継ぎ = memory `handoff_geometry_rebuild_top`(re-scope 追記済)。
 
 ---
 

@@ -2167,6 +2167,7 @@ public:
                     if (tex && mTextures.find(tex) != mTextures.end())
                     {
                         group->setState(LLSpatialGroup::GEOM_DIRTY);
+                        ++LLVKLoader::gVkPerf.geo_dirty_site[9];
                     }
                 }
             }
@@ -2670,6 +2671,7 @@ void LLPipeline::updateMovedList(LLDrawable::drawable_vector_t& moved_list)
                 markRebuild(drawablep, LLDrawable::REBUILD_VOLUME);
                 if (drawablep->getVObj())
                 {
+                    ++LLVKLoader::gVkPerf.geo_dirty_site[1];
                     drawablep->getVObj()->dirtySpatialGroup();
                 }
             }
@@ -15688,6 +15690,7 @@ public:
         if (group->getSpatialPartition()->mRenderByGroup)
         {
             group->setState(LLSpatialGroup::GEOM_DIRTY);
+            ++LLVKLoader::gVkPerf.geo_dirty_site[10];
             gPipeline.markRebuild(group);
         }
 

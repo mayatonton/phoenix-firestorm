@@ -48,6 +48,7 @@
 #include "llvosurfacepatch.h" // for debugging
 #include "llworld.h"
 #include "pipeline.h"
+#include "llvkloader.h"
 #include "llpipelineframecontext.h"
 #include "llspatialpartition.h"
 #include "llviewerobjectlist.h"
@@ -732,6 +733,7 @@ F32 LLDrawable::updateXform(bool undamped)
         {
             setState(LLDrawable::ANIMATED_CHILD);
             gPipeline.markRebuild(this, LLDrawable::REBUILD_ALL);
+            ++LLVKLoader::gVkPerf.geo_dirty_site[0];
             mVObjp->dirtySpatialGroup();
         }
     }

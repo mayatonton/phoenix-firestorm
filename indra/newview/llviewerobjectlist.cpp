@@ -1044,7 +1044,6 @@ void LLViewerObjectList::update(LLAgent &agent)
     else
     {
         const bool perf_detail = LLVKLoader::perfLogEnabled();
-        LLVOAvatar::sParallelComputeArmed = true;
         for (std::vector<LLViewerObject*>::iterator idle_iter = idle_list.begin();
             idle_iter != idle_end; idle_iter++)
         {
@@ -1059,11 +1058,6 @@ void LLViewerObjectList::update(LLAgent &agent)
             {
                 objectp->idleUpdate(agent, frame_time);
             }
-        }
-        LLVOAvatar::sParallelComputeArmed = false;
-        {
-            LLVKLoader::VkPerfIdleScope idl(28);
-            LLVOAvatar::dispatchParallelCompute();
         }
 
         //update flexible objects

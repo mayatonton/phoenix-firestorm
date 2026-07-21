@@ -456,6 +456,8 @@ bool LLSpatialGroup::addObject(LLDrawable *drawablep)
     {
         drawablep->setGroup(this);
         setState(static_cast<U32>(OBJECT_DIRTY) | static_cast<U32>(GEOM_DIRTY));
+        ++LLVKLoader::gVkPerf.geo_dirty_site[
+            (getSpatialPartition() && getSpatialPartition()->asBridge()) ? 15 : 2];
         setOcclusionState(LLSpatialGroup::DISCARD_QUERY, LLSpatialGroup::STATE_MODE_ALL_CAMERAS);
         gPipeline.markRebuild(this);
         if (drawablep->isVisible())
@@ -584,6 +586,8 @@ bool LLSpatialGroup::removeObject(LLDrawable *drawablep, bool from_octree)
     {
         drawablep->setGroup(NULL);
         setState(GEOM_DIRTY);
+        ++LLVKLoader::gVkPerf.geo_dirty_site[
+            (getSpatialPartition() && getSpatialPartition()->asBridge()) ? 16 : 3];
         gPipeline.markRebuild(this);
 
         if (drawablep->isSpatialBridge())

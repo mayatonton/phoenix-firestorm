@@ -208,6 +208,7 @@ public:
     /*virtual*/ void    changeTEImage(S32 index, LLViewerTexture* new_image) override;
     /*virtual*/ void    setNumTEs(const U8 num_tes) override;
     /*virtual*/ void    setTEImage(const U8 te, LLViewerTexture *imagep) override;
+    bool                pokeTEImage(const U8 te, LLViewerTexture* new_tex);
     /*virtual*/ S32     setTETexture(const U8 te, const LLUUID &uuid) override;
     /*virtual*/ S32     setTEColor(const U8 te, const LLColor3 &color) override;
     /*virtual*/ S32     setTEColor(const U8 te, const LLColor4 &color) override;

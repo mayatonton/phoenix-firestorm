@@ -1607,6 +1607,7 @@ bool LLAppViewer::doFrame()
 // </FS:Beq>
         nd::etw::logFrame(); // <FS:ND> Write the start of each frame. Even if our Provider (Firestorm) would be enabled, this has only light impact. Does nothing on OSX and Linux.
         {
+            LLVKLoader::VkPerfMainScope mlp(11);
             LL_PROFILE_ZONE_NAMED_CATEGORY_APP("df LLTrace");
             if (LLFloaterReg::instanceVisible("block_timers"))
             {
@@ -1630,6 +1631,7 @@ bool LLAppViewer::doFrame()
 
             if (gViewerWindow)
             {
+                LLVKLoader::VkPerfMainScope mlp(6);
                 LL_PROFILE_ZONE_NAMED_CATEGORY_APP("System Messages");
                 gViewerWindow->getWindow()->processMiscNativeEvents();
             }
@@ -1641,6 +1643,7 @@ bool LLAppViewer::doFrame()
 
             if (gViewerWindow)
             {
+                LLVKLoader::VkPerfMainScope mlp(6);
                 LL_PROFILE_ZONE_NAMED_CATEGORY_APP("System Messages");
                 if (!restoreErrorTrap())
                 {
@@ -1662,12 +1665,14 @@ bool LLAppViewer::doFrame()
             }
 
             {
+                LLVKLoader::VkPerfMainScope mlp(5);
                 LL_PROFILE_ZONE_NAMED_CATEGORY_APP("df mainloop");
                 pingMainloopTimeout("df mainloop");
                 // canonical per-frame event
                 mainloop.post(newFrame);
             }
             {
+                LLVKLoader::VkPerfMainScope mlp(5);
                 LL_PROFILE_ZONE_NAMED_CATEGORY_APP("df suspend");
                 pingMainloopTimeout("df suspend");
                 // give listeners a chance to run
@@ -1754,7 +1759,10 @@ bool LLAppViewer::doFrame()
                 LL_PROFILE_ZONE_NAMED_CATEGORY_APP("df Display");
                 pingMainloopTimeout("Main:Display");
 
-                LLReloadQueue::drain();
+                {
+                    LLVKLoader::VkPerfMainScope mlp(7);
+                    LLReloadQueue::drain();
+                }
 
                 bool vk_begin_ok = LLVKLoader::beginFrame();
                 if (!vk_begin_ok && LLVKLoader::isVulkanInitialized())
@@ -1785,10 +1793,13 @@ bool LLAppViewer::doFrame()
                         LLVKLoader::VkPerfPhaseScope ph(2);
                         gPipeline.mReflectionMapManager.update();
                     }
-                    LLFloaterSnapshot::update(); // take snapshots
-                    LLFloaterSimpleSnapshot::update();
-                    LLFloaterFlickr::update(); // <FS:Beq/> FIRE-35002 - Flickr preview not updating whne opened directly from tool tray icon
-                    FSFloaterPrimfeed::update(); // <FS:Beq/> Primfeed support
+                    {
+                        LLVKLoader::VkPerfMainScope mlp(8);
+                        LLFloaterSnapshot::update(); // take snapshots
+                        LLFloaterSimpleSnapshot::update();
+                        LLFloaterFlickr::update(); // <FS:Beq/> FIRE-35002 - Flickr preview not updating whne opened directly from tool tray icon
+                        FSFloaterPrimfeed::update(); // <FS:Beq/> Primfeed support
+                    }
                 }
 
                 LLVKLoader::endFrame();
@@ -1866,6 +1877,7 @@ bool LLAppViewer::doFrame()
             S32 total_work_pending = 0;
             S32 total_io_pending = 0;
             {
+                LLVKLoader::VkPerfMainScope mlp(9);
                 S32 work_pending = 0;
                 S32 io_pending = 0;
                 F32 max_time = llmin(gFrameIntervalSeconds.value() *10.f, 1.f);
@@ -1891,6 +1903,7 @@ bool LLAppViewer::doFrame()
             }
 
             {
+                LLVKLoader::VkPerfMainScope mlp(10);
                 LL_PROFILE_ZONE_NAMED_CATEGORY_APP("df gMeshRepo");
                 gMeshRepo.update() ;
             }

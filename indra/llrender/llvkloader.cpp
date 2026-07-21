@@ -4441,6 +4441,8 @@ bool beginFrame(bool acquire_swapchain)
         return false;
     }
 
+    VkPerfMainScope mlp_total(3);
+
     beginCommandRecording();
 
     sSwapchainClearedThisFrame = false;
@@ -4478,9 +4480,14 @@ bool beginFrame(bool acquire_swapchain)
 
     sFrameIndex = (sFrameIndex + 1) % FRAMES_IN_FLIGHT;
 
-    const bool slot_submitted = peWaitSlotSubmitted(sFrameIndex);
+    bool slot_submitted;
+    {
+        VkPerfMainScope mlp_slot(0);
+        slot_submitted = peWaitSlotSubmitted(sFrameIndex);
+    }
     if (sInFlightFences[sFrameIndex] != VK_NULL_HANDLE)
     {
+        VkPerfMainScope mlp_fence(1);
         if (slot_submitted)
         {
             vkWaitForFences(sDevice, 1, &sInFlightFences[sFrameIndex],
@@ -4506,6 +4513,7 @@ bool beginFrame(bool acquire_swapchain)
         sSwapchain != VK_NULL_HANDLE &&
         sImageAvailableSemaphores[sFrameIndex] != VK_NULL_HANDLE)
     {
+        VkPerfMainScope mlp_acq(2);
         VkResult acquire_res;
         {
             std::lock_guard<std::mutex> lk(sSwapchainAccessMutex);
@@ -4669,6 +4677,8 @@ bool endFrame()
     {
         return false;
     }
+
+    VkPerfMainScope mlp_total(4);
 
     static const F64 s_perf_interval = []() -> F64 {
         const char* e = getenv("AYASTORM_PERF_LOG");
@@ -4842,8 +4852,27 @@ bool endFrame()
                                    << " dis=" << gVkPerf.geo_dis.load()
                                    << " inl=" << gVkPerf.geo_inl.load()
                                    << " defer=" << gVkPerf.geo_defer.load()
+                                   << " rsnA=" << gVkPerf.geo_rsn_alpha.load()
+                                   << "/" << gVkPerf.geo_rsn_afill.load()
+                                   << " rsnG=" << gVkPerf.geo_rsn_geom.load()
+                                   << "/" << gVkPerf.geo_rsn_gfill.load()
+                                   << " rsnGB=" << gVkPerf.geo_rsn_geomb.load()
+                                   << "/" << gVkPerf.geo_rsn_gbfill.load()
                                    << " snap_mb=" << (gVkPerf.geo_snap_bytes.load() >> 20)
                                    << " mb=" << (gVkGeoInflightBytes.load() >> 20)
+                                   << " | gds " << [](){ std::string s;
+                                        static const char* names[24] = {
+                                            "animset","animclr","octadd","octrem","requeue","texanim",
+                                            "dirtySG","sss","part","texdirty","octtrav","flexi",
+                                            "vol","lod","grass","octaddB","octremB","facemap","sculpt","color",
+                                            "pokeOK","pokeFB","x22","x23" };
+                                        for (U32 i = 0; i < 24; ++i) {
+                                            const U64 v = gVkPerf.geo_dirty_site[i].load();
+                                            if (v != 0) {
+                                                s += llformat("%s=%llu ", names[i], (unsigned long long)v);
+                                            }
+                                        }
+                                        return s; }()
                                    << " | bake enq=" << gVkPerf.bake_enq.load()
                                    << " pub=" << gVkPerf.bake_pub.load()
                                    << " defer=" << gVkPerf.bake_defer.load()
@@ -4884,6 +4913,17 @@ bool endFrame()
                                             "oNav","oFlex","oTanim","oMisc","aChar","aMisc","aName","aPre" };
                                         for (U32 i = 0; i < 32; ++i) {
                                             const U64 us = gVkPerf.idle_us[i].load();
+                                            if (us != 0) {
+                                                s += llformat("%s=%.1f ", names[i], us / 1000.0);
+                                            }
+                                        }
+                                        return s; }()
+                                   << " | mlp " << [](){ std::string s;
+                                        static const char* names[16] = {
+                                            "slot","fence","acq","beg","end","coro","pump","rld",
+                                            "snap","tio","mesh","trc","x12","x13","x14","x15" };
+                                        for (U32 i = 0; i < 16; ++i) {
+                                            const U64 us = gVkPerf.mlp_us[i].load();
                                             if (us != 0) {
                                                 s += llformat("%s=%.1f ", names[i], us / 1000.0);
                                             }
@@ -7539,29 +7579,6 @@ void parWorkerForbiddenCheck()
     if (LLVKContract::isWorkerThread())
     {
         LLVKContract::cause(LLVKContract::C_PAR_WORKER_FORBIDDEN);
-    }
-}
-
-void parEpochBegin()
-{
-    LLVKContract::parallelEpochBegin();
-}
-
-void parEpochEnd()
-{
-    LLVKContract::parallelEpochEnd();
-}
-
-void parMarkWorker(bool is_worker)
-{
-    LLVKContract::markWorkerThread(is_worker);
-}
-
-void parDeadObjectCheck(bool is_dead)
-{
-    if (LLVKContract::isWorkerThread() && is_dead)
-    {
-        LLVKContract::cause(LLVKContract::C_PAR_DEAD_ACCESS);
     }
 }
 
@@ -10645,6 +10662,19 @@ VkPerfImgScope::~VkPerfImgScope()
     if (mIdx < 12)
     {
         gVkPerf.img_us[mIdx] += phaseNowUs() - mT0;
+    }
+}
+
+VkPerfMainScope::VkPerfMainScope(U32 idx)
+: mT0(phaseNowUs()), mIdx(idx)
+{
+}
+
+VkPerfMainScope::~VkPerfMainScope()
+{
+    if (mIdx < 16)
+    {
+        gVkPerf.mlp_us[mIdx] += phaseNowUs() - mT0;
     }
 }
 

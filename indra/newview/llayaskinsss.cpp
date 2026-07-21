@@ -12,6 +12,7 @@
 #include "lldrawable.h"           // <FS:AYA r20 Phase C> REBUILD_GEOMETRY
 #include "llspatialpartition.h"   // <FS:AYA r20 Phase C> LLSpatialGroup::GEOM_DIRTY
 #include "pipeline.h"             // <FS:AYA r20 Phase C> gPipeline.markRebuild
+#include "llvkloader.h"
 #include "llviewercontrol.h"
 #include "llviewerobject.h"
 #include "llviewerjointattachment.h"
@@ -235,6 +236,7 @@ void apply_sss_flag(LLViewerObject* obj, bool match)
         if (LLSpatialGroup* group = obj->mDrawable->getSpatialGroup())
         {
             group->setState(LLSpatialGroup::GEOM_DIRTY);
+            ++LLVKLoader::gVkPerf.geo_dirty_site[7];
             gPipeline.markRebuild(group);
         }
     }

@@ -42,6 +42,7 @@
 #include "llviewerregion.h"
 #include "llworld.h"
 #include "llvoavatar.h"
+#include "llvkloader.h"
 
 static const F32 SEC_PER_FLEXI_FRAME = 1.f / 60.f; // 60 flexi updates per second
 /*static*/ F32 LLVolumeImplFlexible::sUpdateFactor = 1.0f;
@@ -805,6 +806,7 @@ bool LLVolumeImplFlexible::doUpdateGeometry(LLDrawable *drawable)
     {
         volume->regenFaces();
         volume->mDrawable->setState(LLDrawable::REBUILD_VOLUME);
+        ++LLVKLoader::gVkPerf.geo_dirty_site[11];
         volume->dirtySpatialGroup();
         {
             doFlexibleRebuild(volume->mVolumeChanged);
