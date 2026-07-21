@@ -8338,6 +8338,11 @@ void renderDomainReclaim(U32 id)
     }
 }
 
+void setThreadAllocDomain(U32 id)
+{
+    tAllocDomain = (id < sAllocDomains.size()) ? sAllocDomains[id] : &sMainDomain;
+}
+
 bool allocDomainSelfTest();
 
 void tickMegaFreeQueue()

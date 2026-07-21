@@ -5782,6 +5782,97 @@ namespace
 
     constexpr U64 GEO_INFLIGHT_BYTE_CAP = 512ull << 20;
 
+    std::mutex sAvatarJobMutex;
+    std::condition_variable sAvatarJobCv;
+    std::deque<LLGeoRebuildJob*> sAvatarJobQueue;
+    std::mutex sAvatarPublishMutex;
+    std::deque<LLGeoRebuildJob*> sAvatarPublishQueue;
+    std::thread sAvatarWorkerThread;
+    bool sAvatarWorkerRunning = false;
+    bool sAvatarWorkerQuit = false;
+    U32 sAvatarDomainId = 0xFFFFFFFFu;
+
+    bool avatarWorkerThreaded()
+    {
+        const char* e = getenv("AYASTORM_MT_THREADS");
+        return (e == nullptr) || (atoi(e) > 1);
+    }
+
+    void avatarDomainWorkerMain()
+    {
+#if LL_LINUX
+        pthread_setname_np(pthread_self(), "aya-avdom");
+#endif
+        LLVKLoader::setThreadAllocDomain(sAvatarDomainId);
+        for (;;)
+        {
+            LLGeoRebuildJob* job = nullptr;
+            {
+                std::unique_lock<std::mutex> lk(sAvatarJobMutex);
+                sAvatarJobCv.wait(lk, [] { return sAvatarWorkerQuit || !sAvatarJobQueue.empty(); });
+                if (sAvatarWorkerQuit)
+                {
+                    return;
+                }
+                job = sAvatarJobQueue.front();
+                sAvatarJobQueue.pop_front();
+            }
+
+            {
+                std::lock_guard<std::mutex> lk(sAvatarPublishMutex);
+                sAvatarPublishQueue.push_back(job);
+            }
+        }
+    }
+
+    bool startAvatarDomainWorker()
+    {
+        if (sAvatarWorkerRunning)
+        {
+            return true;
+        }
+        if (!avatarWorkerThreaded())
+        {
+            return false;
+        }
+        if (sAvatarDomainId == 0xFFFFFFFFu)
+        {
+            sAvatarDomainId = LLVKLoader::createRenderDomain();
+        }
+        sAvatarWorkerQuit = false;
+        sAvatarWorkerThread = std::thread(&avatarDomainWorkerMain);
+        sAvatarWorkerRunning = true;
+        LL_INFOS("Vulkan") << "avatar domain worker started domain=" << sAvatarDomainId << LL_ENDL;
+        return true;
+    }
+
+    void stopAvatarDomainWorker()
+    {
+        if (!sAvatarWorkerRunning)
+        {
+            return;
+        }
+        {
+            std::lock_guard<std::mutex> lk(sAvatarJobMutex);
+            sAvatarWorkerQuit = true;
+        }
+        sAvatarJobCv.notify_all();
+        if (sAvatarWorkerThread.joinable())
+        {
+            sAvatarWorkerThread.join();
+        }
+        sAvatarWorkerRunning = false;
+        LL_INFOS("Vulkan") << "avatar domain worker stopped domain=" << sAvatarDomainId << LL_ENDL;
+        {
+            std::lock_guard<std::mutex> lk(sAvatarJobMutex);
+            sAvatarJobQueue.clear();
+        }
+        {
+            std::lock_guard<std::mutex> lk(sAvatarPublishMutex);
+            sAvatarPublishQueue.clear();
+        }
+    }
+
     void geoWorkerMain()
     {
 #if LL_LINUX
@@ -5833,6 +5924,7 @@ namespace
         sGeoWorkerQuit = false;
         sGeoWorkerThread = std::thread(&geoWorkerMain);
         sGeoWorkerRunning = true;
+        startAvatarDomainWorker();
         return true;
     }
 
@@ -6522,6 +6614,7 @@ bool LLVolumeGeometryManager::geoEnsureTangents(LLVolume* volume, S32 face_index
 
 void LLVolumeGeometryManager::stopGeoWorker()
 {
+    stopAvatarDomainWorker();
     if (!sGeoWorkerRunning)
     {
         return;

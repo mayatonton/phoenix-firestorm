@@ -1358,6 +1358,12 @@ namespace LLVKLoader
 
     void drawDataReleaseSlotDeferred(U32 slot);
 
+    U32  createRenderDomain();
+
+    void renderDomainReclaim(U32 id);
+
+    void setThreadAllocDomain(U32 id);
+
     U32  drawDataWriteScratch(const U32* slots4);
 
     void setCurrentDrawDataID(U32 id);
