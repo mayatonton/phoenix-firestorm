@@ -87,7 +87,6 @@ LLGLSLShader    gDebugProgram;
 LLGLSLShader    gSkinnedDebugProgram;
 LLGLSLShader    gNormalDebugProgram[NORMAL_DEBUG_SHADER_COUNT];
 LLGLSLShader    gSkinnedNormalDebugProgram[NORMAL_DEBUG_SHADER_COUNT];
-LLGLSLShader    gClipProgram;
 LLGLSLShader    gAlphaMaskProgram;
 LLGLSLShader    gBenchmarkProgram;
 LLGLSLShader    gReflectionProbeDisplayProgram;
@@ -4683,20 +4682,6 @@ bool LLViewerShaderMgr::loadShadersInterface()
                 shader.createVkPipeline(16);
                 skinned_shader.createVkPipeline(16);
             }
-        }
-    }
-
-    if (success)
-    {
-        gClipProgram.mName = "Clip Shader";
-        gClipProgram.mShaderFiles.clear();
-        gClipProgram.mShaderFiles.push_back(make_pair("interface/clipV.glsl", GL_VERTEX_SHADER));
-        gClipProgram.mShaderFiles.push_back(make_pair("interface/clipF.glsl", GL_FRAGMENT_SHADER));
-        gClipProgram.mShaderLevel = mShaderLevel[SHADER_INTERFACE];
-        success = gClipProgram.createShader();
-        if (success && LLVKLoader::isVulkanInitialized())
-        {
-            gClipProgram.createVkPipeline(0);
         }
     }
 

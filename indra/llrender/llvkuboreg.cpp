@@ -76,10 +76,6 @@ namespace
         UBOREG_M(AvatarVelocityPalette_PerShaderBind, lastMatrixPalette),
     };
 
-    constexpr MemberEntry kM_ClipPlane[] = {
-        UBOREG_M(ClipPlane_PerShaderBind, clip_plane),
-    };
-
     constexpr MemberEntry kM_GlowCombine[] = {
         UBOREG_M(GlowCombine_PerShaderBind, greyscale_str),
         UBOREG_M(GlowCombine_PerShaderBind, sepia_str),
@@ -608,7 +604,6 @@ namespace
         UBOREG_BLOCK(1, "PbrTerrain_PerShaderBind",             PbrTerrain_PerShaderBind,             kM_PbrTerrain),
         UBOREG_BLOCK(0, "StarTime_PerShaderBind",               StarTime_PerShaderBind,               kM_StarTime),
         UBOREG_BLOCK(0, "AvatarVelocityPalette_PerShaderBind",  AvatarVelocityPalette_PerShaderBind,  kM_AvatarVelocityPalette),
-        UBOREG_BLOCK(0, "ClipPlane_PerShaderBind",              ClipPlane_PerShaderBind,              kM_ClipPlane),
         UBOREG_BLOCK(0, "GlowCombine_PerShaderBind",            GlowCombine_PerShaderBind,            kM_GlowCombine),
         UBOREG_BLOCK(1, "SMAABlendWeightsF_PerProgramBind",     SMAABlendWeightsF_PerProgramBind,     kM_SMAABlendWeightsF),
         UBOREG_BLOCK(1, "WindlightAtmos_PerProgramBind",        WindlightAtmos_PerProgramBind,        kM_WindlightAtmos),

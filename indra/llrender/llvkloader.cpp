@@ -157,8 +157,6 @@ namespace
     constexpr VkDeviceSize STARTIME_UBO_SIZE         = sizeof(StarTime_PerShaderBind);
     constexpr VkDeviceSize AVATAR_VELOCITY_PALETTE_UBO_OFFSET = 2048;
     constexpr VkDeviceSize AVATAR_VELOCITY_PALETTE_UBO_SIZE   = sizeof(AvatarVelocityPalette_PerShaderBind);
-    constexpr VkDeviceSize CLIPPLANE_UBO_OFFSET      = 2816;
-    constexpr VkDeviceSize CLIPPLANE_UBO_SIZE        = sizeof(ClipPlane_PerShaderBind);
     constexpr VkDeviceSize GLOWCOMBINE_UBO_OFFSET    = 3072;
     constexpr VkDeviceSize GLOWCOMBINE_UBO_SIZE      = sizeof(GlowCombine_PerShaderBind);
     constexpr VkDeviceSize UBO_BUFFER_SIZE_FRAME     = GLOWCOMBINE_UBO_OFFSET + GLOWCOMBINE_UBO_SIZE;
@@ -2646,7 +2644,7 @@ namespace
 
     bool createPerFrameDescriptorSetLayout()
     {
-        VkDescriptorSetLayoutBinding bindings[7] = {};
+        VkDescriptorSetLayoutBinding bindings[6] = {};
         bindings[0].binding         = 0;
         bindings[0].descriptorType  = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
         bindings[0].descriptorCount = 1;
@@ -2672,19 +2670,14 @@ namespace
         bindings[4].descriptorCount = 1;
         bindings[4].stageFlags      = VK_SHADER_STAGE_VERTEX_BIT;
 
-        bindings[5].binding         = 9;
+        bindings[5].binding         = 10;
         bindings[5].descriptorType  = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
         bindings[5].descriptorCount = 1;
         bindings[5].stageFlags      = VK_SHADER_STAGE_FRAGMENT_BIT;
 
-        bindings[6].binding         = 10;
-        bindings[6].descriptorType  = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
-        bindings[6].descriptorCount = 1;
-        bindings[6].stageFlags      = VK_SHADER_STAGE_FRAGMENT_BIT;
-
         VkDescriptorSetLayoutCreateInfo info = {};
         info.sType        = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO;
-        info.bindingCount = 7;
+        info.bindingCount = 6;
         info.pBindings    = bindings;
 
         VkResult result = vkCreateDescriptorSetLayout(sDevice, &info, nullptr, &sPerFrameDescriptorSetLayout);
@@ -2755,19 +2748,18 @@ namespace
     void writePerFrameSetBindings(VkDescriptorSet set, U32 frame, VkBuffer matrixBuf, VkDeviceSize matrixOffset)
     {
         struct BindSpec { U32 binding; VkBuffer buf; VkDeviceSize off; VkDeviceSize range; };
-        const BindSpec specs[7] = {
+        const BindSpec specs[6] = {
             { 0,  matrixBuf,                 matrixOffset,                       PERFRAME_UBO_SIZE },
             { 1,  matrixBuf,                 matrixOffset + PERFRAME_UBO_SIZE,   TEXTURE_UBO_SIZE },
             { 4,  sPerFrameUboBuffer[frame], PREVIEWAMBIENT_UBO_OFFSET,          PREVIEWAMBIENT_UBO_SIZE },
             { 7,  sPerFrameUboBuffer[frame], STARTIME_UBO_OFFSET,                STARTIME_UBO_SIZE },
             { 8,  sPerFrameUboBuffer[frame], AVATAR_VELOCITY_PALETTE_UBO_OFFSET, AVATAR_VELOCITY_PALETTE_UBO_SIZE },
-            { 9,  sPerFrameUboBuffer[frame], CLIPPLANE_UBO_OFFSET,               CLIPPLANE_UBO_SIZE },
             { 10, sPerFrameUboBuffer[frame], GLOWCOMBINE_UBO_OFFSET,             GLOWCOMBINE_UBO_SIZE },
         };
 
-        VkDescriptorBufferInfo infos[7]  = {};
-        VkWriteDescriptorSet   writes[7] = {};
-        for (U32 i = 0; i < 7; ++i)
+        VkDescriptorBufferInfo infos[6]  = {};
+        VkWriteDescriptorSet   writes[6] = {};
+        for (U32 i = 0; i < 6; ++i)
         {
             infos[i].buffer = specs[i].buf;
             infos[i].offset = specs[i].off;
@@ -2780,7 +2772,7 @@ namespace
             writes[i].descriptorType  = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
             writes[i].pBufferInfo     = &infos[i];
         }
-        vkUpdateDescriptorSets(sDevice, 7, writes, 0, nullptr);
+        vkUpdateDescriptorSets(sDevice, 6, writes, 0, nullptr);
     }
 
     bool createMatrixRingChunk(U32 frame)
@@ -5953,18 +5945,6 @@ void writeCurrentStarTimeUBO(const StarTime_PerShaderBind& data)
     std::memcpy(static_cast<U8*>(sPerFrameUboMapped[sFrameIndex]) + STARTIME_UBO_OFFSET,
                 &data,
                 sizeof(StarTime_PerShaderBind));
-
-}
-
-void writeCurrentClipPlaneUBO(const ClipPlane_PerShaderBind& data)
-{
-    if (!sInitialized || sPerFrameUboMapped[sFrameIndex] == nullptr)
-    {
-        return;
-    }
-    std::memcpy(static_cast<U8*>(sPerFrameUboMapped[sFrameIndex]) + CLIPPLANE_UBO_OFFSET,
-                &data,
-                sizeof(ClipPlane_PerShaderBind));
 
 }
 

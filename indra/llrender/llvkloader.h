@@ -214,15 +214,6 @@ namespace LLVKLoader
     static_assert(sizeof(AvatarVelocityPalette_PerShaderBind) == 720,
                   "AvatarVelocityPalette_PerShaderBind size mismatch (std140 expects 720 B)");
 
-    struct ClipPlane_PerShaderBind
-    {
-        float clip_plane[4];
-    };
-    static_assert(sizeof(ClipPlane_PerShaderBind) == 16,
-                  "ClipPlane_PerShaderBind size mismatch (std140 expects 16 B)");
-
-    void writeCurrentClipPlaneUBO(const ClipPlane_PerShaderBind& data);
-
     struct GlowCombine_PerShaderBind
     {
         float greyscale_str;
