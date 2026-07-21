@@ -2450,6 +2450,8 @@ bool LLAppViewer::cleanup()
     // Shut down OpenGL
     if (gViewerWindow)
     {
+        LLVKLoader::vkQuiesceProducers();
+
         gViewerWindow->shutdownGL();
 
         LLVKLoader::shutdownSwapchainAndSurface();
@@ -3761,11 +3763,20 @@ void LLAppViewer::sendOutOfDiskSpaceNotification()
     LLNotificationsUtil::add("OutOfDiskSpace");
 }
 
+static void vkDeviceLostQuitHook()
+{
+    if (LLAppViewer::instance() != nullptr)
+    {
+        LLAppViewer::instance()->requestQuit();
+    }
+}
+
 bool LLAppViewer::initWindow()
 {
     LL_INFOS("AppInit") << "Initializing window..." << LL_ENDL;
 
     LLVKLoader::initVulkan();
+    LLVKLoader::setVkDeviceLostHook(&vkDeviceLostQuitHook);
 
     // store setting in a global for easy access and modification
     gHeadlessClient = gSavedSettings.getBOOL("HeadlessClient");

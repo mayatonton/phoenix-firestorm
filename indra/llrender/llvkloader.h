@@ -34,8 +34,9 @@ class LLWindow;
 namespace LLVKLoader
 {
     bool initVulkan();
-    void shutdownVulkan();
+    void shutdownVulkan(bool device_lost = false);
     void shutdownSwapchainAndSurface();
+    void vkQuiesceProducers();
 
     bool isVulkanInitialized();
     bool isInFrame();
@@ -1206,6 +1207,7 @@ namespace LLVKLoader
     void setVkTexWorkerStopHook(void (*fn)());
     void setVkGeoWorkerStopHook(void (*fn)());
     void setVkBakeWorkerStopHook(void (*fn)());
+    void setVkDeviceLostHook(void (*fn)());
     bool uploadTextureOneShotVk(U32          width,
                                 U32          height,
                                 VkFormat     format,

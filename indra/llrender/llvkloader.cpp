@@ -564,6 +564,16 @@ namespace
     U32 sLastCompletedMonotonic = 0;
     U32 sFrameSubmittedMonotonic[FRAMES_IN_FLIGHT] = { 0, 0, 0 };
 
+    enum ReapMode { REAP_CHURN = 0, REAP_CLOSE = 1, REAP_LOST = 2 };
+    bool sReapForceAll = false;
+    bool sProducersQuiesced = false;
+    void (*sDeviceLostHook)() = nullptr;
+    bool sDeviceLostSignaled = false;
+    static inline bool reapReady(U32 enqueue_frame)
+    {
+        return sReapForceAll || enqueue_frame <= sLastCompletedMonotonic;
+    }
+
     VkCommandBuffer currentRecordCmd()
     {
         if (tRecordCmdOverride != VK_NULL_HANDLE)
@@ -3836,6 +3846,7 @@ static bool           initSharedDynamicPersistentUBOs();
 static void           teardownSharedDynamicPersistentUBOs();
 static void           tickSharedDynamicPersistentUBOs();
 static void           tickPerDrawUBOArena();
+static void           reapAllDeferred(ReapMode mode);
 static void           teardownSharedLatchedUBOs();
 extern thread_local float sCurrentModelviewMatrix[16];
 
@@ -3845,6 +3856,7 @@ bool initVulkan()
     {
         return true;
     }
+    sProducersQuiesced = false;
 
     if (getRenderBackendMode() == 0)
     {
@@ -3940,17 +3952,13 @@ bool initVulkan()
     return true;
 }
 
-void shutdownVulkan()
+void vkQuiesceProducers()
 {
+    if (sProducersQuiesced)
     {
-        std::lock_guard<std::mutex> lk(sVvlCountMutex);
-        for (const auto& entry : sVvlCounts)
-        {
-            LL_INFOS("VulkanValidation") << "VVL-TOTAL id=" << entry.second.first
-                                         << " n=" << entry.second.second << LL_ENDL;
-        }
-        sVvlCounts.clear();
+        return;
     }
+    sProducersQuiesced = true;
     if (sBakeWorkerStopHook != nullptr)
     {
         void (*hook)() = sBakeWorkerStopHook;
@@ -3972,77 +3980,30 @@ void shutdownVulkan()
     rwStop();
     peStop();
     texWorkerShutdown();
+}
+
+void shutdownVulkan(bool device_lost)
+{
+    device_lost = device_lost || sVkDeviceLost.load(std::memory_order_acquire);
+    {
+        std::lock_guard<std::mutex> lk(sVvlCountMutex);
+        for (const auto& entry : sVvlCounts)
+        {
+            LL_INFOS("VulkanValidation") << "VVL-TOTAL id=" << entry.second.first
+                                         << " n=" << entry.second.second << LL_ENDL;
+        }
+        sVvlCounts.clear();
+    }
+    vkQuiesceProducers();
     if (sDevice != VK_NULL_HANDLE)
     {
-        vkDeviceWaitIdle(sDevice);
+        if (!device_lost)
+        {
+            vkDeviceWaitIdle(sDevice);
+        }
         rwDestroyLanePools();
 
-        if (sAllocator != VK_NULL_HANDLE)
-        {
-            for (auto& pending : sPendingBufferFrees)
-            {
-                vmaDestroyBuffer(sAllocator, pending.buffer, pending.allocation);
-            }
-        }
-        sPendingBufferFrees.clear();
-        for (auto& pending : sPendingImageFrees)
-        {
-            if (pending.view != VK_NULL_HANDLE)
-            {
-                vkDestroyImageView(sDevice, pending.view, nullptr);
-            }
-            if (pending.image != VK_NULL_HANDLE && sAllocator != VK_NULL_HANDLE)
-            {
-                vmaDestroyImage(sAllocator, pending.image, pending.allocation);
-            }
-        }
-        sPendingImageFrees.clear();
-        for (auto& pending : sPendingObjectFrees)
-        {
-            if (pending.pipeline != VK_NULL_HANDLE)
-            {
-                vkDestroyPipeline(sDevice, pending.pipeline, nullptr);
-            }
-            if (pending.shader_module != VK_NULL_HANDLE)
-            {
-                vkDestroyShaderModule(sDevice, pending.shader_module, nullptr);
-            }
-            if (pending.pipeline_layout != VK_NULL_HANDLE)
-            {
-                vkDestroyPipelineLayout(sDevice, pending.pipeline_layout, nullptr);
-            }
-            if (pending.descriptor_set_layout != VK_NULL_HANDLE)
-            {
-                vkDestroyDescriptorSetLayout(sDevice, pending.descriptor_set_layout, nullptr);
-            }
-        }
-        sPendingObjectFrees.clear();
-        sPendingOcclusionQueryReleases.clear();
-        for (auto& pending : sPendingOneShotFrees)
-        {
-            if (pending.cmd != VK_NULL_HANDLE && pending.pool != VK_NULL_HANDLE &&
-                pending.pool == sCommandPool)
-            {
-                vkFreeCommandBuffers(sDevice, sCommandPool, 1, &pending.cmd);
-            }
-            if (sAllocator != VK_NULL_HANDLE &&
-                (pending.buffer != VK_NULL_HANDLE || pending.allocation != VK_NULL_HANDLE))
-            {
-                vmaDestroyBuffer(sAllocator, pending.buffer, pending.allocation);
-            }
-            if (pending.fence != VK_NULL_HANDLE)
-            {
-                vkDestroyFence(sDevice, pending.fence, nullptr);
-            }
-        }
-        sPendingOneShotFrees.clear();
-        if (sCommandPool != VK_NULL_HANDLE && !sRetiredMainOneShotCmds.empty())
-        {
-            vkFreeCommandBuffers(sDevice, sCommandPool,
-                                 (U32)sRetiredMainOneShotCmds.size(), sRetiredMainOneShotCmds.data());
-        }
-        sRetiredMainOneShotCmds.clear();
-        sRetiredTexOneShotCmds.clear();
+        reapAllDeferred(device_lost ? REAP_LOST : REAP_CLOSE);
         for (VkFence pooled_fence : sSubmitFencePool)
         {
             vkDestroyFence(sDevice, pooled_fence, nullptr);
@@ -4432,6 +4393,24 @@ static void beginCommandRecording()
     LLGLSLShader::sCurPerCallVkOffsetsDirty = true;
 }
 
+static void reapAllDeferred(ReapMode mode)
+{
+    sReapForceAll = (mode != REAP_CHURN);
+    tickDeferredBufferFreeQueue();
+    tickDeferredImageFreeQueue();
+    tickDeferredObjectFreeQueue();
+    tickMegaFreeQueue();
+    tickDeferredQueryReleaseQueue();
+    tickOneShotFreeQueue();
+    if (mode == REAP_CHURN)
+    {
+        tickSharedDynamicPersistentUBOs();
+        tickPerDrawUBOArena();
+        tickScenePerDrawDescriptorCache();
+    }
+    sReapForceAll = false;
+}
+
 bool beginFrame(bool acquire_swapchain)
 {
     if (!sInitialized)
@@ -4445,8 +4424,17 @@ bool beginFrame(bool acquire_swapchain)
 
     if (sVkDeviceLost.load(std::memory_order_acquire))
     {
-        LL_ERRS("Vulkan") << "GPU device lost (VK_ERROR_DEVICE_LOST) — terminating."
-                          << " Check kernel log for NVIDIA Xid details." << LL_ENDL;
+        if (!sDeviceLostSignaled)
+        {
+            sDeviceLostSignaled = true;
+            LL_WARNS("Vulkan") << "GPU device lost (VK_ERROR_DEVICE_LOST) — requesting graceful shutdown."
+                               << " Check kernel log for NVIDIA Xid details." << LL_ENDL;
+            if (sDeviceLostHook != nullptr)
+            {
+                sDeviceLostHook();
+            }
+        }
+        return false;
     }
 
     beginCommandRecording();
@@ -4548,16 +4536,7 @@ bool beginFrame(bool acquire_swapchain)
         return false;
     }
 
-    tickDeferredBufferFreeQueue();
-    tickDeferredImageFreeQueue();
-    tickDeferredObjectFreeQueue();
-    tickMegaFreeQueue();
-    tickDeferredQueryReleaseQueue();
-    tickOneShotFreeQueue();
-
-    tickSharedDynamicPersistentUBOs();
-    tickPerDrawUBOArena();
-    tickScenePerDrawDescriptorCache();
+    reapAllDeferred(REAP_CHURN);
 
     sInFrame = true;
 
@@ -5201,7 +5180,7 @@ void tickDeferredQueryReleaseQueue()
     for (size_t r = 0; r < n; ++r)
     {
         PendingQueryRelease& e = sPendingOcclusionQueryReleases[r];
-        if (e.enqueue_frame <= sLastCompletedMonotonic)
+        if (reapReady(e.enqueue_frame))
         {
             sOcclusionQueryFree.push(e.index);
         }
@@ -5855,7 +5834,7 @@ void tickScenePerDrawDescriptorCache()
         for (size_t r = 0; r < n; ++r)
         {
             ScenePerDrawDeferredFreeEntry& e = lane.deferred_free[r];
-            if (e.enqueue_frame <= sLastCompletedMonotonic)
+            if (reapReady(e.enqueue_frame))
             {
                 VkDescriptorPool target_pool = (e.pool_index < lane.pools.size())
                                                    ? lane.pools[e.pool_index]
@@ -7301,7 +7280,7 @@ void tickDeferredBufferFreeQueue()
     for (size_t r = 0; r < n; ++r)
     {
         PendingBufferFree& e = sPendingBufferFrees[r];
-        if (e.enqueue_frame <= sLastCompletedMonotonic)
+        if (reapReady(e.enqueue_frame))
         {
             vmaDestroyBuffer(sAllocator, e.buffer, e.allocation);
             if (e.buffer != VK_NULL_HANDLE)
@@ -7465,7 +7444,7 @@ void tickOneShotFreeQueue()
             PendingOneShotFree& e = sPendingOneShotFrees[r];
             const bool submit_failed = !failed.empty() &&
                 std::find(failed.begin(), failed.end(), e.fence) != failed.end();
-            if (submit_failed || vkGetFenceStatus(sDevice, e.fence) == VK_SUCCESS)
+            if (sReapForceAll || submit_failed || vkGetFenceStatus(sDevice, e.fence) == VK_SUCCESS)
             {
                 if (e.buffer != VK_NULL_HANDLE || e.allocation != VK_NULL_HANDLE)
                 {
@@ -7544,6 +7523,11 @@ void setVkGeoWorkerStopHook(void (*fn)())
 void setVkBakeWorkerStopHook(void (*fn)())
 {
     sBakeWorkerStopHook = fn;
+}
+
+void setVkDeviceLostHook(void (*fn)())
+{
+    sDeviceLostHook = fn;
 }
 
 void texWorkerShutdown()
@@ -8084,7 +8068,7 @@ void tickMegaFreeQueue()
     for (size_t r = 0; r < n; ++r)
     {
         PendingMegaFree& e = sPendingMegaFrees[r];
-        if (e.enqueue_frame <= sLastCompletedMonotonic)
+        if (reapReady(e.enqueue_frame))
         {
             auto it = sMegaChunksById.find(e.chunk);
             if (it != sMegaChunksById.end())
@@ -8369,7 +8353,7 @@ void tickDeferredImageFreeQueue()
     for (size_t r = 0; r < n; ++r)
     {
         PendingImageFree& e = sPendingImageFrees[r];
-        if (e.enqueue_frame <= sLastCompletedMonotonic)
+        if (reapReady(e.enqueue_frame))
         {
             if (e.view != VK_NULL_HANDLE && sDevice != VK_NULL_HANDLE)
             {
@@ -8407,7 +8391,7 @@ void tickDeferredImageFreeQueue()
         for (size_t r = 0; r < sn; ++r)
         {
             PendingSlotFree& e = sPendingSlotFrees[r];
-            if (e.enqueue_frame <= sLastCompletedMonotonic)
+            if (reapReady(e.enqueue_frame))
             {
                 bindlessWriteSlotInternal(e.slot, VK_NULL_HANDLE, VK_NULL_HANDLE);
                 sBindlessSlotFreeList.push_back(e.slot);
@@ -8430,7 +8414,7 @@ void tickDeferredImageFreeQueue()
         for (size_t r = 0; r < dn; ++r)
         {
             PendingSlotFree& e = sPendingDrawDataSlotFrees[r];
-            if (e.enqueue_frame <= sLastCompletedMonotonic)
+            if (reapReady(e.enqueue_frame))
             {
                 sDrawDataSlotFreeList.push_back(e.slot);
             }
@@ -8506,7 +8490,7 @@ void tickDeferredObjectFreeQueue()
     for (size_t r = 0; r < n; ++r)
     {
         PendingObjectFree& e = sPendingObjectFrees[r];
-        if (e.enqueue_frame <= sLastCompletedMonotonic)
+        if (reapReady(e.enqueue_frame))
         {
             if (e.pipeline != VK_NULL_HANDLE)
             {
