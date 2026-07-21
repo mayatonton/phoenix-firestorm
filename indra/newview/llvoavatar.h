@@ -277,6 +277,11 @@ public:
     virtual void    updateDebugText();
     virtual bool    computeNeedsUpdate();
     virtual bool    updateCharacter(LLAgent &agent);
+    void            updateCharacterCompute();
+    void            updateCharacterPublish();
+    static void     dispatchParallelCompute();
+    static bool     sParallelComputeArmed;
+    static std::vector<LLPointer<LLVOAvatar> > sParallelComputeBatch;
     void            updateFootstepSounds();
     void            computeUpdatePeriod();
     void            updateOrientation(LLAgent &agent, F32 speed, F32 delta_time);
@@ -586,6 +591,11 @@ private:
 
     bool        mNeedsSkin; // avatar has been animated and verts have not been updated
     F32         mLastSkinTime; //value of gFrameTimeSeconds at last skin update
+
+    e_update_t  mCharComputeMotionType;
+    bool        mCharComputeVisible;
+    bool        mCharSitGroundConstrained;
+    U32         mCharComputeFrame;
 
     S32         mUpdatePeriod;
     S32         mNumInitFaces; //number of faces generated when creating the avatar drawable, does not inculde splitted faces due to long vertex buffer.

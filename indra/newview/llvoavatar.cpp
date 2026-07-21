@@ -120,8 +120,13 @@
 #include "llrendersphere.h"
 #include "llskinningutil.h"
 #include "llvkloader.h"
+#include "workqueue.h"
 
 #include "llperfstats.h"
+
+#include <atomic>
+#include <mutex>
+#include <condition_variable>
 
 #include <boost/lexical_cast.hpp>
 
@@ -500,6 +505,8 @@ bool LLVOAvatar::sLimitNonImpostors = false; // True unless RenderAvatarMaxNonIm
 F32 LLVOAvatar::sRenderDistance = 256.f;
 S32 LLVOAvatar::sNumVisibleAvatars = 0;
 S32 LLVOAvatar::sNumLODChangesThisFrame = 0;
+bool LLVOAvatar::sParallelComputeArmed = false;
+std::vector<LLPointer<LLVOAvatar> > LLVOAvatar::sParallelComputeBatch;
 
 // const LLUUID LLVOAvatar::sStepSoundOnLand("e8af4a28-aa83-4310-a7c4-c047e15ea0df"); - <FS:PP> Commented out for FIRE-3169: Option to change the default footsteps sound
 const LLUUID LLVOAvatar::sStepSounds[LL_MCODE_END] =
@@ -583,6 +590,10 @@ LLVOAvatar::LLVOAvatar(const LLUUID& id,
     mVisibilityRank(0),
     mNeedsSkin(false),
     mLastSkinTime(0.f),
+    mCharComputeMotionType(NORMAL_UPDATE),
+    mCharComputeVisible(false),
+    mCharSitGroundConstrained(false),
+    mCharComputeFrame(0),
     mUpdatePeriod(1),
     mOverallAppearance(AOA_INVISIBLE),
     mVisualComplexityStale(true),
@@ -5341,6 +5352,18 @@ bool LLVOAvatar::computeNeedsUpdate()
     return needs_update;
 }
 
+namespace
+{
+    bool avatarParallelComputeEnabled()
+    {
+        static const bool s_on = []() -> bool {
+            const char* e = getenv("AYASTORM_MT_THREADS");
+            return (e == nullptr) || (atoi(e) > 1);
+        }();
+        return s_on;
+    }
+}
+
 bool LLVOAvatar::updateCharacter(LLAgent &agent)
 {
     updateDebugText();
@@ -5397,23 +5420,47 @@ bool LLVOAvatar::updateCharacter(LLAgent &agent)
 
     mSpeed = speed;
 
-    // update animations
     if (!visible && !isSelf()) // NOTE: never do a "hidden update" for self avatar as it interrupts controller processing
     {
-        updateMotions(LLCharacter::HIDDEN_UPDATE);
+        mCharComputeMotionType = HIDDEN_UPDATE;
     }
     else if (mSpecialRenderMode == 1) // Animation Preview
     {
-        updateMotions(LLCharacter::FORCE_UPDATE);
+        mCharComputeMotionType = FORCE_UPDATE;
     }
     else
     {
         // Might be better to do HIDDEN_UPDATE if cloud
-        updateMotions(LLCharacter::NORMAL_UPDATE);
+        mCharComputeMotionType = NORMAL_UPDATE;
     }
 
+    mCharComputeVisible       = visible;
+    mCharSitGroundConstrained = was_sit_ground_constrained;
+
+    U32 cur_frame = (U32)LLDrawable::getCurrentFrame();
+    if (sParallelComputeArmed
+        && avatarParallelComputeEnabled()
+        && !isSelf()
+        && !isControlAvatar()
+        && mCharComputeFrame != cur_frame)
+    {
+        mCharComputeFrame = cur_frame;
+        sParallelComputeBatch.push_back(this);
+        return visible;
+    }
+
+    updateCharacterCompute();
+    updateCharacterPublish();
+
+    return visible;
+}
+
+void LLVOAvatar::updateCharacterCompute()
+{
+    updateMotions(mCharComputeMotionType);
+
     // Special handling for sitting on ground.
-    if (!getParent() && (isSitting() || was_sit_ground_constrained))
+    if (!getParent() && (isSitting() || mCharSitGroundConstrained))
     {
 
         F32 off_z = (F32)LLVector3d(getHoverOffset()).mdV[VZ];
@@ -5427,22 +5474,120 @@ bool LLVOAvatar::updateCharacter(LLAgent &agent)
         }
     }
 
+    // Update child joints as needed.
+    mRoot->updateWorldMatrixChildren();
+}
+
+void LLVOAvatar::updateCharacterPublish()
+{
     // update head position
     updateHeadOffset();
 
     // Generate footstep sounds when feet hit the ground
     updateFootstepSounds();
 
-    // Update child joints as needed.
-    mRoot->updateWorldMatrixChildren();
-
-    if (visible)
+    if (mCharComputeVisible)
     {
         // System avatar mesh vertices need to be reskinned.
         mNeedsSkin = true;
     }
+}
 
-    return visible;
+void LLVOAvatar::dispatchParallelCompute()
+{
+    if (sParallelComputeBatch.empty())
+    {
+        return;
+    }
+
+    const U32 n = (U32)sParallelComputeBatch.size();
+    LL::WorkQueue::ptr_t queue = LL::WorkQueue::getInstance("General");
+
+    if (!queue)
+    {
+        for (U32 i = 0; i < n; ++i)
+        {
+            LLVOAvatar* av = sParallelComputeBatch[i].get();
+            if (!av->isDead())
+            {
+                av->updateCharacterCompute();
+            }
+        }
+        for (U32 i = 0; i < n; ++i)
+        {
+            LLVOAvatar* av = sParallelComputeBatch[i].get();
+            if (!av->isDead())
+            {
+                av->updateCharacterPublish();
+            }
+        }
+        sParallelComputeBatch.clear();
+        return;
+    }
+
+    std::atomic<U32> remaining(n);
+    std::mutex m;
+    std::condition_variable cv;
+
+    LLVKLoader::parEpochBegin();
+    for (U32 i = 0; i < n; ++i)
+    {
+        LLVOAvatar* av = sParallelComputeBatch[i].get();
+        bool posted = queue->post([av, &remaining, &m, &cv]()
+        {
+            LLVKLoader::parMarkWorker(true);
+            struct Finish
+            {
+                std::atomic<U32>&        r;
+                std::mutex&              mm;
+                std::condition_variable& c;
+                ~Finish()
+                {
+                    LLVKLoader::parMarkWorker(false);
+                    if (r.fetch_sub(1, std::memory_order_acq_rel) == 1)
+                    {
+                        std::lock_guard<std::mutex> lk(mm);
+                        c.notify_one();
+                    }
+                }
+            } finish{remaining, m, cv};
+
+            LLVKLoader::parDeadObjectCheck(av->isDead());
+            if (!av->isDead())
+            {
+                av->updateCharacterCompute();
+            }
+        });
+
+        if (!posted)
+        {
+            if (!av->isDead())
+            {
+                av->updateCharacterCompute();
+            }
+            if (remaining.fetch_sub(1, std::memory_order_acq_rel) == 1)
+            {
+                std::lock_guard<std::mutex> lk(m);
+                cv.notify_one();
+            }
+        }
+    }
+
+    {
+        std::unique_lock<std::mutex> lk(m);
+        cv.wait(lk, [&remaining]{ return remaining.load(std::memory_order_acquire) == 0; });
+    }
+    LLVKLoader::parEpochEnd();
+
+    for (U32 i = 0; i < n; ++i)
+    {
+        LLVOAvatar* av = sParallelComputeBatch[i].get();
+        if (!av->isDead())
+        {
+            av->updateCharacterPublish();
+        }
+    }
+    sParallelComputeBatch.clear();
 }
 
 void LLVOAvatar::updateHeadOffset()

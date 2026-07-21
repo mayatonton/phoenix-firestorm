@@ -7542,6 +7542,29 @@ void parWorkerForbiddenCheck()
     }
 }
 
+void parEpochBegin()
+{
+    LLVKContract::parallelEpochBegin();
+}
+
+void parEpochEnd()
+{
+    LLVKContract::parallelEpochEnd();
+}
+
+void parMarkWorker(bool is_worker)
+{
+    LLVKContract::markWorkerThread(is_worker);
+}
+
+void parDeadObjectCheck(bool is_dead)
+{
+    if (LLVKContract::isWorkerThread() && is_dead)
+    {
+        LLVKContract::cause(LLVKContract::C_PAR_DEAD_ACCESS);
+    }
+}
+
 void texWorkerShutdown()
 {
     if (sTexWorkerCommandPool == VK_NULL_HANDLE)
