@@ -204,6 +204,20 @@ namespace
 
     thread_local VkCommandBuffer  tMemoCmd = VK_NULL_HANDLE;
 
+    thread_local U64              tCmdRecordEpoch = 1;
+    thread_local U64              tMemoEpoch      = 0;
+
+    thread_local VkCommandBuffer  tVBMemoCmd   = VK_NULL_HANDLE;
+    thread_local U64              tVBMemoEpoch = 0;
+    thread_local VkBuffer         tVBMemoBuf[16] = {};
+    thread_local VkDeviceSize     tVBMemoOff[16] = {};
+
+    thread_local VkCommandBuffer  tIBMemoCmd   = VK_NULL_HANDLE;
+    thread_local U64              tIBMemoEpoch = 0;
+    thread_local VkBuffer         tIBMemoBuf   = VK_NULL_HANDLE;
+    thread_local VkDeviceSize     tIBMemoOff   = 0;
+    thread_local VkIndexType      tIBMemoType  = VK_INDEX_TYPE_MAX_ENUM;
+
     std::atomic<U32> sVkcScratchOwner{0};
     std::atomic<U32> sVkcSlotOwner{0};
     std::atomic<U32> sVkcMegaOwner{0};
@@ -4412,6 +4426,12 @@ void shutdownSwapchainAndSurface()
     shutdownSurface();
 }
 
+static void beginCommandRecording()
+{
+    ++tCmdRecordEpoch;
+    LLGLSLShader::sCurPerCallVkOffsetsDirty = true;
+}
+
 bool beginFrame(bool acquire_swapchain)
 {
     if (!sInitialized)
@@ -4429,15 +4449,7 @@ bool beginFrame(bool acquire_swapchain)
                           << " Check kernel log for NVIDIA Xid details." << LL_ENDL;
     }
 
-    LLGLSLShader::sCurPerCallVkOffsetsDirty  = true;
-
-    sLastBoundGraphicsPipeline = VK_NULL_HANDLE;
-    sLastDescLayout            = VK_NULL_HANDLE;
-    sLastDescSet0              = VK_NULL_HANDLE;
-    sLastDescSet1              = VK_NULL_HANDLE;
-    sLastDescDynCount          = 0;
-    sLastMvLayout              = VK_NULL_HANDLE;
-    sViewportScissorValid      = false;
+    beginCommandRecording();
 
     sSwapchainClearedThisFrame = false;
 
@@ -5042,6 +5054,8 @@ bool beginOffscreenFrameVk()
     {
         return false;
     }
+
+    beginCommandRecording();
 
     const bool slot_submitted = peWaitSlotSubmitted(sFrameIndex);
     if (sInFlightFences[sFrameIndex] != VK_NULL_HANDLE)
@@ -8110,21 +8124,16 @@ void megabufStats(U64& chunks, U64& capacity_bytes, U64& used_bytes)
     }
 }
 
-static thread_local VkCommandBuffer tVBMemoCmd = VK_NULL_HANDLE;
-static thread_local U32             tVBMemoFrame = 0xFFFFFFFFu;
-static thread_local VkBuffer        tVBMemoBuf[16] = {};
-static thread_local VkDeviceSize    tVBMemoOff[16] = {};
-
 void bindVertexBufferVk(VkCommandBuffer cmd_buf, VkBuffer buffer, VkDeviceSize offset, U32 firstBinding)
 {
     if (cmd_buf == VK_NULL_HANDLE || buffer == VK_NULL_HANDLE)
     {
         return;
     }
-    if (tVBMemoCmd != cmd_buf || tVBMemoFrame != sMonotonicFrameCount)
+    if (tVBMemoCmd != cmd_buf || tVBMemoEpoch != tCmdRecordEpoch)
     {
         tVBMemoCmd   = cmd_buf;
-        tVBMemoFrame = sMonotonicFrameCount;
+        tVBMemoEpoch = tCmdRecordEpoch;
         std::memset(tVBMemoBuf, 0, sizeof(tVBMemoBuf));
         std::memset(tVBMemoOff, 0, sizeof(tVBMemoOff));
     }
@@ -8170,12 +8179,6 @@ VkDescriptorSet getCurrentPerFrameDescriptorSet()
     return sPerFrameRingSets[f][slot];
 }
 
-static thread_local VkCommandBuffer tIBMemoCmd = VK_NULL_HANDLE;
-static thread_local U32             tIBMemoFrame = 0xFFFFFFFFu;
-static thread_local VkBuffer        tIBMemoBuf = VK_NULL_HANDLE;
-static thread_local VkDeviceSize    tIBMemoOff = 0;
-static thread_local VkIndexType     tIBMemoType = VK_INDEX_TYPE_MAX_ENUM;
-
 void bindIndexBufferVk(VkCommandBuffer cmd_buf,
                        VkBuffer        buffer,
                        VkDeviceSize    offset,
@@ -8185,10 +8188,10 @@ void bindIndexBufferVk(VkCommandBuffer cmd_buf,
     {
         return;
     }
-    if (tIBMemoCmd != cmd_buf || tIBMemoFrame != sMonotonicFrameCount)
+    if (tIBMemoCmd != cmd_buf || tIBMemoEpoch != tCmdRecordEpoch)
     {
         tIBMemoCmd   = cmd_buf;
-        tIBMemoFrame = sMonotonicFrameCount;
+        tIBMemoEpoch = tCmdRecordEpoch;
         tIBMemoBuf   = VK_NULL_HANDLE;
         tIBMemoOff   = 0;
         tIBMemoType  = VK_INDEX_TYPE_MAX_ENUM;
@@ -11224,11 +11227,12 @@ bool getDeviceCapsVk(DeviceCapsVk& out)
 
 static void memoSyncCmd(VkCommandBuffer cmd)
 {
-    if (cmd == tMemoCmd)
+    if (cmd == tMemoCmd && tCmdRecordEpoch == tMemoEpoch)
     {
         return;
     }
     tMemoCmd                   = cmd;
+    tMemoEpoch                 = tCmdRecordEpoch;
     sLastBoundGraphicsPipeline = VK_NULL_HANDLE;
     sLastDescLayout            = VK_NULL_HANDLE;
     sLastMvLayout              = VK_NULL_HANDLE;
