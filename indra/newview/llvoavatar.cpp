@@ -4795,6 +4795,7 @@ void LLVOAvatar::updateAnimationDebugText()
 
 void LLVOAvatar::updateDebugText()
 {
+    LLVKLoader::parWorkerForbiddenCheck();
     // Leave mDebugText uncleared here, in case a derived class has added some state first
 
     static LLCachedControl<bool> debug_av_appearance_message(gSavedSettings, "DebugAvatarAppearanceMessage");
@@ -4833,6 +4834,7 @@ void LLVOAvatar::updateDebugText()
 // Generate footstep sounds when feet hit the ground
 void LLVOAvatar::updateFootstepSounds()
 {
+    LLVKLoader::parWorkerForbiddenCheck();
     if (mIsDummy)
     {
         return;

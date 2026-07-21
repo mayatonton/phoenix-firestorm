@@ -1,0 +1,20 @@
+# ThreadSanitizer suppressions — Phase 2 並列安全性検出器 Layer A
+#
+# 位置づけ = TSan 版 allow-list。憲法(docs/alarm_allowlist.md と同格):
+#   - 追加は AYA 承認・理由必須。
+#   - 我々のコードの race は「suppress」でなく「FIX」する。ここは third-party
+#     prebuilt lib(我々が -fsanitize=thread で計装できない .so)の既知 noise のみ。
+#   - 無断追記 = 検出器の盲目化 = 違反。
+#
+# 実行(AYA cold-launch):
+#   USE_TSAN=ON で config した別 build から、
+#   TSAN_OPTIONS="suppressions=<repo>/indra/newview/tsan_suppressions.txt:halt_on_error=0:second_deadlock_stack=1"
+#   で起動 → crowd で aChar 並列経路を stress → 残る report が「我々の race」。
+#
+# --- third-party prebuilt(計装不能)---
+# voice = 独自スレッド(crash B の SIGSEGV 元)。VK render 層と独立。
+called_from_lib:libllwebrtc.so
+#
+# --- 以下は TSan 初回走行で third-party noise が判明したら AYA 承認の上で追記 ---
+#   例: GPU driver(libGLX_nvidia / libvulkan_*)・audio(libopenal/libfmod)・
+#       curl/openssl の HTTP worker 等。実 report を見てから最小で足す。

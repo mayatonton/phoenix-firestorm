@@ -2,6 +2,7 @@
 #define LL_LLVKCONTRACT_H
 
 #include "stdtypes.h"
+#include <atomic>
 #include <string>
 
 namespace LLVKContract
@@ -56,6 +57,10 @@ enum ECause : U32
     C_UUID_FB_DIFFUSE,
     C_UUID_FB_AUX,
     C_SIG_DIET_MISMATCH,
+    C_PAR_MAIN_ONLY_WRITE,
+    C_PAR_WORKER_FORBIDDEN,
+    C_PAR_CONCURRENT,
+    C_PAR_DEAD_ACCESS,
     CAUSE_COUNT
 };
 
@@ -123,6 +128,71 @@ enum EVfy : U32
 void vfyTick(U32 which);
 void stashDrawDataID(U32 id);
 void checkDrawDataIDAtFire(U32 actual);
+
+void parallelEpochBegin();
+void parallelEpochEnd();
+bool parallelEpochActive();
+void markWorkerThread(bool is_worker);
+bool isWorkerThread();
+U32  threadTag();
+U64  causeTotal(ECause c);
+void runParallelSelfTest();
+
+struct MainOnlyGuard
+{
+    MainOnlyGuard()
+    {
+        if (parallelEpochActive() && isWorkerThread())
+        {
+            cause(C_PAR_MAIN_ONLY_WRITE);
+        }
+    }
+};
+
+struct WorkerForbiddenGuard
+{
+    WorkerForbiddenGuard()
+    {
+        if (isWorkerThread())
+        {
+            cause(C_PAR_WORKER_FORBIDDEN);
+        }
+    }
+};
+
+struct ConcurrentEntryGuard
+{
+    std::atomic<U32>& mOwner;
+    bool              mOwned;
+    ConcurrentEntryGuard(std::atomic<U32>& owner)
+        : mOwner(owner)
+    {
+        U32 expected = 0;
+        mOwned = owner.compare_exchange_strong(expected, threadTag(), std::memory_order_acquire);
+        if (!mOwned)
+        {
+            cause(C_PAR_CONCURRENT);
+        }
+    }
+    ~ConcurrentEntryGuard()
+    {
+        if (mOwned)
+        {
+            mOwner.store(0, std::memory_order_release);
+        }
+    }
+};
+
+struct DeadObjectGuard
+{
+    DeadObjectGuard(bool is_dead)
+    {
+        if (isWorkerThread() && is_dead)
+        {
+            cause(C_PAR_DEAD_ACCESS);
+        }
+    }
+};
 
 }
 

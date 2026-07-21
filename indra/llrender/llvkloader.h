@@ -1208,6 +1208,7 @@ namespace LLVKLoader
     void setVkGeoWorkerStopHook(void (*fn)());
     void setVkBakeWorkerStopHook(void (*fn)());
     void setVkDeviceLostHook(void (*fn)());
+    void parWorkerForbiddenCheck();
     bool uploadTextureOneShotVk(U32          width,
                                 U32          height,
                                 VkFormat     format,

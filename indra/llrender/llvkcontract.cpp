@@ -10,6 +10,7 @@
 #include <mutex>
 #include <set>
 #include <sstream>
+#include <thread>
 #include <unordered_map>
 #include <unordered_set>
 #include <vector>
@@ -68,7 +69,11 @@ const char* CAUSE_NAMES[CAUSE_COUNT] =
     "uuid_absent",
     "uuid_fb_diffuse",
     "uuid_fb_aux",
-    "sig_diet_mismatch"
+    "sig_diet_mismatch",
+    "par_main_only_write",
+    "par_worker_forbidden",
+    "par_concurrent",
+    "par_dead_access"
 };
 
 const char* SITE_NAMES[SITE_COUNT] =
@@ -149,6 +154,11 @@ U64 sWatchCamMin  = ~0ull;
 U64 sWatchCamMax  = 0;
 U64 sWatchTot     = 0;
 
+std::atomic<bool> sParallelEpochActive{false};
+std::atomic<U32>  sThreadTagCounter{1};
+thread_local bool tIsWorkerThread = false;
+thread_local U32  tThreadTag      = 0;
+
 thread_local const void* tCurDrawInfo = nullptr;
 thread_local const char* tCurTag      = nullptr;
 thread_local ECause      tLastCause   = C_UNKNOWN;
@@ -219,6 +229,101 @@ bool verboseEnabled()
         return e != nullptr && strcmp(e, "0") != 0;
     }();
     return s_on;
+}
+
+void parallelEpochBegin()
+{
+    sParallelEpochActive.store(true, std::memory_order_release);
+}
+
+void parallelEpochEnd()
+{
+    sParallelEpochActive.store(false, std::memory_order_release);
+}
+
+bool parallelEpochActive()
+{
+    return sParallelEpochActive.load(std::memory_order_acquire);
+}
+
+void markWorkerThread(bool is_worker)
+{
+    tIsWorkerThread = is_worker;
+}
+
+bool isWorkerThread()
+{
+    return tIsWorkerThread;
+}
+
+U32 threadTag()
+{
+    if (tThreadTag == 0)
+    {
+        tThreadTag = sThreadTagCounter.fetch_add(1, std::memory_order_relaxed);
+    }
+    return tThreadTag;
+}
+
+U64 causeTotal(ECause c)
+{
+    return (c < CAUSE_COUNT) ? sCauseTot[c].load(std::memory_order_relaxed) : 0;
+}
+
+void runParallelSelfTest()
+{
+    LL_INFOS("ParSelfTest") << "=== parallel-safety detector self-test begin ===" << LL_ENDL;
+
+    const U64 b_wf = causeTotal(C_PAR_WORKER_FORBIDDEN);
+    const U64 b_mo = causeTotal(C_PAR_MAIN_ONLY_WRITE);
+    const U64 b_da = causeTotal(C_PAR_DEAD_ACCESS);
+    const U64 b_ce = causeTotal(C_PAR_CONCURRENT);
+
+    std::thread w1([]()
+    {
+        markWorkerThread(true);
+        parallelEpochBegin();
+        { WorkerForbiddenGuard g; }
+        { MainOnlyGuard g; }
+        { DeadObjectGuard g(true); }
+        parallelEpochEnd();
+        markWorkerThread(false);
+    });
+    w1.join();
+
+    std::atomic<U32> owner{0};
+    {
+        ConcurrentEntryGuard outer(owner);
+        std::thread w2([&owner]()
+        {
+            markWorkerThread(true);
+            { ConcurrentEntryGuard inner(owner); }
+            markWorkerThread(false);
+        });
+        w2.join();
+    }
+
+    const U64 neg_before = causeTotal(C_PAR_WORKER_FORBIDDEN)
+                         + causeTotal(C_PAR_MAIN_ONLY_WRITE)
+                         + causeTotal(C_PAR_DEAD_ACCESS);
+    { WorkerForbiddenGuard g; }
+    { MainOnlyGuard g; }
+    { DeadObjectGuard g(true); }
+    const bool neg_ok = (causeTotal(C_PAR_WORKER_FORBIDDEN)
+                       + causeTotal(C_PAR_MAIN_ONLY_WRITE)
+                       + causeTotal(C_PAR_DEAD_ACCESS)) == neg_before;
+
+    const U64 d_wf = causeTotal(C_PAR_WORKER_FORBIDDEN) - b_wf;
+    const U64 d_mo = causeTotal(C_PAR_MAIN_ONLY_WRITE) - b_mo;
+    const U64 d_da = causeTotal(C_PAR_DEAD_ACCESS) - b_da;
+    const U64 d_ce = causeTotal(C_PAR_CONCURRENT) - b_ce;
+
+    const bool pass = (d_wf >= 1) && (d_mo >= 1) && (d_da >= 1) && (d_ce >= 1) && neg_ok;
+    LL_INFOS("ParSelfTest") << "WorkerForbidden=" << d_wf << " MainOnly=" << d_mo
+                            << " DeadObject=" << d_da << " Concurrent=" << d_ce
+                            << " negControl=" << (neg_ok ? "ok" : "FAIL")
+                            << " => " << (pass ? "ALL PASS" : "FAIL") << LL_ENDL;
+    LL_INFOS("ParSelfTest") << "=== parallel-safety detector self-test end ===" << LL_ENDL;
 }
 
 void setResolvers(std::string (*describe)(const void*), U64 (*key)(const void*))

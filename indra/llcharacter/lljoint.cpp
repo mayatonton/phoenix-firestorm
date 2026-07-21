@@ -34,8 +34,8 @@
 #include "llmath.h"
 #include <boost/algorithm/string.hpp>
 
-S32 LLJoint::sNumUpdates = 0;
-S32 LLJoint::sNumTouches = 0;
+std::atomic<S32> LLJoint::sNumUpdates{0};
+std::atomic<S32> LLJoint::sNumTouches{0};
 
 template <class T>
 bool attachment_map_iter_compare_key(const T& a, const T& b)
@@ -199,7 +199,7 @@ void LLJoint::touch(U32 flags)
 {
     if ((flags | mDirtyFlags) != mDirtyFlags)
     {
-        sNumTouches++;
+        sNumTouches.fetch_add(1, std::memory_order_relaxed);
         mDirtyFlags |= flags;
         U32 child_flags = flags;
         if (flags & ROTATION_DIRTY)
@@ -984,7 +984,7 @@ void LLJoint::updateWorldMatrix()
 {
     if (mDirtyFlags & MATRIX_DIRTY)
     {
-        sNumUpdates++;
+        sNumUpdates.fetch_add(1, std::memory_order_relaxed);
         mXform.updateMatrix(false);
         mWorldMatrix.loadu(mXform.getWorldMatrix());
         mDirtyFlags = 0x0;

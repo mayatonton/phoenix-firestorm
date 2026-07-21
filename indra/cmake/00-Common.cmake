@@ -264,6 +264,12 @@ if (LINUX OR DARWIN)
 
   add_compile_options(${GCC_WARNINGS})
   add_compile_options(-m${ADDRESS_SIZE})
+
+  option(USE_TSAN "Build with ThreadSanitizer for Phase 2 parallel-safety detection (Layer A)" OFF)
+  if (USE_TSAN)
+    add_compile_options(-fsanitize=thread -fno-omit-frame-pointer -g)
+    add_link_options(-fsanitize=thread)
+  endif ()
 endif (LINUX OR DARWIN)
 
 # r41 Phase F-15.115aw (2026-06-12): F-15.115l build-time 分離 廃止 = runtime switch

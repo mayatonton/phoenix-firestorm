@@ -3949,6 +3949,10 @@ bool initVulkan()
     peStart();
 
     sInitialized = true;
+    if (getenv("AYASTORM_PAR_SELFTEST") != nullptr)
+    {
+        LLVKContract::runParallelSelfTest();
+    }
     return true;
 }
 
@@ -7528,6 +7532,14 @@ void setVkBakeWorkerStopHook(void (*fn)())
 void setVkDeviceLostHook(void (*fn)())
 {
     sDeviceLostHook = fn;
+}
+
+void parWorkerForbiddenCheck()
+{
+    if (LLVKContract::isWorkerThread())
+    {
+        LLVKContract::cause(LLVKContract::C_PAR_WORKER_FORBIDDEN);
+    }
 }
 
 void texWorkerShutdown()
