@@ -1,6 +1,6 @@
 # VK 資源ライフサイクル統一設計(C = TP 信頼性 / churn・close・device-lost 一本化)
 
-**status**: 設計合意済(AYA 2026-07-21)→ 実装 GO(gate チェック不要・完了時報告)。**HEAD `7eca3d8356` を file:line で実トレースして作成。**
+**status**: ✅ **実装済・AYA PASS・commit `1c3f4513b2`(2026-07-21)**。S1-S4 完遂・build error 0・binary 3-path 同期。tester run = clean 完走・stack_trace 新規ゼロ(crash A 非再現・1 run で未証明)。**05137 は所有者ライフタイム leak(reap 外)= AYA 裁定で benign 台帳送り・force-release 禁止**(§7 未決が run で確定 = 所有者 LLImageGL が device 破棄前に未破棄・destroyImageVk を通らないため reap では届かない)。**device recovery(b)= 不採用・確定(AYA 2026-07-21)= device-lost は clean 終了 a で恒久受容**(device-lost は描画中の GPU 実行障害ゆえ原因は我々の submit/TDR が大半 → 復帰は同 fault 再発)。crash B(voice)= closed・触らない(upstream・sSessions 健全)。**HEAD `7eca3d8356` を file:line で実トレースして作成。**
 **位置づけ**: E 系 closed 後の最終 TOP。散在した teardown/reap を**単一機構**に束ね、不要処理を整理して安定動作へ収束させる。
 **AYA 厳命**: 「OS が回収するからいい」= 悪。全 VK 資源は device 破棄前に所有者が明示解放。**バラバラなものにバラバラな処理を当てない**(= 今の破綻の原因)。現象非再現でも fail-open PASS しない = correct-by-construction。検証はテスターへ移譲(検証のみ台帳)。
 
@@ -104,7 +104,7 @@ shutdownVulkan(bool device_lost):
 
 ### 3.4 device-lost funnel(abort 廃止)
 - `beginFrame` の `LL_ERRS`(4446-4450)を撤去 → device-lost 検知時は当該 frame を安全に抜け、`LLAppViewer` に graceful quit を要求 → cleanup が `shutdownVulkan(device_lost=true)` を通す。**abort による生存 thread 巻き込み(crash B の一因)を断つ。**
-- (b)device recovery = P3/P4 の reap 集合を入力に device 再生成 → 全資源 reload。**本設計はモード・機構を用意するのみ・実装は別決裁**(a=clean 終了を実装)。
+- (b)device recovery = P3/P4 の reap 集合を入力に device 再生成 → 全資源 reload。**不採用・確定(AYA 2026-07-21)= device-lost は a=clean 終了で恒久受容**(device-lost は描画中の GPU 実行障害ゆえ原因は我々の submit/TDR が大半 → 復帰は同 fault 再発。REAP_LOST モードは a の中身として活き、b の器としては据えない)。
 
 ---
 
@@ -128,7 +128,7 @@ shutdownVulkan(bool device_lost):
 - **移譲**: TP 実 churn 下の crash 非再現 / device-lost 実発火は**テスターへ移譲・検証のみ台帳**(再現保証なし・設計正しさは §3 で担保)。register 未証明項併記。
 
 ## 7. 申告(縮小・省略・解釈)
-- **省略**: device recovery(b)= 実装せず(モード枠のみ)。AYA 別決裁。
+- **省略**: device recovery(b)= **不採用・確定**(AYA 2026-07-21・device-lost は clean 終了で恒久受容)。REAP_LOST モードは a の中身として実装済。
 - **解釈**: `Lost` モードの「全 in-flight 完了扱い」= Vulkan 仕様(lost device の destroy は合法・新規 submit/wait は不可)に依拠。
 - **未決(S4 で確定)**: P4「tex worker 孤児 image」の所有経路(publish queue のどの構造が prepared-but-unpublished を保持するか)は S4 着手時に実トレースで特定。現時点は「reap 集合に入れる」不変条件のみ確定。
 - **crash B(voice sSessions 無ロック反復)= 別 TICKET・次 TOP**(§3.4 の funnel で終了時巻き込みは断つが TP 中の反復レースは voice 層内欠陥)。

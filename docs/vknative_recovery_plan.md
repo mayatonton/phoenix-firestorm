@@ -91,7 +91,8 @@ per-draw 単価 ~0.9µs の中身(perf 実測・main thread): ScenePerDrawCache 
 
 ### 外挿事象(t-noami PR #134 査読から派生・2026-07-21)
 - **cmd bind memo の epoch 一本化 = 完結(`8e3894547c`)**: per-command bind memo(pipeline/desc/mv/viewport/VB/IB)の「fresh command buffer で無効化」不変条件が 3 機構にバラバラ(memoSyncCmd=handle / VB/IB=frame counter / 明示 reset)だったのを thread_local `tCmdRecordEpoch` 1 本へ統合。offscreen(gpu_benchmark)の同一 handle reset+再利用で全 memo が stale skip → 起動時 08606/02721/04007 を発生させていたのを根治(起動時オラクルでゼロ検証済)。
-- **🔴 次 TOP = C = TP 信頼性(device-lost teardown)**: device-lost(GPU fault @TP)後の teardown が lost device/解放済 texture/先落ち window を触り crash。patch 不可=teardown 順序の proper design が要る(資源解放順序・window 順序・全終了経路・product 分岐 clean 終了 vs device recovery)。詳細 = memory `handoff_c_tp_reliability_teardown`。
+- **✅ C = TP 信頼性(VK 資源ライフサイクル統一)= 決着(commit `1c3f4513b2`・AYA PASS)**: TP churn / app close / device-lost を**単一 reap 機構の 3 モード**に束ねた。核 = 資源解放は fence 遅延破棄(`enqueue_frame ≤ sLastCompletedMonotonic`)で TP churn(create/destroy 最大)× device-lost(fence クロック凍結)が前提を両側から破る = Close は reap を全資源に回し切って device を手放す=タイミングだけ。実装 = S1 `reapAllDeferred(mode)` 統一 / S2 `vkQuiesceProducers()` を cleanup 最前へ / S3 `shutdownVulkan(device_lost)` の手書き reap 重複削除 / S4 device-lost を abort→graceful quit funnel。設計 = `docs/vknative_teardown_shutdown_design.md` / memory `handoff_c_teardown_reap_unified_impl`。**05137 = 所有者ライフタイム leak(reap 外・force-release 禁止)= AYA benign 台帳**。**device recovery(b)= 不採用・確定(AYA 2026-07-21)= device-lost は clean 終了 a で恒久受容**(device-lost = 描画中の GPU 実行障害 → 原因は我々の submit/TDR が大半で復帰は同 fault 再発。完全 crash-free な描画ソフトは無い)。
+- **✅ crash B(voice)= closed・触らない**(upstream 最近物): sSessions 同期は健全(main-thread-only + reentrancy-safe = ロック不要)・終了時 session close 検証済。10:34 の 1 回 SIGSEGV は稀 edge だが upstream 領分ゆえ追わない。
 
 ---
 
