@@ -210,10 +210,7 @@ namespace
 
     thread_local VkCommandBuffer  tRecordCmdOverride = VK_NULL_HANDLE;
 
-    thread_local VkCommandBuffer  tMemoPipeCmd = VK_NULL_HANDLE;
-    thread_local VkCommandBuffer  tMemoDescCmd = VK_NULL_HANDLE;
-    thread_local VkCommandBuffer  tMemoMvCmd   = VK_NULL_HANDLE;
-    thread_local VkCommandBuffer  tMemoVpCmd   = VK_NULL_HANDLE;
+    thread_local VkCommandBuffer  tMemoCmd = VK_NULL_HANDLE;
 
     std::atomic<U32> sVkcScratchOwner{0};
     std::atomic<U32> sVkcSlotOwner{0};
@@ -11318,8 +11315,22 @@ bool getDeviceCapsVk(DeviceCapsVk& out)
     return true;
 }
 
+static void memoSyncCmd(VkCommandBuffer cmd)
+{
+    if (cmd == tMemoCmd)
+    {
+        return;
+    }
+    tMemoCmd                   = cmd;
+    sLastBoundGraphicsPipeline = VK_NULL_HANDLE;
+    sLastDescLayout            = VK_NULL_HANDLE;
+    sLastMvLayout              = VK_NULL_HANDLE;
+    sViewportScissorValid      = false;
+}
+
 void setupViewportAndScissor(VkCommandBuffer cmd, bool screen_space_copy)
 {
+    memoSyncCmd(cmd);
     const S32 fb_height = (S32)sCurrentRenderAreaHeight;
 
     VkViewport viewport = {};
@@ -11367,10 +11378,6 @@ void setupViewportAndScissor(VkCommandBuffer cmd, bool screen_space_copy)
         && std::memcmp(&viewport, &sLastViewport, sizeof(viewport)) == 0
         && std::memcmp(&scissor, &sLastScissor, sizeof(scissor)) == 0)
     {
-        if (cmd != tMemoVpCmd)
-        {
-            LLVKContract::noteDetail(LLVKContract::C_MEMO_CROSS_CMD, "vp", "kind=vp");
-        }
         ++gVkPerf.vp_skip;
         return;
     }
@@ -11380,30 +11387,26 @@ void setupViewportAndScissor(VkCommandBuffer cmd, bool screen_space_copy)
     sLastViewport         = viewport;
     sLastScissor          = scissor;
     sViewportScissorValid = true;
-    tMemoVpCmd            = cmd;
 }
 
 void bindGraphicsPipelineOnce(VkCommandBuffer cmd, VkPipeline pipeline)
 {
+    memoSyncCmd(cmd);
     if (vkCmdMemoEnabled() && pipeline == sLastBoundGraphicsPipeline)
     {
-        if (cmd != tMemoPipeCmd)
-        {
-            LLVKContract::noteDetail(LLVKContract::C_MEMO_CROSS_CMD, "pipe", "kind=pipe");
-        }
         ++gVkPerf.pipe_skip;
         return;
     }
     ++gVkPerf.pipe_bind;
     vkCmdBindPipeline(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, pipeline);
     sLastBoundGraphicsPipeline = pipeline;
-    tMemoPipeCmd               = cmd;
 }
 
 void bindDrawDescriptorSetsOnce(VkCommandBuffer cmd, VkPipelineLayout layout,
                                 VkDescriptorSet set0, VkDescriptorSet set1,
                                 U32 dyn_count, const U32* offsets)
 {
+    memoSyncCmd(cmd);
     if (vkValidationRequested())
     {
         LLGLSLShader* sh = LLGLSLShader::sCurBoundShaderPtr;
@@ -11448,10 +11451,6 @@ void bindDrawDescriptorSetsOnce(VkCommandBuffer cmd, VkPipelineLayout layout,
         && dyn_count == sLastDescDynCount
         && (dyn_count == 0 || std::memcmp(offsets, sLastDescOffsets, dyn_count * sizeof(U32)) == 0))
     {
-        if (cmd != tMemoDescCmd)
-        {
-            LLVKContract::noteDetail(LLVKContract::C_MEMO_CROSS_CMD, "desc", "kind=desc");
-        }
         ++gVkPerf.desc_skip;
         return;
     }
@@ -11470,7 +11469,6 @@ void bindDrawDescriptorSetsOnce(VkCommandBuffer cmd, VkPipelineLayout layout,
     sLastDescSet1     = set1;
     sLastDescSet2     = set2;
     sLastDescDynCount = dyn_count;
-    tMemoDescCmd      = cmd;
     if (dyn_count > 0)
     {
         std::memcpy(sLastDescOffsets, offsets, dyn_count * sizeof(U32));
@@ -11479,12 +11477,9 @@ void bindDrawDescriptorSetsOnce(VkCommandBuffer cmd, VkPipelineLayout layout,
 
 void pushModelviewOnce(VkCommandBuffer cmd, VkPipelineLayout layout, const float* mv16)
 {
+    memoSyncCmd(cmd);
     if (vkCmdMemoEnabled() && layout == sLastMvLayout && std::memcmp(mv16, sLastMv, sizeof(sLastMv)) == 0)
     {
-        if (cmd != tMemoMvCmd)
-        {
-            LLVKContract::noteDetail(LLVKContract::C_MEMO_CROSS_CMD, "mv", "kind=mv");
-        }
         ++gVkPerf.mv_skip;
         return;
     }
@@ -11492,7 +11487,6 @@ void pushModelviewOnce(VkCommandBuffer cmd, VkPipelineLayout layout, const float
     vkCmdPushConstants(cmd, layout, VK_SHADER_STAGE_VERTEX_BIT, 0, 64, mv16);
     sLastMvLayout = layout;
     std::memcpy(sLastMv, mv16, sizeof(sLastMv));
-    tMemoMvCmd = cmd;
 }
 
 bool perFrameMatrixNeedsWrite()
