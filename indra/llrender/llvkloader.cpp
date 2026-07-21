@@ -151,14 +151,8 @@ namespace
     constexpr VkDeviceSize PERFRAME_UBO_SIZE         = sizeof(PerFrameMatrixUBO);
     constexpr VkDeviceSize TEXTURE_UBO_SIZE          = sizeof(TextureMatrixUBO);
     constexpr VkDeviceSize MATRIX_RING_SLOT_SIZE     = PERFRAME_UBO_SIZE + TEXTURE_UBO_SIZE;
-    constexpr VkDeviceSize SHADOW_UBO_OFFSET         = 512;
-    constexpr VkDeviceSize SHADOW_UBO_SIZE           = sizeof(ShadowParams_PerShaderBind);
-    constexpr VkDeviceSize PBRMATERIAL_UBO_OFFSET    = 768;
-    constexpr VkDeviceSize PBRMATERIAL_UBO_SIZE      = sizeof(PBRMaterial_PerMaterial);
     constexpr VkDeviceSize PREVIEWAMBIENT_UBO_OFFSET = 1024;
     constexpr VkDeviceSize PREVIEWAMBIENT_UBO_SIZE   = sizeof(PreviewAmbient_PerShaderBind);
-    constexpr VkDeviceSize DRAWCOLOR_UBO_OFFSET      = 1280;
-    constexpr VkDeviceSize DRAWCOLOR_UBO_SIZE        = sizeof(DrawColor_PerShaderBind);
     constexpr VkDeviceSize STARTIME_UBO_OFFSET       = 1792;
     constexpr VkDeviceSize STARTIME_UBO_SIZE         = sizeof(StarTime_PerShaderBind);
     constexpr VkDeviceSize AVATAR_VELOCITY_PALETTE_UBO_OFFSET = 2048;
@@ -2652,7 +2646,7 @@ namespace
 
     bool createPerFrameDescriptorSetLayout()
     {
-        VkDescriptorSetLayoutBinding bindings[10] = {};
+        VkDescriptorSetLayoutBinding bindings[7] = {};
         bindings[0].binding         = 0;
         bindings[0].descriptorType  = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
         bindings[0].descriptorCount = 1;
@@ -2663,49 +2657,34 @@ namespace
         bindings[1].descriptorCount = 1;
         bindings[1].stageFlags      = VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT;
 
-        bindings[2].binding         = 2;
+        bindings[2].binding         = 4;
         bindings[2].descriptorType  = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
         bindings[2].descriptorCount = 1;
         bindings[2].stageFlags      = VK_SHADER_STAGE_VERTEX_BIT;
 
-        bindings[3].binding         = 3;
+        bindings[3].binding         = 7;
         bindings[3].descriptorType  = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
         bindings[3].descriptorCount = 1;
-        bindings[3].stageFlags      = VK_SHADER_STAGE_VERTEX_BIT;
+        bindings[3].stageFlags      = VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT;
 
-        bindings[4].binding         = 4;
+        bindings[4].binding         = 8;
         bindings[4].descriptorType  = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
         bindings[4].descriptorCount = 1;
         bindings[4].stageFlags      = VK_SHADER_STAGE_VERTEX_BIT;
 
-        bindings[5].binding         = 5;
+        bindings[5].binding         = 9;
         bindings[5].descriptorType  = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
         bindings[5].descriptorCount = 1;
-        bindings[5].stageFlags      = VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT;
+        bindings[5].stageFlags      = VK_SHADER_STAGE_FRAGMENT_BIT;
 
-        bindings[6].binding         = 7;
+        bindings[6].binding         = 10;
         bindings[6].descriptorType  = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
         bindings[6].descriptorCount = 1;
-        bindings[6].stageFlags      = VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT;
-
-        bindings[7].binding         = 8;
-        bindings[7].descriptorType  = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
-        bindings[7].descriptorCount = 1;
-        bindings[7].stageFlags      = VK_SHADER_STAGE_VERTEX_BIT;
-
-        bindings[8].binding         = 9;
-        bindings[8].descriptorType  = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
-        bindings[8].descriptorCount = 1;
-        bindings[8].stageFlags      = VK_SHADER_STAGE_FRAGMENT_BIT;
-
-        bindings[9].binding         = 10;
-        bindings[9].descriptorType  = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
-        bindings[9].descriptorCount = 1;
-        bindings[9].stageFlags      = VK_SHADER_STAGE_FRAGMENT_BIT;
+        bindings[6].stageFlags      = VK_SHADER_STAGE_FRAGMENT_BIT;
 
         VkDescriptorSetLayoutCreateInfo info = {};
         info.sType        = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO;
-        info.bindingCount = 10;
+        info.bindingCount = 7;
         info.pBindings    = bindings;
 
         VkResult result = vkCreateDescriptorSetLayout(sDevice, &info, nullptr, &sPerFrameDescriptorSetLayout);
@@ -2776,22 +2755,19 @@ namespace
     void writePerFrameSetBindings(VkDescriptorSet set, U32 frame, VkBuffer matrixBuf, VkDeviceSize matrixOffset)
     {
         struct BindSpec { U32 binding; VkBuffer buf; VkDeviceSize off; VkDeviceSize range; };
-        const BindSpec specs[10] = {
+        const BindSpec specs[7] = {
             { 0,  matrixBuf,                 matrixOffset,                       PERFRAME_UBO_SIZE },
             { 1,  matrixBuf,                 matrixOffset + PERFRAME_UBO_SIZE,   TEXTURE_UBO_SIZE },
-            { 2,  sPerFrameUboBuffer[frame], SHADOW_UBO_OFFSET,                  SHADOW_UBO_SIZE },
-            { 3,  sPerFrameUboBuffer[frame], PBRMATERIAL_UBO_OFFSET,             PBRMATERIAL_UBO_SIZE },
             { 4,  sPerFrameUboBuffer[frame], PREVIEWAMBIENT_UBO_OFFSET,          PREVIEWAMBIENT_UBO_SIZE },
-            { 5,  sPerFrameUboBuffer[frame], DRAWCOLOR_UBO_OFFSET,               DRAWCOLOR_UBO_SIZE },
             { 7,  sPerFrameUboBuffer[frame], STARTIME_UBO_OFFSET,                STARTIME_UBO_SIZE },
             { 8,  sPerFrameUboBuffer[frame], AVATAR_VELOCITY_PALETTE_UBO_OFFSET, AVATAR_VELOCITY_PALETTE_UBO_SIZE },
             { 9,  sPerFrameUboBuffer[frame], CLIPPLANE_UBO_OFFSET,               CLIPPLANE_UBO_SIZE },
             { 10, sPerFrameUboBuffer[frame], GLOWCOMBINE_UBO_OFFSET,             GLOWCOMBINE_UBO_SIZE },
         };
 
-        VkDescriptorBufferInfo infos[10]  = {};
-        VkWriteDescriptorSet   writes[10] = {};
-        for (U32 i = 0; i < 10; ++i)
+        VkDescriptorBufferInfo infos[7]  = {};
+        VkWriteDescriptorSet   writes[7] = {};
+        for (U32 i = 0; i < 7; ++i)
         {
             infos[i].buffer = specs[i].buf;
             infos[i].offset = specs[i].off;
@@ -2804,7 +2780,7 @@ namespace
             writes[i].descriptorType  = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
             writes[i].pBufferInfo     = &infos[i];
         }
-        vkUpdateDescriptorSets(sDevice, 10, writes, 0, nullptr);
+        vkUpdateDescriptorSets(sDevice, 7, writes, 0, nullptr);
     }
 
     bool createMatrixRingChunk(U32 frame)
@@ -8602,25 +8578,6 @@ bool createTextureImageVk(U32          width,
     return created;
 }
 
-bool createReadbackImageVk(U32          width,
-                           U32          height,
-                           VkFormat     format,
-                           VkImage&     out_image,
-                           VkImageView& out_view,
-                           void*&       out_allocation)
-{
-    VkImageUsageFlags usage =
-          VK_IMAGE_USAGE_TRANSFER_DST_BIT
-        | VK_IMAGE_USAGE_TRANSFER_SRC_BIT
-        | VK_IMAGE_USAGE_SAMPLED_BIT;
-    return createAttachmentImageVkImpl(width, height, format,
-                                       usage,
-                                       VK_IMAGE_ASPECT_COLOR_BIT,
-                                       "createReadbackImageVk",
-                                       out_image, out_view, out_allocation,
-                                       1);
-}
-
 bool uploadImageDataVk(VkImage     image,
                        U32         width,
                        U32         height,
@@ -10644,26 +10601,6 @@ bool isGeometryShaderEnabledVk()
     return sGeometryShaderEnabled;
 }
 
-bool isBindlessCapableVk()
-{
-    return sBindlessCapable;
-}
-
-U32 getBindlessHeapCapacityVk()
-{
-    return sBindlessHeapCapacity;
-}
-
-bool isMultiDrawIndirectEnabledVk()
-{
-    return sMultiDrawIndirectEnabled;
-}
-
-bool isDrawIndirectFirstInstanceEnabledVk()
-{
-    return sDrawIndirectFirstInstanceEnabled;
-}
-
 static U64 phaseNowUs()
 {
     return (U64)std::chrono::duration_cast<std::chrono::microseconds>(
@@ -10838,11 +10775,6 @@ void bindlessReleaseSlotDeferred(U32 slot)
 VkDescriptorSetLayout getBindlessHeapLayout()
 {
     return sBindlessHeapLayout;
-}
-
-VkDescriptorSet getBindlessHeapSet()
-{
-    return sBindlessHeapSet;
 }
 
 U32 drawDataAcquireSlot(const U32* slots4)

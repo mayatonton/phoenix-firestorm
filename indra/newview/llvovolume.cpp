@@ -6380,10 +6380,6 @@ namespace
 bool LLVolumeGeometryManager::geoWorkerEnabled()
 {
     static const bool s_enabled = []() -> bool {
-        if (getenv("AYASTORM_T2_INLINE") != nullptr)
-        {
-            return false;
-        }
         return LLVKLoader::isVulkanInitialized() && LLVKLoader::recordWorkerCount() > 0;
     }();
     return s_enabled;

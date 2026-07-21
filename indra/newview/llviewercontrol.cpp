@@ -762,14 +762,7 @@ static bool handleReflectionProbeDetailChanged(const LLSD& newvalue)
         LLPipeline::refreshCachedSettings();
         gPipeline.mReflectionMapManager.reset();
         gPipeline.mHeroProbeManager.reset();
-        static const bool skip_ss = []() {
-            const char* e = getenv("AYASTORM_SKIP_MIRROR_SS");
-            return (e != nullptr) && (atoi(e) != 0);
-        }();
-        if (!skip_ss)
-        {
-            LLReloadQueue::request(LLReloadQueue::RK_Shaders);
-        }
+        LLReloadQueue::request(LLReloadQueue::RK_Shaders);
     }
     return true;
 }

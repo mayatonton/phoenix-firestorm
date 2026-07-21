@@ -1283,10 +1283,6 @@ F32 LLViewerTextureList::updateImagesCreateTextures(F32 max_time)
 bool LLViewerTextureList::texWorkerEnabled()
 {
     static const bool s_enabled = []() -> bool {
-        if (getenv("AYASTORM_T1_INLINE") != nullptr)
-        {
-            return false;
-        }
         return LLVKLoader::isVulkanInitialized() && LLVKLoader::recordWorkerCount() > 0;
     }();
     return s_enabled;

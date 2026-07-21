@@ -1200,13 +1200,6 @@ namespace LLVKLoader
                               void*&       out_allocation,
                               U32          mip_levels = 1);
 
-    bool createReadbackImageVk(U32          width,
-                               U32          height,
-                               VkFormat     format,
-                               VkImage&     out_image,
-                               VkImageView& out_view,
-                               void*&       out_allocation);
-
     bool uploadImageDataVk(VkImage     image,
                            U32         width,
                            U32         height,
@@ -1356,14 +1349,6 @@ namespace LLVKLoader
 
     bool isGeometryShaderEnabledVk();
 
-    bool isBindlessCapableVk();
-
-    U32  getBindlessHeapCapacityVk();
-
-    bool isMultiDrawIndirectEnabledVk();
-
-    bool isDrawIndirectFirstInstanceEnabledVk();
-
     constexpr U32 BINDLESS_INVALID_SLOT = 0xFFFFFFFFu;
 
     bool isBindlessActiveVk();
@@ -1374,8 +1359,6 @@ namespace LLVKLoader
     void bindlessReleaseSlotDeferred(U32 slot);
 
     VkDescriptorSetLayout getBindlessHeapLayout();
-
-    VkDescriptorSet getBindlessHeapSet();
 
     U32  drawDataAcquireSlot(const U32* slots4);
 

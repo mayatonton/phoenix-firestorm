@@ -916,16 +916,7 @@ void LLViewerShaderMgr::setShaders()
     reentrance = true;
 
     initAttribsAndUniforms();
-    {
-        static const bool skip_relgl = []() {
-            const char* e = getenv("AYASTORM_SS_SKIP_RELEASEGL");
-            return (e != nullptr) && (atoi(e) != 0);
-        }();
-        if (!skip_relgl)
-        {
-            gPipeline.releaseGLBuffers();
-        }
-    }
+    gPipeline.releaseGLBuffers();
 
     unloadShaders();
 
