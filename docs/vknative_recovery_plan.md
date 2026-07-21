@@ -29,7 +29,7 @@ VkPerf `ph`/`fam` 欄(2026-07-17 実装)による。
 | img(texture 更新 main 分) | 4.0 | S1 で ≈0 化 |
 | ui | 2.3 | |
 | cull + sort + gupd | 2.1 | **octree walk は既に小さい = GPU frustum cull(旧 M5b)は主敵でない** |
-| occlusion query | (emission 内に分散) | occl pass ~4.1k draws/frame = 削れるか A/B 実測待ち(後日・旧 M5c 維持) |
+| occlusion query | (emission 内に分散) | occl pass ~4.8k draws/frame = **A/B 済で恒久維持確定**(OFF で draws 18.7k→120k・27.5→148ms = 原価の 21× 回収・旧 M5c) |
 
 per-draw 単価 ~0.9µs の中身(perf 実測・main thread): ScenePerDrawCache hash 照合 ~7% + acquireDeferredUtilOverrideSlot 2.9% + buildAndOverride/ensure/populate ~4% + pipeline/bind/setBuffer memo ~4% + gGL エミュ層。**GL 期に存在しなかった自前簿記**。
 
@@ -85,7 +85,7 @@ per-draw 単価 ~0.9µs の中身(perf 実測・main thread): ScenePerDrawCache 
 ### 旧 M 表の再配置(基本設計 §5 への差分)
 
 - **M5b(GPU frustum cull)= 降格・無期限保留**: cull+sort 実測 2.1ms = 主敵でない。E 系完了後に残余があれば再起案。
-- **M5c の occlusion query 機構 = 「削れるか」の検証待ちで維持(退役ではない)**(occl ~4.1k draws/frame の発行 + 状態機械が実在)。occlusion query は upstream の正規機能で既定 ON(`sUseOcclusion=2`・pipeline.cpp:1479)、`AYASTORM_NO_OCCLUSION` は計測用に OFF pin する env-only switch(pipeline.cpp:1483)。**退役純益(query 発行コスト減 vs over-draw 増)は A/B 実測なしに不明 = 実測は後日**(AYA 2026-07-21 保留)。∴ `AYASTORM_NO_OCCLUSION` は「検証足場」として撤去せず**計測ツールとして残置**。HiZ 化は削れると判れば JIT 設計。
+- **M5c の occlusion query 機構 = A/B 実測で恒久維持確定(2026-07-21)**。密ビル街で同一立ち位置 A/B: ON = draws/f ~18.7k / ~27.5ms / ~36fps、OFF(`AYASTORM_NO_OCCLUSION=1`)= draws/f ~120k / ~148ms / ~6.7fps。**occlusion が ~102k draws/f(約85%)を cull・~120ms/f を回収 = 原価 ~4.8k query draws/f の 21×**。無いと実用不能(6.7fps)。∴ **削除/移設候補ですらない load-bearing**。検証足場 `AYASTORM_NO_OCCLUSION` は用済みで撤去済(`1c3d545140`・pipeline.cpp)。**GPU HiZ 化(§2.3)は将来の最適化テーマとして有効だが、query 機構そのものは HiZ が同等の cull を実証するまで温存**(「削除」でなく「等価置換」)。
 - **M6(旧経路削除)= 検証済で解決 =(a)per-draw 恒久受容・削除撤回(AYA 2026-07-21)**。M6 の「旧経路」= per-draw descriptor 経路(`buildAndOverrideScenePerDrawSet`・GL ではない)だが、HEAD 実トレースで **load-bearing**(現役 13 call site: gltfscenemanager 808/821・lldrawpooltree 120/208・lldrawpoolalpha 1172/1608/1647・lldrawpoolmaterials 233・lldrawpool 1600/1936/1991・llviewerjointmesh 254/263。bucket-MDI は lldrawpool.cpp:1182 の 7 条件 AND gate で、外れると per-draw に落ちる = per-draw が既定/fallback)。**M6 前提「bucket が全 pass 覆えば per-draw 削除可」は E 系裁定「13-pass MDI = 配当ゼロで作らない」と正面衝突** = per-draw は恒久共存物。∴ **旧経路削除は撤回**・per-draw を恒久受容(= 検証 → 削れない → 現状維持 → 検証足場 `AYASTORM_INDIRECT` は撤去済 `1c4f87ccbb` = E 系と同型の解決)。残る任意選択肢 =(b)非 bindless GPU 切り捨て(VK1.2 最低要件)で非 bindless 分岐のみ削除(product 判断・未着手)。詳細 = memory `handoff_designer_dismissed_eseries_close_m6_blocked`。
 - ✅ `AYASTORM_INDIRECT` switch = E 系 gate 後 撤去済(`1c4f87ccbb`・collapse 恒久 ON)。
 
