@@ -103,6 +103,9 @@ public:
                 LLViewerTexture* image, LLVertexBuffer* buffer,
                 bool fullbright = false, U8 bump = 0);
 
+    LLDrawInfo(U16 start, U16 end, U32 count, U32 offset,
+                bool fullbright, U8 bump);
+
 
     void validate();
 

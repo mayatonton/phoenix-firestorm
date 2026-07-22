@@ -4184,6 +4184,22 @@ LLDrawInfo::LLDrawInfo(U16 start, U16 end, U32 count, U32 offset,
     mVertexBuffer->validateRange(mStart, mEnd, mCount, mOffset);
 }
 
+LLDrawInfo::LLDrawInfo(U16 start, U16 end, U32 count, U32 offset,
+                       bool fullbright, U8 bump)
+:   mStart(start),
+    mEnd(end),
+    mCount(count),
+    mOffset(offset),
+    mFullbright(fullbright),
+    mBump(bump),
+    mBlendFuncSrc(LLRender::BF_SOURCE_ALPHA),
+    mBlendFuncDst(LLRender::BF_ONE_MINUS_SOURCE_ALPHA),
+    mHasGlow(false),
+    mEnvIntensity(0.0f),
+    mAlphaMaskCutoff(0.5f)
+{
+}
+
 LLDrawInfo::~LLDrawInfo()
 {
     clearVkPerDrawCachePins();

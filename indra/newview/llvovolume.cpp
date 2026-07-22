@@ -5783,7 +5783,27 @@ struct LLGeoStagedRebuild
     std::vector<std::pair<U32, LLSpatialGroup::buffer_texture_map_t> > mBufferMaps;
 };
 
-static void buildDrawInfoFromSnapshot(LLSpatialGroup* group, const LLDrawInfoSnapshot& s, LLFace* facep);
+struct VbSlice
+{
+    LLVertexBuffer* mVb = nullptr;
+    U16 mGeomIndex = 0;
+    U32 mGeomCount = 0;
+    U32 mIndicesStart = 0;
+    U32 mIndicesCount = 0;
+};
+
+struct BuiltDraw
+{
+    LLPointer<LLDrawInfo> mInfo;
+    LLVertexBuffer* mVb = nullptr;
+    LLFace* mLeaderFace = nullptr;
+    LLViewerTexture* mTexRaw = nullptr;
+    std::vector<LLViewerTexture*> mTexListRaw;
+};
+using built_map_t = std::unordered_map<U32, std::vector<BuiltDraw> >;
+
+static void buildDrawInfoFromSnapshot(built_map_t& out, LLDrawInfoSnapshot& s, const VbSlice& vb, LLFace* facep);
+static void foldBuiltDrawInfo(LLSpatialGroup* group, built_map_t& built);
 
 namespace
 {
@@ -5803,7 +5823,7 @@ namespace
         U32 mGen = 0;
         bool mFillFailed = false;
         bool mBuiltReady = false;
-        LLSpatialGroup::draw_map_t mBuilt;
+        built_map_t mBuilt;
         std::atomic<U32> mState{ GEO_JOB_QUEUED };
     };
 
@@ -5839,6 +5859,26 @@ namespace
         return (e == nullptr) || (atoi(e) > 1);
     }
 
+    void runAvatarJobBuild(LLGeoRebuildJob* job)
+    {
+        for (LLGeoFaceApply& e : job->mStaged.mFaces)
+        {
+            if (e.mAllocFailed)
+            {
+                continue;
+            }
+            VbSlice vb{ e.mBuffer.get(), e.mGeomIndex, e.mGeomCount, e.mIndicesIndex, e.mIndicesCount };
+            for (LLDrawInfoSnapshot& snap : e.mSnaps)
+            {
+                if (!snap.mSkip)
+                {
+                    buildDrawInfoFromSnapshot(job->mBuilt, snap, vb, e.mFace);
+                }
+            }
+        }
+        job->mBuiltReady = true;
+    }
+
     void avatarDomainWorkerMain()
     {
 #if LL_LINUX
@@ -5858,6 +5898,8 @@ namespace
                 job = sAvatarJobQueue.front();
                 sAvatarJobQueue.pop_front();
             }
+
+            runAvatarJobBuild(job);
 
             {
                 std::lock_guard<std::mutex> lk(sAvatarPublishMutex);
@@ -6091,6 +6133,8 @@ namespace
 
         group->clearDrawMapStaged(preserve, staged_drawables, LLVKContract::SITE_CLEAR_APPLY);
 
+        built_map_t built;
+
         for (LLGeoFaceApply& e : staged.mFaces)
         {
             LLFace* facep = e.mFace;
@@ -6119,15 +6163,18 @@ namespace
                 facep->setVertexBuffer(e.mBuffer);
             }
 
-            for (const LLDrawInfoSnapshot& snap : e.mSnaps)
+            VbSlice vb{ e.mBuffer.get(), e.mGeomIndex, e.mGeomCount, e.mIndicesIndex, e.mIndicesCount };
+            for (LLDrawInfoSnapshot& snap : e.mSnaps)
             {
                 if (!snap.mSkip)
                 {
-                    buildDrawInfoFromSnapshot(group, snap, facep);
+                    buildDrawInfoFromSnapshot(built, snap, vb, facep);
                 }
             }
             LLVKContract::watchStageEvent(watch_id(e), "apply_reg", (U32)e.mPasses.size());
         }
+
+        foldBuiltDrawInfo(group, built);
 
         for (auto& bm : staged.mBufferMaps)
         {
@@ -6947,9 +6994,9 @@ static LLDrawInfoSnapshot captureRegisterSnapshot(LLFace* facep, U32 type)
     return s;
 }
 
-static void buildDrawInfoFromSnapshot(LLSpatialGroup* group, const LLDrawInfoSnapshot& s, LLFace* facep)
+static void buildDrawInfoFromSnapshot(built_map_t& out, LLDrawInfoSnapshot& s, const VbSlice& vb, LLFace* facep)
 {
-    if (facep->getVertexBuffer() == nullptr)
+    if (vb.mVb == nullptr)
     {
         LLVKContract::watchStageEvent(s.mFSPickerLocalID, "reg_nullvb");
         static std::atomic<U32> s_null_vb_faces{0};
@@ -6960,34 +7007,38 @@ static void buildDrawInfoFromSnapshot(LLSpatialGroup* group, const LLDrawInfoSna
         }
         return;
     }
-    LL_LABEL_VERTEX_BUFFER(facep->getVertexBuffer(), LLRenderPass::lookupPassName(s.mType));
-    if (!s.mFullbright && s.mType != LLRenderPass::PASS_GLOW && !facep->getVertexBuffer()->hasDataType(LLVertexBuffer::TYPE_NORMAL))
+    LL_LABEL_VERTEX_BUFFER(vb.mVb, LLRenderPass::lookupPassName(s.mType));
+    if (!s.mFullbright && s.mType != LLRenderPass::PASS_GLOW && !vb.mVb->hasDataType(LLVertexBuffer::TYPE_NORMAL))
     {
         llassert(false);
         LL_WARNS() << "Non fullbright face has no normals!" << LL_ENDL;
         return;
     }
 
-    LLSpatialGroup::drawmap_elem_t& draw_vec = group->mDrawMap[s.mPassType];
+    LLDrawable* srcd = s.mSrcDrawable.get();
+
+    std::vector<BuiltDraw>& draw_vec = out[s.mPassType];
 
     S32 idx = static_cast<S32>(draw_vec.size()) - 1;
+    BuiltDraw* prev = idx >= 0 ? &draw_vec[idx] : nullptr;
+    LLDrawInfo* info = prev ? prev->mInfo.get() : nullptr;
 
     bool batchable = false;
 
-    if (s.mTexIndex < FACE_DO_NOT_BATCH_TEXTURES && idx >= 0)
+    if (s.mTexIndex < FACE_DO_NOT_BATCH_TEXTURES && prev != nullptr)
     {
-        if (s.mMaterial.notNull() || s.mGLTFMaterial.notNull() || draw_vec[idx]->mMaterial)
+        if (s.mMaterial.notNull() || s.mGLTFMaterial.notNull() || info->mMaterial)
         {
             batchable = false;
         }
-        else if (s.mTexIndex < draw_vec[idx]->mTextureList.size())
+        else if (s.mTexIndex < prev->mTexListRaw.size())
         {
-            if (draw_vec[idx]->mTextureList[s.mTexIndex].isNull())
+            if (prev->mTexListRaw[s.mTexIndex] == nullptr)
             {
                 batchable = true;
-                draw_vec[idx]->mTextureList[s.mTexIndex] = s.mTexture;
+                prev->mTexListRaw[s.mTexIndex] = s.mTexture.get();
             }
-            else if (draw_vec[idx]->mTextureList[s.mTexIndex] == s.mTexture)
+            else if (prev->mTexListRaw[s.mTexIndex] == s.mTexture.get())
             {
                 batchable = true;
             }
@@ -6998,15 +7049,13 @@ static void buildDrawInfoFromSnapshot(LLSpatialGroup* group, const LLDrawInfoSna
         }
     }
 
-    LLDrawInfo* info = idx >= 0 ? draw_vec[idx] : nullptr;
-
     if (info &&
-        info->mVertexBuffer == facep->getVertexBuffer() &&
-        info->mEnd == facep->getGeomIndex()-1 &&
-        (LLPipeline::sTextureBindTest || draw_vec[idx]->mTexture == s.mTexture || batchable) &&
+        prev->mVb == vb.mVb &&
+        info->mEnd == vb.mGeomIndex-1 &&
+        (LLPipeline::sTextureBindTest || prev->mTexRaw == s.mTexture.get() || batchable) &&
 #if LL_DARWIN
-        info->mEnd - draw_vec[idx]->mStart + facep->getGeomCount() <= (U32) gGLManager.mGLMaxVertexRange &&
-        info->mCount + facep->getIndicesCount() <= (U32) gGLManager.mGLMaxIndexRange &&
+        info->mEnd - info->mStart + vb.mGeomCount <= (U32) gGLManager.mGLMaxVertexRange &&
+        info->mCount + vb.mIndicesCount <= (U32) gGLManager.mGLMaxIndexRange &&
 #endif
         info->mMaterialID == s.mMaterialID &&
         info->mFullbright == s.mFullbright &&
@@ -7019,8 +7068,8 @@ static void buildDrawInfoFromSnapshot(LLSpatialGroup* group, const LLDrawInfoSna
         info->getSkinHash() == s.mSkinHash &&
         info->mFSPickerLocalID == s.mFSPickerLocalID)
     {
-        info->mCount += facep->getIndicesCount();
-        info->mEnd += facep->getGeomCount();
+        info->mCount += vb.mIndicesCount;
+        info->mEnd += vb.mGeomCount;
 
         if (info->mBoundRadius >= 0.f)
         {
@@ -7034,28 +7083,25 @@ static void buildDrawInfoFromSnapshot(LLSpatialGroup* group, const LLDrawInfoSna
             info->mBoundRadius = diag.getLength3().getF32() * 0.5f;
         }
 
-        if (s.mTexIndex < FACE_DO_NOT_BATCH_TEXTURES && s.mTexIndex >= info->mTextureList.size())
+        if (s.mTexIndex < FACE_DO_NOT_BATCH_TEXTURES && s.mTexIndex >= prev->mTexListRaw.size())
         {
-            info->mTextureList.resize(s.mTexIndex+1);
-            info->mTextureList[s.mTexIndex] = s.mTexture;
+            prev->mTexListRaw.resize(s.mTexIndex+1, nullptr);
+            prev->mTexListRaw[s.mTexIndex] = s.mTexture.get();
         }
-        info->validate();
     }
     else
     {
-        U32 start = facep->getGeomIndex();
-        U32 end = start + facep->getGeomCount()-1;
-        U32 offset = facep->getIndicesStart();
-        U32 count = facep->getIndicesCount();
-        LLPointer<LLDrawInfo> draw_info = new LLDrawInfo(start, end, count, offset, s.mTexture,
-            facep->getVertexBuffer(), s.mFullbright, s.mBump);
+        U32 start = vb.mGeomIndex;
+        U32 end = start + vb.mGeomCount-1;
+        U32 offset = vb.mIndicesStart;
+        U32 count = vb.mIndicesCount;
+        LLPointer<LLDrawInfo> draw_info = new LLDrawInfo(start, end, count, offset, s.mFullbright, s.mBump);
 
         info = draw_info;
 
-        draw_vec.push_back(draw_info);
         draw_info->mTextureMatrix = s.mTextureMatrix;
         draw_info->mModelMatrix = s.mModelMatrix;
-        draw_info->mSrcDrawable = s.mSrcDrawable;
+        draw_info->mSrcDrawable = std::move(s.mSrcDrawable);
         draw_info->mLastModelMatrix = s.mLastModelMatrix;
 
         {
@@ -7074,41 +7120,73 @@ static void buildDrawInfoFromSnapshot(LLSpatialGroup* group, const LLDrawInfoSna
         draw_info->mObjectAlpha = s.mObjectAlpha;
         draw_info->mSpecColor = s.mSpecColor;
         draw_info->mEnvIntensity = s.mEnvIntensity;
-        draw_info->mSpecularMap = s.mSpecularMap;
-        draw_info->mMaterial = s.mMaterial;
-        draw_info->mGLTFMaterial = s.mGLTFMaterial;
+        draw_info->mSpecularMap = std::move(s.mSpecularMap);
+        draw_info->mMaterial = std::move(s.mMaterial);
+        draw_info->mGLTFMaterial = std::move(s.mGLTFMaterial);
         draw_info->mShaderMask = s.mShaderMask;
-        draw_info->mAvatar = s.mAvatar;
-        draw_info->mSkinInfo = s.mSkinInfo;
+        draw_info->mAvatar = std::move(s.mAvatar);
+        draw_info->mSkinInfo = std::move(s.mSkinInfo);
         draw_info->mIsSSSTarget = s.mIsSSSTarget;
         draw_info->mFSPickerLocalID = s.mFSPickerLocalID;
-        draw_info->mAttachedToAvatar = s.mAttachedToAvatar;
+        draw_info->mAttachedToAvatar = std::move(s.mAttachedToAvatar);
         draw_info->mMaterialID = s.mMaterialID;
-        draw_info->mNormalMap = s.mNormalMap;
+        draw_info->mNormalMap = std::move(s.mNormalMap);
         draw_info->mAlphaMaskCutoff = s.mAlphaMaskCutoff;
         draw_info->mDiffuseAlphaMode = s.mDiffuseAlphaMode;
 
-        facep->setDrawInfo(draw_info);
-
+        BuiltDraw bd;
+        bd.mInfo = draw_info;
+        bd.mVb = vb.mVb;
+        bd.mLeaderFace = facep;
+        bd.mTexRaw = s.mTexture.get();
         if (s.mTexIndex < FACE_DO_NOT_BATCH_TEXTURES)
         {
-            draw_info->mTextureList.resize(s.mTexIndex+1);
-            draw_info->mTextureList[s.mTexIndex] = s.mTexture;
+            bd.mTexListRaw.resize(s.mTexIndex+1, nullptr);
+            bd.mTexListRaw[s.mTexIndex] = s.mTexture.get();
         }
-        draw_info->validate();
+        draw_vec.push_back(std::move(bd));
     }
 
-    LLVKContract::sentinelRegister(s.mSrcDrawable.get());
+    LLVKContract::sentinelRegister(srcd);
 
-    llassert(info->mGLTFMaterial == nullptr || (info->mVertexBuffer->getTypeMask() & LLVertexBuffer::MAP_TANGENT) != 0);
+    llassert(info->mGLTFMaterial == nullptr || (vb.mVb->getTypeMask() & LLVertexBuffer::MAP_TANGENT) != 0);
     llassert(s.mType != LLPipeline::RENDER_TYPE_PASS_GLTF_PBR || info->mGLTFMaterial != nullptr);
     llassert(s.mType != LLPipeline::RENDER_TYPE_PASS_GLTF_PBR_RIGGED || info->mGLTFMaterial != nullptr);
     llassert(s.mType != LLPipeline::RENDER_TYPE_PASS_GLTF_PBR_ALPHA_MASK || info->mGLTFMaterial != nullptr);
     llassert(s.mType != LLPipeline::RENDER_TYPE_PASS_GLTF_PBR_ALPHA_MASK_RIGGED || info->mGLTFMaterial != nullptr);
 
-    llassert(s.mType != LLRenderPass::PASS_BUMP || (info->mVertexBuffer->getTypeMask() & LLVertexBuffer::MAP_TANGENT) != 0);
+    llassert(s.mType != LLRenderPass::PASS_BUMP || (vb.mVb->getTypeMask() & LLVertexBuffer::MAP_TANGENT) != 0);
     llassert(s.mType != LLRenderPass::PASS_NORMSPEC || info->mNormalMap.notNull());
-    llassert(s.mType != LLRenderPass::PASS_SPECMAP || (info->mVertexBuffer->getTypeMask() & LLVertexBuffer::MAP_TEXCOORD2) != 0);
+    llassert(s.mType != LLRenderPass::PASS_SPECMAP || (vb.mVb->getTypeMask() & LLVertexBuffer::MAP_TEXCOORD2) != 0);
+}
+
+static void foldBuiltDrawInfo(LLSpatialGroup* group, built_map_t& built)
+{
+    for (auto& pass : built)
+    {
+        LLSpatialGroup::drawmap_elem_t& dst = group->mDrawMap[pass.first];
+        for (BuiltDraw& bd : pass.second)
+        {
+            LLDrawInfo* di = bd.mInfo.get();
+            di->mVertexBuffer = bd.mVb;
+            di->mVertexBuffer->validateRange(di->mStart, di->mEnd, di->mCount, di->mOffset);
+            di->mTexture = bd.mTexRaw;
+            if (!bd.mTexListRaw.empty())
+            {
+                di->mTextureList.resize(bd.mTexListRaw.size());
+                for (size_t i = 0; i < bd.mTexListRaw.size(); ++i)
+                {
+                    di->mTextureList[i] = bd.mTexListRaw[i];
+                }
+            }
+            di->validate();
+            if (bd.mLeaderFace != nullptr)
+            {
+                bd.mLeaderFace->setDrawInfo(di);
+            }
+            dst.push_back(bd.mInfo);
+        }
+    }
 }
 
 void LLVolumeGeometryManager::registerFace(LLSpatialGroup* group, LLFace* facep, U32 type)
@@ -7125,7 +7203,10 @@ void LLVolumeGeometryManager::registerFace(LLSpatialGroup* group, LLFace* facep,
     {
         return;
     }
-    buildDrawInfoFromSnapshot(group, s, facep);
+    built_map_t built;
+    VbSlice vb{ facep->getVertexBuffer(), (U16)facep->getGeomIndex(), (U32)facep->getGeomCount(), (U32)facep->getIndicesStart(), (U32)facep->getIndicesCount() };
+    buildDrawInfoFromSnapshot(built, s, vb, facep);
+    foldBuiltDrawInfo(group, built);
 }
 
 void LLVolumeGeometryManager::getGeometry(LLSpatialGroup* group)

@@ -1,133 +1,145 @@
-# apply(DrawInfo 構築)の off-main 化 = register-snapshot 設計(P1-c γ B.2)
+# apply(DrawInfo 構築)の off-main 化 = move-materialize 設計(P1-c γ B.2 v2)
 
-- 状態: 設計者起草 2026-07-22 深夜。真実源 = HEAD の実行コード。approve 前。
-- 位置づけ: `docs/vknative_avatar_relocate_design.md` §5 の Phase 1 P1-c(avatar 描画 off-main)の、**apply 相を off-main 化する下位設計**。
-- **supersede**: 会話中の暫定実装 B.2a(「applyGeoStaged を live-read のまま off-main へ routing」)= **C++ data race = UB ゆえ破棄**。本設計がその正しい姿。
-- 依拠: registerFace / applyGeoStaged / clearDrawMapStaged / staging(genDrawInfo)の HEAD 全 body 監査(下記 file:line)。
+- 状態: 設計者 v2 改訂 2026-07-22 深夜。真実源 = HEAD の実行コード。approve 前。
+- 位置づけ: `docs/vknative_avatar_relocate_design.md` §5 Phase 1 P1-c(avatar 描画 off-main)の apply 相を **丸ごと** off-main 化する下位設計。
+- **🔀 v1 破棄(2026-07-22 深夜・AYA 裁定)**: v1(build が snapshot の LLPointer を **copy** = 非 atomic refcount を off-main で `ref()` → main と data race = UB)は**設計欠陥**。さらに「materialize は main 固定」への退避案は**分散化の矮小化**として却下。本 v2 = **materialize を丸ごと off-main へ置く**(copy でなく move で refcount 操作をゼロにする)。
 
 ---
 
-## 0. 問題
+## 0. 問題(v1 の欠陥)
 
-crowd 本体回復の gate 費目 `pub_ms`(= apply)を self avatar について off-main 化したい。だが apply の実体 `LLVolumeGeometryManager::registerFace`(llvovolume.cpp:6837)は **live main state を大量に read し、face/group に write する**:
+apply の実体 `registerFace` が LLDrawInfo に設定する payload には共有オブジェクトへの `LLPointer` が多数ある(texture/material/gltf/skininfo/avatar/drawable)。これらの基底は**全て非 atomic `LLRefCount`**(実コード確認):
+- `LLTexture : virtual LLRefCount`(lltexture.h:45)/ `LLMaterial : LLRefCount` / `LLGLTFMaterial : LLRefCount` / `LLMeshSkinInfo : LLRefCount` / `LLVertexBuffer : LLRefCount`(llvertexbuffer.h:85)。
+- `LLRefCount::ref()` = `mRef++`(非 atomic・llrefcount.h:56)。
 
-- read: face 状態(VB/isState/extents/skinInfo/mAvatar/getSkinHash)・TE/material(getBumpmap/getShiny/getColor/getMaterialParams/**getGLTFRenderMaterial**/getShaderMask/getAlphaMaskCutoff/getDiffuseAlphaMode/getSpecular*)・texture(getTexture/getTextureIndex/getTESpecularMap/getTENormalMap)・drawable transform(getWorldMatrix/getRenderMatrix/getRegion)・selection/RLV(LLSelectMgr/RlvActions/gRlvAttachmentLocks)。
-- write: `facep->setDrawInfo`(:7181)・`group->mDrawMap`(draw_vec)。加えて applyGeoStaged が `facep->setVertexBuffer/setGeomIndex/setIndicesIndex`(:6101-6106)。
+⟹ build を off-main 化して snapshot の LLPointer を **copy** すると、共有オブジェクトの `mRef` を off-main で increment = main の並行 ref/unref と **data race(torn RMW)= lost update → 早期 free/leak → heap 破壊**。
 
-これらを off-main で live に触れば **data race = UB**。「右クリック編集で TE が変わり得る」等は blocker ではない — **既存 fill worker は全オブジェクトを既に off-main 処理**しており、その解法 = **staging(main)で `LLGeoFaceSnapshot` に immutable 化**。本設計はその解法を identity/DrawInfo まで拡張する。
+**既存 fill worker が安全な不変条件**: LLPointer の ref/unref は **main でのみ**行い、worker は raw pointer を読むだけ。off-main で refcount を触らない。v1 build はこれを破っていた。
 
-## 1. 不変条件(fill と同一保証)
+## 1. 解 = MOVE(off-main の refcount 操作をゼロにする)
 
-**INV-APPLY**: off-main が触ってよいのは ①staging で作った immutable snapshot ②job-local 出力 の 2 つのみ。**shared(live face / TE / material / group / selection)への read/write は staging(main)か fold(main)でのみ行う**。
+実コード確認: **`LLPointer` の move ctor(llpointer.h:87-90)= `mPointer = ptr.mPointer; ptr.mPointer = nullptr;` = ref/unref を一切しない**。null 先への move 代入も unref なし。
 
-→ off-main 相に data race が構造的に存在しない(by construction)。1-frame ズレ(staging N の snapshot を apply N+1 で使用)は relocate の通貨と整合。TE 変更は group 再 dirty → 次 frame 追従(fill と同一挙動)。
+⟹ **build(off-main)は snapshot の LLPointer を LLDrawInfo へ `std::move` = 所有権移転のみ・refcount 操作ゼロ = race 不能**。refcount の増減は全て main で起きる:
+- **increment = main**: capture(staging)で snapshot が live からコピー時(既存 = Steps 1-3)。
+- **off-main build = move(no-op)**: snapshot の ref が LLDrawInfo へ移る(snapshot 側 null 化)。純増減ゼロ。
+- **decrement = main**: ①job/snapshot 破棄時に非 move 分を unref ②LLDrawInfo 破棄(group->mDrawMap clear)時に移転分を unref。
+
+**INV-APPLY(v2)**: off-main が触ってよいのは ①新規 alloc した job-local LLDrawInfo ②immutable snapshot(single-consumer・move 元)③raw 値 のみ。**off-main で共有 refcount を増減しない**(move は no-op)。全 ref/unref は main。
 
 ## 2. 3 相設計(capture / build / fold)
 
-現行 2 相(stage=main / fill=worker / apply=main)を、apply について 3 相へ:
-
 ```
-staging(main)          worker(off-main)   avatar-domain(off-main)   fold(main, Update-Geom)
-─────────────          ───────────────    ─────────────────────     ────────────────────
-genDrawInfo:                                                          drainAvatarPublished:
- ・face list                                                          ・staleness 検証(live face)
- ・VB alloc(mega)                                                    ・setVertexBuffer/GeomIndex
- ・LLGeoFaceSnapshot(頂点)  → runVkGeoFill(VB bytes)                 ・setDrawInfo(face)
- ・LLDrawInfoSnapshot(identity) ────────────→ buildDrawInfos:        ・built list を mDrawMap install
-                                              ・snapshot→LLDrawInfo   ・patchGroup(bucket fold)
-                                              ・batch(among new)      ・geoAbCheckJob / unpin
-                                              ・job-local list へ
+staging(main)              avatar-domain(off-main)            fold(main, Update-Geom)
+─────────────              ──────────────────────             ─────────────────────
+genDrawInfo:               runAvatarJobBuild:                 foldBuiltDrawInfo:
+ ・VB alloc(mega)           ・batch 判定(raw 値比較)            ・staleness 検証(live face)
+ ・LLGeoFaceSnapshot(頂点)  ・new LLDrawInfo(VB-less ctor)     ・mVertexBuffer 張り(ref)+ validateRange
+ ・LLDrawInfoSnapshot        ・数値 field 設定                   ・mTextureList[leaderTexIdx]=mTexture(二重分 ref)
+   (identity・LLPointer 保持)・snapshot の LLPointer を MOVE     ・setDrawInfo(leaderFace)
+   → mSnaps                  ・merged texture を textureList へ  ・mBuilt を group->mDrawMap install
+                              MOVE                              ・patchGroup
+                             → job->mBuilt(+ 各 draw の
+                               VB raw / leaderFace / leaderTexIdx)
 ```
 
-- **capture(staging・main・安全)**: registerFace が今 apply で読む identity/payload を staging で読み `LLDrawInfoSnapshot` に格納。現行 staging は既に te/gltf/fullbright を読んで pass 決定(:8457-)しているので同じ live に main で触れる自然な点。
-- **build(off-main・純関数)**: snapshot + staged VB index から LLDrawInfo を alloc・batch し **job-local list** へ。live/group/face に触れない。
-- **fold(main・軽)**: built list を受け、staleness 検証 + face write(setVertexBuffer/setDrawInfo)+ mDrawMap install + patchGroup。全 shared write が main = render と順序担保。
+- **capture(main・staging・既存 Steps 1-3)**: `captureRegisterSnapshot` が live を読み `LLDrawInfoSnapshot`(LLPointer 群を main で ref 保持)を作り `LLGeoFaceApply.mSnaps` へ push。**refcount increment は全てここ(main)**。
+- **build(off-main・move materialize)**: `runAvatarJobBuild` が snapshot から LLDrawInfo を丸ごと構築。alloc(VB-less ctor)+ 数値 + LLPointer **move** + batch 判定(raw)。**共有 refcount を一切触らない**。出力 = `job->mBuilt`(per-draw に LLDrawInfo + fold 用 side-data)。
+- **fold(main・軽い共有 ref のみ)**: staleness 検証 + **構造的に job 内共有な ref だけ**(mVertexBuffer と leader texture 二重分)+ setDrawInfo + mDrawMap install + patchGroup。
 
-## 3. `LLDrawInfoSnapshot`(capture 対象・per (face,pass))
+## 3. off-main で move する field / main-fold で ref する field(実コード)
 
-registerFace が LLDrawInfo に設定する全フィールドの source(llvovolume.cpp)。VB range(start/end/offset/count/mVertexBuffer)は staged record(LLGeoFaceApply.mBuffer/mGeomIndex/mGeomCount/mIndicesIndex/mIndicesCount)から得るので snapshot 外。
+registerFace が LLDrawInfo に設定する全 field の扱い(llvovolume.cpp registerFace + llspatialpartition.h LLDrawInfo):
 
-| snapshot field | 現 apply source(file:line) |
-|---|---|
-| passType(rigged で +1) | :6884-6893(facep->isState(RIGGED)) |
-| fullbright | :6899-6903(type + isState(FULLBRIGHT) + teFullbrightEnabled) |
-| hasNormal | :6905-6907(VB typemask・staging で VB alloc 済ゆえ可) |
-| bump | :6949(te->getBumpmap・pass 依存) |
-| shiny | :6950(te->getShiny) |
-| tex(LLPointer) / texIndex | :6952-6954 / gltf 時 :6966-6969 で nullptr 化 |
-| tex_mat(ptr) | :6914-6918(facep->mTextureMatrix・TEXTURE_ANIM 条件) |
-| model_mat(ptr) | :6920-6944(rigged=null / ANIMATED_CHILD/isActive/region) |
-| lastModelMat(ptr) | :7088(&facep->getDrawable()->mLastVelocityMatrix) |
-| shader_mask | :6982-7000(mat->getShaderMask) |
-| mat_id(LLUUID) | :6965 / :6976 |
-| material(LLMaterial*) | :6973(te->getMaterialParams().get()) |
-| gltf_mat(ptr) | :6960 |
-| avatar(LLPointer) | :7118(facep->mAvatar) |
-| skinInfo(LLPointer)/skinHash | :7119 / getSkinHash() |
-| srcDrawable(ptr) | :7085(facep->getDrawable()) |
-| extents[2] | :7091-7092(facep->mExtents) |
-| objectAlpha | :7101(te->getColor().mV[3]) |
-| specColor/envIntensity | :7110-7113 / material 時 :7151-7159 |
-| specularMap(LLPointer) | :7160(getTESpecularMap) |
-| normalMap(LLPointer) | :7165(getTENormalMap) |
-| alphaMaskCutoff/diffuseAlphaMode | :7163-7176 |
-| isSSSTarget/pickerLocalID/attachedToAvatar | :7128-7135(vobj) |
-| hidden(bool) | :6859-6868(isSelected + LLSelectMgr::mHideSelectedObjects + RLV)。**selection/RLV read はここで staging に閉じる** |
+| LLDrawInfo field | 型 | 相・操作 |
+|---|---|---|
+| mStart/mEnd/mCount/mOffset | 数値 | build(off-main)= VbSlice/累積 |
+| mBatchExtents[2]/mBoundRadius | 数値 | build = snapshot extents から |
+| mBump/mShiny/mObjectAlpha/mSpecColor/mEnvIntensity | 値 | build |
+| mMaterialID(LLUUID)/mShaderMask/mFSPickerLocalID/mSkinHash | 値 | build |
+| mIsSSSTarget/mFullbright/mAlphaMaskCutoff/mDiffuseAlphaMode | 値 | build |
+| mTextureMatrix/mModelMatrix/mLastModelMatrix | **raw ptr** | build(copy=ref なし・matrix は別所有) |
+| mTexture | LLPointer\<LLViewerTexture\> | **build = `std::move(s.mTexture)`** |
+| mSpecularMap/mNormalMap | LLPointer\<LLViewerTexture\> | **build = move** |
+| mAvatar/mAttachedToAvatar | LLPointer\<LLVOAvatar\> | **build = move** |
+| mSkinInfo | LLConstPointer\<LLMeshSkinInfo\> | **build = move** |
+| mMaterial | LLPointer\<LLMaterial\> | **build = move** |
+| mGLTFMaterial | LLPointer\<LLFetchedGLTFMaterial\> | **build = move** |
+| mSrcDrawable | LLPointer\<LLDrawable\> | **build = move** |
+| mTextureList[i](merged 分) | vector\<LLPointer\<LLViewerTexture\>\> | **build = merged snapshot の move** |
+| **mVertexBuffer** | LLPointer\<LLVertexBuffer\> | **fold(main)= ref**(構造的に job 全 draw + face + render が共有 = 単一 snapshot から move 不能) |
+| **mTextureList[leaderTexIdx]** | 同上 | **fold(main)= `= mTexture`(copy)**(leader 自身の texture が mTexture と textureList に二重 = move は1回のみ可) |
 
-## 4. registerFace の分割(現 1 関数 → 3 関数)
+**main-fold の refcount 操作 = 1 draw あたり VB ref 1 + leader-tex-dup 1 の計 ~2 個のみ**(構造的に単一 snapshot から move 不能な共有 ref)。alloc・数値・8 種 LLPointer 移転・batch 判定は全て off-main。**= 矮小化でない・materialize 丸ごと off-main。**
 
-- `LLDrawInfoSnapshot captureRegisterSnapshot(group, facep, type)` = 現 registerFace の :6859-7178 の **read 部**を移植(main・staging で呼ぶ)。hidden 判定・nullvb/hidden の skip も snapshot の bool として記録(skip 面は「登録しない」を意味する snapshot フラグ)。
-- `void buildDrawInfoFromSnapshot(const LLDrawInfoSnapshot& s, const VbRange& vb, drawmap_local_t& out)` = 現 :7026-7189 の **batch+alloc 部**を snapshot 参照に書換(off-main・job-local out へ)。batch 比較(:7028-7050)は snapshot 値と out の既存 entry の値で行う(live 参照ゼロ)。
-- `void foldBuiltDrawInfo(group, staged, built)` = **fold(main)**。staleness 検証 → face write → mDrawMap へ built を install → patchGroup。
+## 4. LLDrawInfo の VB-less ctor(要追加・renderer 自前クラス)
 
-staging 側 hook: 現行 `sGeoCurrentApply=apply`(:8457)+ registerFace(pass 記録)を、**captureRegisterSnapshot を呼び snapshot を apply record(LLGeoFaceApply.mSnaps)へ push** に置換。mPasses と mSnaps は index 対応。
+現 ctor(llspatialpartition.cpp:4167)= `mVertexBuffer(buffer)` で VB を ref し `mVertexBuffer->validateRange(...)` で **deref** → null VB 不可・VB を ref する。off-main 構築には使えない。
 
-## 5. データ構造変更
+**追加**: `LLDrawInfo(U16 start, U16 end, U32 count, U32 offset, bool fullbright, U8 bump)` = 数値のみ設定・`mVertexBuffer`/`mTexture` は null・**validateRange しない**。VB 張りと validateRange は fold(main)へ。LLDrawInfo は render 側自前クラス(architecture §7)ゆえ改修可。**憲法 4 対象外**(検出器でない)。
 
-- `struct LLDrawInfoSnapshot { … §3 の全 field … }`(llvovolume.cpp・LLGeoFaceApply 近傍)。
-- `LLGeoFaceApply` に `std::vector<LLDrawInfoSnapshot> mSnaps;`(mPasses と parallel)。
-- job-local build 出力 = `LLGeoRebuildJob` に `std::vector<LLPointer<LLDrawInfo>> mBuilt;`(pass ごとに built・fold で mDrawMap へ)。または pass→list の map。
+## 5. データ構造(llvovolume.cpp)
 
-## 6. race-free 証明(命題)
+- `LLGeoFaceApply.mSnaps`(既存 Steps 1-3)= `std::vector<LLDrawInfoSnapshot>`。**build で move するため非 const 参照でイテレート**。
+- job-local build 出力:
+  ```
+  struct BuiltDraw {
+      LLPointer<LLDrawInfo> mInfo;
+      LLVertexBuffer* mVb = nullptr;   // fold の VB 張り + off-main batch 比較用(mInfo->mVertexBuffer は fold まで null)
+      LLFace* mLeaderFace = nullptr;   // fold の setDrawInfo(identity・off-main で deref しない)
+      U8 mLeaderTexIndex = 0xFF;       // fold の leader-tex-dup(FACE_DO_NOT_BATCH_TEXTURES なら未設定)
+  };
+  ```
+  `job->mBuilt` = `std::unordered_map<U32, std::vector<BuiltDraw>>`(pass type → draws・batch 隣接は同 passType 末尾)。
+- ⚠️ 旧 `LLGeoRebuildJob.mBuilt`(`draw_map_t`)は本 struct へ置換。
 
-- build 相が read するのは `LLDrawInfoSnapshot`(immutable・job 所有)+ staged VB index(immutable)+ job-local out のみ。
-- build 相が write するのは job-local out のみ。
-- ⟹ build 相は shared state に一切触れない = **他 thread と競合し得ない**(検出器 C_MEGA/DRAWDATA_RACE は allocator 用・本相は allocator も触らない)。
-- capture/fold は main-only(staging / Update-Geom fold)= 従来 apply と同じ thread。
-- **正のオラクル**(gate)= ①GEOAB(L3 A/B・幾何 byte)沈黙 ②視覚同一 ③main self pub_ms 減(直接計測)④kill-switch inline との A/B 完全一致。
+## 6. race-free 証明(v2・命題)
 
-## 7. 罠(申告・実装時に潰す)
+- **build(off-main)が触るもの**: ①新規 `new LLDrawInfo`(alloc = jemalloc thread-safe / 生成物は job-local・publish handoff まで他 thread 不可視)②job-local `BuiltDraw`(worker 専有)③immutable snapshot(move 元・single-consumer)④VbSlice/snapshot の **raw 値読み**(比較)。
+- **build が共有 refcount に対して行う操作 = move のみ = increment/decrement ゼロ**(llpointer.h:87-90)。
+- **capture(main)= increment / fold(main)= VB+dup の増 / 破棄(main)= decrement**。全 refcount RMW が main = 単一 thread = race 不能。
+- publish handoff(`sAvatarPublishMutex`)が build→fold の happens-before を張る = mBuilt/snapshot の可視性担保。
+- ⟹ 共有 state への並行非 atomic アクセスは構造的に存在しない(by construction)。
+- **正のオラクル(gate)= ①GEOAB(L3 A/B・幾何 byte)沈黙 ②視覚同一 ③main self pub_ms 減(直接計測)④kill-switch inline との A/B 一致 ⑤C_*_RACE 発火 0。**
 
-1. **batch-against-preserved**: 現行は new face を draw_vec 末尾(preserved 含む)と merge。job-local build は new 同士のみ merge → fold で preserved と非 merge(draw 数微増・視覚同一)。要 keep/measure。**縮小申告**。
-2. **staleness 検証の置き場**: face の getFace/getGeomCount 照合(:6024-6047)は live read = **fold(main)で実施**(build 前でなく)。stale なら該当 face を drop。build は snapshot で無条件構築、fold で捨てる(wasteful だが安全)。
-3. **face write(setVertexBuffer/setDrawInfo)**: fold(main)でのみ。off-main で書かない。
-4. **material/gltf ポインタの寿命**: snapshot が raw ptr を持つ間(1 frame)に main が material を差し替え可 → snapshot は 1-frame ゆえ古い ptr。LLDrawInfo も raw mMaterial を持つ既存挙動と同じ寿命前提(object が保持・変更で再 dirty)。LLPointer 化で安全側に倒すか要検討。**解釈申告**。
-5. **hidden(selection/RLV)**: staging で判定 → 1-frame 遅延で hide が反映。編集 hide の 1-frame 遅れ = 不可視。
-6. **mSpecularMap/mNormalMap の getTESpecularMap/NormalMap**: vobj 経由 texture 取得 = staging で読む。
-7. **static 経路(mInline / worker 無効時)**: self でも inline 退化時は現行 apply(main)を通す(kill-switch AYASTORM_MT_THREADS=1 で全 inline)。
+## 7. 罠(実装時に潰す)
+
+1. **snapshot は single-consumer(move 元)**: build が move した後の snapshot は空。**再読み禁止**。GEOAB/geoAbCheckJob は `mFills`(fill data)を見て `mSnaps` を見ない = 安全。fold も `mBuilt` を使い mSnaps を見ない。
+2. **batch 比較の VB**: off-main の `mInfo->mVertexBuffer` は null(fold まで)。batch 隣接比較(`info->mVertexBuffer == vb`)は **`BuiltDraw.mVb`(raw)** で行う。
+3. **leader-tex-dup**: leader 自身の texture は `mTexture`(move)+ `mTextureList[leaderTexIdx]`(fold で copy)。off-main では mTexture へ move し textureList の leader slot は空、fold で `= mInfo->mTexture`。
+4. **VB ref + validateRange = fold(main)**。off-main は VB-less ctor(validate せず)。
+5. **staleness = fold(main)**: live face の getFace/isDead/getGeomCount 照合。stale は該当 draw を drop。build は無条件構築。
+6. **mLastModelMatrix = &drawable->mLastVelocityMatrix**(raw ptr)。drawable は snapshot の `mSrcDrawable`(LLPointer→LLDrawInfo へ move)が 1-frame 生存させる = ptr 有効。
+7. **material/gltf raw ptr 寿命**: move ゆえ LLDrawInfo が所有権を持つ(既存 LLDrawInfo と同寿命)。
+8. **batch-against-preserved 非 merge**: build は job-local `mBuilt` にのみ batch(preserved と非 merge)= draw 数微増・幾何 byte 同一・**縮小申告**。
+9. **kill-switch** = `AYASTORM_MT_THREADS=1` → worker 起動せず → routing off → build+fold を main で連続実行(inline 退化)。
 
 ## 8. gate(命題様式)
 
-- main の self pub_ms が有意に減(直接計測・捏造不能)+ 視覚同一 + validation 0 + 装置全層沈黙 + **GEOAB verdict クリーン(必須)** + C_*_RACE 0 + kill-switch inline A/B 一致。
-- 未証明項: batch 数の微増(罠1)は perf 微差・視覚同一で受容可否を AYA。build 相が pub_ms の movable 主項かは fold 後の pub_ms 実測で確定(read=staging に残る分と build=off-main に出る分の内訳)。
+- main の self pub_ms が有意に減(直接計測・捏造不能)+ 視覚同一 + validation 0 + 装置全層沈黙 + **GEOAB verdict クリーン(kernel 0・必須)** + C_*_RACE 0 + kill-switch inline A/B 一致。
+- 未証明項: batch 数微増(罠8)の perf 影響・視覚同一で受容可否 AYA。fold の main 残 ref(VB+dup ~2/draw)が pub_ms に占める割合(移設後実測)。
 
-## 9. 実装順(直列・各 compile 検証)
+## 9. 実装順(直列・各 compile 検証・2 段階安全化)
 
-**安全化の原則(2 段階)**: 350 行の critical batching 関数を「分割 + 移設」を一気にやらない。**まず in-place で構造分離(全 main・挙動不変)→ 検証 → 移設**。
+Steps 1-3(snapshot 定義 + registerFace 分割 + capture を staging へ)= **完了・保持**(commit `bd5db0a02c`+`caa040a769`)。以降を v2 で作り直す:
 
-- **Step 1** = `LLDrawInfoSnapshot` struct + `LLGeoFaceApply.mSnaps` + `LLGeoRebuildJob.mBuilt` 定義。
-- **Step 2(挙動不変の in-place 分離・main のまま)**: registerFace を `captureRegisterSnapshot`(read 部 → snapshot)+ `buildDrawInfoFromSnapshot`(snapshot + VB index → LLDrawInfo・batch)に **その場で** 割る。呼び出しは registerFace 内で capture→build を連続実行(= 現行と 1:1 挙動)。**全 main・thread 移動なし**。gate = 現行 apply gate 一致(視覚同一・GEOAB 沈黙)= 分離の正しさを移設前に確定。
-- **Step 3(capture を staging へ移設)**: staging hook(:8457)で captureRegisterSnapshot を呼び mSnaps 充填。apply 側は build のみ(capture は staging 済)。まだ build は main(apply)。gate = 挙動不変(capture の phase だけ前倒し・1-frame ズレは staging→apply 同 frame ゆえこの段では無し)。
-- **Step 4(build を off-main へ)**: avatar-domain worker が buildDrawInfoFromSnapshot を job-local list へ(self のみ・純関数)。
-- **Step 5(fold)**: `foldBuiltDrawInfo`(main)= staleness + face write + mDrawMap install + patchGroup。drainAvatarPublished を fold へ。
-- **Step 6** = self routing(既 B.2a routing を build 相へ繋ぎ替え)。
-- **Step 7** = kill-switch・GEOAB 配線確認 → gate。
+- **Step 4(挙動不変・全 main で move materialize + fold を確立)**:
+  - LLDrawInfo に VB-less ctor 追加。
+  - `BuiltDraw` struct + `job->mBuilt` を `unordered_map<U32, vector<BuiltDraw>>` へ(v1 の draw_map_t 版を置換)。
+  - build を「VB-less alloc + 数値 + snapshot LLPointer **move** + batch(BuiltDraw.mVb 比較)」に書換(snapshot 非 const 化)。
+  - fold(`foldBuiltDrawInfo`)を「staleness + VB ref + validateRange + leader-tex-dup + setDrawInfo + install」に拡張。
+  - applyGeoStaged / registerFace dispatcher で build→mBuilt→fold を **main で連続実行**(挙動不変)。
+  - gate = 視覚同一 + GEOAB kernel 0 + validation 0(move の正しさと fold の完全性を移設前に証明)。
+- **Step 5(build を off-main へ)**: avatar-domain worker(`runAvatarJobBuild`)が build を job-local mBuilt へ(self のみ)。fold は main 残置(`drainAvatarPublished`)。
+- **Step 6(self routing)**: `drainGeoPublishQueue` で self bridge group を `sAvatarJobQueue` へ回す(main apply せず)→ worker build → `sAvatarPublishQueue` → main fold。
+- **Step 7 = kill-switch・GEOAB 配線確認 → gate**。
 
-**各 Step で compile + 可能なら AYA gate**。Step 2/3 は挙動不変ゆえ「分離が正しい」を移設前に証明できる(移設後に幾何が壊れたら分離バグか移設バグか切り分け可能)。
+各 Step compile + 可能なら AYA gate。Step 4 は挙動不変ゆえ「move materialize + fold split が正しい」を off-main 移設前に証明できる。
 
 ## 10. 申告(縮小・省略・解釈)
 
-- batch-against-preserved の非 merge(罠1)= 意図的縮小(draw 数微増・視覚同一)。
-- material raw ptr 寿命(罠4)= 既存 LLDrawInfo と同前提に倒す解釈(LLPointer 化は保守判断で後日可)。
-- build 相が pub_ms の主項である確証は fold 後実測で確定(readiness）= 本設計は「apply を race-free に off-main 化する構造」を確定するもので、main 空き量の証明は gate 実測。
+- **batch-against-preserved 非 merge(罠8)= 意図的縮小**(draw 微増・視覚同一)。
+- **leader-tex-dup + VB ref を fold(main)に残す = 縮小でない**(構造的に単一 snapshot から move 不能な共有 ref のみ・1 draw ~2 個・材料の大宗は off-main)。
+- **VB-less ctor 追加 = LLDrawInfo(render 自前)への改修**(architecture §7・憲法 4 対象外)。
+- **snapshot 非 const 化(move 元)**: mSnaps を build 後は再利用しない前提(罠1)。
 - PASS は宣言しない。本 doc は設計地図・動作証明は §8 gate の実測。
