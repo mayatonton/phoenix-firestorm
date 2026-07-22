@@ -88,6 +88,7 @@
 #include "lldatapacker.h"
 #include "llviewershadermgr.h"
 #include "llvoavatar.h"
+#include "llmotioncontroller.h"
 #include "llcontrolavatar.h"
 #include "llvoavatarself.h"
 #include "llvocache.h"
@@ -5855,6 +5856,17 @@ namespace
     std::atomic<U64> sAvatarJobsBuilt{0};
     std::atomic<U64> sAvatarDrawsBuilt{0};
 
+    std::deque<LLMotionController*> sMotionTaskQueue;
+
+    void postMotionCompute(LLMotionController* c)
+    {
+        {
+            std::lock_guard<std::mutex> lk(sAvatarJobMutex);
+            sMotionTaskQueue.push_back(c);
+        }
+        sAvatarJobCv.notify_one();
+    }
+
     bool avatarWorkerThreaded()
     {
         const char* e = getenv("AYASTORM_MT_THREADS");
@@ -5903,15 +5915,30 @@ namespace
         for (;;)
         {
             LLGeoRebuildJob* job = nullptr;
+            LLMotionController* motion_c = nullptr;
             {
                 std::unique_lock<std::mutex> lk(sAvatarJobMutex);
-                sAvatarJobCv.wait(lk, [] { return sAvatarWorkerQuit || !sAvatarJobQueue.empty(); });
+                sAvatarJobCv.wait(lk, [] { return sAvatarWorkerQuit || !sAvatarJobQueue.empty() || !sMotionTaskQueue.empty(); });
                 if (sAvatarWorkerQuit)
                 {
                     return;
                 }
-                job = sAvatarJobQueue.front();
-                sAvatarJobQueue.pop_front();
+                if (!sMotionTaskQueue.empty())
+                {
+                    motion_c = sMotionTaskQueue.front();
+                    sMotionTaskQueue.pop_front();
+                }
+                else
+                {
+                    job = sAvatarJobQueue.front();
+                    sAvatarJobQueue.pop_front();
+                }
+            }
+
+            if (motion_c != nullptr)
+            {
+                motion_c->runMotionComputeWorker();
+                continue;
             }
 
             runAvatarJobBuild(job);
@@ -5940,6 +5967,7 @@ namespace
         sAvatarWorkerQuit = false;
         sAvatarWorkerThread = std::thread(&avatarDomainWorkerMain);
         sAvatarWorkerRunning = true;
+        LLMotionController::setPostMotionComputeHook(&postMotionCompute);
         LL_INFOS("Vulkan") << "avatar domain worker started domain=" << sAvatarDomainId << LL_ENDL;
         return true;
     }
@@ -5950,9 +5978,11 @@ namespace
         {
             return;
         }
+        LLMotionController::setPostMotionComputeHook(nullptr);
         {
             std::lock_guard<std::mutex> lk(sAvatarJobMutex);
             sAvatarWorkerQuit = true;
+            sMotionTaskQueue.clear();
         }
         sAvatarJobCv.notify_all();
         if (sAvatarWorkerThread.joinable())

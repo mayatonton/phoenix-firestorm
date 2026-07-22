@@ -46,6 +46,7 @@ const U32 MAX_MOTION_INSTANCES = 32;
 //-----------------------------------------------------------------------------
 F32 LLMotionController::sCurrentTimeFactor = 1.f;
 LLMotionRegistry LLMotionController::sRegistry;
+LLMotionController::post_motion_compute_fn LLMotionController::sPostMotionComputeHook = nullptr;
 
 //-----------------------------------------------------------------------------
 //-----------------------------------------------------------------------------
@@ -316,6 +317,7 @@ bool LLMotionController::registerMotion( const LLUUID& id, LLMotionConstructor c
 //-----------------------------------------------------------------------------
 void LLMotionController::removeMotion( const LLUUID& id)
 {
+    std::lock_guard<std::recursive_mutex> lk(mComputeMutex);
     LLMotion* motionp = findMotion(id);
     mAllMotions.erase(id);
     removeMotionInstance(motionp);
@@ -401,6 +403,12 @@ LLMotion* LLMotionController::createMotion( const LLUUID &id )
 //-----------------------------------------------------------------------------
 bool LLMotionController::startMotion(const LLUUID &id, F32 start_offset)
 {
+    if (mComputeWindowOpen)
+    {
+        mDeferredStartMotion.push_back(std::make_pair(id, start_offset));
+        return true;
+    }
+
     // do we have an instance of this motion for this character?
     LLMotion *motion = findMotion(id);
 
@@ -443,6 +451,12 @@ bool LLMotionController::startMotion(const LLUUID &id, F32 start_offset)
 //-----------------------------------------------------------------------------
 bool LLMotionController::stopMotionLocally(const LLUUID &id, bool stop_immediate)
 {
+    if (mComputeWindowOpen)
+    {
+        mDeferredStopMotion.push_back(std::make_pair(id, stop_immediate));
+        return true;
+    }
+
     // if already inactive, return false
     LLMotion *motion = findMotion(id);
     // SL-1290: always stop immediate if paused
@@ -618,7 +632,7 @@ void LLMotionController::updateMotionsByType(LLMotion::LLMotionBlendType anim_ty
         LLPose *posep = motionp->getPose();
 
         // only filter by LOD after running every animation at least once (to prime the avatar state)
-        if (mHasRunOnce && motionp->getMinPixelArea() > mCharacter->getPixelArea())
+        if (mHasRunOnce && motionp->getMinPixelArea() > mMotionInput.mPixelArea)
         {
             motionp->fadeOut();
 
@@ -830,12 +844,99 @@ void LLMotionController::applyDeferredMotionLifecycle()
     mDeferredDeactivate.clear();
 }
 
+void LLMotionController::applyDeferredStartStop()
+{
+    for (const std::pair<LLUUID, F32>& e : mDeferredStartMotion)
+    {
+        startMotion(e.first, e.second);
+    }
+    mDeferredStartMotion.clear();
+    for (const std::pair<LLUUID, bool>& e : mDeferredStopMotion)
+    {
+        stopMotionLocally(e.first, e.second);
+    }
+    mDeferredStopMotion.clear();
+}
+
+bool LLMotionController::asyncActive() const
+{
+    return mAsyncCompute && sPostMotionComputeHook != nullptr && mTimeStep == 0.f;
+}
+
+void LLMotionController::motionCapture()
+{
+    F32 cur_time = mTimer.getElapsedTimeF32();
+    F32 delta_time = cur_time - mPrevTimerElapsed;
+    mPrevTimerElapsed = cur_time;
+    mLastTime = mAnimTime;
+    mMotionInput.mPixelArea = mCharacter->getPixelArea();
+    mMotionInput.mPaused = mPaused;
+    purgeExcessMotions();
+    if (!mPaused)
+    {
+        mAnimTime += delta_time * mTimeFactor * mUpdateFactor;
+    }
+    updateLoadingMotions();
+}
+
+void LLMotionController::runMotionComputeWorker()
+{
+    std::lock_guard<std::recursive_mutex> lk(mComputeMutex);
+    resetJointSignatures();
+    if (mMotionInput.mPaused && !mComputeForceUpdate)
+    {
+        updateIdleActiveMotions();
+    }
+    else
+    {
+        updateAdditiveMotions();
+        resetJointSignatures();
+        updateRegularMotions();
+        mPoseBlender.blendToBackBuffer();
+    }
+    mComputeWorkerDone.store(true, std::memory_order_release);
+}
+
+void LLMotionController::updateMotionsAsync(bool force_update)
+{
+    if (mComputeDispatched)
+    {
+        if (!mComputeWorkerDone.load(std::memory_order_acquire))
+        {
+            return;
+        }
+        mPoseBlender.applyBackBufferToJoints();
+        applyDeferredMotionLifecycle();
+        mHasRunOnce = true;
+        mComputeDispatched = false;
+        mComputeWindowOpen = false;
+    }
+
+    applyDeferredStartStop();
+
+    motionCapture();
+
+    mComputeForceUpdate = force_update;
+    mComputeWorkerDone.store(false, std::memory_order_release);
+    mComputeWindowOpen = true;
+    mComputeDispatched = true;
+    sPostMotionComputeHook(this);
+}
+
 //-----------------------------------------------------------------------------
 // updateMotion()
 //-----------------------------------------------------------------------------
 void LLMotionController::updateMotions(bool force_update)
 {
     LL_PROFILE_ZONE_SCOPED_CATEGORY_AVATAR;
+
+    if (asyncActive())
+    {
+        updateMotionsAsync(force_update);
+        return;
+    }
+
+    applyDeferredStartStop();
     // SL-763: "Distant animated objects run at super fast speed"
     // The use_quantum optimization or possibly the associated code in setTimeStamp()
     // does not work as implemented.
@@ -847,6 +948,8 @@ void LLMotionController::updateMotions(bool force_update)
     F32 delta_time = cur_time - mPrevTimerElapsed;
     mPrevTimerElapsed = cur_time;
     mLastTime = mAnimTime;
+
+    mMotionInput.mPixelArea = mCharacter->getPixelArea();
 
     // Always cap the number of loaded motions
     purgeExcessMotions();
@@ -1036,6 +1139,7 @@ bool LLMotionController::deactivateMotionInstance(LLMotion *motion)
 
 void LLMotionController::deprecateMotionInstance(LLMotion* motion)
 {
+    std::lock_guard<std::recursive_mutex> lk(mComputeMutex);
     mDeprecatedMotions.insert(motion);
 
     //fade out deprecated motion
@@ -1106,6 +1210,7 @@ void LLMotionController::dumpMotions()
 //-----------------------------------------------------------------------------
 void LLMotionController::deactivateAllMotions()
 {
+    std::lock_guard<std::recursive_mutex> lk(mComputeMutex);
     for (motion_map_t::value_type& motion_pair : mAllMotions)
     {
         LLMotion* motionp = motion_pair.second;
@@ -1119,6 +1224,7 @@ void LLMotionController::deactivateAllMotions()
 //-----------------------------------------------------------------------------
 void LLMotionController::flushAllMotions()
 {
+    std::lock_guard<std::recursive_mutex> lk(mComputeMutex);
     std::vector<std::pair<LLUUID,F32> > active_motions;
     active_motions.reserve(mActiveMotions.size());
     for (motion_list_t::iterator iter = mActiveMotions.begin();

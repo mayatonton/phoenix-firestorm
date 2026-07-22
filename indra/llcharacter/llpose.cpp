@@ -529,7 +529,7 @@ bool LLPoseBlender::addMotion(LLMotion* motion)
 //-----------------------------------------------------------------------------
 // blendAndApply()
 //-----------------------------------------------------------------------------
-void LLPoseBlender::blendAndApply()
+void LLPoseBlender::blendToBackBuffer()
 {
     for (blender_list_t::iterator iter = mActiveBlenders.begin();
          iter != mActiveBlenders.end(); )
@@ -537,7 +537,10 @@ void LLPoseBlender::blendAndApply()
         LLJointStateBlender* jsbp = *iter++;
         jsbp->blendJointStates();
     }
+}
 
+void LLPoseBlender::applyBackBufferToJoints()
+{
     for (LLJointStateBlender* jsbp : mActiveBlenders)
     {
         jsbp->applyBackBuffer();
@@ -545,6 +548,12 @@ void LLPoseBlender::blendAndApply()
 
     // we're done now so there are no more active blenders for this frame
     mActiveBlenders.clear();
+}
+
+void LLPoseBlender::blendAndApply()
+{
+    blendToBackBuffer();
+    applyBackBufferToJoints();
 }
 
 //-----------------------------------------------------------------------------

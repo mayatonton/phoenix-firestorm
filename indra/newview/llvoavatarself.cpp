@@ -224,6 +224,8 @@ void LLVOAvatarSelf::initInstance()
     // adds attachment points to mScreen among other things
     LLVOAvatar::initInstance();
 
+    mMotionController.setAsyncCompute(true);
+
     LL_INFOS() << "Self avatar object created. Starting timer." << LL_ENDL;
     mDebugSelfLoadTimer.reset();
     // clear all times to -1 for debugging

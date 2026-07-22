@@ -131,6 +131,9 @@ public:
     // blend all joint states and apply to skeleton
     void blendAndApply();
 
+    void blendToBackBuffer();
+    void applyBackBufferToJoints();
+
     // removes all joint state blenders from last time
     void clearBlenders();
 

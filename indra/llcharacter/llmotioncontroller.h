@@ -33,6 +33,9 @@
 #include <string>
 #include <map>
 #include <deque>
+#include <vector>
+#include <atomic>
+#include <mutex>
 
 #include "llmotion.h"
 #include "llpose.h"
@@ -134,6 +137,11 @@ public:
     // minimal update (e.g. while hidden)
     void updateMotionsMinimal();
 
+    void setAsyncCompute(bool enable) { mAsyncCompute = enable; }
+    void runMotionComputeWorker();
+    typedef void (*post_motion_compute_fn)(LLMotionController*);
+    static void setPostMotionComputeHook(post_motion_compute_fn fn) { sPostMotionComputeHook = fn; }
+
     void clearBlenders() { mPoseBlender.clearBlenders(); }
 
     // flush motions
@@ -194,6 +202,10 @@ protected:
     void purgeExcessMotions();
     void deactivateStoppedMotions();
     void applyDeferredMotionLifecycle();
+    void applyDeferredStartStop();
+    bool asyncActive() const;
+    void updateMotionsAsync(bool force_update);
+    void motionCapture();
 
 protected:
     F32                 mTimeFactor;            // 1.f for normal speed
@@ -222,6 +234,25 @@ protected:
 
     std::vector<LLMotion*> mDeferredStopReq;
     std::vector<LLMotion*> mDeferredDeactivate;
+
+    struct MotionInput
+    {
+        F32 mPixelArea = 0.f;
+        bool mPaused = false;
+    };
+    MotionInput mMotionInput;
+
+    std::recursive_mutex mComputeMutex;
+
+    bool mComputeWindowOpen = false;
+    std::vector<std::pair<LLUUID, F32> >  mDeferredStartMotion;
+    std::vector<std::pair<LLUUID, bool> > mDeferredStopMotion;
+
+    bool mAsyncCompute = false;
+    bool mComputeDispatched = false;
+    bool mComputeForceUpdate = false;
+    std::atomic<bool> mComputeWorkerDone{false};
+    static post_motion_compute_fn sPostMotionComputeHook;
 
     LLFrameTimer        mTimer;
     F32                 mPrevTimerElapsed;
