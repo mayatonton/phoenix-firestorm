@@ -5856,15 +5856,34 @@ namespace
     std::atomic<U64> sAvatarJobsBuilt{0};
     std::atomic<U64> sAvatarDrawsBuilt{0};
 
-    std::deque<LLMotionController*> sMotionTaskQueue;
+    struct MotionTask
+    {
+        LLPointer<LLVOAvatar> mPin;
+        LLMotionController* mC = nullptr;
+    };
+    std::deque<MotionTask> sMotionTaskQueue;
+    std::mutex sMotionDoneMutex;
+    std::deque<MotionTask> sMotionDoneQueue;
 
     void postMotionCompute(LLMotionController* c)
     {
+        MotionTask t;
+        t.mC = c;
+        t.mPin = dynamic_cast<LLVOAvatar*>(c->getCharacter());
         {
             std::lock_guard<std::mutex> lk(sAvatarJobMutex);
-            sMotionTaskQueue.push_back(c);
+            sMotionTaskQueue.push_back(std::move(t));
         }
         sAvatarJobCv.notify_one();
+    }
+
+    void drainMotionDone()
+    {
+        std::deque<MotionTask> done;
+        {
+            std::lock_guard<std::mutex> lk(sMotionDoneMutex);
+            done.swap(sMotionDoneQueue);
+        }
     }
 
     bool avatarWorkerThreaded()
@@ -5915,7 +5934,7 @@ namespace
         for (;;)
         {
             LLGeoRebuildJob* job = nullptr;
-            LLMotionController* motion_c = nullptr;
+            MotionTask motion_task;
             {
                 std::unique_lock<std::mutex> lk(sAvatarJobMutex);
                 sAvatarJobCv.wait(lk, [] { return sAvatarWorkerQuit || !sAvatarJobQueue.empty() || !sMotionTaskQueue.empty(); });
@@ -5925,7 +5944,7 @@ namespace
                 }
                 if (!sMotionTaskQueue.empty())
                 {
-                    motion_c = sMotionTaskQueue.front();
+                    motion_task = std::move(sMotionTaskQueue.front());
                     sMotionTaskQueue.pop_front();
                 }
                 else
@@ -5935,9 +5954,13 @@ namespace
                 }
             }
 
-            if (motion_c != nullptr)
+            if (motion_task.mC != nullptr)
             {
-                motion_c->runMotionComputeWorker();
+                motion_task.mC->runMotionComputeWorker();
+                {
+                    std::lock_guard<std::mutex> lk(sMotionDoneMutex);
+                    sMotionDoneQueue.push_back(std::move(motion_task));
+                }
                 continue;
             }
 
@@ -5990,6 +6013,10 @@ namespace
             sAvatarWorkerThread.join();
         }
         sAvatarWorkerRunning = false;
+        {
+            std::lock_guard<std::mutex> lk(sMotionDoneMutex);
+            sMotionDoneQueue.clear();
+        }
         LL_INFOS("Vulkan") << "avatar domain worker stopped domain=" << sAvatarDomainId
                            << " jobs_built=" << sAvatarJobsBuilt.load(std::memory_order_relaxed)
                            << " draws_built=" << sAvatarDrawsBuilt.load(std::memory_order_relaxed) << LL_ENDL;
@@ -6921,6 +6948,8 @@ void LLVolumeGeometryManager::drainGeoPublishQueue()
 
 void LLVolumeGeometryManager::drainAvatarPublished()
 {
+    drainMotionDone();
+
     for (;;)
     {
         LLGeoRebuildJob* job = nullptr;
