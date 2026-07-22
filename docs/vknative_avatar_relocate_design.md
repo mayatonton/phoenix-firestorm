@@ -57,6 +57,8 @@ crowd の重い塊(avatar 描画)に対し、**並列化(塊を割って撒く)=
 - **INV-3 1-frame 契約**: production は back-buffer に生産、render は front を読む。pose/skinning/幾何は 1-frame 遅延可。**着脱・topology 変化は例外**(遅延で穴)= join 契約で別扱い(§6 OPEN)。
 - **INV-4 検出器 covered**: 越境は既存 race detector(C_DRAWDATA_RACE 等)が名指し(憲法の検出器は不変・盲目化しない)。
 - **INV-5 production 窓中の avatar state 排他**(P1-c で確定): domain が avatar render state(TE/face/pose/skeleton)を staging で読む窓の間、main は同 state を mutate しない。main の network mutation は sync-in(Update-Geom 境界)で drain。機構 = 既存 volume-pin(sGeoVolumePins llvovolume.cpp:5841)を avatar production 窓へ拡張。per-domain race probe で検出。
+- **INV-6 固定上限 worker pool**(Phase 2・AYA 制定 2026-07-23): off-main worker thread 数は **固定上限付き** = `clamp(cores - RESERVED, 1, HARD_MAX)`。**per-avatar thread(死案)でも unlimited でもない**。avatar 数が unlimited 設定でも thread は固定 → graceful degradation(thread 爆発不能)。off-main が処理する avatar 集合は既存 impostor 上限(sMaxNonImpostors ≤66)で bounded = 独自 eviction を作らない(既存 lifecycle 準拠)。
+- **doctrine(AYA 制定 2026-07-23)= 「unlimited は誠実でない」**: core も memory も有限。Upstream の RenderAvatarMaxNonImpostors=0(無限)は「不可能な約束」。設計は現実的な Upper を honest に付ける(thread pool = INV-6・描画 avatar cap の強制可否は product 決裁)。
 
 ## 4. join 設計仕様(4 項)
 
@@ -103,11 +105,32 @@ crowd の重い塊(avatar 描画)に対し、**並列化(塊を割って撒く)=
 - L3 型 A/B(GEOAB)必須(幾何経路変更ゆえ)。
 
 ### Phase 2 = crowd avatar を off-main へ(段階的・measurement-driven・AYA 方針 2026-07-23)
-**⚠️ 決め打ちしない**: 「単一 avatar-domain worker への相乗り(全 crowd avatar を 1 worker が処理)で main が空くか」を **まず実装して測る**。per-core 多スレッド分散(下記)が要るかは **その時の switch A/B 差分でしか判らない**(事前設計で N-core を組み込まない)。
-- **Step 1(相乗り)**: crowd avatar の skeleton/apply を **既存の単一 avatar-domain worker**(self が乗っているのと同じ thread・sMotionTaskQueue/sAvatarJobQueue)へ拡張。1 worker が全 avatar を直列処理。→ **switch A/B で「main が空いたか + 1 worker が crowd に追いつくか」を実測**。
-- **Step 2(要すれば per-core)**: Step 1 で 1 worker が飽和 or main がまだ詰まるなら、crowd を disjoint avatar 集合に分割し **N thread(= N sub-pool)** へ。**前提 = Phase 1 の per-domain sub-pool(INV-2・P1-b `76470220aa` で下地済)**。単一 lock で作ると天井が潰れる。期待配当 = work は avatar 数に線形 + CPU-main-bound ゆえ N core で ~N×(帯域/funnel が律速でない限り)。
-- 安全 = D1-D4(`81b7b0aef4`)+ TSan(Layer A は boost.fiber 非互換で不可 = jemalloc crash オラクル代替)が入場ゲート。
-- **gate 計測法(恒久 A/B レバー)= `AYASTORM_MT_THREADS`**: `=1`(全直列 = 並列化前)vs 通常(並列)を **同一 session で 2 連続起動**すれば同一シーンで直列 vs 並列の差が取れる(シーン変動ゼロ)= 「並列化総量」を post-Phase2 で clean に測る。before-baseline snapshot は不要(switch が「並列化前」をいつでも再現)。※`MT_THREADS=1` は T系(texture/geometry)も直列化ゆえ差分は「並列スタック全体」= avatar 単独 isolate は self-only ゆえ別途要計器。
+**⚠️ 決め打ちしない**: 「単一 avatar-domain worker への相乗り(全 crowd avatar を 1 worker が処理)で main が空くか」を **まず実装して測る**。per-core 多スレッド分散(Step2)が要るかは **その時の switch A/B 差分でしか判らない**。
+
+#### off-main は既存 impostor lifecycle に只乗り(独自 eviction を作らない・HEAD 実トレース)
+- off-main が乗るのは **NORMAL_UPDATE(可視・非 impostor)avatar のみ**。`updateCharacter`(llvoavatar.cpp:5344)→ NORMAL → `LLMotionController::updateMotions(bool)` → `asyncActive()` → off-main。**impostor/非可視/muted/cloud = HIDDEN_UPDATE = `updateMotionsMinimal`(main・pose 計算せず前 pose 保持)= off-main 対象外**。
+- **off-main 集合サイズは `sMaxNonImpostors`(llvoavatar.cpp:498・既定 12・GUI max 66)で上限固定**。総数 200 でも 1024m draw でも off-main worker が捌くのは常に **≤ 非 impostor 上限**。churn(通り抜け)は既存 lifecycle(region 離脱 → `killObjects` llviewerobjectlist.cpp:1579 → 破棄)が回す = **独自 eviction 不要**。
+- ⚠️ **impostor は compute/render の盾であって memory の盾でない**(§7 memory-axis)。高 draw crowd の memory 枯渇は別軸・off-main では治らない。
+
+#### 実装方針(AYA 決定 2026-07-23)= 既存 off-main 機構に乗る・新機構を作らない
+- **壁 #1(drain-window)= 既存 async 状態機械の「窓を閉じる一塊」を minimal でも呼ぶだけ**(既存コード共有)。**壁 #3(pin)= 既存 geo apply job が既に使っている LLPointer pin パターンを motion task にも適用するだけ**(geo job は snapshot の `LLPointer<LLVOAvatar>` を main で ref/解放・worker は move のみ = 既に crowd lifetime-safe。motion task だけが self=不滅ゆえ生ポインタで取り残されている)。**どちらも発明でなく既存踏襲。**
+- **破棄タイミング**は既存の deferred model に乗る: `markDead`(flag)→ `cleanDeadObjects`(llappviewer.cpp:6144・idle 1 点)で object-list ref 解放 → **他 ref(我々の pin)が残れば実 free は延期**(LLPointer refcount 0 まで)= pin は deferred-destruction に自然に噛む(実 free は worker done + main drain 後・≤1 frame 延期)。main の削除排他(cleanDeadObjects/sNoDelete)は worker を守れない(worker は main 直列の外)ゆえ pin が worker の lifetime 錨。
+- **最初は Upstream 準拠**(既存 CVAR = RenderAvatarMaxNonImpostors 等そのまま・既存 impostor lifecycle 只乗り)。**深い変更(motion 全 snapshot 化・破棄タイミング精緻化・per-core 分散)は実装/計測で気づいたら仕様へ逆適用(後回し)。**
+- **未完の sweep(逆適用対象・実装中に洗う)**: 描画対象切り替え点(TP / region・parcel 移動 / impostor↔full / visible↔hidden / spawn・despawn)が全て壁 #1/#3 で覆えるか。cleanDeadObjects の idle 内位置と worker dispatch/drain の順序関係。→ 実装で edge に当たったら spec に反映。
+
+#### Step 1(相乗り)= self 限定ゲート 2 点を外す + 壁 3 点
+- **ゲート除去(2)**: ①`setAsyncCompute(true)` を全 avatar へ(現 llvoavatarself.cpp:227 self 限定 → LLVOAvatar へ)②`drainGeoPublishQueue` の `isSelf()` を外す(llvovolume.cpp:6859・`group->mAvatarp=this` は全 avatar で設定 llvoavatar.cpp:3249)。工事 switch `AYASTORM_CROWD_OFFMAIN`(gate 後削除)。
+- **🔴 壁 #1(correctness)= 可視↔非可視遷移 race**: self は「never hidden update」(llvoavatar.cpp:5401)ゆえ安全だったが crowd は頻繁に hidden 化。`updateMotionsMinimal`(llmotioncontroller.cpp:1037)が `purgeExcessMotions`/`deactivateStoppedMotions`/`resetJointSignatures` で **mComputeMutex 無しに container mutate** → async dispatch 済(window open)の avatar が hidden 化すると worker と race = heap corruption。**解 = drain-window 共有**: window を閉じる一塊(updateMotionsAsync:902-913 = worker done なら applyBackBuffer + deferred 適用 + flag clear / 未了なら early-return)を `updateMotionsMinimal` 冒頭でも呼ぶ(共通関数化)。main stall なし・self 挙動不変。
+- **🔴 壁 #2(scaling・correctness でない)= 単一 worker 飽和**: 1 worker が ≤ 非 impostor 上限の motion+geo を直列。捌けなければ latency 増(graceful = async 状態機械が worker 未了で早期 return/geo job は queue)。→ **N は「200」でなく「非 impostor 上限(12-66)」に bounded** = 現実的 = switch A/B で測る。不足なら Step2。
+- **🔴 壁 #3(lifecycle)= avatar runtime 破棄 UAF**: motion task queue が生ポインタ(`std::deque<LLMotionController*>` llvovolume.cpp:5859・pin なし)。self は不滅ゆえ無害だったが crowd は runtime 破棄(despawn/region)→ queued/in-compute controller が解放 → UAF。~LLMotionController(llmotioncontroller.cpp:154)は worker と非同期。**解 = motion task に avatar pin(B.2 型)**: task = `{LLPointer<LLVOAvatar> mPin; LLMotionController* mC;}`・push(main=ref)→ worker が done-queue へ *move*(ref/unref no-op)→ main が drain して解放(unref)。全 ref/unref main = B.2 不変条件。pin は transient(≤ 非 impostor 上限・≤1 frame)= 累積しない。geo apply 側は既に pin 済(job の LLPointer 群)ゆえ追加不要。
+
+#### Step 2(要すれば per-core)= 固定上限 worker pool(honest Upper・AYA 制定 2026-07-23)
+- Step1 で 1 worker が飽和 or main がまだ詰まるなら、crowd を disjoint avatar 集合に分割し **N thread(= N sub-pool)** へ。**前提 = Phase 1 の per-domain sub-pool(INV-2・P1-b `76470220aa` で下地済)**。単一 lock は天井を潰す。
+- **⛔ N は固定上限付き**(INV-6): `N = clamp(cores - RESERVED, 1, HARD_MAX)`。RESERVED = main + render/PE lane + T1 texture + T2 geometry + slack(既存 thread と oversubscribe しない)。HARD_MAX = 控えめ(例 8・measure で tune)。**per-avatar thread(死案)でも unlimited thread でもない**。avatar が unlimited 設定でも thread は N 固定 → graceful(各 thread 多め)・**thread 爆発は構造的に不能**。
+- 期待配当 = work は avatar 数に線形 + CPU-main-bound ゆえ N core で ~N×(帯域/funnel が律速でない限り)。安全 = D1-D4(`81b7b0aef4`)+ jemalloc crash オラクル(TSan Layer A は boost.fiber 非互換で不可)。
+
+#### gate 計測法(恒久 A/B レバー)= `AYASTORM_MT_THREADS`
+`=1`(全直列 = 並列化前)vs 通常(並列)を **同一 session で 2 連続起動** = 同一シーンで直列 vs 並列の clean 差分(シーン変動ゼロ)= 「並列化総量」を post-Phase2 で測る。before-baseline snapshot 不要(switch が「並列化前」を再現)。※`MT_THREADS=1` は T系も直列化 = 差分は「並列スタック全体」。Step2 では N-core knob(`MT_THREADS=N`)に拡張し scaling を測る(HARD_MAX で clamp)。
 
 ## 6. 縮小・省略・解釈申告(OPEN・approve 前に潰す/AYA 判断)
 
@@ -118,7 +141,14 @@ crowd の重い塊(avatar 描画)に対し、**並列化(塊を割って撒く)=
 5. **funnel(submission/bindless descriptor/upload queue)の N-way 安全性**は Phase 2 の gate 事項・未検証。
 6. PASS は宣言しない。本 doc は設計地図であり動作証明ではない(正のオラクル = Phase 1 gate の実測)。
 
-## 7. governance(旧設計との関係)
+## 7. memory-axis(off-main の対象外・別 workstream・AYA 確認 2026-07-23)
+
+**compute(本 relocate line)と memory は独立軸**:
+- **compute**(skeleton/pose)= impostor 上限(sMaxNonImpostors ≤66)で堰き止め済 → off-main は draw distance に対して安全(worker 負荷 ≤ 上限・**memory を悪化させない**)。
+- **memory** = **ほぼ何も bound しない**。1 SIM = 256×256m ゆえ draw distance 1024m = 半径 4 SIM ≈ 最大 8×8 SIM が視界 → load 済 region の全 avatar(impostor 含む)の mesh+texture が resident(impostor も billboard を焼くのに mesh 実体が要る)。**高 draw crowd(200+)は memory 枯渇で落ち得る**(Upstream 含む)。jelly-doll(RenderAvatarMaxComplexity)/ auto-mute(RenderAutoMuteSurfaceAreaLimit)は render を落とすが memory shed は限定的(未確認)。
+- **∴ off-main は freeze(main stall)を治すが memory 枯渇は治さない = 別 workstream**(遠 region avatar の mesh/texture shed / avatar LOD)。**北極星「50-100 名で固まらない」は少 region ゆえ memory 圏内で、そこの敵は freeze(compute)= 本 line が正しい標的**。1024m×多 region の memory ceiling を狙うかは product 決裁(deferred)。
+
+## 8. governance(旧設計との関係)
 
 - `docs/vknative_crowd_body_recovery_design.md` §4 stepA(eliminate = A-1a 脱 texture batch key)= **不採用・履歴**。理由 = §0。
 - 保持する資産 = 同 doc §1-3・§5(有界化 = 信頼性安全弁)+ `docs/vknative_crowd_step0_measurements.md` 全体(実測・帰属)。
