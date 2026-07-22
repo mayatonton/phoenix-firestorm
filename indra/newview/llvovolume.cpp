@@ -5783,6 +5783,8 @@ struct LLGeoStagedRebuild
     std::vector<std::pair<U32, LLSpatialGroup::buffer_texture_map_t> > mBufferMaps;
 };
 
+static void buildDrawInfoFromSnapshot(LLSpatialGroup* group, const LLDrawInfoSnapshot& s, LLFace* facep);
+
 namespace
 {
     enum EGeoJobState : U32
@@ -6117,9 +6119,12 @@ namespace
                 facep->setVertexBuffer(e.mBuffer);
             }
 
-            for (U32 pass : e.mPasses)
+            for (const LLDrawInfoSnapshot& snap : e.mSnaps)
             {
-                LLVolumeGeometryManager::registerFace(group, facep, pass);
+                if (!snap.mSkip)
+                {
+                    buildDrawInfoFromSnapshot(group, snap, facep);
+                }
             }
             LLVKContract::watchStageEvent(watch_id(e), "apply_reg", (U32)e.mPasses.size());
         }
@@ -6799,20 +6804,6 @@ static LLDrawInfoSnapshot captureRegisterSnapshot(LLFace* facep, U32 type)
         s.mSkip = true;
         return s;
     }
-    if (facep->getVertexBuffer() == nullptr)
-    {
-        LLVKContract::watchStageEvent(pObj->getLocalID(), "reg_nullvb");
-        static std::atomic<U32> s_null_vb_faces{0};
-        const U32 n = ++s_null_vb_faces;
-        if ((n & (n - 1)) == 0)
-        {
-            LL_WARNS("Vulkan") << "registerFace with null vertex buffer skipped n=" << n << LL_ENDL;
-        }
-        s.mSkip = true;
-        return s;
-    }
-    LL_LABEL_VERTEX_BUFFER(facep->getVertexBuffer(), LLRenderPass::lookupPassName(type));
-
     const bool rigged = facep->isState(LLFace::RIGGED);
     s.mType = type;
     s.mPassType = rigged ? (type + 1) : type;
@@ -6822,15 +6813,6 @@ static LLDrawInfoSnapshot captureRegisterSnapshot(LLFace* facep, U32 type)
         (type == LLRenderPass::PASS_FULLBRIGHT_ALPHA_MASK) ||
         (type == LLRenderPass::PASS_ALPHA && facep->isState(LLFace::FULLBRIGHT)) ||
         teFullbrightEnabled(facep->getTextureEntry());
-
-    s.mHasNormal = facep->getVertexBuffer()->hasDataType(LLVertexBuffer::TYPE_NORMAL);
-    if (!s.mFullbright && type != LLRenderPass::PASS_GLOW && !s.mHasNormal)
-    {
-        llassert(false);
-        LL_WARNS() << "Non fullbright face has no normals!" << LL_ENDL;
-        s.mSkip = true;
-        return s;
-    }
 
     if (facep->isState(LLFace::TEXTURE_ANIM) && facep->getVirtualSize() > MIN_TEX_ANIM_SIZE)
     {
@@ -6967,6 +6949,25 @@ static LLDrawInfoSnapshot captureRegisterSnapshot(LLFace* facep, U32 type)
 
 static void buildDrawInfoFromSnapshot(LLSpatialGroup* group, const LLDrawInfoSnapshot& s, LLFace* facep)
 {
+    if (facep->getVertexBuffer() == nullptr)
+    {
+        LLVKContract::watchStageEvent(s.mFSPickerLocalID, "reg_nullvb");
+        static std::atomic<U32> s_null_vb_faces{0};
+        const U32 n = ++s_null_vb_faces;
+        if ((n & (n - 1)) == 0)
+        {
+            LL_WARNS("Vulkan") << "registerFace with null vertex buffer skipped n=" << n << LL_ENDL;
+        }
+        return;
+    }
+    LL_LABEL_VERTEX_BUFFER(facep->getVertexBuffer(), LLRenderPass::lookupPassName(s.mType));
+    if (!s.mFullbright && s.mType != LLRenderPass::PASS_GLOW && !facep->getVertexBuffer()->hasDataType(LLVertexBuffer::TYPE_NORMAL))
+    {
+        llassert(false);
+        LL_WARNS() << "Non fullbright face has no normals!" << LL_ENDL;
+        return;
+    }
+
     LLSpatialGroup::drawmap_elem_t& draw_vec = group->mDrawMap[s.mPassType];
 
     S32 idx = static_cast<S32>(draw_vec.size()) - 1;
@@ -7116,6 +7117,7 @@ void LLVolumeGeometryManager::registerFace(LLSpatialGroup* group, LLFace* facep,
     if (sGeoCurrentApply != nullptr)
     {
         sGeoCurrentApply->mPasses.push_back(type);
+        sGeoCurrentApply->mSnaps.push_back(captureRegisterSnapshot(facep, type));
         return;
     }
     LLDrawInfoSnapshot s = captureRegisterSnapshot(facep, type);
