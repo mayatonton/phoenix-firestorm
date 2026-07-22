@@ -90,7 +90,8 @@ crowd の重い塊(avatar 描画)に対し、**並列化(塊を割って撒く)=
 - P1-c ✅ **設計確定(2026-07-22・source 実トレース)= 既存機構の再配置(新プリミティブ不要)**:
   - **既存の 1-frame パイプラインを延長**: display "Update Geom"(llviewerdisplay.cpp:817-825)= drainGeoPublishQueue(前 frame fill を apply)→ updateGeom(今 frame rebuild を stage + worker enqueue)。**stage(N)→worker fill→apply(N+1) が既存**。relocate は staging + skinning + apply も off-main 化し back-buffer 化するだけ。
   - **avatar 領域 thread の production 周期**(Phase 1 = 1 avatar/1 thread): ①skeleton anim(updateCharacter idl28 から移設)②palette build → back mGLMp(render-lazy から移設)③geometry staging(genDrawInfo・per-domain allocator P1-b)④fill(runVkGeoFill・既 off-main)⑤apply → **back** group->mDrawMap。
-    - **進捗(2026-07-22・HEAD `42d5fb9531`)**: ①✅ skeleton anim off-main = M1/M2/M3 完遂(`a3021d8135`/`9c15d8c2e4`/`5bba495a06`・controller single-owner mutex で lifecycle race 根治・memory `handoff_avatar_skeleton_offmain`)/ ③capture=main(非atomic refcount 点ゆえ構造的に main = B.2)・build=off-main / ④✅既 off-main / ⑤✅B.2 完遂。**🔴 残 = ② palette build off-main(唯一の本体未着手)= memory `handoff_avatar_palette_offmain`**。⚠️ TSan Layer A(§Phase2 検出器)は boost.fiber 非互換で不可(memory `finding_tsan_layerA_blocked_boost_fiber`)= gate は jemalloc heap-corruption crash を race オラクルに使用。
+    - **進捗(2026-07-23 更新・HEAD `7a7358cc5e`)**: ①✅ skeleton anim off-main = M1/M2/M3 完遂(`a3021d8135`/`9c15d8c2e4`/`5bba495a06`・controller single-owner mutex で lifecycle race 根治・memory `handoff_avatar_skeleton_offmain`)/ ②**palette build = ✅ NON-TARGET 確定(実測で潰した・2026-07-23・AYA 裁定・memory `handoff_avatar_palette_offmain`)**/ ③capture=main(非atomic refcount 点ゆえ構造的に main = B.2)・build=off-main / ④✅既 off-main / ⑤✅B.2 完遂。⚠️ TSan Layer A(§Phase2 検出器)は boost.fiber 非互換で不可(memory `finding_tsan_layerA_blocked_boost_fiber`)= gate は jemalloc heap-corruption crash を race オラクルに使用。
+    - **②palette 非標的の根拠(self 専用計器・revert 済)**: per-frame の CPU「skinning 計算」= bone palette build のみ = **self 28µs/f**(offload 可能な matMul+pack = 11.5µs/f = aChar 2.05ms/f の 0.6%)。**実 skinning(頂点変形)は GPU**(`writeObjectSkinUBO` llviewershadermgr.cpp:533 = UBO memcpy → vertex shader)。palette は pose 不変でも**毎 frame 無条件再 build = 半静的**(llvoavatar.cpp:10730)。∴ GPU がやる仕事の CPU 転送だけを thread に載せるのは無意味。avatar CPU 塊の重量は skeleton(off-main 済)に集中。→ **Phase 1 の 5-step 周期は skeleton+apply で実質達成・palette は no-op 標的として閉じる**。もしレバーがあるとしても parallelize でなく eliminate(pose 不変 skip)= crowd 用小レバー・E系領分。
   - **🔴 skeleton 相(①)の本質設計 = `docs/vknative_skeleton_offmain_motion_design.md`(2026-07-22 ソース導出・確定)**。要点(旧記述「skeleton anim を丸ごと移設」を精緻化): skeleton は **A/B に分解**して割る — **(A) 配置(mRoot 位置/回転 = drawable/agent/velocity 由来・pose 非依存)= live/main 残置**(視点=カメラが毎フレーム読む聖域)、**(B) articulation(updateMotions → child 局所変換)= off-main**、**融合(updateWorldMatrixChildren = live root × off-main 局所)= main で re-root**。**⛔ カメラは off-main に持っていかない**(配置 A の消費者・自前状態あり・RLV @setcam が足場)。**⛔「joint 出力を snapshot して readers を redirect」は誤り = 全面破棄**(入口 doc §2 SUPERSEDED)= 出力でなく入力(motion 計算)を off-main・readers は live joint を読むだけ。B 内部の壁 = motion controller lifecycle race(deferred-mutation で貫通)。
   - **fence 群 = 3 点・全て "Update Geom" 点(render は strictly 後)に置く**:
     1. **swap fence**: domain 完了 signal で back→front(group + palette)。placement = drainGeoPublishQueue の位置(render 前の安全窓)= 既存 drain を swap に置換/拡張。
@@ -101,11 +102,12 @@ crowd の重い塊(avatar 描画)に対し、**並列化(塊を割って撒く)=
 - gate: **main-thread の avatar 費目(idl28 + pub_ms + palette)が ~0 へ**(直接計測・捏造不能)+ 視覚同一 + validation 0 + 装置全層沈黙 + C_PAR/C_DRAWDATA_RACE 発火 0。fps は非約束(動けば儲け)。
 - L3 型 A/B(GEOAB)必須(幾何経路変更ゆえ)。
 
-### Phase 2 = per-core 分散(gate = 帯域と funnel が N-way に耐えるか)
-- crowd を disjoint avatar 集合に分割し N thread(= N sub-pool)へ(§0 の「使っちまえ」)。同じ join に流す(1 avatar でも N avatar でも同一機構)。
-- 前提 = Phase 1 の per-domain sub-pool(INV-2)。単一 lock で作ると Phase 2 天井が潰れる。
-- 期待配当 = work は avatar 数に線形 + CPU-main-bound(step0)ゆえ N core で ~N×(帯域/funnel が律速でない限り)。
-- 安全 = D1-D4(`81b7b0aef4`)+ TSan(Layer A 未走行)が入場ゲート。
+### Phase 2 = crowd avatar を off-main へ(段階的・measurement-driven・AYA 方針 2026-07-23)
+**⚠️ 決め打ちしない**: 「単一 avatar-domain worker への相乗り(全 crowd avatar を 1 worker が処理)で main が空くか」を **まず実装して測る**。per-core 多スレッド分散(下記)が要るかは **その時の switch A/B 差分でしか判らない**(事前設計で N-core を組み込まない)。
+- **Step 1(相乗り)**: crowd avatar の skeleton/apply を **既存の単一 avatar-domain worker**(self が乗っているのと同じ thread・sMotionTaskQueue/sAvatarJobQueue)へ拡張。1 worker が全 avatar を直列処理。→ **switch A/B で「main が空いたか + 1 worker が crowd に追いつくか」を実測**。
+- **Step 2(要すれば per-core)**: Step 1 で 1 worker が飽和 or main がまだ詰まるなら、crowd を disjoint avatar 集合に分割し **N thread(= N sub-pool)** へ。**前提 = Phase 1 の per-domain sub-pool(INV-2・P1-b `76470220aa` で下地済)**。単一 lock で作ると天井が潰れる。期待配当 = work は avatar 数に線形 + CPU-main-bound ゆえ N core で ~N×(帯域/funnel が律速でない限り)。
+- 安全 = D1-D4(`81b7b0aef4`)+ TSan(Layer A は boost.fiber 非互換で不可 = jemalloc crash オラクル代替)が入場ゲート。
+- **gate 計測法(恒久 A/B レバー)= `AYASTORM_MT_THREADS`**: `=1`(全直列 = 並列化前)vs 通常(並列)を **同一 session で 2 連続起動**すれば同一シーンで直列 vs 並列の差が取れる(シーン変動ゼロ)= 「並列化総量」を post-Phase2 で clean に測る。before-baseline snapshot は不要(switch が「並列化前」をいつでも再現)。※`MT_THREADS=1` は T系(texture/geometry)も直列化ゆえ差分は「並列スタック全体」= avatar 単独 isolate は self-only ゆえ別途要計器。
 
 ## 6. 縮小・省略・解釈申告(OPEN・approve 前に潰す/AYA 判断)
 
