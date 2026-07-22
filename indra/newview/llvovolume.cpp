@@ -5852,6 +5852,8 @@ namespace
     bool sAvatarWorkerRunning = false;
     bool sAvatarWorkerQuit = false;
     U32 sAvatarDomainId = 0xFFFFFFFFu;
+    std::atomic<U64> sAvatarJobsBuilt{0};
+    std::atomic<U64> sAvatarDrawsBuilt{0};
 
     bool avatarWorkerThreaded()
     {
@@ -5877,6 +5879,19 @@ namespace
             }
         }
         job->mBuiltReady = true;
+        U64 ndraws = 0;
+        for (auto& p : job->mBuilt)
+        {
+            ndraws += p.second.size();
+        }
+        sAvatarJobsBuilt.fetch_add(1, std::memory_order_relaxed);
+        sAvatarDrawsBuilt.fetch_add(ndraws, std::memory_order_relaxed);
+        static std::atomic<bool> s_logged_first{false};
+        bool expected = false;
+        if (s_logged_first.compare_exchange_strong(expected, true))
+        {
+            LL_INFOS("Vulkan") << "avatar domain first off-main build draws=" << ndraws << LL_ENDL;
+        }
     }
 
     void avatarDomainWorkerMain()
@@ -5945,7 +5960,9 @@ namespace
             sAvatarWorkerThread.join();
         }
         sAvatarWorkerRunning = false;
-        LL_INFOS("Vulkan") << "avatar domain worker stopped domain=" << sAvatarDomainId << LL_ENDL;
+        LL_INFOS("Vulkan") << "avatar domain worker stopped domain=" << sAvatarDomainId
+                           << " jobs_built=" << sAvatarJobsBuilt.load(std::memory_order_relaxed)
+                           << " draws_built=" << sAvatarDrawsBuilt.load(std::memory_order_relaxed) << LL_ENDL;
         {
             std::lock_guard<std::mutex> lk(sAvatarJobMutex);
             sAvatarJobQueue.clear();
@@ -6058,7 +6075,7 @@ namespace
         return true;
     }
 
-    bool applyGeoStaged(LLSpatialGroup* group, LLGeoStagedRebuild& staged)
+    bool applyGeoStaged(LLSpatialGroup* group, LLGeoStagedRebuild& staged, built_map_t* prebuilt = nullptr)
     {
         auto watch_id = [](const LLGeoFaceApply& e) -> U32
         {
@@ -6075,6 +6092,11 @@ namespace
             }
             if (drawablep->getSpatialGroup() != group)
             {
+                if (prebuilt != nullptr)
+                {
+                    LLVKContract::watchStageEvent(watch_id(e), "apply_abort_moved");
+                    return false;
+                }
                 continue;
             }
             if (e.mTEOffset < 0 || e.mTEOffset >= drawablep->getNumFaces())
@@ -6133,7 +6155,8 @@ namespace
 
         group->clearDrawMapStaged(preserve, staged_drawables, LLVKContract::SITE_CLEAR_APPLY);
 
-        built_map_t built;
+        built_map_t local_built;
+        built_map_t& built = (prebuilt != nullptr) ? *prebuilt : local_built;
 
         for (LLGeoFaceApply& e : staged.mFaces)
         {
@@ -6163,12 +6186,15 @@ namespace
                 facep->setVertexBuffer(e.mBuffer);
             }
 
-            VbSlice vb{ e.mBuffer.get(), e.mGeomIndex, e.mGeomCount, e.mIndicesIndex, e.mIndicesCount };
-            for (LLDrawInfoSnapshot& snap : e.mSnaps)
+            if (prebuilt == nullptr)
             {
-                if (!snap.mSkip)
+                VbSlice vb{ e.mBuffer.get(), e.mGeomIndex, e.mGeomCount, e.mIndicesIndex, e.mIndicesCount };
+                for (LLDrawInfoSnapshot& snap : e.mSnaps)
                 {
-                    buildDrawInfoFromSnapshot(built, snap, vb, facep);
+                    if (!snap.mSkip)
+                    {
+                        buildDrawInfoFromSnapshot(built, snap, vb, facep);
+                    }
                 }
             }
             LLVKContract::watchStageEvent(watch_id(e), "apply_reg", (U32)e.mPasses.size());
@@ -6784,6 +6810,15 @@ void LLVolumeGeometryManager::drainGeoPublishQueue()
         bool applied = false;
         if (group != nullptr && !group->isDead() && !job->mFillFailed && !stale_gen)
         {
+            if (sAvatarWorkerRunning && group->mAvatarp != nullptr && group->mAvatarp->isSelf())
+            {
+                {
+                    std::lock_guard<std::mutex> lk(sAvatarJobMutex);
+                    sAvatarJobQueue.push_back(job);
+                }
+                sAvatarJobCv.notify_one();
+                continue;
+            }
             applied = applyGeoStaged(group, job->mStaged);
         }
         else
@@ -6835,6 +6870,76 @@ void LLVolumeGeometryManager::drainGeoPublishQueue()
     if (any)
     {
         LLVKLoader::gVkPerf.geo_pub_us.fetch_add((U64)(pub_timer.getElapsedTimeF64() * 1000000.0));
+    }
+}
+
+void LLVolumeGeometryManager::drainAvatarPublished()
+{
+    for (;;)
+    {
+        LLGeoRebuildJob* job = nullptr;
+        {
+            std::lock_guard<std::mutex> lk(sAvatarPublishMutex);
+            if (sAvatarPublishQueue.empty())
+            {
+                break;
+            }
+            job = sAvatarPublishQueue.front();
+            sAvatarPublishQueue.pop_front();
+        }
+
+        LLSpatialGroup* group = job->mGroup.get();
+        const bool stale_gen = group != nullptr && job->mGen != group->mVkGeoGen;
+        bool applied = false;
+        if (group != nullptr && !group->isDead() && !job->mFillFailed && !stale_gen)
+        {
+            applied = applyGeoStaged(group, job->mStaged, &job->mBuilt);
+        }
+        else
+        {
+            const char* why = (group == nullptr || group->isDead()) ? "pub_drop_dead"
+                            : stale_gen ? "pub_stale_gen" : "fill_failed_pub";
+            for (const LLGeoFaceApply& e : job->mStaged.mFaces)
+            {
+                const LLViewerObject* vo = e.mDrawable.notNull() ? e.mDrawable->getVObj() : nullptr;
+                LLVKContract::watchStageEvent(vo != nullptr ? vo->getLocalID() : 0, why);
+            }
+        }
+
+        if (applied)
+        {
+            geoAbCheckJob(job);
+        }
+
+        geoUnpinJob(job);
+
+        if (group != nullptr)
+        {
+            group->mVkGeoInflight = false;
+            if (!group->isDead())
+            {
+                if (!stale_gen && (!applied || job->mStaged.mHadFailedFace))
+                {
+                    group->setState(LLSpatialGroup::GEOM_DIRTY);
+                    ++LLVKLoader::gVkPerf.geo_dirty_site[4];
+                }
+                if (group->hasState(LLSpatialGroup::GEOM_DIRTY))
+                {
+                    gPipeline.markRebuild(group);
+                }
+            }
+        }
+
+        if (applied)
+        {
+            ++LLVKLoader::gVkPerf.geo_pub;
+        }
+        else
+        {
+            ++LLVKLoader::gVkPerf.geo_dis;
+        }
+
+        delete job;
     }
 }
 

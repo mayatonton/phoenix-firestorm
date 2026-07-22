@@ -765,6 +765,7 @@ class LLVolumeGeometryManager: public LLGeometryManager
 
     static bool geoWorkerEnabled();
     static void drainGeoPublishQueue();
+    static void drainAvatarPublished();
     static void stopGeoWorker();
     static bool geoEnsureTangents(LLVolume* volume, S32 face_index);
 
