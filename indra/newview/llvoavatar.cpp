@@ -1248,6 +1248,18 @@ void LLVOAvatar::initInstance()
 
     mVoiceVisualizer->setVoiceEnabled( LLVoiceClient::getInstance()->getVoiceEnabled( mID ) );
 
+    if (!isSelf())
+    {
+        static const bool s_crowd_offmain = []() -> bool {
+            const char* e = getenv("AYASTORM_CROWD_OFFMAIN");
+            return e != nullptr && atoi(e) != 0;
+        }();
+        if (s_crowd_offmain)
+        {
+            mMotionController.setAsyncCompute(true);
+        }
+    }
+
     mInitFlags |= 1<<1;
 }
 
