@@ -5963,13 +5963,29 @@ namespace
         LL_INFOS("Vulkan") << "avatar domain worker stopped domain=" << sAvatarDomainId
                            << " jobs_built=" << sAvatarJobsBuilt.load(std::memory_order_relaxed)
                            << " draws_built=" << sAvatarDrawsBuilt.load(std::memory_order_relaxed) << LL_ENDL;
+        auto discard = [](LLGeoRebuildJob* job)
+        {
+            if (job->mGroup.notNull())
+            {
+                job->mGroup->mVkGeoInflight = false;
+            }
+            delete job;
+        };
         {
             std::lock_guard<std::mutex> lk(sAvatarJobMutex);
-            sAvatarJobQueue.clear();
+            while (!sAvatarJobQueue.empty())
+            {
+                discard(sAvatarJobQueue.front());
+                sAvatarJobQueue.pop_front();
+            }
         }
         {
             std::lock_guard<std::mutex> lk(sAvatarPublishMutex);
-            sAvatarPublishQueue.clear();
+            while (!sAvatarPublishQueue.empty())
+            {
+                discard(sAvatarPublishQueue.front());
+                sAvatarPublishQueue.pop_front();
+            }
         }
     }
 
