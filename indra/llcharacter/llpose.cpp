@@ -385,18 +385,38 @@ void LLJointStateBlender::blendJointStates(bool apply_now)
 
     // apply transforms
     // SL-315
-    target_joint->setPosition(blended_pos + added_pos);
-    target_joint->setScale(blended_scale + added_scale);
-    target_joint->setRotation(added_rot * blended_rot);
-
     if (apply_now)
     {
+        mBackJoint = target_joint;
+        mBackPos = blended_pos + added_pos;
+        mBackScale = blended_scale + added_scale;
+        mBackRot = added_rot * blended_rot;
+        mBackValid = true;
+
         // now clear joint states
         for(S32 i = 0; i < JSB_NUM_JOINT_STATES; i++)
         {
             mJointStates[i] = NULL;
         }
     }
+    else
+    {
+        target_joint->setPosition(blended_pos + added_pos);
+        target_joint->setScale(blended_scale + added_scale);
+        target_joint->setRotation(added_rot * blended_rot);
+    }
+}
+
+void LLJointStateBlender::applyBackBuffer()
+{
+    if (!mBackValid || mBackJoint == nullptr)
+    {
+        return;
+    }
+    mBackJoint->setPosition(mBackPos);
+    mBackJoint->setScale(mBackScale);
+    mBackJoint->setRotation(mBackRot);
+    mBackValid = false;
 }
 
 //-----------------------------------------------------------------------------
@@ -516,6 +536,11 @@ void LLPoseBlender::blendAndApply()
     {
         LLJointStateBlender* jsbp = *iter++;
         jsbp->blendJointStates();
+    }
+
+    for (LLJointStateBlender* jsbp : mActiveBlenders)
+    {
+        jsbp->applyBackBuffer();
     }
 
     // we're done now so there are no more active blenders for this frame

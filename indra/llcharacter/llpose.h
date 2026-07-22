@@ -88,10 +88,16 @@ protected:
     LLPointer<LLJointState> mJointStates[JSB_NUM_JOINT_STATES];
     S32             mPriorities[JSB_NUM_JOINT_STATES];
     bool            mAdditiveBlends[JSB_NUM_JOINT_STATES];
+    LLVector3       mBackPos;
+    LLVector3       mBackScale;
+    LLQuaternion    mBackRot;
+    LLJoint*        mBackJoint = nullptr;
+    bool            mBackValid = false;
 public:
     LLJointStateBlender();
     ~LLJointStateBlender();
     void blendJointStates(bool apply_now = true);
+    void applyBackBuffer();
     bool addJointState(const LLPointer<LLJointState>& joint_state, S32 priority, bool additive_blend);
     void interpolate(F32 u);
     void clear();
