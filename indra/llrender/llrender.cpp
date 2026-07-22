@@ -866,6 +866,27 @@ void LLRender::syncLightState()
             size[i].set(light->mSize, light->mFalloff);
         }
 
+        for (U32 dbg_i = 0; dbg_i < LL_NUM_LIGHT_UNITS; ++dbg_i)
+        {
+            bool dbg_bad = false;
+            for (U32 k = 0; k < 4; ++k) { if (!std::isfinite(position[dbg_i].mV[k]) || !std::isfinite(attenuation[dbg_i].mV[k])) dbg_bad = true; }
+            for (U32 k = 0; k < 3; ++k) { if (!std::isfinite(direction[dbg_i].mV[k]) || !std::isfinite(diffuse[dbg_i].mV[k])) dbg_bad = true; }
+            for (U32 k = 0; k < 2; ++k) { if (!std::isfinite(size[dbg_i].mV[k])) dbg_bad = true; }
+            if (dbg_bad)
+            {
+                static U32 s_dbg_light_nan = 0;
+                if (s_dbg_light_nan < 5000u)
+                {
+                    ++s_dbg_light_nan;
+                    LL_WARNS("VKNaN") << "non-finite LIGHT[" << dbg_i << "] -> GPU shader="
+                                      << (shader ? shader->mName : std::string("?")) << LL_ENDL;
+                }
+                for (U32 k = 0; k < 4; ++k) { if (!std::isfinite(position[dbg_i].mV[k])) position[dbg_i].mV[k] = 0.f; if (!std::isfinite(attenuation[dbg_i].mV[k])) attenuation[dbg_i].mV[k] = 0.f; }
+                for (U32 k = 0; k < 3; ++k) { if (!std::isfinite(direction[dbg_i].mV[k])) direction[dbg_i].mV[k] = 0.f; if (!std::isfinite(diffuse[dbg_i].mV[k])) diffuse[dbg_i].mV[k] = 0.f; }
+                for (U32 k = 0; k < 2; ++k) { if (!std::isfinite(size[dbg_i].mV[k])) size[dbg_i].mV[k] = 0.f; }
+            }
+        }
+
         if (LLVKLoader::isVulkanInitialized())
         {
             LLVKLoader::Lights_PerProgramBind         lights_data = {};
@@ -1095,6 +1116,31 @@ void LLRender::syncMatrices()
                                 sizeof(texmat.texture_matrix[tex]));
                 }
 
+                {
+                    bool dbg_bad_proj = false, dbg_bad_inv = false, dbg_bad_lmv = false;
+                    for (U32 dbg_i = 0; dbg_i < 16u; ++dbg_i)
+                    {
+                        if (!std::isfinite(perframe.projection_matrix[dbg_i]))         dbg_bad_proj = true;
+                        if (!std::isfinite(perframe.inverse_projection_matrix[dbg_i])) dbg_bad_inv  = true;
+                        if (!std::isfinite(perframe.last_modelview_matrix[dbg_i]))     dbg_bad_lmv  = true;
+                    }
+                    if (dbg_bad_proj || dbg_bad_inv || dbg_bad_lmv)
+                    {
+                        static U32 s_dbg_nan_count = 0;
+                        if (s_dbg_nan_count < 5000u)
+                        {
+                            ++s_dbg_nan_count;
+                            LL_WARNS("VKNaN") << "non-finite matrix -> GPU: proj=" << dbg_bad_proj
+                                              << " invproj=" << dbg_bad_inv << " lastmv=" << dbg_bad_lmv
+                                              << " shader=" << (shader ? shader->mName : std::string("?"))
+                                              << LL_ENDL;
+                        }
+                        const glm::mat4 dbg_id = glm::identity<glm::mat4>();
+                        if (dbg_bad_proj) std::memcpy(perframe.projection_matrix,         glm::value_ptr(dbg_id), sizeof(perframe.projection_matrix));
+                        if (dbg_bad_inv)  std::memcpy(perframe.inverse_projection_matrix, glm::value_ptr(dbg_id), sizeof(perframe.inverse_projection_matrix));
+                        if (dbg_bad_lmv)  std::memcpy(perframe.last_modelview_matrix,     glm::value_ptr(dbg_id), sizeof(perframe.last_modelview_matrix));
+                    }
+                }
                 LLVKLoader::writeCurrentPerFrameMatrixUBO(perframe, texmat);
 
                 mVkSyncedMatHash[MM_PROJECTION] = mMatHash[MM_PROJECTION];
@@ -1105,7 +1151,27 @@ void LLRender::syncMatrices()
             }
 
             const glm::mat4& modelview_mat = mMatrix[MM_MODELVIEW][mMatIdx[MM_MODELVIEW]];
-            LLVKLoader::pushCurrentModelviewMatrix(glm::value_ptr(modelview_mat));
+            {
+                const F32* dbg_mv = glm::value_ptr(modelview_mat);
+                bool dbg_bad_mv = false;
+                for (U32 dbg_i = 0; dbg_i < 16u; ++dbg_i) if (!std::isfinite(dbg_mv[dbg_i])) dbg_bad_mv = true;
+                if (dbg_bad_mv)
+                {
+                    static U32 s_dbg_mv_nan = 0;
+                    if (s_dbg_mv_nan < 5000u)
+                    {
+                        ++s_dbg_mv_nan;
+                        LL_WARNS("VKNaN") << "non-finite MODELVIEW -> GPU shader="
+                                          << (shader ? shader->mName : std::string("?")) << LL_ENDL;
+                    }
+                    const glm::mat4 dbg_id = glm::identity<glm::mat4>();
+                    LLVKLoader::pushCurrentModelviewMatrix(glm::value_ptr(dbg_id));
+                }
+                else
+                {
+                    LLVKLoader::pushCurrentModelviewMatrix(glm::value_ptr(modelview_mat));
+                }
+            }
         }
 
         if (shader->mFeatures.hasLighting || shader->mFeatures.calculatesLighting || shader->mFeatures.calculatesAtmospherics)

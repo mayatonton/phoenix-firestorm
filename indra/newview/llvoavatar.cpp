@@ -11636,8 +11636,18 @@ void LLVOAvatar::updateImpostors()
 {
     LLViewerCamera::setCurCameraID(LLViewerCamera::CAMERA_WORLD);
 
+    static const U32 s_impostor_budget = []() -> U32 {
+        const char* e = getenv("AYASTORM_IMPOSTOR_BUDGET");
+        return (e != nullptr) ? (U32)atoi(e) : 4u;
+    }();
+
+    U32 generated = 0;
     for (LLCharacter* character : LLCharacter::sInstances)
     {
+        if (s_impostor_budget != 0 && generated >= s_impostor_budget)
+        {
+            break;
+        }
         LLVOAvatar* avatar = (LLVOAvatar*)character;
         if (!avatar->isDead()
             && avatar->isVisible()
@@ -11646,6 +11656,7 @@ void LLVOAvatar::updateImpostors()
         {
             avatar->calcMutedAVColor();
             gPipeline.generateImpostor(avatar);
+            ++generated;
         }
     }
 

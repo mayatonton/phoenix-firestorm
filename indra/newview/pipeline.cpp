@@ -3195,6 +3195,7 @@ void LLPipeline::doOcclusion(LLCamera& camera)
 {
     LL_PROFILE_ZONE_SCOPED_CATEGORY_PIPELINE;
     LL_PROFILE_GPU_ZONE("doOcclusion");
+    LLVKLoader::gpuCheckpoint("doOcclusion");
     llassert(!gCubeSnapshot);
     LLVKLoader::VkPerfPassScope perf_pass_scope(2);
 
@@ -5421,6 +5422,7 @@ void LLPipeline::renderGeomDeferred(LLCamera& camera, bool do_occlusion)
     LLAppViewer::instance()->pingMainloopTimeout("Pipeline:RenderGeomDeferred");
     LL_PROFILE_ZONE_SCOPED_CATEGORY_DRAWPOOL; //LL_RECORD_BLOCK_TIME(FTM_RENDER_GEOMETRY);
     LL_PROFILE_GPU_ZONE("renderGeomDeferred");
+    LLVKLoader::gpuCheckpoint("renderGeomDeferred");
 
     llassert(!isFrameHUDPass());
 
@@ -5652,12 +5654,29 @@ void LLPipeline::compositeForwardFlip()
     getFrameRT()->screen.flush();
 }
 
+static const char* postDeferredPoolCheckpointLabel(U32 t)
+{
+    switch (t)
+    {
+        case LLDrawPool::POOL_ALPHA_PRE_WATER:       return "post:alpha_pre_water";
+        case LLDrawPool::POOL_ALPHA_POST_WATER:      return "post:alpha_post_water";
+        case LLDrawPool::POOL_WATER:                 return "post:water";
+        case LLDrawPool::POOL_FULLBRIGHT:            return "post:fullbright";
+        case LLDrawPool::POOL_FULLBRIGHT_ALPHA_MASK: return "post:fb_alpha_mask";
+        case LLDrawPool::POOL_ALPHA_MASK:            return "post:alpha_mask";
+        case LLDrawPool::POOL_GLTF_PBR:              return "post:gltf_pbr";
+        case LLDrawPool::POOL_GLTF_PBR_ALPHA_MASK:   return "post:gltf_pbr_amask";
+        default:                                     return "post:other";
+    }
+}
+
 // Render all of our geometry that's required after our deferred pass.
 // This is gonna be stuff like alpha, water, etc.
 void LLPipeline::renderGeomPostDeferred(LLCamera& camera)
 {
     LL_PROFILE_ZONE_SCOPED_CATEGORY_DRAWPOOL;
     LL_PROFILE_GPU_ZONE("renderGeomPostDeferred");
+    LLVKLoader::gpuCheckpoint("renderGeomPostDeferred");
 
     if (gUseWireframe)
     {
@@ -5739,6 +5758,7 @@ void LLPipeline::renderGeomPostDeferred(LLCamera& camera)
             bool dispatch_r20 = (aya_view_mode_sss() > 0) && aya_r20_enabled_sss;
             if (dispatch_r20)
             {
+                LLVKLoader::gpuCheckpoint("post:skin_sss");
                 doSkinSSS();
             }
             done_sss = true;
@@ -5747,6 +5767,7 @@ void LLPipeline::renderGeomPostDeferred(LLCamera& camera)
 
         if (cur_type >= atmospherics_pass && !done_atmospherics)
         { // do atmospherics against depth buffer before rendering alpha
+            LLVKLoader::gpuCheckpoint("post:atmospherics");
             doAtmospherics();
             done_atmospherics = true;
             // <FS:AYAstorm r30 BD改善> AYAstorm View は無条件、Cinematic は個別 InCinematic cvar で opt-in。
@@ -5759,6 +5780,7 @@ void LLPipeline::renderGeomPostDeferred(LLCamera& camera)
             bool dispatch_r15 = ((aya_view_mode() == 1) || (aya_view_mode() == 2 && aya_r15_in_cinematic));
             if (dispatch_r15)
             {
+                LLVKLoader::gpuCheckpoint("post:godrays");
                 doGodrays();
             }
             // </FS:AYAstorm>
@@ -5766,6 +5788,7 @@ void LLPipeline::renderGeomPostDeferred(LLCamera& camera)
 
         if (cur_type >= water_haze_pass && !done_water_haze)
         { // do water haze against depth buffer before rendering alpha
+            LLVKLoader::gpuCheckpoint("post:water_haze");
             doWaterHaze();
             done_water_haze = true;
         }
@@ -5774,6 +5797,7 @@ void LLPipeline::renderGeomPostDeferred(LLCamera& camera)
         if (hasRenderType(poolp->getType()) && poolp->getNumPostDeferredPasses() > 0)
         {
             LL_PROFILE_ZONE_NAMED_CATEGORY_DRAWPOOL("deferred poolrender");
+            LLVKLoader::gpuCheckpoint(postDeferredPoolCheckpointLabel(cur_type));
 
             gGLLastMatrix = NULL;
             gGL.loadMatrix(gGLModelView);
@@ -11647,6 +11671,7 @@ void LLPipeline::renderDeferredLighting()
 {
     LL_PROFILE_ZONE_SCOPED_CATEGORY_PIPELINE;
     LL_PROFILE_GPU_ZONE("renderDeferredLighting");
+    LLVKLoader::gpuCheckpoint("renderDeferredLighting");
     if (!getFrameCull())
     {
         return;
@@ -13466,6 +13491,7 @@ void LLPipeline::renderShadow(const glm::mat4& view, const glm::mat4& proj, LLCa
 {
     LL_PROFILE_ZONE_SCOPED_CATEGORY_PIPELINE; //LL_RECORD_BLOCK_TIME(FTM_SHADOW_RENDER);
     LL_PROFILE_GPU_ZONE("renderShadow");
+    LLVKLoader::gpuCheckpoint("renderShadow");
 
     LLPipelineFrameContext::getInstance().setShadowPass(true);
 

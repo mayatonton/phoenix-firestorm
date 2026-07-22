@@ -88,6 +88,7 @@ namespace
     VkQueue          sGraphicsQueue       = VK_NULL_HANDLE;
     U32              sGraphicsQueueFamily = UINT_MAX;
     bool             sInitialized         = false;
+    bool             sCheckpointsEnabled  = false;
 
     VkDebugUtilsMessengerEXT sDebugMessenger = VK_NULL_HANDLE;
 
@@ -640,6 +641,47 @@ namespace
         return sInFrame ? sCommandBuffers[sFrameIndex] : VK_NULL_HANDLE;
     }
 
+    void gpuCheckpointImpl(const char* label)
+    {
+        if (!sCheckpointsEnabled)
+        {
+            return;
+        }
+        VkCommandBuffer cmd = currentRecordCmd();
+        if (cmd != VK_NULL_HANDLE)
+        {
+            vkCmdSetCheckpointNV(cmd, (const void*)label);
+        }
+    }
+
+    void dumpCheckpointsOnDeviceLost()
+    {
+        if (!sCheckpointsEnabled || sGraphicsQueue == VK_NULL_HANDLE)
+        {
+            return;
+        }
+        U32 n = 0;
+        vkGetQueueCheckpointDataNV(sGraphicsQueue, &n, nullptr);
+        if (n == 0)
+        {
+            LL_WARNS("Vulkan") << "GPU breadcrumb: no checkpoint data on device-lost" << LL_ENDL;
+            return;
+        }
+        std::vector<VkCheckpointDataNV> data(n);
+        for (auto& d : data)
+        {
+            d.sType = VK_STRUCTURE_TYPE_CHECKPOINT_DATA_NV;
+            d.pNext = nullptr;
+        }
+        vkGetQueueCheckpointDataNV(sGraphicsQueue, &n, data.data());
+        for (const auto& d : data)
+        {
+            const char* lbl = (const char*)d.pCheckpointMarker;
+            LL_WARNS("Vulkan") << "GPU breadcrumb @devlost: stage=0x" << std::hex << (U32)d.stage << std::dec
+                               << " last-reached=" << (lbl ? lbl : "(null)") << LL_ENDL;
+        }
+    }
+
     enum : U32
     {
         PE_SLOT_IDLE      = 0,
@@ -760,6 +802,12 @@ namespace
         {
             if (sr == VK_ERROR_DEVICE_LOST)
             {
+                static bool s_bc_dumped = false;
+                if (!s_bc_dumped)
+                {
+                    s_bc_dumped = true;
+                    dumpCheckpointsOnDeviceLost();
+                }
                 sVkDeviceLost.store(true, std::memory_order_release);
             }
             LL_WARNS("Vulkan") << "PresentEngine submit failed sr=" << (S32)sr
@@ -1703,6 +1751,7 @@ namespace
 
         bool device_fault_supported = false;
         bool provoking_vertex_supported = false;
+        bool checkpoints_supported = false;
         {
             U32 ext_count = 0;
             vkEnumerateDeviceExtensionProperties(sPhysicalDevice, nullptr, &ext_count, nullptr);
@@ -1718,11 +1767,20 @@ namespace
                 {
                     provoking_vertex_supported = true;
                 }
+                else if (std::strcmp(e.extensionName, "VK_NV_device_diagnostic_checkpoints") == 0)
+                {
+                    checkpoints_supported = true;
+                }
             }
         }
         if (device_fault_supported)
         {
             device_extensions.push_back("VK_EXT_device_fault");
+        }
+        if (checkpoints_supported)
+        {
+            device_extensions.push_back("VK_NV_device_diagnostic_checkpoints");
+            sCheckpointsEnabled = true;
         }
 
         VkPhysicalDeviceProvokingVertexFeaturesEXT pv_features_enable = {};
@@ -1863,6 +1921,11 @@ namespace
         }
 
         volkLoadDevice(sDevice);
+        if (sCheckpointsEnabled && (vkCmdSetCheckpointNV == nullptr || vkGetQueueCheckpointDataNV == nullptr))
+        {
+            sCheckpointsEnabled = false;
+        }
+        LL_INFOS("Vulkan") << "GPU breadcrumb checkpoints enabled=" << (sCheckpointsEnabled ? 1 : 0) << LL_ENDL;
         vkGetDeviceQueue(sDevice, sGraphicsQueueFamily, 0, &sGraphicsQueue);
 
 
@@ -8133,6 +8196,11 @@ namespace
 void megabufInit(const U32* type_sizes, U32 type_count)
 {
     sMegaTypeSizes.assign(type_sizes, type_sizes + type_count);
+}
+
+void gpuCheckpoint(const char* label)
+{
+    gpuCheckpointImpl(label);
 }
 
 void megabufShutdown()

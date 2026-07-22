@@ -690,6 +690,7 @@ void LLDrawPoolWLSky::renderDeferred(S32 pass)
     {
         return;
     }
+    LLVKLoader::gpuCheckpoint("sky_deferred");
 
     // TODO: remove gSky.mVOSkyp and fold sun/moon into LLVOWLSky
     gSky.mVOSkyp->updateGeometry(gSky.mVOSkyp->mDrawable);

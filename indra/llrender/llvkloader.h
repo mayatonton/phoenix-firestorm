@@ -40,6 +40,7 @@ namespace LLVKLoader
 
     bool isVulkanInitialized();
     bool isInFrame();
+    void gpuCheckpoint(const char* label);
     bool anyViewHandleDead(const void* const* views, U32 count);
 
     bool beginFrame(bool acquire_swapchain = true);

@@ -530,9 +530,38 @@ bool writeObjectSkinUBO(LLGLSLShader& /*shader*/, const F32* matrix_palette_data
     const U32 copy_bytes  = copy_joints * MAT3X4_STRIDE_BYTES;
     char* base = static_cast<char*>(shared_mapped);
 
-    memcpy(base, matrix_palette_data, copy_bytes);
+    // Defensive: a non-finite skin matrix (bad IBM / degenerate bind pose) would
+    // skin verts to NaN on the GPU. Sanitize per-joint to identity before upload.
+    static const F32 s_identity3x4[12] = { 1.f,0.f,0.f,0.f, 0.f,1.f,0.f,0.f, 0.f,0.f,1.f,0.f };
+    F32 sanitized[MAX_JOINTS * 12];
+    bool any_bad = false;
+    for (U32 j = 0; j < copy_joints; ++j)
+    {
+        const F32* src = matrix_palette_data + (size_t)j * 12u;
+        bool bad = false;
+        for (U32 k = 0; k < 12u; ++k) { if (!std::isfinite(src[k])) { bad = true; break; } }
+        if (bad)
+        {
+            any_bad = true;
+            memcpy(sanitized + (size_t)j * 12u, s_identity3x4, sizeof(s_identity3x4));
+        }
+        else
+        {
+            memcpy(sanitized + (size_t)j * 12u, src, sizeof(s_identity3x4));
+        }
+    }
+    if (any_bad)
+    {
+        static U32 s_skin_nan = 0;
+        if (s_skin_nan < 200u)
+        {
+            ++s_skin_nan;
+            LL_WARNS("VKNaN") << "non-finite skin palette -> sanitized to identity (joints=" << copy_joints << ")" << LL_ENDL;
+        }
+    }
 
-    memcpy(base + PALETTE_BYTES, matrix_palette_data, copy_bytes);
+    memcpy(base, sanitized, copy_bytes);
+    memcpy(base + PALETTE_BYTES, sanitized, copy_bytes);
 
     return true;
 }

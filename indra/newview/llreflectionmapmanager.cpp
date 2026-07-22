@@ -773,6 +773,7 @@ void LLReflectionMapManager::updateProbeFace(LLReflectionMap* probe, U32 face)
 {
     LL_PROFILE_ZONE_SCOPED_CATEGORY_DISPLAY;
     LL_PROFILE_GPU_ZONE("probe update");
+    LLVKLoader::gpuCheckpoint("probe_update");
     // hacky hot-swap of camera specific render targets
     LLPipelineFrameContext::getInstance().setActiveRT(&gPipeline.mAuxillaryRT);
 

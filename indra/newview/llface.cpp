@@ -2817,10 +2817,6 @@ LLFace::EGeoFillBuild LLFace::buildVkGeoFill(LLGeoFaceFill& out,
     mTexExtents[0][1] *= et;
     mTexExtents[1][1] *= et;
 
-    // Stage-time private copy of the volume face arrays the worker will read.
-    // From here on the worker never touches the live LLVolumeFace, so main-thread
-    // mutation of it can no longer corrupt worker output. Byte accounting is done
-    // at the staging site (llvovolume.cpp) to avoid a per-face timer tax here.
     out.mSnapshot.capture(vf, num_vertices, num_indices);
 
     if (LLVKContract::verboseEnabled())
@@ -2865,8 +2861,6 @@ LLFace::EGeoFillBuild LLFace::buildVkGeoFill(LLGeoFaceFill& out,
 
 bool LLFace::runVkGeoFill(LLGeoFaceFill& f)
 {
-    // Read the stage-time snapshot, never the live LLVolumeFace. This is what
-    // makes the worker input immutable by construction.
     LLGeoFaceSnapshot& vf = f.mSnapshot;
     if (!vf.mCaptured || vf.mPositions == nullptr || vf.mIndices == nullptr)
     {
