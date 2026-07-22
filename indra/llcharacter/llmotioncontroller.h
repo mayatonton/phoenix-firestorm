@@ -204,6 +204,7 @@ protected:
     void applyDeferredMotionLifecycle();
     void applyDeferredStartStop();
     bool asyncActive() const;
+    bool drainComputeWindow();
     void updateMotionsAsync(bool force_update);
     void motionCapture();
 

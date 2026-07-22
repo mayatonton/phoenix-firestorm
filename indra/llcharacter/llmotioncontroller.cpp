@@ -897,19 +897,28 @@ void LLMotionController::runMotionComputeWorker()
     mComputeWorkerDone.store(true, std::memory_order_release);
 }
 
-void LLMotionController::updateMotionsAsync(bool force_update)
+bool LLMotionController::drainComputeWindow()
 {
     if (mComputeDispatched)
     {
         if (!mComputeWorkerDone.load(std::memory_order_acquire))
         {
-            return;
+            return false;
         }
         mPoseBlender.applyBackBufferToJoints();
         applyDeferredMotionLifecycle();
         mHasRunOnce = true;
         mComputeDispatched = false;
         mComputeWindowOpen = false;
+    }
+    return true;
+}
+
+void LLMotionController::updateMotionsAsync(bool force_update)
+{
+    if (!drainComputeWindow())
+    {
+        return;
     }
 
     applyDeferredStartStop();
@@ -1037,6 +1046,12 @@ void LLMotionController::updateMotions(bool force_update)
 void LLMotionController::updateMotionsMinimal()
 {
     LL_PROFILE_ZONE_SCOPED_CATEGORY_AVATAR;
+
+    if (!drainComputeWindow())
+    {
+        return;
+    }
+
     // Always update mPrevTimerElapsed
     mPrevTimerElapsed = mTimer.getElapsedTimeF32();
 
