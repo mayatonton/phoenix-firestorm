@@ -1,7 +1,11 @@
 # avatar skeleton/joint 機構の off-main 化 — 設計の入口(Phase 1 self 完遂の本丸)
 
-- 状態: **入口設計(entrance)**。詳細設計ではない。前任(B.2 完遂・context 上限接近)が「最難関の入口」を開けて残した。真実源 = HEAD の実行コード。
-- 位置づけ: `docs/vknative_avatar_relocate_design.md` §5 Phase 1 P1-c の ①skeleton anim ②palette。**Phase 1 = self avatar 1 体を丸ごと off-main にできるかの証明**(速度でなく「位置」= 1 体を main の外へ出し切れるか)。B.2(geometry apply)は完了・これは残る最難関。
+> **🔀 SUPERSEDED(2026-07-22 深夜)= 本 doc の §2 技術仮説(joint world matrix=出力を snapshot し readers を redirect / double-buffer)は誤りと判明・全面破棄。実装して壁に当たり revert 済み。正しい本質設計 = `docs/vknative_skeleton_offmain_motion_design.md`(ソース導出・A/B 分離・出力でなく入力=motion 計算を off-main・カメラは配置(A)の消費者として Main 聖域)。本 doc は §0 の「意識(実装先行・退却禁止・矮小化禁止)」as 教訓 + 経緯としてのみ保持。技術方針は新 doc が唯一。**
+>
+> **誤りの要点(後進が繰り返さぬよう)**: 「skeleton の出力(joint)を snapshot して reader を redirect」は (a) 全 reader(skinning/camera/attachment/HUD/nametag)を追う一覧を生み (b) カメラを機械的に遅延側へ巻き込み矛盾 (c) 計算は main に残り何も off-main にならない。正しくは**入力(updateMotions)を off-main・main は live root で re-root・readers は live joint を読むだけ(redirect 不要)**。詳細 = 新 doc。
+
+- 状態: **入口設計(entrance)= 技術仮説は SUPERSEDED**。§0 意識のみ有効。真実源 = HEAD の実行コード。
+- 位置づけ: `docs/vknative_avatar_relocate_design.md` §5 Phase 1 P1-c の skeleton 相。**本質設計は `docs/vknative_skeleton_offmain_motion_design.md`**。**Phase 1 = self avatar 1 体の skeleton を off-main にできるかの証明**(速度でなく「位置」)。B.2(geometry apply)は完了・これは残る最難関。
 
 ---
 

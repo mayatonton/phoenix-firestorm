@@ -1,5 +1,7 @@
 # Phase 2 入場ゲート = 並列安全性検出器 設計
 
+> **⚠️ 訂正(2026-07-22・skeleton off-main M3 の gate で実走判明)= Layer A(TSan・§3/§6 D3)は本コードベースで実行不能。** viewer は `boost::fibers`(フル fiber scheduler・llcoros.h:113)使用 → TSan が fiber context switch を追えず内部 `CHECK failed: thr->slot != 0` で自死(window init で死・world 未到達)。annotation(`__tsan_switch_to_fiber`)には boost.fiber scheduler 内部の全 switch 点への hook = 非現実的。**D3「✅ 構成済」は config のみで未走行だったため未発覚**(cmake `USE_TSAN` + suppressions は在るが、ビルドに `-Wno-error=tsan` 追加が必要 = commit `42d5fb9531`)。jemalloc は TSan と衝突ゆえ走行時 `~/ayastorm/lib/libjemalloc.so` 退避要。**代替 = Layer B(bespoke)+ jemalloc heap-corruption crash を正の race オラクル**(元 crash が race を検出・source 不問)。詳細 = memory `finding_tsan_layerA_blocked_boost_fiber`。実例 = skeleton M3 の lifecycle race は controller single-owner mutex + jemalloc オラクルで根治(TSan 抜き)。**Layer A 記述は AYA が入場ゲート再設計する際の訂正材料。**
+
 **status**: 設計(AYA gate 待ち)。真の Phase 2 の入場ゲート(AYA 2026-07-21 Open)。**HEAD を file:line 実トレースして作成。**
 **位置づけ**: E 系 closed + C(teardown 統一)決着後、分散化(Phase 2)を開始する**前提装置**。CLAUDE.md「安全性検出器が入場ゲート」の実体。doctrine =「装置が犯人を名指しするまで fix を書かない・伸ばすのは装置」。
 
