@@ -510,7 +510,7 @@ void LLMotionController::updateIdleMotion(LLMotion* motionp)
     LL_PROFILE_ZONE_SCOPED_CATEGORY_AVATAR;
     if (motionp->isStopped() && mAnimTime > motionp->getStopTime() + motionp->getEaseOutDuration())
     {
-        deactivateMotionInstance(motionp);
+        mDeferredDeactivate.push_back(motionp);
     }
     else if (motionp->isStopped() && mAnimTime > motionp->getStopTime())
     {
@@ -527,7 +527,7 @@ void LLMotionController::updateIdleMotion(LLMotion* motionp)
         // this will only be called when an animation stops itself (runs out of time)
         if (mLastTime <= motionp->mSendStopTimestamp)
         {
-            mCharacter->requestStopMotion( motionp );
+            mDeferredStopReq.push_back(motionp);
             stopMotionInstance(motionp, false);
         }
     }
@@ -629,7 +629,7 @@ void LLMotionController::updateMotionsByType(LLMotion::LLMotionBlendType anim_ty
                 // this will only be called when an animation stops itself (runs out of time)
                 if (mLastTime <= motionp->mSendStopTimestamp)
                 {
-                    mCharacter->requestStopMotion( motionp );
+                    mDeferredStopReq.push_back(motionp);
                     stopMotionInstance(motionp, false);
                 }
             }
@@ -639,7 +639,7 @@ void LLMotionController::updateMotionsByType(LLMotion::LLMotionBlendType anim_ty
                 if (motionp->isStopped() && mAnimTime > motionp->getStopTime() + motionp->getEaseOutDuration())
                 {
                     posep->setWeight(0.f);
-                    deactivateMotionInstance(motionp);
+                    mDeferredDeactivate.push_back(motionp);
                 }
                 continue;
             }
@@ -666,7 +666,7 @@ void LLMotionController::updateMotionsByType(LLMotion::LLMotionBlendType anim_ty
             else
             {
                 posep->setWeight(0.f);
-                deactivateMotionInstance(motionp);
+                mDeferredDeactivate.push_back(motionp);
                 continue;
             }
         }
@@ -710,7 +710,7 @@ void LLMotionController::updateMotionsByType(LLMotion::LLMotionBlendType anim_ty
                 // this will only be called when an animation stops itself (runs out of time)
                 if (mLastTime <= motionp->mSendStopTimestamp)
                 {
-                    mCharacter->requestStopMotion( motionp );
+                    mDeferredStopReq.push_back(motionp);
                     stopMotionInstance(motionp, false);
                 }
             }
@@ -756,7 +756,7 @@ void LLMotionController::updateMotionsByType(LLMotion::LLMotionBlendType anim_ty
                 // animation has stopped itself due to internal logic
                 // propagate this to the network
                 // as not all viewers are guaranteed to have access to the same logic
-                mCharacter->requestStopMotion( motionp );
+                mDeferredStopReq.push_back(motionp);
                 stopMotionInstance(motionp, false);
             }
 
@@ -814,6 +814,21 @@ void LLMotionController::updateLoadingMotions()
 //-----------------------------------------------------------------------------
 // call updateMotion() or updateMotionsMinimal() every frame
 //-----------------------------------------------------------------------------
+
+void LLMotionController::applyDeferredMotionLifecycle()
+{
+    for (LLMotion* motionp : mDeferredStopReq)
+    {
+        mCharacter->requestStopMotion(motionp);
+    }
+    mDeferredStopReq.clear();
+
+    for (LLMotion* motionp : mDeferredDeactivate)
+    {
+        deactivateMotionInstance(motionp);
+    }
+    mDeferredDeactivate.clear();
+}
 
 //-----------------------------------------------------------------------------
 // updateMotion()
@@ -905,6 +920,8 @@ void LLMotionController::updateMotions(bool force_update)
             mPoseBlender.blendAndApply();
         }
     }
+
+    applyDeferredMotionLifecycle();
 
     mHasRunOnce = true;
 //  LL_INFOS() << "Motion controller time " << motionTimer.getElapsedTimeF32() << LL_ENDL;

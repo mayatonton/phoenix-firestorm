@@ -193,6 +193,7 @@ protected:
     void updateIdleActiveMotions();
     void purgeExcessMotions();
     void deactivateStoppedMotions();
+    void applyDeferredMotionLifecycle();
 
 protected:
     F32                 mTimeFactor;            // 1.f for normal speed
@@ -218,6 +219,9 @@ protected:
     motion_set_t        mLoadedMotions;
     motion_list_t       mActiveMotions;
     motion_set_t        mDeprecatedMotions;
+
+    std::vector<LLMotion*> mDeferredStopReq;
+    std::vector<LLMotion*> mDeferredDeactivate;
 
     LLFrameTimer        mTimer;
     F32                 mPrevTimerElapsed;
