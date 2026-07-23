@@ -2788,7 +2788,7 @@ void LLWindowSDL::destroySharedContext(void* contextPtr)
 
 void LLWindowSDL::toggleVSync(bool enable_vsync)
 {
-  LL_WARNS() << "Not available" << LL_ENDL;
+    LLVKLoader::setVsyncEnabled(enable_vsync);
 }
 
 #endif // LL_SDL

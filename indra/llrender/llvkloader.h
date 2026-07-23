@@ -36,6 +36,7 @@ namespace LLVKLoader
     bool initVulkan();
     void shutdownVulkan(bool device_lost = false);
     void shutdownSwapchainAndSurface();
+    void setVsyncEnabled(bool enabled);
     void vkQuiesceProducers();
 
     bool isVulkanInitialized();

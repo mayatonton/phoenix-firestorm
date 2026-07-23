@@ -756,6 +756,8 @@ namespace
     std::atomic<U64>        sPEPresentUs{0};
     bool                    sPresentWaitEnabled = false;
     std::atomic<U64>        sPresentIdCounter{0};
+    VkPresentModeKHR        sActivePresentMode = VK_PRESENT_MODE_FIFO_KHR;
+    std::atomic<bool>       sVsyncEnabled{true};
 
     void peExecute(PEJob& job)
     {
@@ -865,7 +867,7 @@ namespace
                 // ============================================================================
                 VkPresentIdKHR present_id_info = {};
                 uint64_t this_present_id = 0;
-                if (sPresentWaitEnabled)
+                if (sPresentWaitEnabled && sActivePresentMode == VK_PRESENT_MODE_FIFO_KHR)
                 {
                     this_present_id = sPresentIdCounter.fetch_add(1, std::memory_order_relaxed) + 1;
                     present_id_info.sType          = VK_STRUCTURE_TYPE_PRESENT_ID_KHR;
@@ -3952,6 +3954,45 @@ namespace
         }
 
         VkPresentModeKHR chosen_present_mode = VK_PRESENT_MODE_FIFO_KHR;
+        {
+            VkPresentModeKHR desired = VK_PRESENT_MODE_FIFO_KHR;
+            const char* pm = getenv("AYASTORM_PRESENT_MODE");
+            if (pm != nullptr)
+            {
+                if (std::strcmp(pm, "immediate") == 0)   desired = VK_PRESENT_MODE_IMMEDIATE_KHR;
+                else if (std::strcmp(pm, "mailbox") == 0) desired = VK_PRESENT_MODE_MAILBOX_KHR;
+            }
+            else if (!sVsyncEnabled.load())
+            {
+                desired = VK_PRESENT_MODE_IMMEDIATE_KHR;
+            }
+            if (desired != VK_PRESENT_MODE_FIFO_KHR)
+            {
+                U32 pm_count = 0;
+                vkGetPhysicalDeviceSurfacePresentModesKHR(sPhysicalDevice, sSurface, &pm_count, nullptr);
+                std::vector<VkPresentModeKHR> pm_avail(pm_count);
+                if (pm_count > 0)
+                {
+                    vkGetPhysicalDeviceSurfacePresentModesKHR(sPhysicalDevice, sSurface, &pm_count, pm_avail.data());
+                }
+                bool supported = false;
+                for (VkPresentModeKHR m : pm_avail) { if (m == desired) { supported = true; break; } }
+                if (supported)
+                {
+                    chosen_present_mode = desired;
+                }
+                else
+                {
+                    LL_WARNS("Vulkan") << "AYASTORM_PRESENT_MODE=" << pm
+                                       << " unsupported by surface — falling back to FIFO (vsync)" << LL_ENDL;
+                }
+            }
+        }
+        sActivePresentMode = chosen_present_mode;
+        LL_INFOS("Vulkan") << "present mode = "
+                           << (chosen_present_mode == VK_PRESENT_MODE_IMMEDIATE_KHR ? "IMMEDIATE (vsync OFF)"
+                             : chosen_present_mode == VK_PRESENT_MODE_MAILBOX_KHR   ? "MAILBOX (vsync, tear-free)"
+                             : "FIFO (vsync ON)") << LL_ENDL;
 
         VkExtent2D extent;
         if (caps.currentExtent.width != UINT32_MAX)
@@ -5685,6 +5726,12 @@ bool getTimestampElapsedNsVk(uint32_t handle, bool& available, uint64_t& elapsed
 bool isVulkanInitialized()
 {
     return sInitialized;
+}
+
+void setVsyncEnabled(bool enabled)
+{
+    sVsyncEnabled.store(enabled);
+    sSwapchainRecreatePending = true;
 }
 
 bool isInFrame()

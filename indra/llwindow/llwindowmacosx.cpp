@@ -2649,17 +2649,7 @@ void LLWindowMacOSX::destroySharedContext(void* context)
 
 void LLWindowMacOSX::toggleVSync(bool enable_vsync)
 {
-    GLint frames_per_swap = 0;
-    if (!enable_vsync)
-    {
-        frames_per_swap = 0;
-    }
-    else
-    {
-        frames_per_swap = 1;
-    }
-
-    CGLSetParameter(mContext, kCGLCPSwapInterval, &frames_per_swap);
+    LLVKLoader::setVsyncEnabled(enable_vsync);
 }
 
 void LLWindowMacOSX::interruptLanguageTextInput()

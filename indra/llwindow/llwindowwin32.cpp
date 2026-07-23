@@ -1449,7 +1449,7 @@ void LLWindowWin32::destroySharedContext(void* contextPtr)
 
 void LLWindowWin32::toggleVSync(bool enable_vsync)
 {
-    (void)enable_vsync;
+    LLVKLoader::setVsyncEnabled(enable_vsync);
 }
 
 void LLWindowWin32::moveWindow( const LLCoordScreen& position, const LLCoordScreen& size )
