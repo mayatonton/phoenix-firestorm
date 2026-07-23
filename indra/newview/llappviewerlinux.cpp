@@ -130,6 +130,14 @@ int main( int argc, char **argv )
 
     unsetenv( "LD_PRELOAD" ); // <FS:ND/> Get rid of any preloading, we do not want this to happen during startup of plugins.
 
+    // NVIDIA-Linux completion of the VK_KHR_present_wait vsync-sleep path (see peExecute
+    // in llvkloader.cpp). NVIDIA's driver busy-waits (spins on a CPU core) inside the FIFO
+    // present / present-wait even when VK_KHR_present_wait is used, so tell it to usleep
+    // instead. overwrite=0 respects a user-set __GL_YIELD. This var is NVIDIA + Linux only;
+    // Windows/macOS maintainers must complete their own driver's present sleep (see the
+    // 3-OS note in peExecute). Do NOT ship a platform that busy-waits vsync.
+    setenv( "__GL_YIELD", "USLEEP", 0 );
+
     bool ok = viewer_app_ptr->init();
     if(!ok)
     {
