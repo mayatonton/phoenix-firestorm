@@ -26,9 +26,11 @@
 
 #include "llviewerprecompiledheaders.h"
 
+#include <algorithm>
 #include <mutex>
 #include <set>
 #include <tuple>
+#include <utility>
 
 #include "lldrawpool.h"
 #include "llrender.h"
@@ -647,22 +649,6 @@ void LLRenderPass::buildAndOverrideScenePerDrawSet(LLDrawInfo* params, bool batc
             }
             const U32 skin_draw_id = (id == LLVKLoader::BINDLESS_INVALID_SLOT) ? 0 : id;
             LLVKLoader::writeDrawSkinBase(skin_draw_id, skin_entry);
-            // B.2 diag: when this draw's slot is the captured A/B mismatch culprit, name it once.
-            {
-                static U32 s_named_slot = 0xFFFFFFFFu;
-                const U32 culprit = LLVKLoader::skinABMismatchSlot();
-                if (culprit != LLVKLoader::BINDLESS_INVALID_SLOT && skin_draw_id == culprit && s_named_slot != culprit)
-                {
-                    s_named_slot = culprit;
-                    const LLGLSLShader* sh = LLGLSLShader::sCurBoundShaderPtr;
-                    LL_INFOS("Shader") << "B.2 AB CULPRIT: slot=" << culprit
-                                       << " shader='" << (sh ? sh->mName : std::string("?")) << "'"
-                                       << " avatar=" << (params && params->mAvatar.notNull() ? (void*)params->mAvatar.get() : nullptr)
-                                       << " skinEntry=" << skin_entry
-                                       << " isSelf=" << (int)(params && params->mAvatar.notNull() && params->mAvatar->isSelf())
-                                       << LL_ENDL;
-                }
-            }
         }
     }
 
@@ -1424,11 +1410,264 @@ void LLRenderPass::pushIndirectBucket(LLVKBucket::Bucket& bucket, const std::vec
     }
 }
 
+namespace
+{
+    bool riggedMdiKillSwitchOn()
+    {
+        static const bool s_on = []()
+        {
+            const char* e = getenv("AYASTORM_RIGGED_MDI");
+            return e != nullptr && e[0] == '1';
+        }();
+        return s_on;
+    }
+
+    bool riggedMdiEligible(U32 type)
+    {
+        return riggedMdiKillSwitchOn()
+            && (type == LLRenderPass::PASS_SIMPLE_RIGGED
+                || type == LLRenderPass::PASS_FULLBRIGHT_RIGGED)
+            && LLVKLoader::isIndirectDrawEnabled()
+            && LLVKLoader::skinBindlessEnabled()
+            && LLGLSLShader::sCurBoundShaderPtr != nullptr
+            && LLGLSLShader::sCurBoundShaderPtr->mVkUsesBindlessHeap
+            && !LLVKLoader::isRecordJobActive();
+    }
+
+    struct RiggedMdiRec
+    {
+        VkBuffer        vbuf  = VK_NULL_HANDLE;
+        VkBuffer        ibuf  = VK_NULL_HANDLE;
+        U32             itype = 0;
+        LLVertexBuffer* rep   = nullptr;
+        VkDrawIndexedIndirectCommand cmd{};
+    };
+
+    bool pushRiggedIndirectSpans(LLGLSLShader* shader,
+                                 VkBuffer ring_buf, VkDeviceSize ring_offset,
+                                 const std::vector<RiggedMdiRec>& items,
+                                 const std::vector<std::pair<U32, U32> >& spans)
+    {
+        LLVKContract::DrawScope vkc_scope(nullptr, "mdi_rig");
+        VkDescriptorSet set_to_bind = LLGLSLShader::vkResolvePerCallSetForDraw();
+        if (set_to_bind == VK_NULL_HANDLE)
+        {
+            LLVKContract::drawSkipped(LLVKContract::C_UNKNOWN,
+                                      shader ? shader->mName : std::string("(no-shader)"));
+            return false;
+        }
+        VkCommandBuffer cmd = LLVKLoader::getCurrentCommandBuffer();
+        if (cmd == VK_NULL_HANDLE)
+        {
+            LLVKContract::drawSkipped(LLVKContract::C_CMD_NULL,
+                                      shader ? shader->mName : std::string("(no-shader)"));
+            return false;
+        }
+        VkPipeline pipeline = shader->getOrCreateVkPipelineForBoundRT(LLRender::TRIANGLES);
+        if (pipeline == VK_NULL_HANDLE)
+        {
+            LLVKContract::drawSkipped(LLVKContract::C_PIPELINE_NULL, shader->mName);
+            return false;
+        }
+        if (!LLVKLoader::isInRenderPassScope())
+        {
+            LLRenderTarget* bound_rt = LLRenderTarget::getCurrentBoundTarget();
+            if (bound_rt == nullptr)
+            {
+                LLVKLoader::beginSwapchainRendering();
+            }
+            else
+            {
+                bound_rt->resumeVkDynamicRendering();
+            }
+        }
+        LLVKLoader::bindGraphicsPipelineOnce(cmd, pipeline);
+        {
+            const bool vk_screen_space_copy = LLGLSLShader::vkUsePositiveViewport(
+                LLRenderTarget::getCurrentBoundTarget() != nullptr,
+                LLGLSLShader::vkCaptureRegimeActive());
+            LLVKLoader::setupViewportAndScissor(cmd, vk_screen_space_copy);
+        }
+        LLVKLoader::bindDrawDescriptorSetsOnce(cmd,
+                                               shader->mVkPipelineLayout,
+                                               LLVKLoader::getCurrentPerFrameDescriptorSet(),
+                                               set_to_bind,
+                                               shader->mVkSet1DynamicCount,
+                                               LLGLSLShader::sCurPerCallVkDynamicOffsets);
+        LLVKLoader::pushModelviewOnce(cmd,
+                                      shader->mVkPipelineLayout,
+                                      LLVKLoader::getCurrentModelviewMatrix());
+        for (const std::pair<U32, U32>& span : spans)
+        {
+            items[span.first].rep->setBuffer();
+            vkCmdDrawIndexedIndirect(cmd, ring_buf,
+                                     ring_offset + (VkDeviceSize)span.first * sizeof(VkDrawIndexedIndirectCommand),
+                                     span.second,
+                                     sizeof(VkDrawIndexedIndirectCommand));
+            ++LLVKLoader::gVkPerf.mdi_call;
+        }
+        return true;
+    }
+
+    bool pushRiggedBatchesIndirect(U32 type, bool batch_textures)
+    {
+        LLGLSLShader* shader = LLGLSLShader::sCurBoundShaderPtr;
+
+        static thread_local std::vector<RiggedMdiRec> s_items;
+        s_items.clear();
+
+        const LLVOAvatar* lastAvatar    = nullptr;
+        U64               lastMeshId    = 0;
+        bool              skipLastSkin  = false;
+        auto*             begin         = gPipeline.beginRenderMap(type);
+        auto*             end           = gPipeline.endRenderMap(type);
+        for (LLCullResult::drawinfo_iterator i = begin; i != end; )
+        {
+            LLDrawInfo* p = *i;
+            LLCullResult::increment_iterator(i, end);
+
+            if (!LLRenderPass::uploadMatrixPalette(p->mAvatar, p->mSkinInfo,
+                                                   lastAvatar, lastMeshId, skipLastSkin))
+            {
+                continue;
+            }
+            ++LLVKLoader::gVkPerf.rigged_rec;
+            if (!p->mCount || vkShadowCullBatch(*p))
+            {
+                continue;
+            }
+            LLVertexBuffer* vb = p->mVertexBuffer.get();
+            if (vb == nullptr)
+            {
+                continue;
+            }
+            const LLVKLoader::MegaSliceV& vs = vb->getVkVertexSlice();
+            const LLVKLoader::MegaSliceI& is = vb->getVkIndexSlice();
+            if (vs.buffer == VK_NULL_HANDLE || is.buffer == VK_NULL_HANDLE)
+            {
+                continue;
+            }
+
+            U32 slots[4] = { 0, 0, 0, 0 };
+            if (batch_textures && p->mTextureList.size() > 1)
+            {
+                const U32 n = llmin((U32)p->mTextureList.size(), 4u);
+                for (U32 s = 0; s < n; ++s)
+                {
+                    LLTexture* t = p->mTextureList[s].get();
+                    slots[s] = LLImageGL::vkHeapSlotOrDefault(t ? t->getGLTexture() : nullptr);
+                }
+            }
+            else if (p->mTexture.notNull())
+            {
+                slots[0] = LLImageGL::vkHeapSlotOrDefault(p->mTexture->getGLTexture());
+                if (p->mNormalMap.notNull())
+                {
+                    slots[1] = LLImageGL::vkHeapSlotOrDefault(p->mNormalMap->getGLTexture());
+                }
+                if (p->mSpecularMap.notNull())
+                {
+                    slots[2] = LLImageGL::vkHeapSlotOrDefault(p->mSpecularMap->getGLTexture());
+                }
+            }
+            const bool ok      = p->ensureVkDrawDataSlot(slots);
+            const U32  id      = ok ? p->mVkDrawDataSlot : LLVKLoader::drawDataWriteScratch(slots);
+            const U32  draw_id = (id == LLVKLoader::BINDLESS_INVALID_SLOT) ? 0 : id;
+
+            const U32 skin_entry = LLVKLoader::objectSkinLookupEntry(p->mAvatar.get(),
+                                                                     p->mSkinInfo->mHash);
+            if (skin_entry == LLVKLoader::BINDLESS_INVALID_SLOT)
+            {
+                return false;
+            }
+            LLVKLoader::writeDrawSkinBase(draw_id, skin_entry);
+
+            RiggedMdiRec rec;
+            rec.vbuf              = vs.buffer;
+            rec.ibuf              = is.buffer;
+            rec.itype             = vb->getIndicesType();
+            rec.rep               = vb;
+            rec.cmd.indexCount    = p->mCount;
+            rec.cmd.instanceCount = 1;
+            rec.cmd.firstIndex    = is.offset / vb->getIndicesStride() + p->mOffset;
+            rec.cmd.vertexOffset  = (S32)vs.first;
+            rec.cmd.firstInstance = draw_id;
+            s_items.push_back(rec);
+        }
+
+        if (s_items.empty())
+        {
+            return false;
+        }
+
+        std::stable_sort(s_items.begin(), s_items.end(),
+            [](const RiggedMdiRec& a, const RiggedMdiRec& b)
+            {
+                if (a.vbuf != b.vbuf) return (uintptr_t)a.vbuf < (uintptr_t)b.vbuf;
+                if (a.ibuf != b.ibuf) return (uintptr_t)a.ibuf < (uintptr_t)b.ibuf;
+                return a.itype < b.itype;
+            });
+
+        static thread_local std::vector<VkDrawIndexedIndirectCommand> s_cmds;
+        static thread_local std::vector<std::pair<U32, U32> >          s_spans;
+        s_cmds.clear();
+        s_spans.clear();
+        for (U32 idx = 0; idx < (U32)s_items.size(); ++idx)
+        {
+            const RiggedMdiRec& r = s_items[idx];
+            if (s_spans.empty())
+            {
+                s_spans.emplace_back(idx, 0u);
+            }
+            else
+            {
+                const RiggedMdiRec& rep = s_items[s_spans.back().first];
+                if (rep.vbuf != r.vbuf || rep.ibuf != r.ibuf || rep.itype != r.itype)
+                {
+                    s_spans.emplace_back(idx, 0u);
+                }
+            }
+            ++s_spans.back().second;
+            s_cmds.push_back(r.cmd);
+        }
+
+        VkBuffer     ring_buf    = VK_NULL_HANDLE;
+        VkDeviceSize ring_offset = 0;
+        void*        ring_mapped = nullptr;
+        if (!LLVKLoader::indirectRingAlloc((U32)s_cmds.size(), ring_buf, ring_offset, ring_mapped))
+        {
+            return false;
+        }
+        std::memcpy(ring_mapped, s_cmds.data(),
+                    s_cmds.size() * sizeof(VkDrawIndexedIndirectCommand));
+
+        LLRenderPass::applyModelMatrix((const LLMatrix4*)nullptr);
+        gGL.syncMatrices();
+        LLGLSLShader::sCurPerCallAuthored = false;
+
+        if (!pushRiggedIndirectSpans(shader, ring_buf, ring_offset, s_items, s_spans))
+        {
+            return false;
+        }
+        LLVKLoader::gVkPerf.mdi_rec += (U64)s_cmds.size();
+        return true;
+    }
+}
+
 void LLRenderPass::pushRiggedBatches(U32 type, bool texture, bool batch_textures)
 {
     LL_PROFILE_ZONE_SCOPED_CATEGORY_DRAWPOOL;
     const bool e3on = LLVKLoader::perfLogEnabled();
     const U64  e3t0 = e3on ? (U64)LLTimer::getTotalTime() : 0;
+
+    if (texture && riggedMdiEligible(type) && pushRiggedBatchesIndirect(type, batch_textures))
+    {
+        if (e3on)
+        {
+            LLVKLoader::gVkPerf.e3_rig_us[e3RigBucket()] += (U64)LLTimer::getTotalTime() - e3t0;
+        }
+        return;
+    }
 
     if (texture)
     {

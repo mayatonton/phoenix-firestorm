@@ -310,7 +310,7 @@ namespace
     // --- B.0/B.2 skin bindless base (SSBO palette + per-draw base index + A/B oracle) ---
     constexpr U32            SKIN_PALETTE_ENTRY_BYTES                = 10560; // ObjectSkin_PerProgramBind (mat3x4[110] x2)
     constexpr U32            SKIN_ENTRIES_PER_FRAME                  = 1024;
-    constexpr U32            SKIN_AB_ORACLE_U32S                     = 8; // [0]=mismatch [1]=checked [2..7]=first-mismatch sample
+    constexpr U32            SKIN_AB_ORACLE_U32S                     = 16; // [0]=mismatch [3..5]=slot/base/joint [6]=claim [7]=baseRegion [8]=frameRegion [9]=cpuExpectedRegion [10]=mdBits [11]=baseLocal
     VkBuffer                 sSkinPaletteBuffer                      = VK_NULL_HANDLE;
     void*                    sSkinPaletteAllocation                  = nullptr;
     U8*                      sSkinPaletteMapped                      = nullptr;
@@ -2710,7 +2710,7 @@ namespace
         bindings[2].descriptorCount = 1;
         bindings[2].stageFlags      = VK_SHADER_STAGE_VERTEX_BIT;
         bindings[3].binding         = 3;
-        bindings[3].descriptorType  = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER;
+        bindings[3].descriptorType  = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER_DYNAMIC;
         bindings[3].descriptorCount = 1;
         bindings[3].stageFlags      = VK_SHADER_STAGE_VERTEX_BIT;
         // B.2: skin A/B oracle counter (binding 4), vertex-stage atomic SSBO (host-visible)
@@ -2752,17 +2752,19 @@ namespace
             return true;
         }
 
-        VkDescriptorPoolSize ps[2] = {};
+        VkDescriptorPoolSize ps[3] = {};
         ps[0].type            = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER;
-        ps[0].descriptorCount = 4; // DrawData(0) + skin palette(2) + skin base(3) + skin A/B oracle(4)
+        ps[0].descriptorCount = 3; // DrawData(0) + skin palette(2) + skin A/B oracle(4)
         ps[1].type            = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
         ps[1].descriptorCount = count;
+        ps[2].type            = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER_DYNAMIC;
+        ps[2].descriptorCount = 1; // skin base(3): per-frame ringed, selected by dynamic offset
 
         VkDescriptorPoolCreateInfo pi = {};
         pi.sType         = VK_STRUCTURE_TYPE_DESCRIPTOR_POOL_CREATE_INFO;
         pi.flags         = VK_DESCRIPTOR_POOL_CREATE_UPDATE_AFTER_BIND_BIT;
         pi.maxSets       = 1;
-        pi.poolSizeCount = 2;
+        pi.poolSizeCount = 3;
         pi.pPoolSizes    = ps;
 
         if (vkCreateDescriptorPool(sDevice, &pi, nullptr, &sBindlessHeapPool) != VK_SUCCESS)
@@ -2824,7 +2826,7 @@ namespace
         // Bound once (persistent set); palette parallel-filled beside the live dynamic-UBO path.
         {
             const U64 palette_bytes = (U64)SKIN_PALETTE_ENTRY_BYTES * SKIN_ENTRIES_PER_FRAME * FRAMES_IN_FLIGHT;
-            const U64 base_bytes    = (U64)DRAWDATA_TOTAL_SLOTS * 4;
+            const U64 base_bytes    = (U64)DRAWDATA_TOTAL_SLOTS * 4 * FRAMES_IN_FLIGHT;
             const U64 ab_bytes      = (U64)SKIN_AB_ORACLE_U32S * 4;
             void* pal_mapped  = nullptr;
             void* base_mapped = nullptr;
@@ -2880,7 +2882,7 @@ namespace
 
                 VkDescriptorBufferInfo sbi[3] = {};
                 sbi[0].buffer = sSkinPaletteBuffer; sbi[0].offset = 0; sbi[0].range = VK_WHOLE_SIZE;
-                sbi[1].buffer = sSkinBaseBuffer;    sbi[1].offset = 0; sbi[1].range = VK_WHOLE_SIZE;
+                sbi[1].buffer = sSkinBaseBuffer;    sbi[1].offset = 0; sbi[1].range = (VkDeviceSize)DRAWDATA_TOTAL_SLOTS * 4;
                 sbi[2].buffer = sSkinABBuffer;      sbi[2].offset = 0; sbi[2].range = VK_WHOLE_SIZE;
                 VkWriteDescriptorSet sw[3] = {};
                 for (U32 i = 0; i < 3; ++i)
@@ -2889,7 +2891,9 @@ namespace
                     sw[i].dstSet          = sBindlessHeapSet;
                     sw[i].dstBinding      = 2 + i;
                     sw[i].descriptorCount = 1;
-                    sw[i].descriptorType  = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER;
+                    sw[i].descriptorType  = (i == 1)
+                                                ? VK_DESCRIPTOR_TYPE_STORAGE_BUFFER_DYNAMIC
+                                                : VK_DESCRIPTOR_TYPE_STORAGE_BUFFER;
                     sw[i].pBufferInfo     = &sbi[i];
                 }
                 vkUpdateDescriptorSets(sDevice, 3, sw, 0, nullptr);
@@ -4857,16 +4861,6 @@ bool beginFrame(bool acquire_swapchain)
 
     sFrameIndex = (sFrameIndex + 1) % FRAMES_IN_FLIGHT;
     sSkinPaletteCursor[sFrameIndex].store(0, std::memory_order_relaxed); // B.0: reset skin palette region ring
-    // B.2 A/B watcher: halt on the spot the first time SSBO skinning diverges from the UBO
-    // reference, so the log freezes with the captured culprit (slot/base/joint + the
-    // lldrawpool "AB CULPRIT" shader/avatar line) for immediate analysis.
-    if (sSkinABMapped != nullptr && sSkinABMapped[0] != 0u)
-    {
-        LL_ERRS("Vulkan") << "B.2 A/B MISMATCH: SSBO skinning != UBO reference. count="
-                          << sSkinABMapped[0] << " culprit slot=" << sSkinABMapped[3]
-                          << " paletteIndex=" << sSkinABMapped[4] << " joint=" << sSkinABMapped[5]
-                          << " (see 'B.2 AB CULPRIT' log line for shader/avatar)" << LL_ENDL;
-    }
 
     bool slot_submitted;
     {
@@ -7695,12 +7689,19 @@ void writeDrawSkinBase(U32 draw_id, U32 skin_entry)
     {
         return;
     }
+    const U32 f = (sFrameIndex < FRAMES_IN_FLIGHT) ? sFrameIndex : 0;
     const U32 v = sSkinBindlessEnabled ? skin_entry : BINDLESS_INVALID_SLOT;
-    sSkinBaseMapped[draw_id] = v;
+    sSkinBaseMapped[(size_t)f * DRAWDATA_TOTAL_SLOTS + draw_id] = v;
     if (v != BINDLESS_INVALID_SLOT)
     {
         gVkPerf.skin_base_wr.fetch_add(1, std::memory_order_relaxed);
     }
+}
+
+U32 skinBaseDynamicOffsetBytes()
+{
+    const U32 f = (sFrameIndex < FRAMES_IN_FLIGHT) ? sFrameIndex : 0;
+    return f * DRAWDATA_TOTAL_SLOTS * 4u;
 }
 
 bool getSharedObjectSkinUBO(VkBuffer& out_buffer, void*& out_mapped)
@@ -11344,20 +11345,9 @@ bool isBindlessActiveVk()
     return sBindlessActive;
 }
 
-bool skinBindlessABEnabled()
+bool skinBindlessEnabled()
 {
-    // B.2: A/B oracle needs vertex-stage SSBO atomics AND the SSBO path itself active.
-    return sVertexStoresAtomicsEnabled && sSkinBindlessEnabled && sSkinABMapped != nullptr;
-}
-
-// B.2 diag: DrawData slot of the first A/B mismatch this run (INVALID if none captured).
-U32 skinABMismatchSlot()
-{
-    if (sSkinABMapped == nullptr || sSkinABMapped[6] == 0u)
-    {
-        return BINDLESS_INVALID_SLOT;
-    }
-    return sSkinABMapped[3];
+    return sSkinBindlessEnabled;
 }
 
 U32 bindlessAcquireSlot(VkImageView view, VkSampler sampler)
@@ -12100,13 +12090,28 @@ void bindDrawDescriptorSetsOnce(VkCommandBuffer cmd, VkPipelineLayout layout,
         }
     }
     LLGLSLShader::vkVerifyPerCallBindingsAtBind(offsets, dyn_count);
+
+    U32        eff_local[LLGLSLShader::MAX_VK_DYNAMIC_BINDINGS];
+    const U32* eff_offsets = offsets;
+    U32        eff_count   = dyn_count;
+    if (set2 != VK_NULL_HANDLE && dyn_count < LLGLSLShader::MAX_VK_DYNAMIC_BINDINGS)
+    {
+        if (dyn_count > 0)
+        {
+            std::memcpy(eff_local, offsets, dyn_count * sizeof(U32));
+        }
+        eff_local[dyn_count] = skinBaseDynamicOffsetBytes();
+        eff_offsets          = eff_local;
+        eff_count            = dyn_count + 1;
+    }
+
     if (vkCmdMemoEnabled()
         && layout == sLastDescLayout
         && set0 == sLastDescSet0
         && set1 == sLastDescSet1
         && set2 == sLastDescSet2
-        && dyn_count == sLastDescDynCount
-        && (dyn_count == 0 || std::memcmp(offsets, sLastDescOffsets, dyn_count * sizeof(U32)) == 0))
+        && eff_count == sLastDescDynCount
+        && (eff_count == 0 || std::memcmp(eff_offsets, sLastDescOffsets, eff_count * sizeof(U32)) == 0))
     {
         ++gVkPerf.desc_skip;
         return;
@@ -12119,16 +12124,16 @@ void bindDrawDescriptorSetsOnce(VkCommandBuffer cmd, VkPipelineLayout layout,
                             0,
                             (set2 != VK_NULL_HANDLE) ? 3u : 2u,
                             sets,
-                            dyn_count,
-                            dyn_count ? offsets : nullptr);
+                            eff_count,
+                            eff_count ? eff_offsets : nullptr);
     sLastDescLayout   = layout;
     sLastDescSet0     = set0;
     sLastDescSet1     = set1;
     sLastDescSet2     = set2;
-    sLastDescDynCount = dyn_count;
-    if (dyn_count > 0)
+    sLastDescDynCount = eff_count;
+    if (eff_count > 0)
     {
-        std::memcpy(sLastDescOffsets, offsets, dyn_count * sizeof(U32));
+        std::memcpy(sLastDescOffsets, eff_offsets, eff_count * sizeof(U32));
     }
 }
 

@@ -1349,8 +1349,7 @@ namespace LLVKLoader
     constexpr U32 BINDLESS_INVALID_SLOT = 0xFFFFFFFFu;
 
     bool isBindlessActiveVk();
-    bool skinBindlessABEnabled(); // B.2: skin A/B oracle active (vertex atomics supported)
-    U32  skinABMismatchSlot();    // B.2 diag: DrawData slot of first A/B mismatch (INVALID if none)
+    bool skinBindlessEnabled();
 
     U32  bindlessAcquireSlot(VkImageView view, VkSampler sampler);
     void bindlessUpdateSlot(U32 slot, VkImageView view, VkSampler sampler);

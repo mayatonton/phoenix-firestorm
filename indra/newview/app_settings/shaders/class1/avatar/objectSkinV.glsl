@@ -54,10 +54,6 @@ layout(set = 1, binding = 46, std140) uniform ObjectSkin_PerProgramBind
 #define AYA_SKIN_INVALID 0xFFFFFFFFu
 layout(set = 2, binding = 2, std430) readonly buffer AyaSkinPaletteBlock { mat3x4 aya_skin_palette[]; };
 layout(set = 2, binding = 3, std430) readonly buffer AyaSkinBaseBlock    { uint   aya_skin_base[]; };
-#ifdef AYA_SKIN_AB
-// [0]=mismatch [1]=checked : per-vertex A/B oracle (SSBO skinning vs UBO reference).
-layout(set = 2, binding = 4, std430) buffer AyaSkinABBlock { uint aya_skin_ab[]; };
-#endif
 #endif
 #else
 uniform mat3x4 matrixPalette[MAX_JOINTS_PER_MESH_OBJECT];
@@ -107,40 +103,6 @@ mat4 getObjectSkinnedTransform()
          trans += vec3(p2[0].w,p2[1].w,p2[2].w)*w.y;
          trans += vec3(p3[0].w,p3[1].w,p3[2].w)*w.z;
          trans += vec3(p4[0].w,p4[1].w,p4[2].w)*w.w;
-
-#if defined(LL_VULKAN_GLSL) && defined(AYA_SKIN_SSBO) && defined(AYA_SKIN_AB)
-    // Lightweight always-on A/B watcher: compare SSBO skinning against the UBO reference
-    // and atomic-flag ONLY on divergence (no per-vertex counters). [0]=mismatch count,
-    // [3..5]=first culprit's draw slot / palette index / joint. Cheap unless a mismatch fires.
-    if (aya_base != AYA_SKIN_INVALID)
-    {
-        mat3 rmat = mat3(matrixPalette[i1])*w.x;
-             rmat += mat3(matrixPalette[i2])*w.y;
-             rmat += mat3(matrixPalette[i3])*w.z;
-             rmat += mat3(matrixPalette[i4])*w.w;
-        vec3 rtrans = vec3(matrixPalette[i1][0].w,matrixPalette[i1][1].w,matrixPalette[i1][2].w)*w.x;
-             rtrans += vec3(matrixPalette[i2][0].w,matrixPalette[i2][1].w,matrixPalette[i2][2].w)*w.y;
-             rtrans += vec3(matrixPalette[i3][0].w,matrixPalette[i3][1].w,matrixPalette[i3][2].w)*w.z;
-             rtrans += vec3(matrixPalette[i4][0].w,matrixPalette[i4][1].w,matrixPalette[i4][2].w)*w.w;
-        vec3 d0 = abs(mat[0]-rmat[0]);
-        vec3 d1 = abs(mat[1]-rmat[1]);
-        vec3 d2 = abs(mat[2]-rmat[2]);
-        vec3 dt = abs(trans-rtrans);
-        float md = max(max(max(d0.x,d0.y),max(d0.z,d1.x)),
-                       max(max(d1.y,d1.z),max(d2.x,max(d2.y,max(d2.z,max(dt.x,max(dt.y,dt.z)))))));
-        if (md > 1e-4)
-        {
-            // Name the first culprit: claim slot [6] once, then stamp its identity.
-            if (atomicCompSwap(aya_skin_ab[6], 0u, 1u) == 0u)
-            {
-                aya_skin_ab[3] = uint(gl_InstanceIndex); // which draw (DrawData slot)
-                aya_skin_ab[4] = aya_base;               // palette index it read
-                aya_skin_ab[5] = uint(i1);               // a joint index sample
-            }
-            atomicAdd(aya_skin_ab[0], 1u);
-        }
-    }
-#endif
 
     mat4 ret;
 

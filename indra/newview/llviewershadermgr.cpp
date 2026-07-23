@@ -267,17 +267,6 @@ LLGLSLShader            gGLTFPBRMetallicRoughnessProgram;
 static void add_skin_bindless_permutations(LLGLSLShader& s)
 {
     s.addPermutation("AYA_SKIN_SSBO", "1");
-    const bool ab = LLVKLoader::skinBindlessABEnabled();
-    if (ab)
-    {
-        s.addPermutation("AYA_SKIN_AB", "1");
-    }
-    static int s_logged = 0;
-    if (s_logged < 2)
-    {
-        ++s_logged;
-        LL_INFOS("Shader") << "B.2 skin perms sample: '" << s.mName << "' SSBO=1 AB=" << (int)ab << LL_ENDL;
-    }
 }
 
 static bool make_rigged_variant(LLGLSLShader& shader, LLGLSLShader& riggedShader)
@@ -1249,10 +1238,6 @@ std::string LLViewerShaderMgr::loadBasicShaders()
         // global attribs set (per-shader addPermutation never reaches it), so the
         // bindless skin palette + A/B oracle defines must be injected globally here.
         attribs["AYA_SKIN_SSBO"] = "1";
-        if (LLVKLoader::skinBindlessABEnabled())
-        {
-            attribs["AYA_SKIN_AB"] = "1";
-        }
     }
 
     { // PBR terrain
