@@ -1,6 +1,7 @@
 # avatar 描画の main 退避(relocate)+ per-core 分散 — 本体回復 設計
 
 - 状態: 設計者起草 2026-07-22 深夜(AYA 会話で設計思想を受領・approve 前)。真実源 = HEAD の実行コード。
+- **🔴 2026-07-23 実測による決着(AYA)**: **avatar relocate(off-main)line は Phase 2 で終了**。crowd off-main が main から剥がす motion compute は実測で激安(worker 4%・pose/submit も激安)= 低配当と判明。CROWD_OFFMAIN スイッチ削除 = always-on 化(commit `28b9ca14de`・壁#1/#3 の Upstream 準拠を source 確認・master=MT_THREADS)。**本 doc の前提「CPU-main-bound=pose/compute が標的」は誤り**: main は bound だが標的は **per-draw 描画記録(15k draw・rigged が dynamic 経路)**。→ **次フェーズ = `docs/vknative_perdraw_record_recovery_design.md`(3戦略: vsync sleep / rigged indirect+per-core 記録 / 静的 sync skip)が本 line を supersede**。診断真実源 = memory `finding_crowd_bottleneck_vsync_busywait_not_cpu`。並列化(T系/PE)は +10fps 検証済で有効・per-core 記録(secondary cmd buffer)が「crowd をコアに分散」思想の正統標的。
 - 位置づけ: crowd 本体回復(fps 11 → 使用可能・北極星 50-100av)の本線設計。**`docs/vknative_crowd_body_recovery_design.md` §4 の stepA(eliminate = 脱 texture batch key)を supersede**。実測値・帰属(measurements doc + 旧 §4 の gds 表)は資産として保持し、旧 §4 は「eliminate 案 = 不採用・履歴」に降格(§7)。
 - 依拠する一次実測: `docs/vknative_crowd_step0_measurements.md`(再走行不要)。
 

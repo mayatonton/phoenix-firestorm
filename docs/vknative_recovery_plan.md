@@ -2,6 +2,7 @@
 
 - 状態: **AYA approve 済(2026-07-17)・大順序確定 = T 系 → E 系(やり切る)→ Phase 2(並列処理)再開**
 - **🔴 本線更新(AYA 承認 2026-07-22)**: T 系・E 系完遂後の本体回復(crowd 使用可能化)の本線 = **avatar 描画を塊で main の外へ丸ごと退避(relocate)+ per-core 分散** = `docs/vknative_avatar_relocate_design.md`(引き継ぎ = memory `handoff_avatar_relocate_design`)。§0.1 の癌診断(単一 main 直列)は有効・その avatar 側の治療が relocate。doctrine [[project_vk_doctrine_eliminate_not_parallelize]] は regime 改定(off-main では parallelize 解禁)。
+- **🔴 本線再更新(AYA 承認 2026-07-23・実測駆動)**: **relocate line は Phase 2 で終了**(crowd off-main = motion 激安ゆえ低配当・実測確定)。真のボトルネックは **main の per-draw 描画記録(15k draw・rigged が dynamic MDI 除外経路)** と TID 隔離 perf で確定。§0.1 癌診断(単一 main 直列)そのものが正体。→ **現本線 = `docs/vknative_perdraw_record_recovery_design.md`(3戦略: ①vsync 待ち sleep 化=コア返却 ②rigged indirect+記録の per-core 分散〔secondary cmd buffer〕=本丸 ③静的 sync skip)**。診断真実源 = memory `finding_crowd_bottleneck_vsync_busywait_not_cpu`。並列化(T系/PE)は +10fps 検証済で有効。
 - 起草: 2026-07-17 設計実装者(実測データ同日採取)
 - 位置づけ: `docs/vknative_architecture.md`(以下「基本設計」)の **§5 移行表の後半(M5b/M5c/M6)を実測に基づき再編成**する上位工程書。基本設計の §1〜§4(資源モデル: bindless / mega-buffer / DrawData / bucket)と doctrine は**有効のまま**。本書 approve 時に基本設計 §5 へ相互参照を追記する。
 - **本書の各段は独立セッションへの handoff を前提に切ってある**(§4 分担と依存)。
