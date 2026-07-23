@@ -1094,7 +1094,13 @@ void LLRender::syncMatrices()
                             glm::value_ptr(proj_mat_vulkan),
                             sizeof(perframe.projection_matrix));
 
-                const glm::mat4 inv_proj = glm::inverse(proj_mat);
+                glm::mat4 inv_proj = glm::inverse(proj_mat);
+                {
+                    const F32* ipv = glm::value_ptr(inv_proj);
+                    bool ip_finite = true;
+                    for (U32 ip_i = 0; ip_i < 16u; ++ip_i) { if (!std::isfinite(ipv[ip_i])) { ip_finite = false; break; } }
+                    if (!ip_finite) inv_proj = glm::inverse(get_current_projection());
+                }
                 std::memcpy(perframe.inverse_projection_matrix,
                             glm::value_ptr(inv_proj),
                             sizeof(perframe.inverse_projection_matrix));
