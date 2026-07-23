@@ -1358,6 +1358,7 @@ namespace LLVKLoader
     void bindlessReleaseSlotDeferred(U32 slot);
 
     VkDescriptorSetLayout getBindlessHeapLayout();
+    VkDescriptorSetLayout getSkinBaseLayout();
 
     U32  drawDataAcquireSlot(const U32* slots4);
 

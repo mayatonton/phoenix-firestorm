@@ -288,6 +288,9 @@ namespace
     VkDescriptorPool         sBindlessHeapPool                       = VK_NULL_HANDLE;
     VkDescriptorSet          sBindlessHeapSet                        = VK_NULL_HANDLE;
     U32                      sBindlessHeapCount                      = 0;
+    VkDescriptorSetLayout    sSkinBaseLayout                         = VK_NULL_HANDLE;
+    VkDescriptorPool         sSkinBasePool                           = VK_NULL_HANDLE;
+    VkDescriptorSet          sSkinBaseSet                            = VK_NULL_HANDLE;
     U32                      sBindlessSlotNext                       = 1;
     std::vector<U32>         sBindlessSlotFreeList;
     std::mutex               sBindlessSlotMutex;
@@ -2664,6 +2667,17 @@ namespace
             vkDestroyDescriptorSetLayout(sDevice, sBindlessHeapLayout, nullptr);
             sBindlessHeapLayout = VK_NULL_HANDLE;
         }
+        if (sSkinBasePool != VK_NULL_HANDLE)
+        {
+            vkDestroyDescriptorPool(sDevice, sSkinBasePool, nullptr);
+            sSkinBasePool = VK_NULL_HANDLE;
+        }
+        if (sSkinBaseLayout != VK_NULL_HANDLE)
+        {
+            vkDestroyDescriptorSetLayout(sDevice, sSkinBaseLayout, nullptr);
+            sSkinBaseLayout = VK_NULL_HANDLE;
+        }
+        sSkinBaseSet       = VK_NULL_HANDLE;
         sBindlessHeapSet   = VK_NULL_HANDLE;
         sBindlessHeapCount = 0;
         sBindlessSlotNext  = 1;
@@ -2686,7 +2700,7 @@ namespace
 
         const U32 count = sBindlessHeapCapacity;
 
-        VkDescriptorSetLayoutBinding bindings[4] = {};
+        VkDescriptorSetLayoutBinding bindings[3] = {};
         bindings[0].binding         = 0;
         bindings[0].descriptorType  = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER;
         bindings[0].descriptorCount = 1;
@@ -2695,39 +2709,29 @@ namespace
         bindings[1].descriptorType  = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
         bindings[1].descriptorCount = count;
         bindings[1].stageFlags      = VK_SHADER_STAGE_FRAGMENT_BIT;
-        // B.0: skin palette (binding 2) + skin base index (binding 3), vertex-stage bindless SSBOs
         bindings[2].binding         = 2;
         bindings[2].descriptorType  = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER;
         bindings[2].descriptorCount = 1;
         bindings[2].stageFlags      = VK_SHADER_STAGE_VERTEX_BIT;
-        bindings[3].binding         = 3;
-        bindings[3].descriptorType  = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER_DYNAMIC;
-        bindings[3].descriptorCount = 1;
-        bindings[3].stageFlags      = VK_SHADER_STAGE_VERTEX_BIT;
 
-        // NOTE: the texture array (binding 1) can no longer carry
-        // VARIABLE_DESCRIPTOR_COUNT_BIT because that flag is only valid on the
-        // highest-numbered binding, and skin bindings 2..3 now sit above it. The full
-        // `count` is allocated either way, so this is functionally identical.
-        VkDescriptorBindingFlags bind_flags[4] = {
+        VkDescriptorBindingFlags bind_flags[3] = {
             0,
               VK_DESCRIPTOR_BINDING_PARTIALLY_BOUND_BIT
             | VK_DESCRIPTOR_BINDING_UPDATE_AFTER_BIND_BIT
             | VK_DESCRIPTOR_BINDING_UPDATE_UNUSED_WHILE_PENDING_BIT,
-            0,
             0
         };
 
         VkDescriptorSetLayoutBindingFlagsCreateInfo bf = {};
         bf.sType         = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_BINDING_FLAGS_CREATE_INFO;
-        bf.bindingCount  = 4;
+        bf.bindingCount  = 3;
         bf.pBindingFlags = bind_flags;
 
         VkDescriptorSetLayoutCreateInfo li = {};
         li.sType        = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO;
         li.pNext        = &bf;
         li.flags        = VK_DESCRIPTOR_SET_LAYOUT_CREATE_UPDATE_AFTER_BIND_POOL_BIT;
-        li.bindingCount = 4;
+        li.bindingCount = 3;
         li.pBindings    = bindings;
 
         if (vkCreateDescriptorSetLayout(sDevice, &li, nullptr, &sBindlessHeapLayout) != VK_SUCCESS)
@@ -2737,19 +2741,17 @@ namespace
             return true;
         }
 
-        VkDescriptorPoolSize ps[3] = {};
+        VkDescriptorPoolSize ps[2] = {};
         ps[0].type            = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER;
         ps[0].descriptorCount = 2; // DrawData(0) + skin palette(2)
         ps[1].type            = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
         ps[1].descriptorCount = count;
-        ps[2].type            = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER_DYNAMIC;
-        ps[2].descriptorCount = 1; // skin base(3): per-frame ringed, selected by dynamic offset
 
         VkDescriptorPoolCreateInfo pi = {};
         pi.sType         = VK_STRUCTURE_TYPE_DESCRIPTOR_POOL_CREATE_INFO;
         pi.flags         = VK_DESCRIPTOR_POOL_CREATE_UPDATE_AFTER_BIND_BIT;
         pi.maxSets       = 1;
-        pi.poolSizeCount = 3;
+        pi.poolSizeCount = 2;
         pi.pPoolSizes    = ps;
 
         if (vkCreateDescriptorPool(sDevice, &pi, nullptr, &sBindlessHeapPool) != VK_SUCCESS)
@@ -2757,6 +2759,49 @@ namespace
             LL_WARNS("Vulkan") << "VKBindless: heap pool creation failed (staying inactive)" << LL_ENDL;
             destroyBindlessHeap();
             return true;
+        }
+
+        {
+            VkDescriptorSetLayoutBinding sb = {};
+            sb.binding         = 0;
+            sb.descriptorType  = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER_DYNAMIC;
+            sb.descriptorCount = 1;
+            sb.stageFlags      = VK_SHADER_STAGE_VERTEX_BIT;
+            VkDescriptorSetLayoutCreateInfo sli = {};
+            sli.sType        = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO;
+            sli.bindingCount = 1;
+            sli.pBindings    = &sb;
+            if (vkCreateDescriptorSetLayout(sDevice, &sli, nullptr, &sSkinBaseLayout) != VK_SUCCESS)
+            {
+                LL_WARNS("Vulkan") << "VKBindless: skin base layout creation failed (staying inactive)" << LL_ENDL;
+                destroyBindlessHeap();
+                return true;
+            }
+            VkDescriptorPoolSize sps = {};
+            sps.type            = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER_DYNAMIC;
+            sps.descriptorCount = 1;
+            VkDescriptorPoolCreateInfo spi = {};
+            spi.sType         = VK_STRUCTURE_TYPE_DESCRIPTOR_POOL_CREATE_INFO;
+            spi.maxSets       = 1;
+            spi.poolSizeCount = 1;
+            spi.pPoolSizes    = &sps;
+            if (vkCreateDescriptorPool(sDevice, &spi, nullptr, &sSkinBasePool) != VK_SUCCESS)
+            {
+                LL_WARNS("Vulkan") << "VKBindless: skin base pool creation failed (staying inactive)" << LL_ENDL;
+                destroyBindlessHeap();
+                return true;
+            }
+            VkDescriptorSetAllocateInfo sai = {};
+            sai.sType              = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO;
+            sai.descriptorPool     = sSkinBasePool;
+            sai.descriptorSetCount = 1;
+            sai.pSetLayouts        = &sSkinBaseLayout;
+            if (vkAllocateDescriptorSets(sDevice, &sai, &sSkinBaseSet) != VK_SUCCESS)
+            {
+                LL_WARNS("Vulkan") << "VKBindless: skin base set allocation failed (staying inactive)" << LL_ENDL;
+                destroyBindlessHeap();
+                return true;
+            }
         }
 
         // Fixed-size allocation: binding 1 gets its full `count` descriptors (no
@@ -2834,17 +2879,18 @@ namespace
                 sbi[0].buffer = sSkinPaletteBuffer; sbi[0].offset = 0; sbi[0].range = VK_WHOLE_SIZE;
                 sbi[1].buffer = sSkinBaseBuffer;    sbi[1].offset = 0; sbi[1].range = (VkDeviceSize)DRAWDATA_TOTAL_SLOTS * 4;
                 VkWriteDescriptorSet sw[2] = {};
-                for (U32 i = 0; i < 2; ++i)
-                {
-                    sw[i].sType           = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
-                    sw[i].dstSet          = sBindlessHeapSet;
-                    sw[i].dstBinding      = 2 + i;
-                    sw[i].descriptorCount = 1;
-                    sw[i].descriptorType  = (i == 1)
-                                                ? VK_DESCRIPTOR_TYPE_STORAGE_BUFFER_DYNAMIC
-                                                : VK_DESCRIPTOR_TYPE_STORAGE_BUFFER;
-                    sw[i].pBufferInfo     = &sbi[i];
-                }
+                sw[0].sType           = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
+                sw[0].dstSet          = sBindlessHeapSet;
+                sw[0].dstBinding      = 2;
+                sw[0].descriptorCount = 1;
+                sw[0].descriptorType  = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER;
+                sw[0].pBufferInfo     = &sbi[0];
+                sw[1].sType           = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
+                sw[1].dstSet          = sSkinBaseSet;
+                sw[1].dstBinding      = 0;
+                sw[1].descriptorCount = 1;
+                sw[1].descriptorType  = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER_DYNAMIC;
+                sw[1].pBufferInfo     = &sbi[1];
                 vkUpdateDescriptorSets(sDevice, 2, sw, 0, nullptr);
             }
             else
@@ -11400,6 +11446,11 @@ VkDescriptorSetLayout getBindlessHeapLayout()
     return sBindlessHeapLayout;
 }
 
+VkDescriptorSetLayout getSkinBaseLayout()
+{
+    return sSkinBaseLayout;
+}
+
 U32 drawDataAcquireSlot(const U32* slots4)
 {
     if (sDrawDataMapped == nullptr)
@@ -12108,12 +12159,13 @@ void bindDrawDescriptorSetsOnce(VkCommandBuffer cmd, VkPipelineLayout layout,
         return;
     }
     ++gVkPerf.desc_bind;
-    VkDescriptorSet sets[3] = { set0, set1, set2 };
+    VkDescriptorSet set3 = (set2 != VK_NULL_HANDLE) ? sSkinBaseSet : VK_NULL_HANDLE;
+    VkDescriptorSet sets[4] = { set0, set1, set2, set3 };
     vkCmdBindDescriptorSets(cmd,
                             VK_PIPELINE_BIND_POINT_GRAPHICS,
                             layout,
                             0,
-                            (set2 != VK_NULL_HANDLE) ? 3u : 2u,
+                            (set2 != VK_NULL_HANDLE) ? 4u : 2u,
                             sets,
                             eff_count,
                             eff_count ? eff_offsets : nullptr);

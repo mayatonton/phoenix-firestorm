@@ -53,7 +53,7 @@ layout(set = 1, binding = 46, std140) uniform ObjectSkin_PerProgramBind
 #define AYA_SKIN_ENTRY_STRIDE (MAX_JOINTS_PER_MESH_OBJECT * 2)
 #define AYA_SKIN_INVALID 0xFFFFFFFFu
 layout(set = 2, binding = 2, std430) readonly buffer AyaSkinPaletteBlock { mat3x4 aya_skin_palette[]; };
-layout(set = 2, binding = 3, std430) readonly buffer AyaSkinBaseBlock    { uint   aya_skin_base[]; };
+layout(set = 3, binding = 0, std430) readonly buffer AyaSkinBaseBlock    { uint   aya_skin_base[]; };
 #endif
 #else
 uniform mat3x4 matrixPalette[MAX_JOINTS_PER_MESH_OBJECT];

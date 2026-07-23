@@ -3053,19 +3053,22 @@ bool LLGLSLShader::createVkPipeline(U32 perProgramUBOSize, bool needsSharedWater
         return false;
     }
 
-    VkDescriptorSetLayout set_layouts[3] = {
+    VkDescriptorSetLayout set_layouts[4] = {
         LLVKLoader::getPerFrameDescriptorSetLayout(),
         mVkDescriptorSetLayout,
+        VK_NULL_HANDLE,
         VK_NULL_HANDLE
     };
     U32 set_layout_count = 2;
     if (mVkUsesBindlessHeap)
     {
         VkDescriptorSetLayout heap_layout = LLVKLoader::getBindlessHeapLayout();
-        if (heap_layout != VK_NULL_HANDLE)
+        VkDescriptorSetLayout skin_layout = LLVKLoader::getSkinBaseLayout();
+        if (heap_layout != VK_NULL_HANDLE && skin_layout != VK_NULL_HANDLE)
         {
             set_layouts[2]   = heap_layout;
-            set_layout_count = 3;
+            set_layouts[3]   = skin_layout;
+            set_layout_count = 4;
         }
         else
         {
