@@ -897,6 +897,11 @@ void LLMotionController::runMotionComputeWorker()
     mComputeWorkerDone.store(true, std::memory_order_release);
 }
 
+std::unique_lock<std::recursive_mutex> LLMotionController::lockForStructuralMutation()
+{
+    return std::unique_lock<std::recursive_mutex>(mComputeMutex);
+}
+
 bool LLMotionController::drainComputeWindow()
 {
     if (mComputeDispatched)

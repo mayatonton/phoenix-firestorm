@@ -139,6 +139,7 @@ public:
 
     void setAsyncCompute(bool enable) { mAsyncCompute = enable; }
     void runMotionComputeWorker();
+    std::unique_lock<std::recursive_mutex> lockForStructuralMutation();
     LLCharacter* getCharacter() const { return mCharacter; }
     typedef void (*post_motion_compute_fn)(LLMotionController*);
     static void setPostMotionComputeHook(post_motion_compute_fn fn) { sPostMotionComputeHook = fn; }
