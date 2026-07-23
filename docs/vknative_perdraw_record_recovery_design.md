@@ -14,7 +14,7 @@
 
 | # | 戦略 | 標的 | 品質 | コスト | 状態 |
 |---|---|---|---|---|---|
-| **1** | vsync 待ちを spin→sleep | present の FIFO busy-wait(1コア焼き) | 不変(vsync/pacing そのまま) | 極小 | `__GL_YIELD=USLEEP` 実証済 = productionize 待ち |
+| **1** | vsync 待ちを spin→sleep | present の FIFO busy-wait(1コア焼き) | 不変(vsync/pacing そのまま) | 極小 | ✅ **完了 commit `e8cfdc466f`**(present_wait + __GL_YIELD・aya-present 93%→2-3%・fps 不変) |
 | **2** | **rigged draw の indirect 化 + 記録の per-core 分散** | main ~60% = 15k draw の per-draw 記録 | 不変(発行畳み込み・byte gate 必須) | 最大(E系本丸) | 未着手 |
 | **3** | 静的な再 sync skip | 不変 palette/descriptor の毎frame 再送 | 不変(不変データ送らない) | 中 | 未着手 |
 
@@ -25,11 +25,12 @@
 ### 段階0(常時・全戦略の前提)= 計測を常時 ON
 - **普段の起動を `AYASTORM_PERF_LOG=5` 常時 ON に**(コストほぼゼロ)。週1の重い 50-100人会場に入った瞬間、VkPerf が `cpu main=%` / `draws/f` / `ph`/`idl` 内訳を自動採取 → 後追い mine(一発勝負を回避)。戦略2/3 の北極星配当(重い会場で main 飽和を防ぐ)の定量化はこれで得る。狙って混雑イベントに行っても可。
 
-### 戦略1(先行・独立・ほぼ済)= vsync 待ちを sleep 化
-- **目的** = present の busy-wait スピンを sleep にしてコア1本返却。**fps は上げない**(GPU 餓え=データ供給律速で上がらない)= 狙いは CPU/電力。
-- **手**: (a) launcher/wrapper に `__GL_YIELD=USLEEP`(NVIDIA 専用・zero-code・即ロックイン)→ (b) 後で自前 block 化(`vkWaitForPresentKHR` 等・driver 非依存 = AMD/Intel も効く)。
-- **gate**: aya-present CPU が 93%→数%・fps 不変(50)・カクつき/tear なし(FIFO 保持ゆえ pacing 同一)。**実証済**。
-- **申告**: (a) は NVIDIA 専用(AMD/Intel は (b) 待ち)。present mode は FIFO のまま(vsync は切らない=暴走させない・画質不変)。
+### 戦略1 ✅ 完了(commit `e8cfdc466f`・2026-07-23)= vsync 待ちを sleep 化
+- **目的** = present の busy-wait スピンを sleep にしてコア1本返却。**fps は上げない**(GPU 餓え=データ供給律速で上がらない)= 狙いは CPU/電力/熱。
+- **実装(2層・3 OS 前提)**: (b) portable = `VK_KHR_present_wait`+`present_id` 有効化 → peExecute で presentId + `vkWaitForPresentKHR` block(未対応 device は no-op fallback・3 OS 促しコメント付き)/ (a) NVIDIA-Linux 完成手 = `llappviewerlinux.cpp` で `__GL_YIELD=USLEEP` setenv(overwrite=0)。
+- **gate 実測(Linux+NVIDIA)**: aya-present 93%→2-3%・全体 CPU ~129%→~95-105%・fps 不変(A/B: present_wait ON 27 vs OFF 26.5 @同一 24k draws)・tear なし。
+- **⚠️ 実測で判明した真実**: **NVIDIA では __GL_YIELD が効き手・present_wait は NVIDIA 内部でも spin して単独では 30% までしか落ちない**(93→30)。__GL_YIELD 単独で 3% まで落ちる = present_wait は NVIDIA-Linux では冗長。present_wait は害なく portable 機構として残置(他 vendor/OS 用・各 OS maintainer が自 driver で完成)。
+- **申告**: fps は上げない(per-draw 律速は戦略2/3)。present mode は FIFO のまま(vsync 切らない=暴走させない・画質不変)。Windows/macOS の present sleep は未検証=各 maintainer 対応(コメント明記)。
 
 ### 戦略3(中コスト・戦略2 の前哨)= 静的な再 sync skip
 - **目的** = pose/state 不変でも毎frame 再 build+upload してる無駄を削る(`ensureObjectSkinUploaded`/`uploadMatrixPalette` の skin palette 無条件再 build ~2.9% + descriptor set 再構築 ~3.6%)。
