@@ -266,6 +266,7 @@ namespace
 
     std::unordered_map<U32, VkSampler> sSamplerCache;
     bool                     sSamplerAnisotropyEnabled               = false;
+    bool                     sVertexStoresAtomicsEnabled             = false; // B.2: skin A/B oracle atomics
     float                    sMaxSamplerAnisotropy                   = 1.0f;
     float                    sMaxLineWidth                           = 1.0f;
     bool                     sGeometryShaderEnabled                  = false;
@@ -305,6 +306,22 @@ namespace
     void*                    sDrawDataAllocation                     = nullptr;
     U32*                     sDrawDataMapped                         = nullptr;
     std::mutex               sAllocGrowthMutex;
+
+    // --- B.0/B.2 skin bindless base (SSBO palette + per-draw base index + A/B oracle) ---
+    constexpr U32            SKIN_PALETTE_ENTRY_BYTES                = 10560; // ObjectSkin_PerProgramBind (mat3x4[110] x2)
+    constexpr U32            SKIN_ENTRIES_PER_FRAME                  = 1024;
+    constexpr U32            SKIN_AB_ORACLE_U32S                     = 8; // [0]=mismatch [1]=checked [2..7]=first-mismatch sample
+    VkBuffer                 sSkinPaletteBuffer                      = VK_NULL_HANDLE;
+    void*                    sSkinPaletteAllocation                  = nullptr;
+    U8*                      sSkinPaletteMapped                      = nullptr;
+    VkBuffer                 sSkinBaseBuffer                         = VK_NULL_HANDLE;
+    void*                    sSkinBaseAllocation                     = nullptr;
+    U32*                     sSkinBaseMapped                         = nullptr;
+    VkBuffer                 sSkinABBuffer                           = VK_NULL_HANDLE;
+    void*                    sSkinABAllocation                       = nullptr;
+    U32*                     sSkinABMapped                           = nullptr;
+    std::atomic<U32>         sSkinPaletteCursor[FRAMES_IN_FLIGHT]    = {};
+    bool                     sSkinBindlessEnabled                    = true; // B.2 kill switch (AYASTORM_SKIN_BINDLESS=0)
     constexpr U32            DRAWDATA_DOMAIN_SLAB                    = 2048;
     constexpr U32            DRAWDATA_MAX_SLABS                      = DRAWDATA_TOTAL_SLOTS / DRAWDATA_DOMAIN_SLAB;
     struct AllocDomain
@@ -1764,6 +1781,16 @@ namespace
             sMaxSamplerAnisotropy     = 1.0f;
         }
 
+        // B.2: vertex-stage SSBO atomics for the skin A/B oracle (diagnostic self-check).
+        if (supported_features.vertexPipelineStoresAndAtomics)
+        {
+            enabled_features.vertexPipelineStoresAndAtomics = VK_TRUE;
+            sVertexStoresAtomicsEnabled = true;
+        }
+        LL_INFOS("Vulkan") << "B.2 skin A/B: vertexPipelineStoresAndAtomics supported="
+                           << (int)supported_features.vertexPipelineStoresAndAtomics
+                           << " enabled=" << (int)sVertexStoresAtomicsEnabled << LL_ENDL;
+
         VkPhysicalDeviceDynamicRenderingFeatures dr_features_query = {};
         dr_features_query.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_DYNAMIC_RENDERING_FEATURES;
 
@@ -2599,6 +2626,27 @@ namespace
             sDrawDataAllocation = nullptr;
             sDrawDataMapped     = nullptr;
         }
+        if (sSkinPaletteBuffer != VK_NULL_HANDLE)
+        {
+            destroyBufferVk(sSkinPaletteBuffer, sSkinPaletteAllocation);
+            sSkinPaletteBuffer     = VK_NULL_HANDLE;
+            sSkinPaletteAllocation = nullptr;
+            sSkinPaletteMapped     = nullptr;
+        }
+        if (sSkinBaseBuffer != VK_NULL_HANDLE)
+        {
+            destroyBufferVk(sSkinBaseBuffer, sSkinBaseAllocation);
+            sSkinBaseBuffer     = VK_NULL_HANDLE;
+            sSkinBaseAllocation = nullptr;
+            sSkinBaseMapped     = nullptr;
+        }
+        if (sSkinABBuffer != VK_NULL_HANDLE)
+        {
+            destroyBufferVk(sSkinABBuffer, sSkinABAllocation);
+            sSkinABBuffer     = VK_NULL_HANDLE;
+            sSkinABAllocation = nullptr;
+            sSkinABMapped     = nullptr;
+        }
         {
             std::lock_guard<std::mutex> lk(sAllocGrowthMutex);
             sSlotSlabNextIdx = 0;
@@ -2636,6 +2684,10 @@ namespace
     bool createBindlessHeap()
     {
         sBindlessActive = false;
+        {
+            const char* e = getenv("AYASTORM_SKIN_BINDLESS"); // B.2 kill switch: 0 -> rigged skin stays on dynamic UBO
+            sSkinBindlessEnabled = !(e != nullptr && e[0] == '0');
+        }
         if (!sBindlessCapable || sBindlessHeapCapacity == 0)
         {
             return true;
@@ -2643,7 +2695,7 @@ namespace
 
         const U32 count = sBindlessHeapCapacity;
 
-        VkDescriptorSetLayoutBinding bindings[2] = {};
+        VkDescriptorSetLayoutBinding bindings[5] = {};
         bindings[0].binding         = 0;
         bindings[0].descriptorType  = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER;
         bindings[0].descriptorCount = 1;
@@ -2652,25 +2704,45 @@ namespace
         bindings[1].descriptorType  = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
         bindings[1].descriptorCount = count;
         bindings[1].stageFlags      = VK_SHADER_STAGE_FRAGMENT_BIT;
+        // B.0: skin palette (binding 2) + skin base index (binding 3), vertex-stage bindless SSBOs
+        bindings[2].binding         = 2;
+        bindings[2].descriptorType  = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER;
+        bindings[2].descriptorCount = 1;
+        bindings[2].stageFlags      = VK_SHADER_STAGE_VERTEX_BIT;
+        bindings[3].binding         = 3;
+        bindings[3].descriptorType  = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER;
+        bindings[3].descriptorCount = 1;
+        bindings[3].stageFlags      = VK_SHADER_STAGE_VERTEX_BIT;
+        // B.2: skin A/B oracle counter (binding 4), vertex-stage atomic SSBO (host-visible)
+        bindings[4].binding         = 4;
+        bindings[4].descriptorType  = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER;
+        bindings[4].descriptorCount = 1;
+        bindings[4].stageFlags      = VK_SHADER_STAGE_VERTEX_BIT;
 
-        VkDescriptorBindingFlags bind_flags[2] = {
+        // NOTE: the texture array (binding 1) can no longer carry
+        // VARIABLE_DESCRIPTOR_COUNT_BIT because that flag is only valid on the
+        // highest-numbered binding, and skin bindings 2..4 now sit above it. The full
+        // `count` is allocated either way, so this is functionally identical.
+        VkDescriptorBindingFlags bind_flags[5] = {
             0,
               VK_DESCRIPTOR_BINDING_PARTIALLY_BOUND_BIT
             | VK_DESCRIPTOR_BINDING_UPDATE_AFTER_BIND_BIT
-            | VK_DESCRIPTOR_BINDING_UPDATE_UNUSED_WHILE_PENDING_BIT
-            | VK_DESCRIPTOR_BINDING_VARIABLE_DESCRIPTOR_COUNT_BIT
+            | VK_DESCRIPTOR_BINDING_UPDATE_UNUSED_WHILE_PENDING_BIT,
+            0,
+            0,
+            0
         };
 
         VkDescriptorSetLayoutBindingFlagsCreateInfo bf = {};
         bf.sType         = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_BINDING_FLAGS_CREATE_INFO;
-        bf.bindingCount  = 2;
+        bf.bindingCount  = 5;
         bf.pBindingFlags = bind_flags;
 
         VkDescriptorSetLayoutCreateInfo li = {};
         li.sType        = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO;
         li.pNext        = &bf;
         li.flags        = VK_DESCRIPTOR_SET_LAYOUT_CREATE_UPDATE_AFTER_BIND_POOL_BIT;
-        li.bindingCount = 2;
+        li.bindingCount = 5;
         li.pBindings    = bindings;
 
         if (vkCreateDescriptorSetLayout(sDevice, &li, nullptr, &sBindlessHeapLayout) != VK_SUCCESS)
@@ -2682,7 +2754,7 @@ namespace
 
         VkDescriptorPoolSize ps[2] = {};
         ps[0].type            = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER;
-        ps[0].descriptorCount = 1;
+        ps[0].descriptorCount = 4; // DrawData(0) + skin palette(2) + skin base(3) + skin A/B oracle(4)
         ps[1].type            = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
         ps[1].descriptorCount = count;
 
@@ -2700,14 +2772,11 @@ namespace
             return true;
         }
 
-        VkDescriptorSetVariableDescriptorCountAllocateInfo vc = {};
-        vc.sType              = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_VARIABLE_DESCRIPTOR_COUNT_ALLOCATE_INFO;
-        vc.descriptorSetCount = 1;
-        vc.pDescriptorCounts  = &count;
-
+        // Fixed-size allocation: binding 1 gets its full `count` descriptors (no
+        // variable-count info, since binding 1 is no longer the highest binding).
         VkDescriptorSetAllocateInfo ai = {};
         ai.sType              = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO;
-        ai.pNext              = &vc;
+        ai.pNext              = nullptr;
         ai.descriptorPool     = sBindlessHeapPool;
         ai.descriptorSetCount = 1;
         ai.pSetLayouts        = &sBindlessHeapLayout;
@@ -2748,6 +2817,101 @@ namespace
                 LL_WARNS("Vulkan") << "VKBindless: DrawData buffer creation failed (heap inactive)" << LL_ENDL;
                 destroyBindlessHeap();
                 return true;
+            }
+        }
+
+        // B.0/B.2: skin palette SSBO (b2) + skin base SSBO (b3) + A/B oracle SSBO (b4).
+        // Bound once (persistent set); palette parallel-filled beside the live dynamic-UBO path.
+        {
+            const U64 palette_bytes = (U64)SKIN_PALETTE_ENTRY_BYTES * SKIN_ENTRIES_PER_FRAME * FRAMES_IN_FLIGHT;
+            const U64 base_bytes    = (U64)DRAWDATA_TOTAL_SLOTS * 4;
+            const U64 ab_bytes      = (U64)SKIN_AB_ORACLE_U32S * 4;
+            void* pal_mapped  = nullptr;
+            void* base_mapped = nullptr;
+            void* ab_mapped   = nullptr;
+            // The A/B oracle counter is GPU-written and CPU-read every frame. createBufferVkImpl
+            // uses HOST_ACCESS_SEQUENTIAL_WRITE (write-combined) which reads back as garbage, so
+            // allocate the oracle buffer with HOST_ACCESS_RANDOM (host-readable, coherent).
+            bool ab_ok = false;
+            {
+                VkBufferCreateInfo bci = {};
+                bci.sType       = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO;
+                bci.size        = (U32)ab_bytes;
+                bci.usage       = VK_BUFFER_USAGE_STORAGE_BUFFER_BIT;
+                bci.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
+                VmaAllocationCreateInfo aci = {};
+                aci.usage         = VMA_MEMORY_USAGE_AUTO;
+                aci.flags         = VMA_ALLOCATION_CREATE_HOST_ACCESS_RANDOM_BIT | VMA_ALLOCATION_CREATE_MAPPED_BIT;
+                aci.requiredFlags = VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT;
+                VmaAllocation ab_alloc = VK_NULL_HANDLE;
+                VmaAllocationInfo ab_info = {};
+                if (sAllocator != VK_NULL_HANDLE
+                    && vmaCreateBuffer(sAllocator, &bci, &aci, &sSkinABBuffer, &ab_alloc, &ab_info) == VK_SUCCESS
+                    && ab_info.pMappedData != nullptr)
+                {
+                    sSkinABAllocation = ab_alloc;
+                    ab_mapped         = ab_info.pMappedData;
+                    ab_ok             = true;
+                }
+                else if (sSkinABBuffer != VK_NULL_HANDLE)
+                {
+                    vmaDestroyBuffer(sAllocator, sSkinABBuffer, ab_alloc);
+                    sSkinABBuffer = VK_NULL_HANDLE;
+                }
+            }
+            if (createBufferVkImpl((U32)palette_bytes, VK_BUFFER_USAGE_STORAGE_BUFFER_BIT,
+                                   sSkinPaletteBuffer, sSkinPaletteAllocation, &pal_mapped, true)
+                && pal_mapped != nullptr
+                && createBufferVkImpl((U32)base_bytes, VK_BUFFER_USAGE_STORAGE_BUFFER_BIT,
+                                      sSkinBaseBuffer, sSkinBaseAllocation, &base_mapped, true)
+                && base_mapped != nullptr
+                && ab_ok)
+            {
+                sSkinPaletteMapped = reinterpret_cast<U8*>(pal_mapped);
+                sSkinBaseMapped    = reinterpret_cast<U32*>(base_mapped);
+                sSkinABMapped      = reinterpret_cast<U32*>(ab_mapped);
+                // B.2: sentinel = INVALID (0xFFFFFFFF) so unwritten slots fall back to the UBO path.
+                std::memset(sSkinBaseMapped, 0xFF, (size_t)base_bytes);
+                std::memset(sSkinABMapped, 0, (size_t)ab_bytes);
+                for (U32 i = 0; i < FRAMES_IN_FLIGHT; ++i)
+                {
+                    sSkinPaletteCursor[i].store(0, std::memory_order_relaxed);
+                }
+
+                VkDescriptorBufferInfo sbi[3] = {};
+                sbi[0].buffer = sSkinPaletteBuffer; sbi[0].offset = 0; sbi[0].range = VK_WHOLE_SIZE;
+                sbi[1].buffer = sSkinBaseBuffer;    sbi[1].offset = 0; sbi[1].range = VK_WHOLE_SIZE;
+                sbi[2].buffer = sSkinABBuffer;      sbi[2].offset = 0; sbi[2].range = VK_WHOLE_SIZE;
+                VkWriteDescriptorSet sw[3] = {};
+                for (U32 i = 0; i < 3; ++i)
+                {
+                    sw[i].sType           = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
+                    sw[i].dstSet          = sBindlessHeapSet;
+                    sw[i].dstBinding      = 2 + i;
+                    sw[i].descriptorCount = 1;
+                    sw[i].descriptorType  = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER;
+                    sw[i].pBufferInfo     = &sbi[i];
+                }
+                vkUpdateDescriptorSets(sDevice, 3, sw, 0, nullptr);
+            }
+            else
+            {
+                LL_WARNS("Vulkan") << "VKBindless: skin bindless buffer creation failed (skin bindless inactive)" << LL_ENDL;
+                if (sSkinPaletteBuffer != VK_NULL_HANDLE)
+                {
+                    destroyBufferVk(sSkinPaletteBuffer, sSkinPaletteAllocation);
+                    sSkinPaletteBuffer = VK_NULL_HANDLE; sSkinPaletteAllocation = nullptr; sSkinPaletteMapped = nullptr;
+                }
+                if (sSkinBaseBuffer != VK_NULL_HANDLE)
+                {
+                    destroyBufferVk(sSkinBaseBuffer, sSkinBaseAllocation);
+                    sSkinBaseBuffer = VK_NULL_HANDLE; sSkinBaseAllocation = nullptr; sSkinBaseMapped = nullptr;
+                }
+                if (sSkinABBuffer != VK_NULL_HANDLE)
+                {
+                    destroyBufferVk(sSkinABBuffer, sSkinABAllocation);
+                    sSkinABBuffer = VK_NULL_HANDLE; sSkinABAllocation = nullptr; sSkinABMapped = nullptr;
+                }
             }
         }
 
@@ -4692,6 +4856,17 @@ bool beginFrame(bool acquire_swapchain)
     LLVKContract::frameBegin();
 
     sFrameIndex = (sFrameIndex + 1) % FRAMES_IN_FLIGHT;
+    sSkinPaletteCursor[sFrameIndex].store(0, std::memory_order_relaxed); // B.0: reset skin palette region ring
+    // B.2 A/B watcher: halt on the spot the first time SSBO skinning diverges from the UBO
+    // reference, so the log freezes with the captured culprit (slot/base/joint + the
+    // lldrawpool "AB CULPRIT" shader/avatar line) for immediate analysis.
+    if (sSkinABMapped != nullptr && sSkinABMapped[0] != 0u)
+    {
+        LL_ERRS("Vulkan") << "B.2 A/B MISMATCH: SSBO skinning != UBO reference. count="
+                          << sSkinABMapped[0] << " culprit slot=" << sSkinABMapped[3]
+                          << " paletteIndex=" << sSkinABMapped[4] << " joint=" << sSkinABMapped[5]
+                          << " (see 'B.2 AB CULPRIT' log line for shader/avatar)" << LL_ENDL;
+    }
 
     bool slot_submitted;
     {
@@ -5103,9 +5278,16 @@ bool endFrame()
                                                     (unsigned long long)us, (unsigned long long)d);
                                             }
                                         }
-                                        s += llformat("rig=%llu skin_up=%llu",
+                                        s += llformat("rig=%llu skin_up=%llu sk_bl=%llu/%llu sk_base=%llu sk_ab_mism=%llu cul=slot%u/base%u/j%u",
                                             (unsigned long long)gVkPerf.rigged_rec.load(),
-                                            (unsigned long long)gVkPerf.skin_up.load());
+                                            (unsigned long long)gVkPerf.skin_up.load(),
+                                            (unsigned long long)gVkPerf.skin_bl_fill.load(),
+                                            (unsigned long long)gVkPerf.skin_bl_of.load(),
+                                            (unsigned long long)gVkPerf.skin_base_wr.load(),
+                                            (unsigned long long)(sSkinABMapped ? sSkinABMapped[0] : 0u),
+                                            (unsigned)(sSkinABMapped ? sSkinABMapped[3] : 0u),
+                                            (unsigned)(sSkinABMapped ? sSkinABMapped[4] : 0u),
+                                            (unsigned)(sSkinABMapped ? sSkinABMapped[5] : 0u));
                                         return s; }()
                                    << " | ph " << [](){ std::string s;
                                         static const char* names[16] = {
@@ -7277,6 +7459,7 @@ struct ObjectSkinFrameCacheVal
 {
     VkBuffer buf;
     U32      off;
+    U32      skin_entry; // B.0: bindless skin palette entry (BINDLESS_INVALID_SLOT if unfilled)
 };
 static std::unordered_map<ObjectSkinFrameCacheKey, ObjectSkinFrameCacheVal, ObjectSkinFrameCacheKeyHash> sObjectSkinFrameCache;
 static U64 sObjectSkinFrameCacheStamp = ~0ull;
@@ -7288,6 +7471,33 @@ static void objectSkinFrameCacheGuard()
         sObjectSkinFrameCache.clear();
         sObjectSkinFrameCacheStamp = sMonotonicFrameCount;
     }
+}
+
+// B.0: copy the current skin shadow (10560 B) into the frame's bindless palette
+// region and return its absolute entry index. Parallel to the dynamic-UBO upload;
+// does NOT affect draws (shader still reads the UBO). Overflow -> INVALID (harmless).
+U32 skinBindlessStorePalette(const void* shadow_10560)
+{
+    if (sSkinPaletteMapped == nullptr || shadow_10560 == nullptr)
+    {
+        return BINDLESS_INVALID_SLOT;
+    }
+    const U32 f = sFrameIndex;
+    if (f >= FRAMES_IN_FLIGHT)
+    {
+        return BINDLESS_INVALID_SLOT;
+    }
+    const U32 local = sSkinPaletteCursor[f].fetch_add(1, std::memory_order_relaxed);
+    if (local >= SKIN_ENTRIES_PER_FRAME)
+    {
+        gVkPerf.skin_bl_of.fetch_add(1, std::memory_order_relaxed);
+        return BINDLESS_INVALID_SLOT;
+    }
+    const U32 entry = f * SKIN_ENTRIES_PER_FRAME + local;
+    std::memcpy(sSkinPaletteMapped + (size_t)entry * SKIN_PALETTE_ENTRY_BYTES,
+                shadow_10560, SKIN_PALETTE_ENTRY_BYTES);
+    gVkPerf.skin_bl_fill.fetch_add(1, std::memory_order_relaxed);
+    return entry;
 }
 
 static bool peekObjectSkinState(const void*& out_shadow, U32& out_size,
@@ -7457,7 +7667,40 @@ void objectSkinStoreCache(const void* avatar, U64 skin_hash)
     {
         return;
     }
-    sObjectSkinFrameCache[ObjectSkinFrameCacheKey{ avatar, skin_hash }] = ObjectSkinFrameCacheVal{ buf, off };
+    // B.0: parallel-fill the bindless palette from the same shadow the UBO used.
+    // One fill per unique (avatar,skin_hash) this frame == skin_up (dedup-consistent).
+    const U32 skin_entry = skinBindlessStorePalette(&sObjectSkinShadow);
+    sObjectSkinFrameCache[ObjectSkinFrameCacheKey{ avatar, skin_hash }] =
+        ObjectSkinFrameCacheVal{ buf, off, skin_entry };
+}
+
+// B.2: look up this frame's bindless palette entry for (avatar, skin_hash).
+// Returns BINDLESS_INVALID_SLOT if not filled this frame (draw then falls back to UBO).
+U32 objectSkinLookupEntry(const void* avatar, U64 skin_hash)
+{
+    if (!sInitialized)
+    {
+        return BINDLESS_INVALID_SLOT;
+    }
+    objectSkinFrameCacheGuard();
+    auto it = sObjectSkinFrameCache.find(ObjectSkinFrameCacheKey{ avatar, skin_hash });
+    return (it != sObjectSkinFrameCache.end()) ? it->second.skin_entry : BINDLESS_INVALID_SLOT;
+}
+
+// B.2: write the per-draw skin base index at the DrawData slot the shader reads as
+// gl_InstanceIndex. Kill switch (or unfilled palette) -> INVALID, forcing UBO fallback.
+void writeDrawSkinBase(U32 draw_id, U32 skin_entry)
+{
+    if (sSkinBaseMapped == nullptr || draw_id == BINDLESS_INVALID_SLOT || draw_id >= DRAWDATA_TOTAL_SLOTS)
+    {
+        return;
+    }
+    const U32 v = sSkinBindlessEnabled ? skin_entry : BINDLESS_INVALID_SLOT;
+    sSkinBaseMapped[draw_id] = v;
+    if (v != BINDLESS_INVALID_SLOT)
+    {
+        gVkPerf.skin_base_wr.fetch_add(1, std::memory_order_relaxed);
+    }
 }
 
 bool getSharedObjectSkinUBO(VkBuffer& out_buffer, void*& out_mapped)
@@ -11099,6 +11342,22 @@ bool indirectRingAlloc(U32 count, VkBuffer& out_buffer, VkDeviceSize& out_offset
 bool isBindlessActiveVk()
 {
     return sBindlessActive;
+}
+
+bool skinBindlessABEnabled()
+{
+    // B.2: A/B oracle needs vertex-stage SSBO atomics AND the SSBO path itself active.
+    return sVertexStoresAtomicsEnabled && sSkinBindlessEnabled && sSkinABMapped != nullptr;
+}
+
+// B.2 diag: DrawData slot of the first A/B mismatch this run (INVALID if none captured).
+U32 skinABMismatchSlot()
+{
+    if (sSkinABMapped == nullptr || sSkinABMapped[6] == 0u)
+    {
+        return BINDLESS_INVALID_SLOT;
+    }
+    return sSkinABMapped[3];
 }
 
 U32 bindlessAcquireSlot(VkImageView view, VkSampler sampler)

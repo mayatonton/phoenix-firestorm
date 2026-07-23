@@ -636,6 +636,34 @@ void LLRenderPass::buildAndOverrideScenePerDrawSet(LLDrawInfo* params, bool batc
         }
         LLVKLoader::setCurrentDrawDataID(id);
         LLVKContract::stashDrawDataID((id == LLVKLoader::BINDLESS_INVALID_SLOT) ? 0 : id);
+        // B.2: publish this draw's bindless skin palette base index at the same slot
+        // the vertex shader reads as gl_InstanceIndex. Rigged draws get their frame
+        // entry; non-skinned draws / unfilled palettes get INVALID (UBO fallback).
+        {
+            U32 skin_entry = LLVKLoader::BINDLESS_INVALID_SLOT;
+            if (params != nullptr && params->mAvatar.notNull() && params->mSkinInfo != nullptr)
+            {
+                skin_entry = LLVKLoader::objectSkinLookupEntry(params->mAvatar.get(), params->mSkinInfo->mHash);
+            }
+            const U32 skin_draw_id = (id == LLVKLoader::BINDLESS_INVALID_SLOT) ? 0 : id;
+            LLVKLoader::writeDrawSkinBase(skin_draw_id, skin_entry);
+            // B.2 diag: when this draw's slot is the captured A/B mismatch culprit, name it once.
+            {
+                static U32 s_named_slot = 0xFFFFFFFFu;
+                const U32 culprit = LLVKLoader::skinABMismatchSlot();
+                if (culprit != LLVKLoader::BINDLESS_INVALID_SLOT && skin_draw_id == culprit && s_named_slot != culprit)
+                {
+                    s_named_slot = culprit;
+                    const LLGLSLShader* sh = LLGLSLShader::sCurBoundShaderPtr;
+                    LL_INFOS("Shader") << "B.2 AB CULPRIT: slot=" << culprit
+                                       << " shader='" << (sh ? sh->mName : std::string("?")) << "'"
+                                       << " avatar=" << (params && params->mAvatar.notNull() ? (void*)params->mAvatar.get() : nullptr)
+                                       << " skinEntry=" << skin_entry
+                                       << " isSelf=" << (int)(params && params->mAvatar.notNull() && params->mAvatar->isSelf())
+                                       << LL_ENDL;
+                }
+            }
+        }
     }
 
     const bool memo_eligible = (params != nullptr && is_indexed && set_shape >= 1

@@ -562,6 +562,8 @@ namespace LLVKLoader
     bool getSharedObjectSkinUBO(VkBuffer& out_buffer, void*& out_mapped);
     bool objectSkinTryAdopt(const void* avatar, U64 skin_hash);
     void objectSkinStoreCache(const void* avatar, U64 skin_hash);
+    U32  objectSkinLookupEntry(const void* avatar, U64 skin_hash); // B.2: bindless palette entry for (avatar,hash)
+    void writeDrawSkinBase(U32 draw_id, U32 skin_entry);           // B.2: write skin base at DrawData slot
 
     struct Lights_PerProgramBind
     {
@@ -1347,6 +1349,8 @@ namespace LLVKLoader
     constexpr U32 BINDLESS_INVALID_SLOT = 0xFFFFFFFFu;
 
     bool isBindlessActiveVk();
+    bool skinBindlessABEnabled(); // B.2: skin A/B oracle active (vertex atomics supported)
+    U32  skinABMismatchSlot();    // B.2 diag: DrawData slot of first A/B mismatch (INVALID if none)
 
     U32  bindlessAcquireSlot(VkImageView view, VkSampler sampler);
     void bindlessUpdateSlot(U32 slot, VkImageView view, VkSampler sampler);
@@ -1463,6 +1467,9 @@ namespace LLVKLoader
         std::atomic<U64> fam_draws[24] = {};
         std::atomic<U64> rigged_rec{0};
         std::atomic<U64> skin_up{0};
+        std::atomic<U64> skin_bl_fill{0};
+        std::atomic<U64> skin_bl_of{0};
+        std::atomic<U64> skin_base_wr{0};
         std::atomic<U64> e3_rig_us[3] = {};
         std::atomic<U64> e3_pal_us{0};
         std::atomic<U64> als_n[4] = {};
@@ -1544,6 +1551,7 @@ namespace LLVKLoader
             for (auto& v : ring_hw) v = 0;
             for (auto& v : setb_us) v = 0;
             ens_hit = 0; ens_alloc = 0;
+            skin_bl_fill = 0; skin_bl_of = 0; skin_base_wr = 0;
             for (auto& v : phase_us) v = 0;
             for (auto& v : idle_us) v = 0;
             for (auto& v : img_us) v = 0;

@@ -259,6 +259,27 @@ LLGLSLShader            gDeferredPBRTerrainProgram[TERRAIN_PAINT_TYPE_COUNT];
 LLGLSLShader            gGLTFPBRMetallicRoughnessProgram;
 
 
+// B.2: rigged passes that record through the per-draw slot builder get a fresh skin
+// palette base index every frame -> safe to read the bindless SSBO palette. The A/B
+// oracle (SSBO vs dynamic-UBO skinning) is added when vertex-stage SSBO atomics exist.
+// Auxiliary skinned shaders that draw via a direct path (velocity/occlusion) omit these
+// and stay on the dynamic UBO (no stale-slot risk).
+static void add_skin_bindless_permutations(LLGLSLShader& s)
+{
+    s.addPermutation("AYA_SKIN_SSBO", "1");
+    const bool ab = LLVKLoader::skinBindlessABEnabled();
+    if (ab)
+    {
+        s.addPermutation("AYA_SKIN_AB", "1");
+    }
+    static int s_logged = 0;
+    if (s_logged < 2)
+    {
+        ++s_logged;
+        LL_INFOS("Shader") << "B.2 skin perms sample: '" << s.mName << "' SSBO=1 AB=" << (int)ab << LL_ENDL;
+    }
+}
+
 static bool make_rigged_variant(LLGLSLShader& shader, LLGLSLShader& riggedShader)
 {
     riggedShader.mName = llformat("Skinned %s", shader.mName.c_str());
@@ -267,6 +288,7 @@ static bool make_rigged_variant(LLGLSLShader& shader, LLGLSLShader& riggedShader
     riggedShader.mDefines = shader.mDefines;    // NOTE: Must come before addPermutation
 
     riggedShader.addPermutation("HAS_SKIN", "1");
+    add_skin_bindless_permutations(riggedShader);
     riggedShader.mShaderFiles = shader.mShaderFiles;
     riggedShader.mShaderLevel = shader.mShaderLevel;
     riggedShader.mShaderGroup = shader.mShaderGroup;
@@ -622,6 +644,7 @@ static bool make_gltf_variant(LLGLSLShader& shader, LLGLSLShader& variant, bool 
     if (rigged)
     {
         variant.addPermutation("HAS_SKIN", "1");
+        add_skin_bindless_permutations(variant); // B.2: GLTF PBR rigged path uses slot builder (fresh base)
     }
 
     if (unlit)
@@ -1222,6 +1245,14 @@ std::string LLViewerShaderMgr::loadBasicShaders()
     {
         attribs["AYA_BINDLESS"] = "1";
         attribs["AYA_BINDLESS_MAT"] = "1";
+        // B.2: objectSkinV.glsl is a shared vertex utility compiled ONCE from this
+        // global attribs set (per-shader addPermutation never reaches it), so the
+        // bindless skin palette + A/B oracle defines must be injected globally here.
+        attribs["AYA_SKIN_SSBO"] = "1";
+        if (LLVKLoader::skinBindlessABEnabled())
+        {
+            attribs["AYA_SKIN_AB"] = "1";
+        }
     }
 
     { // PBR terrain
@@ -1816,6 +1847,7 @@ bool LLViewerShaderMgr::loadShadersDeferred()
             if (has_skin)
             {
                 gDeferredMaterialProgram[i].addPermutation("HAS_SKIN", "1");
+                add_skin_bindless_permutations(gDeferredMaterialProgram[i]); // B.2: material rigged path uses slot builder (fresh base)
                 gDeferredMaterialProgram[i].mFeatures.hasObjectSkinning = true;
             }
             else
@@ -2379,6 +2411,7 @@ bool LLViewerShaderMgr::loadShadersDeferred()
             if (rigged)
             {
                 shader->addPermutation("HAS_SKIN", "1");
+                add_skin_bindless_permutations(*shader); // B.2: alpha rigged path uses slot builder (fresh base)
             }
 
             if (hud)
@@ -2441,6 +2474,7 @@ bool LLViewerShaderMgr::loadShadersDeferred()
             {
                 shader->mFeatures.hasObjectSkinning = true;
                 shader->addPermutation("HAS_SKIN", "1");
+                add_skin_bindless_permutations(*shader); // B.2: impostor rigged path
             }
 
             if (use_sun_shadow)
