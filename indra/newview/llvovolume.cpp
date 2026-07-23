@@ -5892,15 +5892,6 @@ namespace
         return (e == nullptr) || (atoi(e) > 1);
     }
 
-    bool avatarCrowdOffMain()
-    {
-        static const bool s = []() -> bool {
-            const char* e = getenv("AYASTORM_CROWD_OFFMAIN");
-            return e != nullptr && atoi(e) != 0;
-        }();
-        return s;
-    }
-
     void runAvatarJobBuild(LLGeoRebuildJob* job)
     {
         for (LLGeoFaceApply& e : job->mStaged.mFaces)
@@ -6892,8 +6883,7 @@ void LLVolumeGeometryManager::drainGeoPublishQueue()
         bool applied = false;
         if (group != nullptr && !group->isDead() && !job->mFillFailed && !stale_gen)
         {
-            if (sAvatarWorkerRunning && group->mAvatarp != nullptr
-                && (group->mAvatarp->isSelf() || avatarCrowdOffMain()))
+            if (sAvatarWorkerRunning && group->mAvatarp != nullptr)
             {
                 {
                     std::lock_guard<std::mutex> lk(sAvatarJobMutex);
