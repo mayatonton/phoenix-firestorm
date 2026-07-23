@@ -65,6 +65,7 @@
 #include "llvkcontract.h"
 #include "llvkuboreg.h"
 #include "llimagegl.h"
+#include "llpipelineframecontext.h"
 
 S32 LLDrawPool::sNumDrawPools = 0;
 
@@ -498,6 +499,8 @@ static inline bool vkShadowCullBatch(const LLDrawInfo& params)
         if (params.mAvatar.notNull())
         {
             ++LLVKLoader::gVkPerf.shadow_rigged;
+            ++LLVKLoader::gVkPerf.shadow_rigged_map[LLVKLoader::gVkPerfShadowMapIndex < 6u
+                                                        ? LLVKLoader::gVkPerfShadowMapIndex : 5u];
             return false;
         }
         if (params.mBoundRadius >= 0.f
@@ -1424,9 +1427,9 @@ namespace
 
     bool riggedMdiEligible(U32 type)
     {
+        (void)type;
         return riggedMdiKillSwitchOn()
-            && (type == LLRenderPass::PASS_SIMPLE_RIGGED
-                || type == LLRenderPass::PASS_FULLBRIGHT_RIGGED)
+            && LLPipelineFrameContext::getInstance().isShadowPass()
             && LLVKLoader::isIndirectDrawEnabled()
             && LLVKLoader::skinBindlessEnabled()
             && LLGLSLShader::sCurBoundShaderPtr != nullptr
@@ -1526,8 +1529,10 @@ namespace
             LLDrawInfo* p = *i;
             LLCullResult::increment_iterator(i, end);
 
-            if (!LLRenderPass::uploadMatrixPalette(p->mAvatar, p->mSkinInfo,
-                                                   lastAvatar, lastMeshId, skipLastSkin))
+            const bool refreshed = (p->mVkSkinFrame == gFrameCount);
+            if (!refreshed
+                && !LLRenderPass::uploadMatrixPalette(p->mAvatar, p->mSkinInfo,
+                                                      lastAvatar, lastMeshId, skipLastSkin))
             {
                 continue;
             }
@@ -1548,39 +1553,52 @@ namespace
                 continue;
             }
 
-            U32 slots[4] = { 0, 0, 0, 0 };
-            if (batch_textures && p->mTextureList.size() > 1)
+            U32 draw_id;
+            if (refreshed)
             {
-                const U32 n = llmin((U32)p->mTextureList.size(), 4u);
-                for (U32 s = 0; s < n; ++s)
-                {
-                    LLTexture* t = p->mTextureList[s].get();
-                    slots[s] = LLImageGL::vkHeapSlotOrDefault(t ? t->getGLTexture() : nullptr);
-                }
+                draw_id = (p->mVkDrawDataSlot == LLVKLoader::BINDLESS_INVALID_SLOT)
+                              ? 0 : p->mVkDrawDataSlot;
             }
-            else if (p->mTexture.notNull())
+            else
             {
-                slots[0] = LLImageGL::vkHeapSlotOrDefault(p->mTexture->getGLTexture());
-                if (p->mNormalMap.notNull())
+                U32 slots[4] = { 0, 0, 0, 0 };
+                if (batch_textures && p->mTextureList.size() > 1)
                 {
-                    slots[1] = LLImageGL::vkHeapSlotOrDefault(p->mNormalMap->getGLTexture());
+                    const U32 n = llmin((U32)p->mTextureList.size(), 4u);
+                    for (U32 s = 0; s < n; ++s)
+                    {
+                        LLTexture* t = p->mTextureList[s].get();
+                        slots[s] = LLImageGL::vkHeapSlotOrDefault(t ? t->getGLTexture() : nullptr);
+                    }
                 }
-                if (p->mSpecularMap.notNull())
+                else if (p->mTexture.notNull())
                 {
-                    slots[2] = LLImageGL::vkHeapSlotOrDefault(p->mSpecularMap->getGLTexture());
+                    slots[0] = LLImageGL::vkHeapSlotOrDefault(p->mTexture->getGLTexture());
+                    if (p->mNormalMap.notNull())
+                    {
+                        slots[1] = LLImageGL::vkHeapSlotOrDefault(p->mNormalMap->getGLTexture());
+                    }
+                    if (p->mSpecularMap.notNull())
+                    {
+                        slots[2] = LLImageGL::vkHeapSlotOrDefault(p->mSpecularMap->getGLTexture());
+                    }
                 }
-            }
-            const bool ok      = p->ensureVkDrawDataSlot(slots);
-            const U32  id      = ok ? p->mVkDrawDataSlot : LLVKLoader::drawDataWriteScratch(slots);
-            const U32  draw_id = (id == LLVKLoader::BINDLESS_INVALID_SLOT) ? 0 : id;
+                const bool ok = p->ensureVkDrawDataSlot(slots);
+                const U32  id = ok ? p->mVkDrawDataSlot : LLVKLoader::drawDataWriteScratch(slots);
+                draw_id       = (id == LLVKLoader::BINDLESS_INVALID_SLOT) ? 0 : id;
 
-            const U32 skin_entry = LLVKLoader::objectSkinLookupEntry(p->mAvatar.get(),
-                                                                     p->mSkinInfo->mHash);
-            if (skin_entry == LLVKLoader::BINDLESS_INVALID_SLOT)
-            {
-                return false;
+                const U32 skin_entry = LLVKLoader::objectSkinLookupEntry(p->mAvatar.get(),
+                                                                         p->mSkinInfo->mHash);
+                if (skin_entry == LLVKLoader::BINDLESS_INVALID_SLOT)
+                {
+                    return false;
+                }
+                LLVKLoader::writeDrawSkinBase(draw_id, skin_entry);
+                if (ok)
+                {
+                    p->mVkSkinFrame = gFrameCount;
+                }
             }
-            LLVKLoader::writeDrawSkinBase(draw_id, skin_entry);
 
             RiggedMdiRec rec;
             rec.vbuf              = vs.buffer;
@@ -1660,7 +1678,7 @@ void LLRenderPass::pushRiggedBatches(U32 type, bool texture, bool batch_textures
     const bool e3on = LLVKLoader::perfLogEnabled();
     const U64  e3t0 = e3on ? (U64)LLTimer::getTotalTime() : 0;
 
-    if (texture && riggedMdiEligible(type) && pushRiggedBatchesIndirect(type, batch_textures))
+    if (riggedMdiEligible(type) && pushRiggedBatchesIndirect(type, batch_textures))
     {
         if (e3on)
         {

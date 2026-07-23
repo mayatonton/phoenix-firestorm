@@ -307,19 +307,15 @@ namespace
     U32*                     sDrawDataMapped                         = nullptr;
     std::mutex               sAllocGrowthMutex;
 
-    // --- B.0/B.2 skin bindless base (SSBO palette + per-draw base index + A/B oracle) ---
+    // --- B.0/B.2 skin bindless base (SSBO palette + per-draw base index) ---
     constexpr U32            SKIN_PALETTE_ENTRY_BYTES                = 10560; // ObjectSkin_PerProgramBind (mat3x4[110] x2)
     constexpr U32            SKIN_ENTRIES_PER_FRAME                  = 1024;
-    constexpr U32            SKIN_AB_ORACLE_U32S                     = 16; // [0]=mismatch [3..5]=slot/base/joint [6]=claim [7]=baseRegion [8]=frameRegion [9]=cpuExpectedRegion [10]=mdBits [11]=baseLocal
     VkBuffer                 sSkinPaletteBuffer                      = VK_NULL_HANDLE;
     void*                    sSkinPaletteAllocation                  = nullptr;
     U8*                      sSkinPaletteMapped                      = nullptr;
     VkBuffer                 sSkinBaseBuffer                         = VK_NULL_HANDLE;
     void*                    sSkinBaseAllocation                     = nullptr;
     U32*                     sSkinBaseMapped                         = nullptr;
-    VkBuffer                 sSkinABBuffer                           = VK_NULL_HANDLE;
-    void*                    sSkinABAllocation                       = nullptr;
-    U32*                     sSkinABMapped                           = nullptr;
     std::atomic<U32>         sSkinPaletteCursor[FRAMES_IN_FLIGHT]    = {};
     bool                     sSkinBindlessEnabled                    = true; // B.2 kill switch (AYASTORM_SKIN_BINDLESS=0)
     constexpr U32            DRAWDATA_DOMAIN_SLAB                    = 2048;
@@ -2640,13 +2636,6 @@ namespace
             sSkinBaseAllocation = nullptr;
             sSkinBaseMapped     = nullptr;
         }
-        if (sSkinABBuffer != VK_NULL_HANDLE)
-        {
-            destroyBufferVk(sSkinABBuffer, sSkinABAllocation);
-            sSkinABBuffer     = VK_NULL_HANDLE;
-            sSkinABAllocation = nullptr;
-            sSkinABMapped     = nullptr;
-        }
         {
             std::lock_guard<std::mutex> lk(sAllocGrowthMutex);
             sSlotSlabNextIdx = 0;
@@ -2695,7 +2684,7 @@ namespace
 
         const U32 count = sBindlessHeapCapacity;
 
-        VkDescriptorSetLayoutBinding bindings[5] = {};
+        VkDescriptorSetLayoutBinding bindings[4] = {};
         bindings[0].binding         = 0;
         bindings[0].descriptorType  = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER;
         bindings[0].descriptorCount = 1;
@@ -2713,36 +2702,30 @@ namespace
         bindings[3].descriptorType  = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER_DYNAMIC;
         bindings[3].descriptorCount = 1;
         bindings[3].stageFlags      = VK_SHADER_STAGE_VERTEX_BIT;
-        // B.2: skin A/B oracle counter (binding 4), vertex-stage atomic SSBO (host-visible)
-        bindings[4].binding         = 4;
-        bindings[4].descriptorType  = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER;
-        bindings[4].descriptorCount = 1;
-        bindings[4].stageFlags      = VK_SHADER_STAGE_VERTEX_BIT;
 
         // NOTE: the texture array (binding 1) can no longer carry
         // VARIABLE_DESCRIPTOR_COUNT_BIT because that flag is only valid on the
-        // highest-numbered binding, and skin bindings 2..4 now sit above it. The full
+        // highest-numbered binding, and skin bindings 2..3 now sit above it. The full
         // `count` is allocated either way, so this is functionally identical.
-        VkDescriptorBindingFlags bind_flags[5] = {
+        VkDescriptorBindingFlags bind_flags[4] = {
             0,
               VK_DESCRIPTOR_BINDING_PARTIALLY_BOUND_BIT
             | VK_DESCRIPTOR_BINDING_UPDATE_AFTER_BIND_BIT
             | VK_DESCRIPTOR_BINDING_UPDATE_UNUSED_WHILE_PENDING_BIT,
-            0,
             0,
             0
         };
 
         VkDescriptorSetLayoutBindingFlagsCreateInfo bf = {};
         bf.sType         = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_BINDING_FLAGS_CREATE_INFO;
-        bf.bindingCount  = 5;
+        bf.bindingCount  = 4;
         bf.pBindingFlags = bind_flags;
 
         VkDescriptorSetLayoutCreateInfo li = {};
         li.sType        = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO;
         li.pNext        = &bf;
         li.flags        = VK_DESCRIPTOR_SET_LAYOUT_CREATE_UPDATE_AFTER_BIND_POOL_BIT;
-        li.bindingCount = 5;
+        li.bindingCount = 4;
         li.pBindings    = bindings;
 
         if (vkCreateDescriptorSetLayout(sDevice, &li, nullptr, &sBindlessHeapLayout) != VK_SUCCESS)
@@ -2754,7 +2737,7 @@ namespace
 
         VkDescriptorPoolSize ps[3] = {};
         ps[0].type            = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER;
-        ps[0].descriptorCount = 3; // DrawData(0) + skin palette(2) + skin A/B oracle(4)
+        ps[0].descriptorCount = 2; // DrawData(0) + skin palette(2)
         ps[1].type            = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
         ps[1].descriptorCount = count;
         ps[2].type            = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER_DYNAMIC;
@@ -2822,70 +2805,34 @@ namespace
             }
         }
 
-        // B.0/B.2: skin palette SSBO (b2) + skin base SSBO (b3) + A/B oracle SSBO (b4).
+        // B.0/B.2: skin palette SSBO (b2) + skin base SSBO (b3).
         // Bound once (persistent set); palette parallel-filled beside the live dynamic-UBO path.
         {
             const U64 palette_bytes = (U64)SKIN_PALETTE_ENTRY_BYTES * SKIN_ENTRIES_PER_FRAME * FRAMES_IN_FLIGHT;
             const U64 base_bytes    = (U64)DRAWDATA_TOTAL_SLOTS * 4 * FRAMES_IN_FLIGHT;
-            const U64 ab_bytes      = (U64)SKIN_AB_ORACLE_U32S * 4;
             void* pal_mapped  = nullptr;
             void* base_mapped = nullptr;
-            void* ab_mapped   = nullptr;
-            // The A/B oracle counter is GPU-written and CPU-read every frame. createBufferVkImpl
-            // uses HOST_ACCESS_SEQUENTIAL_WRITE (write-combined) which reads back as garbage, so
-            // allocate the oracle buffer with HOST_ACCESS_RANDOM (host-readable, coherent).
-            bool ab_ok = false;
-            {
-                VkBufferCreateInfo bci = {};
-                bci.sType       = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO;
-                bci.size        = (U32)ab_bytes;
-                bci.usage       = VK_BUFFER_USAGE_STORAGE_BUFFER_BIT;
-                bci.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
-                VmaAllocationCreateInfo aci = {};
-                aci.usage         = VMA_MEMORY_USAGE_AUTO;
-                aci.flags         = VMA_ALLOCATION_CREATE_HOST_ACCESS_RANDOM_BIT | VMA_ALLOCATION_CREATE_MAPPED_BIT;
-                aci.requiredFlags = VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT;
-                VmaAllocation ab_alloc = VK_NULL_HANDLE;
-                VmaAllocationInfo ab_info = {};
-                if (sAllocator != VK_NULL_HANDLE
-                    && vmaCreateBuffer(sAllocator, &bci, &aci, &sSkinABBuffer, &ab_alloc, &ab_info) == VK_SUCCESS
-                    && ab_info.pMappedData != nullptr)
-                {
-                    sSkinABAllocation = ab_alloc;
-                    ab_mapped         = ab_info.pMappedData;
-                    ab_ok             = true;
-                }
-                else if (sSkinABBuffer != VK_NULL_HANDLE)
-                {
-                    vmaDestroyBuffer(sAllocator, sSkinABBuffer, ab_alloc);
-                    sSkinABBuffer = VK_NULL_HANDLE;
-                }
-            }
             if (createBufferVkImpl((U32)palette_bytes, VK_BUFFER_USAGE_STORAGE_BUFFER_BIT,
                                    sSkinPaletteBuffer, sSkinPaletteAllocation, &pal_mapped, true)
                 && pal_mapped != nullptr
                 && createBufferVkImpl((U32)base_bytes, VK_BUFFER_USAGE_STORAGE_BUFFER_BIT,
                                       sSkinBaseBuffer, sSkinBaseAllocation, &base_mapped, true)
-                && base_mapped != nullptr
-                && ab_ok)
+                && base_mapped != nullptr)
             {
                 sSkinPaletteMapped = reinterpret_cast<U8*>(pal_mapped);
                 sSkinBaseMapped    = reinterpret_cast<U32*>(base_mapped);
-                sSkinABMapped      = reinterpret_cast<U32*>(ab_mapped);
                 // B.2: sentinel = INVALID (0xFFFFFFFF) so unwritten slots fall back to the UBO path.
                 std::memset(sSkinBaseMapped, 0xFF, (size_t)base_bytes);
-                std::memset(sSkinABMapped, 0, (size_t)ab_bytes);
                 for (U32 i = 0; i < FRAMES_IN_FLIGHT; ++i)
                 {
                     sSkinPaletteCursor[i].store(0, std::memory_order_relaxed);
                 }
 
-                VkDescriptorBufferInfo sbi[3] = {};
+                VkDescriptorBufferInfo sbi[2] = {};
                 sbi[0].buffer = sSkinPaletteBuffer; sbi[0].offset = 0; sbi[0].range = VK_WHOLE_SIZE;
                 sbi[1].buffer = sSkinBaseBuffer;    sbi[1].offset = 0; sbi[1].range = (VkDeviceSize)DRAWDATA_TOTAL_SLOTS * 4;
-                sbi[2].buffer = sSkinABBuffer;      sbi[2].offset = 0; sbi[2].range = VK_WHOLE_SIZE;
-                VkWriteDescriptorSet sw[3] = {};
-                for (U32 i = 0; i < 3; ++i)
+                VkWriteDescriptorSet sw[2] = {};
+                for (U32 i = 0; i < 2; ++i)
                 {
                     sw[i].sType           = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
                     sw[i].dstSet          = sBindlessHeapSet;
@@ -2896,7 +2843,7 @@ namespace
                                                 : VK_DESCRIPTOR_TYPE_STORAGE_BUFFER;
                     sw[i].pBufferInfo     = &sbi[i];
                 }
-                vkUpdateDescriptorSets(sDevice, 3, sw, 0, nullptr);
+                vkUpdateDescriptorSets(sDevice, 2, sw, 0, nullptr);
             }
             else
             {
@@ -2910,11 +2857,6 @@ namespace
                 {
                     destroyBufferVk(sSkinBaseBuffer, sSkinBaseAllocation);
                     sSkinBaseBuffer = VK_NULL_HANDLE; sSkinBaseAllocation = nullptr; sSkinBaseMapped = nullptr;
-                }
-                if (sSkinABBuffer != VK_NULL_HANDLE)
-                {
-                    destroyBufferVk(sSkinABBuffer, sSkinABAllocation);
-                    sSkinABBuffer = VK_NULL_HANDLE; sSkinABAllocation = nullptr; sSkinABMapped = nullptr;
                 }
             }
         }
@@ -5117,6 +5059,12 @@ bool endFrame()
                                    << "/" << gVkPerf.draws_shadow_map[5].load()
                                    << " culled=" << gVkPerf.shadow_cull.load()
                                    << " rigged=" << gVkPerf.shadow_rigged.load()
+                                   << " rigmap " << gVkPerf.shadow_rigged_map[0].load()
+                                   << "/" << gVkPerf.shadow_rigged_map[1].load()
+                                   << "/" << gVkPerf.shadow_rigged_map[2].load()
+                                   << "/" << gVkPerf.shadow_rigged_map[3].load()
+                                   << " spot " << gVkPerf.shadow_rigged_map[4].load()
+                                   << "/" << gVkPerf.shadow_rigged_map[5].load()
                                    << " | bkt patch=" << gVkPerf.bkt_patch.load()
                                    << " range=" << gVkPerf.bkt_range.load()
                                    << " rec=" << gVkPerf.bkt_rec.load()
@@ -5272,16 +5220,12 @@ bool endFrame()
                                                     (unsigned long long)us, (unsigned long long)d);
                                             }
                                         }
-                                        s += llformat("rig=%llu skin_up=%llu sk_bl=%llu/%llu sk_base=%llu sk_ab_mism=%llu cul=slot%u/base%u/j%u",
+                                        s += llformat("rig=%llu skin_up=%llu sk_bl=%llu/%llu sk_base=%llu",
                                             (unsigned long long)gVkPerf.rigged_rec.load(),
                                             (unsigned long long)gVkPerf.skin_up.load(),
                                             (unsigned long long)gVkPerf.skin_bl_fill.load(),
                                             (unsigned long long)gVkPerf.skin_bl_of.load(),
-                                            (unsigned long long)gVkPerf.skin_base_wr.load(),
-                                            (unsigned long long)(sSkinABMapped ? sSkinABMapped[0] : 0u),
-                                            (unsigned)(sSkinABMapped ? sSkinABMapped[3] : 0u),
-                                            (unsigned)(sSkinABMapped ? sSkinABMapped[4] : 0u),
-                                            (unsigned)(sSkinABMapped ? sSkinABMapped[5] : 0u));
+                                            (unsigned long long)gVkPerf.skin_base_wr.load());
                                         return s; }()
                                    << " | ph " << [](){ std::string s;
                                         static const char* names[16] = {

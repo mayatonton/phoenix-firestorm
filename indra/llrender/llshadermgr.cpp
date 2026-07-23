@@ -481,10 +481,6 @@ GLuint LLShaderMgr::loadShaderFile(const std::string& filename, S32 & shader_lev
             if (file)
             {
                 LL_DEBUGS("ShaderLoading") << "Loading file: " << open_file_name << " (Want class " << gpu_class << ")" << LL_ENDL;
-                if (filename.find("objectSkin") != std::string::npos)
-                {
-                    LL_INFOS("Shader") << "B.2 SHADER PATH: objectSkinV loaded from " << open_file_name << LL_ENDL;
-                }
                 break; // done
             }
         }

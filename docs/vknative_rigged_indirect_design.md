@@ -1,7 +1,11 @@
 # 戦略2B — rigged draw の indirect 化(skin bindless 化)JIT 詳細設計
 
 > 位置づけ: per-draw 描画記録 回復フェーズの**本丸(E系本丸「drw」)**。作業計画 = `docs/vknative_perdraw_record_recovery_design.md` §戦略2(B)。統治 = `docs/vknative_recovery_plan.md`。診断真実源 = memory `finding_crowd_bottleneck_vsync_busywait_not_cpu` / 引き継ぎ = `handoff_perdraw_record_recovery`。
-> **状態(2026-07-23 更新)= ✅ B.0/B.1/B.2 実装完了(uncommitted)。** B.2 = skin palette UBO→SSBO 移行 + GPU 悉皆 A/B オラクルで **65億頂点 byte 一致を実証**、AYA 裁定で決着(詳細/難航教訓 = memory `handoff_b2_skin_ssbo_migration`)。🔜 **B.3(rigged→MDI 畳込=本命 fps 配当)未着手** / B.4(オラクル+診断計器の掃除)未着手。**⚠️ 実装教訓: shader 変更のたび `shader_cache`+`pipeline_cache.bin` を必クリア / objectSkinV は共有 utility で per-shader define が届かず `attribs`(sGlobalDefines・llviewershadermgr.cpp:1244)へ注入。**
+> **状態(2026-07-24 更新)= ✅ B.0/B.1/B.2 commit 済 `39c00b7d6b` / B.4-a 掃除 commit 済(HEAD 系)。**
+> - B.2 = skin palette UBO→SSBO 移行を GPU 悉皆 A/B オラクルで **65億頂点 byte 一致を実証**、AYA 裁定で決着(詳細/難航教訓 = memory `handoff_b2_skin_ssbo_migration`)。
+> - 🎯 **A/B オラクルは退役(commit `a9b4cdecbf`)= crowd device-lost の真犯人だった**: objectSkinV の A/B watcher が rigged 全頂点で UBO 側 skinning を二重計算 → dense crowd で 1 フレーム 243ms→GPU TDR。`AYASTORM_SKIN_AB=0` で 243→35ms・device-lost 消滅・27-34fps 安定と切り分け確定 → オラクル恒久退役。付随で **skin base race 根治**(base buffer ×FRAMES_IN_FLIGHT ring 化 + binding3 dynamic offset)。引き継ぎ = memory `handoff_devlost_root_ab_oracle_and_b3_readiness`。
+> - 🔜 **B.3(rigged→MDI 畳込)= 足場のみ commit 済**(`pushRiggedBatchesIndirect` in lldrawpool.cpp・SIMPLE/FULLBRIGHT_RIGGED 限定・`AYASTORM_RIGGED_MDI=1` opt-in・既定 OFF・未 gate)。**🧭 READINESS 実測 = 現スコープは fps 配当極小(rigged e3 ≈ 3.4ms/f ≈ 10%・支配項は shadow 662k records = scene の 59%)→ 深掘りは低配当ゆえ棚上げ(AYA 裁定 2026-07-24)。**
+> - ⚠️ **実装教訓: shader 変更のたび `shader_cache`+`pipeline_cache.bin` を必クリア / objectSkinV は共有 utility で per-shader define が届かず `attribs`(sGlobalDefines・llviewershadermgr.cpp:1240)へ注入。**
 
 ## 0. トレース済みの現状機構(HEAD `89644e06c8`・全て file:line で確認)
 
@@ -35,7 +39,7 @@ renderMap を舐めて 1 draw ごとに:
 ## 1. 不変条件と核心変換(1 文)
 
 > **不変条件**: 「rigged draw は自 avatar の palette を per-draw dynamic UBO offset で bind せねばならない」。
-> **変換**: palette を **「per-draw dynamic UBO(binding 46)」→「全 avatar palette を 1 本に積む bindless SSBO + per-draw base index(`aya_skin_base[gl_InstanceIndex]`)」** に移し、per-draw の palette bind を消す。これで rigged が `mAvatar.isNull()` 除外を外して static と同じ MDI 経路(`vkCmdDrawIndexedIndirect`)に畳める。**発行畳み込みのみ・描く物・palette 値は byte 同一**(L3 A/B オラクル必須)。
+> **変換**: palette を **「per-draw dynamic UBO(binding 46)」→「全 avatar palette を 1 本に積む bindless SSBO + per-draw base index(`aya_skin_base[gl_InstanceIndex]`)」** に移し、per-draw の palette bind を消す。これで rigged draw が per-draw dynamic UBO offset の束縛を失い、**rigged 専用 collapse 経路**(§B.3・static の region 行列前提には合致しない)で `vkCmdDrawIndexedIndirect` に畳める。**発行畳み込みのみ・描く物・palette 値は byte 同一**。
 
 ## 2. Phase 分解(直列・各 Phase 単独 gate)
 
@@ -57,14 +61,17 @@ renderMap を舐めて 1 draw ごとに:
 - gate = **L3 型 GEOAB A/B オラクル**(新 SSBO 経路 vs 旧 UBO 経路の頂点出力 byte 照合・`verdict=src|kernel`)+ validation 0 + 視覚同一。
 
 ### B.3 — bucket collapse(rigged を MDI へ)【C++】
-- `llvkbucket.cpp:378` の `info->mAvatar.isNull()` 除外を撤去 → rigged が `s_statics` → `mTplCommands` へ。`firstInstance = mVkDrawDataSlot`(skin base を引く slot)。
-- chunk span 分割(:420-431)は VB buffer/index buffer/index type で切れる = rigged の VB 実体を確認(avatar mesh が mega-buffer slice に載っているか。載っていなければ per-VB で span が細切れ = MDI 利得減 → §4-c)。
-- **cull/instanceCount**: rigged の per-draw cull(`vkShadowCullBatch`)を MDI の per-command `instanceCount=0`(`lldrawpool.cpp:1343-1356` 既存機構)へ移植。
-- gate = rigged が MDI 経路で描画・draws/f の dyn 減・視覚同一・GEOAB kernel 0。
+> ⚠️ **設計訂正(2026-07-24・実トレースで確定)**: 当初案「`llvkbucket.cpp:378` の `info->mAvatar.isNull()` 除外を撤去 → static collapse に相乗り」は**誤り**。static collapse の is_static 条件(:373-380)は `mModelMatrix == region_matrix`(全 draw が region 行列共有)を前提とするが、**rigged は model 行列を使わない**(`materialV.glsl:147-149` = `mat = getObjectSkinnedTransform(); mat = modelview_matrix * mat` = skinning=world 空間 bone 行列が位置を持ち global modelview を一度適用するのみ・`mModelMatrix` 未設定)。∴ rigged は static の region 行列前提に合致せず。**rigged 専用の collapse 経路を新設する**(VkBuffer/index/pipeline で束ね・global modelview 一度・skin base 毎フレーム更新)。
+- **3 部構成**(引き継ぎ = memory `handoff_b3_rigged_mdi`): ①毎フレーム軽量更新パス(rigged DrawInfo を舐め `uploadMatrixPalette`〔palette 充填〕+ `writeDrawSkinBase`〔slot に base 書込〕**のみ**・描画なし)②rigged collapse(rigged draw を (VkBuffer,index,index type,pipeline) で chunk span に束ね `VkDrawIndexedIndirectCommand` 構築・static の :410-448 が雛形・`firstInstance=mVkDrawDataSlot`)③描画(`pushRiggedBatches` を global modelview 一度 push → chunk span 毎に `vkCmdDrawIndexedIndirect` に置換)。
+- chunk span 分割は VB buffer/index buffer/index type/pipeline で切れる = rigged の VB 実体は mega-buffer slice 相乗り確認済(`megabufAcquireVertex`・§4-c)。
+- **cull/instanceCount**: rigged の per-draw cull を MDI の per-command `instanceCount=0`(`lldrawpool.cpp:1343-1356` 既存機構)へ移植。
+- **順序制約**: alpha rigged は blend 順序保持が要る → opaque/mask 系(SIMPLE/FULLBRIGHT/*_MASK_RIGGED)から着手・alpha は最後。
+- gate = rigged が MDI 経路で描画・draws/f の dyn 減・視覚同一。⚠️ **A/B オラクルは退役済**(検証装置なし)= 視覚 + validation が gate。
 
-### B.4 — 旧経路の刈り取り + 計測
-- 旧 dynamic UBO(binding 46)経路・`uploadMatrixPalette` の per-draw UBO 書込を撤去(dead 確認は `handoff_vk_deadcode_trace_method`)。
-- 計測 = VkPerf `dyn`/`mdi_rec`/`set build`/`populate`・fps(軽い crowd で微増・重い会場で main 飽和防止が本命)。**記録がまだ律速なら戦略2C(secondary cmd buffer per-core)へ**。
+### B.4 — 掃除 + 計測
+- **✅ B.4-a(掃除・commit 済 HEAD 系)= 挙動不変の dead-code / 診断 scaffold 除去**: A/B オラクル buffer 一式(SKIN_AB_ORACLE 定数・sSkinAB* buffer・descriptor **binding4**〔layout/bindingCount/pool を 5→4・3→2〕・alloc/destroy・perf `sk_ab_mism` 欄)/ dead per-shader hook `add_skin_bindless_permutations`(5 call sites・live 注入は global `attribs["AYA_SKIN_SSBO"]` 一本に集約)/ 診断 log(llshadermgr.cpp「B.2 SHADER PATH」)。触る file = `llvkloader.cpp`・`llviewershadermgr.cpp`・`llshadermgr.cpp`。
+- **🔜 B.4-b(Stage3・棚上げ・掃除ではない機能変更)= velocity SSBO 化 → UBO fallback(binding46 matrixPalette)削除**: velocity/blur rigged pass(`pushRiggedVelocityBatches`・`allow_dedup=false` で `objectSkinStoreCache` 未呼び=SSBO 未充填 → base INVALID → UBO fallback 依存)を SSBO 化してから binding46 を削除する。**⚠️ UBO fallback は velocity/shadow/impostor/occlusion rigged が実際に使う load-bearing な安全網**・A/B オラクル退役後は byte-exact 検証装置なし・B.3 棚上げなら配当ゼロ → **恒久機構として残置**(AYA 裁定 2026-07-24)。
+- 計測 = VkPerf `rig`/`skin_up`/`sk_bl`/`sk_base`・fps(軽い crowd で微増・重い会場で main 飽和防止が本命)。**記録がまだ律速なら戦略2C(secondary cmd buffer per-core)へ**。
 
 ## 3. 触る file(確定分)
 - `indra/newview/llvkbucket.cpp`(:378 除外撤去 / :310-336 slot 発行を rigged 拡張 / collapse)
@@ -82,7 +89,7 @@ renderMap を舐めて 1 draw ごとに:
 - **(f) std430 の mat3x4 レイアウト**: UBO std140 と SSBO std430 で padding 差。palette を vec4 平坦配列で持ち手動 index(byte gate で担保)。
 
 ## 5. gate 基準(共通)
-- **L3 GEOAB A/B オラクル必須**(B.2/B.3 = 経路移行)= 新 SSBO skin 経路の頂点出力 vs 旧 UBO 経路の byte 照合・`verdict=src|kernel`。**これ無しの経路移行は受け入れない**(作業計画 §4)。
+- **⚠️ A/B オラクルは退役済(commit `a9b4cdecbf`・device-lost 真犯人)**。B.2 の byte 照合(65億頂点一致)で役目を終え撤去。**B.3 以降の gate は視覚同一 + validation 0**(経路移行の byte 検証装置は無い)。B.3 を本気で進めるなら、二重計算でない軽量な検証装置(例: CPU 側の palette entry 照合)の再設計が前提。
 - validation 0 / 診断起動で全層オラクル沈黙 / 視覚同一(最終 gate のみ)。
 - 品質トレード禁止(発行畳み込み = lossless・LOD/cull による間引きではない)。
 - gate 様式 = 命題 + 未証明項併記 + 実効設定確認欄(SSR/spot 等)。
