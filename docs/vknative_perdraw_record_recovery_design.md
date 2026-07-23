@@ -1,5 +1,6 @@
 # per-draw 描画記録 回復 — 3戦略 作業計画(AYA 承認 2026-07-23)
 
+> **🔻 状態更新(2026-07-24)= 戦略2B(rigged indirect)は shadow rigged で完了・commit `8135295627`(設計 = `docs/vknative_drawcount_reduction_design.md`)。だが AYA が本質を看破 = 「CPU も GPU も余裕(GPU 28-36%・main も交互で非飽和)= frame は compute-bound でなく **単一 main thread 直列パイプライン**による serialization-bound」。∴ per-draw 記録の「数を減らす(2B)」は frame time に効かない(直列構造が律速)。次の本命 = 戦略2C 以上に「CPU と GPU を重ねる(frame pipelining / overlap)」= 直列を壊す軸。詳細 = `docs/vknative_drawcount_reduction_design.md` §9。**
 > 位置づけ: crowd 本体回復の次フェーズ。**avatar relocate(off-main)line は Phase 2 で決着**(crowd off-main = motion 激安ゆえ低配当・[[handoff_avatar_relocate_design]])し、真のボトルネックが **main の per-draw 描画記録** と実測で確定したことを受けた新 line。真実源の診断 = memory `finding_crowd_bottleneck_vsync_busywait_not_cpu`。統治 = `docs/vknative_recovery_plan.md`。
 
 ## 0. 診断(本 doc の前提・2026-07-23 実測で確定)

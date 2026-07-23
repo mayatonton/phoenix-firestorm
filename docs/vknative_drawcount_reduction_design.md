@@ -1,7 +1,7 @@
 # DrawCount 削減 — 最上設計(rigged 保持型 indirect 化・全 pass)
 
 > 位置づけ: per-draw 描画記録 回復フェーズの本丸。AYA 指示(2026-07-24)=「実コードと現在のログから DrawCount 削減の対象を最大コスト投入で最上設計に落とす」。真実源 = 本 doc(実測 + 実コードトレース)。前段 = `docs/vknative_rigged_indirect_design.md`(B.0-B.2 skin bindless 基盤)/ `docs/vknative_perdraw_record_recovery_design.md`(3戦略)。統治 = `docs/vknative_recovery_plan.md`。
-> **状態 = 設計(2026-07-24)。実装未着手。HEAD = `a9b4cdecbf` + B.4-a 掃除 commit(uncommitted 時は build 済)。**
+> **状態 = 段階1/1.5 実装+commit 済(`8135295627`・視覚 gate PASS・`AYASTORM_RIGGED_MDI` 既定 OFF)。⚠️ ただし §9 の AYA realization で本 line は closed = frame は compute-bound でなく serialization-bound ゆえ DrawCount 削減の新標的は追わない。次軸 = CPU-GPU overlap(pipelining)。**
 
 ## 0. 実測(現ログ mine・154 frame 累積 → per-frame・fps 30.65 / avg_ms 32.63 / draws/f 15518)
 
@@ -21,7 +21,7 @@
   - **shadow rigged(`e3 rig` bucket1)= 1457/f・3.28ms/f = frame の 10%** ← **唯一の実標的**
   - scene rigged(bucket0)= **53/f・0.19ms/f = 無視できる**
   - probe rigged(bucket2)= ~0・0.13ms/f = 無視
-  - 非 rigged の dyn = ~432/f・~0.4ms(texture_matrix / model 行列不一致で畳めない残余・小)
+  - ⚠️ **訂正(2026-07-24)**: 当初「非 rigged dyn = ~432/f・小」と書いたのは算術ミス(dyn から rigged を誤って減算した)。**rigged は bucket 経由でない(pushIndirectBucket を通らない)ゆえ mdi_dyn に入らない** → `dyn`(mdi_dyn)= **~1977/f が純 static 非畳込**(is_static 条件 `llvkbucket.cpp:373-380` を外れた draw = 自前 model 行列〔移動/回転 prim〕/ texture_matrix / slice 無効)。**rigged と同機構(per-draw model 行列 bindless)で畳める候補だが、下記 §9 の結論により追わない。**
 - **検算**: `rigged_rec`(全 pass 合算・`llvkloader.cpp:5218` fam `rig`)= 1510/f = scene 53 + shadow 1457(`vkShadowCullBatch` は `pushBatch`/`pushUntexturedBatch` 内で呼ばれ shadow rigged を `rigged_rec` に**二重計上**)。log の `rigged=224384`(shmap 欄)= **`shadow_rigged` counter**(`llvkloader.cpp:5061`)= 1457/f。
 - **⚠️ READINESS 訂正**: 前セッション「B.3 = 3.4ms = 低配当」は **数字は正しいが scene とラベルを取り違えていた**(真は shadow rigged = 3.28ms・bucket1)。scene rigged は 0.19ms で誤差。∴ **DrawCount で削れる per-draw は実質 shadow rigged の 3.28ms のみ**。static は保持型で既に安い。
 
@@ -130,3 +130,23 @@
 - **段階 1 = shadow-only**(scene/probe rigged は誤差ゆえ scaffold 対象外)。scene B.3 の SIMPLE/FULLBRIGHT eligibility は撤去(negligible)。
 - retained template(§3・frame 1 回構築 + 全 cascade 共有)は**やらない**(scaffold の per-cascade rebuild で配当の大半 = 高コスト bind 消去は得る)。retained は per-cascade rebuild が実測律速なら段階 1.5。
 - kill switch は工事用(gate PASS 後撤去 = 段階 2)。
+
+## 9. 結論(2026-07-24・AYA realization)= DrawCount 削減はここで区切る = **frame は compute-bound でなく serialization-bound**
+
+段階1/1.5(shadow rigged MDI・commit `8135295627`)完了後、AYA が本質を看破:
+> **「CPU も GPU も実は全然仕事してない。これ以上削減する意味はない。」**
+
+### 根拠(実測と整合)
+- **GPU = 28-36%(餓え)** + **main も真には飽和せず**(記録 → GPU 待ち → 記録 を交互 = 実効 util < 100%)。
+- **両側に余裕があるのに frame = ~32ms(30fps)** = **compute-bound ではない**。∴ CPU/GPU いずれの work を減らしても frame は縮まない。
+- 署名 = CLAUDE.md 最上位フレームの**ガン = 単一 main thread 直列パイプライン**: CPU が記録(GPU 遊ぶ)→ submit → GPU 描画(CPU 待つ)→ present の**直列**ゆえ、片側ずつしか動かず **frame ≈ CPU記録 + GPU描画 の和**。~16ms+~16ms が 16.6ms vsync 境界を跨いで **30fps**。
+
+### 帰結
+- **DrawCount 削減(戦略2B)= 「main の work を減らす」= serialization-bound には効かない**(段階1 が非退行で folding は正しく効いたが、frame time は work でなく直列構造に律速される)。dyn 畳込・alpha・material も同様に無意味。
+- **本当のレバー = 直列を壊す = CPU と GPU を重ねる(overlap / pipelining)**:
+  - **frame pipelining**(GPU が frame N を描く間に CPU が N+1 を記録)。FRAMES_IN_FLIGHT=3 があるのに直列 = **どこかの sync 点が overlap を殺している**(present_wait / fence wait / swapchain acquire が疑わしい)。
+  - 戦略2C(記録 per-core 分散)は CPU 記録を速くして GPU 始動を早めるが、**直列そのものは pipelining の方が本丸**。
+- **段階2(掃除)= 段階1 gate 後の旧経路+switch 撤去は残すが、DrawCount 削減の新標的は追わない(本 doc は §9 で closed 扱い)**。
+
+### 次フェーズ(別 doc / 別線)= CPU-GPU overlap の診断
+frame が直列である sync 点を実測特定(mlp acq/beg・present・fence の CPU 待ち時間を TID 隔離)→ overlap を殺している機構を名指し → pipelining 化。**「work を減らす」から「直列を重ねる」へ軸を移す。**
