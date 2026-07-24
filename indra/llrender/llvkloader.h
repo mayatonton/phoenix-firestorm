@@ -49,6 +49,13 @@ namespace LLVKLoader
     void recordToConsumer(bool on);
     void finalizeConsumerSwapchain();
     bool isUISceneSplit();
+    bool isUISceneAsync();
+    bool asyncProducerTryComplete();
+    bool isAsyncProducerInFlight();
+    U32  asyncProducerBackIndex();
+    bool asyncShouldRenderScene();
+    void setAsyncFrameEngaged(bool on);
+    void asyncProducerBeginScene(U32 back_index);
     void setProducerPresentActive(bool on);
     bool producerSwapchainFallbackShouldSkip();
     bool beginOffscreenFrameVk();

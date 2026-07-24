@@ -492,6 +492,14 @@ void display(bool rebuild, F32 zoom_factor, int subfield, bool for_snapshot)
     LLVKLoader::setProducerPresentActive(LLVKLoader::isUISceneSplit() && !gSnapshot
                                          && (LLStartUp::getStartupState() == STATE_STARTED));
 
+    const bool aya_async_frame = LLVKLoader::isUISceneAsync() && !gSnapshot
+                                 && (LLStartUp::getStartupState() == STATE_STARTED);
+    LLVKLoader::setAsyncFrameEngaged(aya_async_frame);
+    if (aya_async_frame && LLVKLoader::asyncProducerTryComplete())
+    {
+        gPipeline.mScenePresentFront = LLVKLoader::asyncProducerBackIndex();
+    }
+
     if (LLPipelineFrameContext::getInstance().isRenderingDeferred())
     { //hack to make sky show up in deferred snapshots
         for_snapshot = false;
@@ -875,13 +883,18 @@ void display(bool rebuild, F32 zoom_factor, int subfield, bool for_snapshot)
 
         LLAppViewer::instance()->pingMainloopTimeout("Display:Swap");
 
+        if (aya_async_frame && !LLVKLoader::isAsyncProducerInFlight())
+        {
+            LLVKLoader::asyncProducerBeginScene(1 - gPipeline.mScenePresentFront);
+        }
+
         {
             LL_PROFILE_ZONE_NAMED_CATEGORY_DISPLAY("display - 2")
             gGL.setColorMask(true, true);
             gGL.setClearColor(0.f, 0.f, 0.f, 0.f);
 
 
-            if (!for_snapshot)
+            if (!for_snapshot && LLVKLoader::asyncShouldRenderScene())
             {
                 if (gFrameCount > 1 && !for_snapshot)
                 { //for some reason, ATI 4800 series will error out if you
@@ -1009,6 +1022,8 @@ void display(bool rebuild, F32 zoom_factor, int subfield, bool for_snapshot)
 // </FS:CR> Aurora Sim
 
 
+        if (LLVKLoader::asyncShouldRenderScene())
+        {
         gGL.setColorMask(true, true);
 
         gPipeline.updateBrdfLut();
@@ -1090,6 +1105,7 @@ void display(bool rebuild, F32 zoom_factor, int subfield, bool for_snapshot)
         {
             //capture the frame buffer.
             LLSceneMonitor::getInstance()->capture();
+        }
         }
 
         LLAppViewer::instance()->pingMainloopTimeout("Display:RenderUI");
@@ -1610,27 +1626,40 @@ void render_ui(F32 zoom_factor, int subfield)
     static const bool s_uiscene = (getenv("AYASTORM_UISCENE") != nullptr);
     const bool uiscene_present = s_uiscene && !gPipeline.mVkSnapshotRedirectTarget && !gSnapshot
                                  && (LLStartUp::getStartupState() == STATE_STARTED);
-    LLRenderTarget* scene_present_back = &gPipeline.mScenePresentRT[1 - gPipeline.mScenePresentFront];
-    if (uiscene_present)
+    const bool aya_async    = uiscene_present && LLVKLoader::isUISceneAsync();
+    const bool render_scene = LLVKLoader::asyncShouldRenderScene();
+    const U32  back_idx     = aya_async ? LLVKLoader::asyncProducerBackIndex()
+                                        : (1 - gPipeline.mScenePresentFront);
+    LLRenderTarget* scene_present_back = &gPipeline.mScenePresentRT[back_idx];
+    if (uiscene_present && render_scene)
     {
         gPipeline.mScenePresentRedirect = scene_present_back;
         LLVKLoader::setProducerPresentActive(true);
     }
-    gPipeline.renderFinalize();
+    if (render_scene)
+    {
+        gPipeline.renderFinalize();
+    }
     if (uiscene_present)
     {
-        if (LLRenderTarget::getCurrentBoundTarget() == scene_present_back)
+        if (render_scene)
         {
-            scene_present_back->flush();
-        }
-        gPipeline.mScenePresentRedirect = nullptr;
-        if (LLStartUp::getStartupState() == STATE_STARTED)
-        {
-            gPipeline.mReflectionMapManager.update();
+            if (LLRenderTarget::getCurrentBoundTarget() == scene_present_back)
+            {
+                scene_present_back->flush();
+            }
+            gPipeline.mScenePresentRedirect = nullptr;
+            if (LLStartUp::getStartupState() == STATE_STARTED)
+            {
+                gPipeline.mReflectionMapManager.update();
+            }
         }
         LLVKLoader::recordToConsumer(true);
         gPipeline.blitScenePresentToSwapchain();
-        gPipeline.mScenePresentFront = 1 - gPipeline.mScenePresentFront;
+        if (!aya_async)
+        {
+            gPipeline.mScenePresentFront = 1 - gPipeline.mScenePresentFront;
+        }
     }
 
     {

@@ -562,7 +562,15 @@ namespace
         VK_NULL_HANDLE, VK_NULL_HANDLE, VK_NULL_HANDLE
     };
     bool sUISceneSplit = (getenv("AYASTORM_UISCENE") != nullptr);
+    bool sUISceneAsync = (getenv("AYASTORM_UISCENE_ASYNC") != nullptr);
     bool sConsumerActiveThisFrame = false;
+
+    VkCommandBuffer sAsyncProducerCommandBuffer = VK_NULL_HANDLE;
+    VkFence         sAsyncProducerFence         = VK_NULL_HANDLE;
+    bool            sAsyncProducerInFlight      = false;
+    U32             sAsyncProducerBackIndex     = 0;
+    bool            sAsyncRenderSceneThisFrame  = false;
+    bool            sAsyncFrameEngaged          = false;
     VkFence sInFlightFences[FRAMES_IN_FLIGHT] = {
         VK_NULL_HANDLE, VK_NULL_HANDLE, VK_NULL_HANDLE
     };
@@ -2149,6 +2157,17 @@ namespace
         }
 
         result = vkAllocateCommandBuffers(sDevice, &alloc_info, sConsumerCommandBuffers);
+        if (result != VK_SUCCESS)
+        {
+            return false;
+        }
+
+        VkCommandBufferAllocateInfo async_alloc = {};
+        async_alloc.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO;
+        async_alloc.commandPool = sCommandPool;
+        async_alloc.level = VK_COMMAND_BUFFER_LEVEL_PRIMARY;
+        async_alloc.commandBufferCount = 1;
+        result = vkAllocateCommandBuffers(sDevice, &async_alloc, &sAsyncProducerCommandBuffer);
         if (result != VK_SUCCESS)
         {
             return false;
@@ -3928,6 +3947,19 @@ namespace
             }
         }
 
+        sAsyncProducerInFlight = false;
+        if (vkCreateFence(sDevice, &producer_fence_info, nullptr, &sAsyncProducerFence) != VK_SUCCESS)
+        {
+            for (U32 j = 0; j < FRAMES_IN_FLIGHT; ++j)
+            {
+                vkDestroyFence(sDevice, sProducerFences[j], nullptr);
+                sProducerFences[j] = VK_NULL_HANDLE;
+                vkDestroyFence(sDevice, sInFlightFences[j], nullptr);
+                sInFlightFences[j] = VK_NULL_HANDLE;
+            }
+            return false;
+        }
+
 
         VkSemaphoreCreateInfo sem_info = {};
         sem_info.sType = VK_STRUCTURE_TYPE_SEMAPHORE_CREATE_INFO;
@@ -3993,6 +4025,12 @@ namespace
                 sProducerFences[i] = VK_NULL_HANDLE;
             }
             sProducerFencePending[i] = false;
+            if (i == 0 && sAsyncProducerFence != VK_NULL_HANDLE)
+            {
+                vkDestroyFence(sDevice, sAsyncProducerFence, nullptr);
+                sAsyncProducerFence = VK_NULL_HANDLE;
+                sAsyncProducerInFlight = false;
+            }
             if (sImageAvailableSemaphores[i] != VK_NULL_HANDLE)
             {
                 vkDestroySemaphore(sDevice, sImageAvailableSemaphores[i], nullptr);
@@ -4875,6 +4913,62 @@ bool isUISceneSplit()
     return sUISceneSplit;
 }
 
+bool isUISceneAsync()
+{
+    return sUISceneSplit && sUISceneAsync;
+}
+
+bool asyncProducerTryComplete()
+{
+    if (!sAsyncProducerInFlight || sAsyncProducerFence == VK_NULL_HANDLE)
+    {
+        return false;
+    }
+    if (vkGetFenceStatus(sDevice, sAsyncProducerFence) == VK_SUCCESS)
+    {
+        vkResetFences(sDevice, 1, &sAsyncProducerFence);
+        sAsyncProducerInFlight = false;
+        return true;
+    }
+    return false;
+}
+
+bool isAsyncProducerInFlight()
+{
+    return sAsyncProducerInFlight;
+}
+
+U32 asyncProducerBackIndex()
+{
+    return sAsyncProducerBackIndex;
+}
+
+bool asyncShouldRenderScene()
+{
+    return !sAsyncFrameEngaged || sAsyncRenderSceneThisFrame;
+}
+
+void setAsyncFrameEngaged(bool on)
+{
+    sAsyncFrameEngaged = on;
+}
+
+void asyncProducerBeginScene(U32 back_index)
+{
+    if (!sInFrame || sAsyncProducerCommandBuffer == VK_NULL_HANDLE)
+    {
+        return;
+    }
+    sAsyncProducerBackIndex    = back_index;
+    sAsyncRenderSceneThisFrame = true;
+    vkResetCommandBuffer(sAsyncProducerCommandBuffer, 0);
+    VkCommandBufferBeginInfo bi = {};
+    bi.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO;
+    bi.flags = VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT;
+    vkBeginCommandBuffer(sAsyncProducerCommandBuffer, &bi);
+    tRecordCmdOverride = sAsyncProducerCommandBuffer;
+}
+
 void setProducerPresentActive(bool on)
 {
     sProducerPresentActive = on;
@@ -5041,6 +5135,8 @@ bool beginFrame(bool acquire_swapchain)
 
     sConsumerActiveThisFrame = false;
     sProducerPresentActive   = false;
+    sAsyncRenderSceneThisFrame = false;
+    sAsyncFrameEngaged         = false;
     if (sUISceneSplit)
     {
         vkResetCommandBuffer(sConsumerCommandBuffers[sFrameIndex], 0);
@@ -5567,7 +5663,45 @@ bool endFrame()
         return false;
     }
 
-    if (sUISceneSplit && sConsumerActiveThisFrame)
+    if (sUISceneSplit && sConsumerActiveThisFrame && isUISceneAsync())
+    {
+        PEJob cjob;
+        cjob.is_frame = true;
+        cjob.slot     = sFrameIndex;
+        cjob.pre_cmds = std::move(sPendingPreFrameCmds);
+        sPendingPreFrameCmds.clear();
+        cjob.cmd      = sConsumerCommandBuffers[sFrameIndex];
+        cjob.fence    = sInFlightFences[sFrameIndex];
+        if (sImageAcquired)
+        {
+            cjob.wait_semaphore   = sImageAvailableSemaphores[sFrameIndex];
+            cjob.signal_semaphore = sRenderFinishedSemaphores[sFrameIndex];
+            if (sSwapchain != VK_NULL_HANDLE)
+            {
+                PEPresentTarget target;
+                target.swapchain      = sSwapchain;
+                target.image_index    = sAcquiredImageIndex;
+                target.wait_semaphore = sRenderFinishedSemaphores[sFrameIndex];
+                cjob.presents.push_back(target);
+            }
+        }
+        sFrameSubmittedMonotonic[sFrameIndex] = sMonotonicFrameCount;
+        sPESlotState[sFrameIndex].store(PE_SLOT_PENDING);
+        peEnqueue(std::move(cjob));
+
+        if (sAsyncRenderSceneThisFrame)
+        {
+            vkEndCommandBuffer(sAsyncProducerCommandBuffer);
+            PEJob apjob;
+            apjob.is_frame = false;
+            apjob.cmd      = sAsyncProducerCommandBuffer;
+            apjob.fence    = sAsyncProducerFence;
+            peEnqueue(std::move(apjob));
+            sAsyncProducerInFlight     = true;
+            sAsyncRenderSceneThisFrame = false;
+        }
+    }
+    else if (sUISceneSplit && sConsumerActiveThisFrame)
     {
         PEJob pjob;
         pjob.is_frame = false;
