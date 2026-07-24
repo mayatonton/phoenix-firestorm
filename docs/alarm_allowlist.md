@@ -28,4 +28,5 @@ CLAUDE.md 冒頭「🔒 憲法」の default-deny gate が参照する唯一の 
 | `UNASSIGNED-Threading-MultipleThreads-Read` / `-Write`(VK_OBJECT_TYPE_FENCE の vkGetFenceStatus/vkResetFences) | ACCEPTED | 我々の VK fence 同期設計(main+worker が fence status を並行 poll)を validation layer が指摘。設計上の並行 access で joint/merge とは無関係 | AYA | 2026-07-24 |
 | `UNASSIGNED-CoreValidation-DrawState-InvalidImageLayout` | ACCEPTED | VK infra の RT/texture image layout 遷移(validation-layer のみ・視覚正常)・merge 未 touch | AYA | 2026-07-24 |
 | `VUID-vkAcquireNextImageKHR-surface-07783` | ACCEPTED | swapchain acquire の forward-progress 警告(present-mode/FRAMES_IN_FLIGHT 由来)・merge 未 touch | AYA | 2026-07-24 |
-| `VUID-vkCmdDrawIndexedIndirect-renderpass` | ACCEPTED | shutdown/teardown 時の draw(saveSnapshot→pool closing 近傍)・clean 終了経路・merge 未 touch | AYA | 2026-07-24 |
+| `VUID-vkCmdDrawIndexedIndirect-renderpass` | ACCEPTED | shutdown/teardown 時の draw(saveSnapshot→pool closing 近傍)・clean 終了経路・merge 未 touch。※final snapshot render は commit `73a10e82e04` で validation 時 skip 化 | AYA | 2026-07-24 |
+| `VUID-vkDestroyDevice-device-05137` | ACCEPTED | device 破棄時の benign owner leak(memory 台帳既載・force-release 禁止で恒久受容)。clean shutdown 到達で表面化(task#13 根治後) | AYA | 2026-07-24 |
