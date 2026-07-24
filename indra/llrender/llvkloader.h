@@ -46,6 +46,11 @@ namespace LLVKLoader
 
     bool beginFrame(bool acquire_swapchain = true);
     bool endFrame();
+    void recordToConsumer(bool on);
+    void finalizeConsumerSwapchain();
+    bool isUISceneSplit();
+    void setProducerPresentActive(bool on);
+    bool producerSwapchainFallbackShouldSkip();
     bool beginOffscreenFrameVk();
     void endOffscreenFrameVk();
     VkCommandBuffer getCurrentCommandBuffer();

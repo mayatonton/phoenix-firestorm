@@ -558,9 +558,20 @@ namespace
     VkCommandBuffer sCommandBuffers[FRAMES_IN_FLIGHT] = {
         VK_NULL_HANDLE, VK_NULL_HANDLE, VK_NULL_HANDLE
     };
+    VkCommandBuffer sConsumerCommandBuffers[FRAMES_IN_FLIGHT] = {
+        VK_NULL_HANDLE, VK_NULL_HANDLE, VK_NULL_HANDLE
+    };
+    bool sUISceneSplit = (getenv("AYASTORM_UISCENE") != nullptr);
+    bool sConsumerActiveThisFrame = false;
     VkFence sInFlightFences[FRAMES_IN_FLIGHT] = {
         VK_NULL_HANDLE, VK_NULL_HANDLE, VK_NULL_HANDLE
     };
+
+    VkFence sProducerFences[FRAMES_IN_FLIGHT] = {
+        VK_NULL_HANDLE, VK_NULL_HANDLE, VK_NULL_HANDLE
+    };
+    bool sProducerFencePending[FRAMES_IN_FLIGHT] = { false, false, false };
+    bool sProducerPresentActive = false;
 
     VkSemaphore sImageAvailableSemaphores[FRAMES_IN_FLIGHT] = {
         VK_NULL_HANDLE, VK_NULL_HANDLE, VK_NULL_HANDLE
@@ -2132,6 +2143,12 @@ namespace
         alloc_info.commandBufferCount = FRAMES_IN_FLIGHT;
 
         result = vkAllocateCommandBuffers(sDevice, &alloc_info, sCommandBuffers);
+        if (result != VK_SUCCESS)
+        {
+            return false;
+        }
+
+        result = vkAllocateCommandBuffers(sDevice, &alloc_info, sConsumerCommandBuffers);
         if (result != VK_SUCCESS)
         {
             return false;
@@ -3889,6 +3906,28 @@ namespace
             }
         }
 
+        VkFenceCreateInfo producer_fence_info = {};
+        producer_fence_info.sType = VK_STRUCTURE_TYPE_FENCE_CREATE_INFO;
+        for (U32 i = 0; i < FRAMES_IN_FLIGHT; ++i)
+        {
+            sProducerFencePending[i] = false;
+            VkResult result = vkCreateFence(sDevice, &producer_fence_info, nullptr, &sProducerFences[i]);
+            if (result != VK_SUCCESS)
+            {
+                for (U32 j = 0; j < i; ++j)
+                {
+                    vkDestroyFence(sDevice, sProducerFences[j], nullptr);
+                    sProducerFences[j] = VK_NULL_HANDLE;
+                }
+                for (U32 j = 0; j < FRAMES_IN_FLIGHT; ++j)
+                {
+                    vkDestroyFence(sDevice, sInFlightFences[j], nullptr);
+                    sInFlightFences[j] = VK_NULL_HANDLE;
+                }
+                return false;
+            }
+        }
+
 
         VkSemaphoreCreateInfo sem_info = {};
         sem_info.sType = VK_STRUCTURE_TYPE_SEMAPHORE_CREATE_INFO;
@@ -3948,6 +3987,12 @@ namespace
                 vkDestroyFence(sDevice, sInFlightFences[i], nullptr);
                 sInFlightFences[i] = VK_NULL_HANDLE;
             }
+            if (sProducerFences[i] != VK_NULL_HANDLE)
+            {
+                vkDestroyFence(sDevice, sProducerFences[i], nullptr);
+                sProducerFences[i] = VK_NULL_HANDLE;
+            }
+            sProducerFencePending[i] = false;
             if (sImageAvailableSemaphores[i] != VK_NULL_HANDLE)
             {
                 vkDestroySemaphore(sDevice, sImageAvailableSemaphores[i], nullptr);
@@ -4825,6 +4870,35 @@ static void reapAllDeferred(ReapMode mode)
     sReapForceAll = false;
 }
 
+bool isUISceneSplit()
+{
+    return sUISceneSplit;
+}
+
+void setProducerPresentActive(bool on)
+{
+    sProducerPresentActive = on;
+}
+
+bool producerSwapchainFallbackShouldSkip()
+{
+    return sUISceneSplit && sProducerPresentActive && sInFrame &&
+           tRecordCmdOverride != sConsumerCommandBuffers[sFrameIndex];
+}
+
+void recordToConsumer(bool on)
+{
+    if (on && sUISceneSplit && sInFrame)
+    {
+        tRecordCmdOverride     = sConsumerCommandBuffers[sFrameIndex];
+        sConsumerActiveThisFrame = true;
+    }
+    else
+    {
+        tRecordCmdOverride = VK_NULL_HANDLE;
+    }
+}
+
 bool beginFrame(bool acquire_swapchain)
 {
     if (!sInitialized)
@@ -4910,6 +4984,12 @@ bool beginFrame(bool acquire_swapchain)
         }
         vkResetFences(sDevice, 1, &sInFlightFences[sFrameIndex]);
     }
+    if (sProducerFencePending[sFrameIndex] && sProducerFences[sFrameIndex] != VK_NULL_HANDLE)
+    {
+        vkWaitForFences(sDevice, 1, &sProducerFences[sFrameIndex], VK_TRUE, UINT64_MAX);
+        vkResetFences(sDevice, 1, &sProducerFences[sFrameIndex]);
+        sProducerFencePending[sFrameIndex] = false;
+    }
     sPESlotState[sFrameIndex].store(PE_SLOT_IDLE);
 
     if (sFrameIndex < FRAMES_IN_FLIGHT)
@@ -4959,11 +5039,24 @@ bool beginFrame(bool acquire_swapchain)
         return false;
     }
 
+    sConsumerActiveThisFrame = false;
+    sProducerPresentActive   = false;
+    if (sUISceneSplit)
+    {
+        vkResetCommandBuffer(sConsumerCommandBuffers[sFrameIndex], 0);
+        VkResult cresult = vkBeginCommandBuffer(sConsumerCommandBuffers[sFrameIndex], &begin_info);
+        if (cresult != VK_SUCCESS)
+        {
+            return false;
+        }
+    }
+
     reapAllDeferred(REAP_CHURN);
 
     sInFrame = true;
 
-    if (sImageAcquired &&
+    if (!sUISceneSplit &&
+        sImageAcquired &&
         sAcquiredImageIndex < (U32)sSwapchainImages.size() &&
         sSwapchainImages[sAcquiredImageIndex] != VK_NULL_HANDLE)
     {
@@ -5431,21 +5524,39 @@ bool endFrame()
         }
     }
 
-    endSwapchainRendering();
-
-    if (sImageAcquired &&
-        sAcquiredImageIndex < (U32)sSwapchainImages.size() &&
-        sSwapchainImages[sAcquiredImageIndex] != VK_NULL_HANDLE)
+    if (!sConsumerActiveThisFrame)
     {
-        transitionImageLayoutVk(sSwapchainImages[sAcquiredImageIndex],
-                                VK_IMAGE_ASPECT_COLOR_BIT,
-                                VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL,
-                                VK_IMAGE_LAYOUT_PRESENT_SRC_KHR,
-                                VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT,
-                                VK_PIPELINE_STAGE_BOTTOM_OF_PIPE_BIT,
-                                VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT,
-                                0);
+        endSwapchainRendering();
 
+        if (sImageAcquired &&
+            sAcquiredImageIndex < (U32)sSwapchainImages.size() &&
+            sSwapchainImages[sAcquiredImageIndex] != VK_NULL_HANDLE)
+        {
+            const VkImageLayout present_old =
+                (sUISceneSplit && !sSwapchainClearedThisFrame)
+                    ? VK_IMAGE_LAYOUT_UNDEFINED
+                    : VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
+            transitionImageLayoutVk(sSwapchainImages[sAcquiredImageIndex],
+                                    VK_IMAGE_ASPECT_COLOR_BIT,
+                                    present_old,
+                                    VK_IMAGE_LAYOUT_PRESENT_SRC_KHR,
+                                    VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT,
+                                    VK_PIPELINE_STAGE_BOTTOM_OF_PIPE_BIT,
+                                    VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT,
+                                    0);
+        }
+    }
+
+    if (sUISceneSplit)
+    {
+        tRecordCmdOverride = VK_NULL_HANDLE;
+        VkResult cend = vkEndCommandBuffer(sConsumerCommandBuffers[sFrameIndex]);
+        if (cend != VK_SUCCESS)
+        {
+            sInFrame = false;
+            sImageAcquired = false;
+            return false;
+        }
     }
 
     VkResult result = vkEndCommandBuffer(sCommandBuffers[sFrameIndex]);
@@ -5456,6 +5567,41 @@ bool endFrame()
         return false;
     }
 
+    if (sUISceneSplit && sConsumerActiveThisFrame)
+    {
+        PEJob pjob;
+        pjob.is_frame = false;
+        pjob.slot     = sFrameIndex;
+        pjob.pre_cmds = std::move(sPendingPreFrameCmds);
+        sPendingPreFrameCmds.clear();
+        pjob.cmd      = sCommandBuffers[sFrameIndex];
+        pjob.fence    = sProducerFences[sFrameIndex];
+
+        PEJob cjob;
+        cjob.is_frame = true;
+        cjob.slot     = sFrameIndex;
+        cjob.cmd      = sConsumerCommandBuffers[sFrameIndex];
+        cjob.fence    = sInFlightFences[sFrameIndex];
+        if (sImageAcquired)
+        {
+            cjob.wait_semaphore   = sImageAvailableSemaphores[sFrameIndex];
+            cjob.signal_semaphore = sRenderFinishedSemaphores[sFrameIndex];
+            if (sSwapchain != VK_NULL_HANDLE)
+            {
+                PEPresentTarget target;
+                target.swapchain      = sSwapchain;
+                target.image_index    = sAcquiredImageIndex;
+                target.wait_semaphore = sRenderFinishedSemaphores[sFrameIndex];
+                cjob.presents.push_back(target);
+            }
+        }
+        sFrameSubmittedMonotonic[sFrameIndex] = sMonotonicFrameCount;
+        sPESlotState[sFrameIndex].store(PE_SLOT_PENDING);
+        sProducerFencePending[sFrameIndex] = true;
+        peEnqueue(std::move(cjob));
+        peEnqueue(std::move(pjob));
+    }
+    else
     {
         PEJob job;
         job.is_frame = true;
@@ -5513,6 +5659,12 @@ bool beginOffscreenFrameVk()
             }
         }
         vkResetFences(sDevice, 1, &sInFlightFences[sFrameIndex]);
+    }
+    if (sProducerFencePending[sFrameIndex] && sProducerFences[sFrameIndex] != VK_NULL_HANDLE)
+    {
+        vkWaitForFences(sDevice, 1, &sProducerFences[sFrameIndex], VK_TRUE, UINT64_MAX);
+        vkResetFences(sDevice, 1, &sProducerFences[sFrameIndex]);
+        sProducerFencePending[sFrameIndex] = false;
     }
     sPESlotState[sFrameIndex].store(PE_SLOT_IDLE);
 
@@ -6564,6 +6716,20 @@ void beginSwapchainRendering()
 
     const bool first_use_this_frame = !sSwapchainClearedThisFrame;
 
+    if (sUISceneSplit && first_use_this_frame &&
+        sAcquiredImageIndex < (U32)sSwapchainImages.size() &&
+        sSwapchainImages[sAcquiredImageIndex] != VK_NULL_HANDLE)
+    {
+        transitionImageLayoutVk(sSwapchainImages[sAcquiredImageIndex],
+                                VK_IMAGE_ASPECT_COLOR_BIT,
+                                VK_IMAGE_LAYOUT_UNDEFINED,
+                                VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL,
+                                VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT,
+                                VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT,
+                                0,
+                                VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT);
+    }
+
     DynamicRenderingAttachment color = {};
     color.image_view   = sSwapchainImageViews[sAcquiredImageIndex];
     color.image_layout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
@@ -6633,6 +6799,32 @@ void endSwapchainRendering()
 
     endDynamicRendering();
 
+}
+
+void finalizeConsumerSwapchain()
+{
+    if (!sUISceneSplit || !sConsumerActiveThisFrame || !sInFrame)
+    {
+        return;
+    }
+
+    endSwapchainRendering();
+
+    if (sImageAcquired &&
+        sAcquiredImageIndex < (U32)sSwapchainImages.size() &&
+        sSwapchainImages[sAcquiredImageIndex] != VK_NULL_HANDLE)
+    {
+        transitionImageLayoutVk(sSwapchainImages[sAcquiredImageIndex],
+                                VK_IMAGE_ASPECT_COLOR_BIT,
+                                VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL,
+                                VK_IMAGE_LAYOUT_PRESENT_SRC_KHR,
+                                VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT,
+                                VK_PIPELINE_STAGE_BOTTOM_OF_PIPE_BIT,
+                                VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT,
+                                0);
+    }
+
+    tRecordCmdOverride = VK_NULL_HANDLE;
 }
 
 VkShaderModule loadSpirvShaderModule(const U32* spv_code, size_t code_size_bytes)

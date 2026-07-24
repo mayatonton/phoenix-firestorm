@@ -587,6 +587,7 @@ void LLVertexBuffer::drawRange(U32 mode, U32 start, U32 end, U32 count, U32 indi
                         LLRenderTarget* bound_rt = LLRenderTarget::getCurrentBoundTarget();
                         if (bound_rt == nullptr)
                         {
+                            if (LLVKLoader::producerSwapchainFallbackShouldSkip()) { return; }
                             LLVKLoader::beginSwapchainRendering();
                         }
                         else
@@ -680,6 +681,7 @@ void LLVertexBuffer::drawRangeFast(U32 mode, U32 start, U32 end, U32 count, U32 
                             LLRenderTarget* bound_rt = LLRenderTarget::getCurrentBoundTarget();
                             if (bound_rt == nullptr)
                             {
+                                if (LLVKLoader::producerSwapchainFallbackShouldSkip()) { return; }
                                 LLVKLoader::beginSwapchainRendering();
                             }
                             else
@@ -782,6 +784,7 @@ void LLVertexBuffer::drawArrays(U32 mode, U32 first, U32 count) const
                         LLRenderTarget* bound_rt = LLRenderTarget::getCurrentBoundTarget();
                         if (bound_rt == nullptr)
                         {
+                            if (LLVKLoader::producerSwapchainFallbackShouldSkip()) { return; }
                             LLVKLoader::beginSwapchainRendering();
                         }
                         else

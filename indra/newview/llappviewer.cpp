@@ -1796,7 +1796,10 @@ bool LLAppViewer::doFrame()
                     pingMainloopTimeout("Main:Snapshot");
                     {
                         LLVKLoader::VkPerfPhaseScope ph(2);
-                        gPipeline.mReflectionMapManager.update();
+                        if (!LLVKLoader::isUISceneSplit())
+                        {
+                            gPipeline.mReflectionMapManager.update();
+                        }
                     }
                     {
                         LLVKLoader::VkPerfMainScope mlp(8);

@@ -489,6 +489,9 @@ void display(bool rebuild, F32 zoom_factor, int subfield, bool for_snapshot)
 
     gSnapshot = for_snapshot;
 
+    LLVKLoader::setProducerPresentActive(LLVKLoader::isUISceneSplit() && !gSnapshot
+                                         && (LLStartUp::getStartupState() == STATE_STARTED));
+
     if (LLPipelineFrameContext::getInstance().isRenderingDeferred())
     { //hack to make sky show up in deferred snapshots
         for_snapshot = false;
@@ -1604,7 +1607,31 @@ void render_ui(F32 zoom_factor, int subfield)
     }
 
     // apply gamma correction and post effects
+    static const bool s_uiscene = (getenv("AYASTORM_UISCENE") != nullptr);
+    const bool uiscene_present = s_uiscene && !gPipeline.mVkSnapshotRedirectTarget && !gSnapshot
+                                 && (LLStartUp::getStartupState() == STATE_STARTED);
+    LLRenderTarget* scene_present_back = &gPipeline.mScenePresentRT[1 - gPipeline.mScenePresentFront];
+    if (uiscene_present)
+    {
+        gPipeline.mScenePresentRedirect = scene_present_back;
+        LLVKLoader::setProducerPresentActive(true);
+    }
     gPipeline.renderFinalize();
+    if (uiscene_present)
+    {
+        if (LLRenderTarget::getCurrentBoundTarget() == scene_present_back)
+        {
+            scene_present_back->flush();
+        }
+        gPipeline.mScenePresentRedirect = nullptr;
+        if (LLStartUp::getStartupState() == STATE_STARTED)
+        {
+            gPipeline.mReflectionMapManager.update();
+        }
+        LLVKLoader::recordToConsumer(true);
+        gPipeline.blitScenePresentToSwapchain();
+        gPipeline.mScenePresentFront = 1 - gPipeline.mScenePresentFront;
+    }
 
     {
 
@@ -1669,6 +1696,8 @@ void render_ui(F32 zoom_factor, int subfield)
         set_current_modelview(saved_view);
         gGL.popMatrix();
     }
+
+    LLVKLoader::finalizeConsumerSwapchain();
 }
 
 void swap()

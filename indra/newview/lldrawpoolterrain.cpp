@@ -326,6 +326,7 @@ void flushTerrainRun(TerrainRun& run)
                     LLRenderTarget* bound_rt = LLRenderTarget::getCurrentBoundTarget();
                     if (bound_rt == nullptr)
                     {
+                        if (LLVKLoader::producerSwapchainFallbackShouldSkip()) { return; }
                         LLVKLoader::beginSwapchainRendering();
                     }
                     else

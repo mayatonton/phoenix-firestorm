@@ -1174,6 +1174,9 @@ bool LLPipeline::allocateScreenBufferInternal(U32 resX, U32 resY)
             }
         }
 
+        if (!mScenePresentRT[0].allocate(resX, resY, GL_RGBA)) return false;
+        if (!mScenePresentRT[1].allocate(resX, resY, GL_RGBA)) return false;
+
         // <AYAstorm:r21.1> GPU self-rigged picker ID buffer.
         // Allocated only on the main RT (not aux / hero probe). Borrows the
         // deferred depth buffer so the ID pass agrees pixel-for-pixel with
@@ -1288,10 +1291,10 @@ bool LLPipeline::allocateScreenBufferInternal(U32 resX, U32 resY)
             mSceneMap.release();
         }
 
-        {LL_PROFILE_ZONE_NAMED_CATEGORY_DISPLAY("mPostMapBuffer"); // <FS:Beq/> improve Tracy scoping 
+        {LL_PROFILE_ZONE_NAMED_CATEGORY_DISPLAY("mPostMapBuffer"); // <FS:Beq/> improve Tracy scoping
         mPostPingMap.allocate(resX, resY, GL_RGBA);
         mPostPongMap.allocate(resX, resY, GL_RGBA);
-        } // <FS:Beq/> improve Tracy scoping 
+        } // <FS:Beq/> improve Tracy scoping
         // The water exclusion mask needs its own depth buffer so we can take care of the problem of multiple water planes.
         // Should we ever make water not just a plane, it also aids with that as well as the water planes will be rendered into the mask.
         // Why do we do this? Because it saves us some janky logic in the exclusion shader when we generate the mask.
@@ -1662,6 +1665,9 @@ void LLPipeline::releaseGLBuffers()
     mFXAAMap.release();
 
     mUIScreen.release();
+
+    mScenePresentRT[0].release();
+    mScenePresentRT[1].release();
 
     mDownResMap.release();
 
@@ -10182,6 +10188,34 @@ void LLPipeline::copyRenderTarget(LLRenderTarget* src, LLRenderTarget* dst)
     dst->flush();
 }
 
+void LLPipeline::blitScenePresentToSwapchain()
+{
+    LL_PROFILE_GPU_ZONE("blitScenePresentToSwapchain");
+
+    gGLViewport[0] = gViewerWindow->getWorldViewRectRaw().mLeft;
+    gGLViewport[1] = gViewerWindow->getWorldViewRectRaw().mBottom;
+    gGLViewport[2] = gViewerWindow->getWorldViewRectRaw().getWidth();
+    gGLViewport[3] = gViewerWindow->getWorldViewRectRaw().getHeight();
+
+    LLVKLoader::beginSwapchainRendering();
+
+    gCopyProgram.bind();
+    gGL.getTexUnit(0)->bind(&mScenePresentRT[mScenePresentFront]);
+    if (LLVKLoader::isVulkanInitialized())
+    {
+        mScenePresentRT[mScenePresentFront].bindForShaderRead();
+    }
+
+    {
+        LLGLDepthTest depth_test(GL_TRUE, GL_TRUE, GL_ALWAYS);
+        LLGLDisable blend_off(GL_BLEND);
+        mScreenTriangleVB->setBuffer();
+        mScreenTriangleVB->drawArrays(LLRender::TRIANGLES, 0, 3);
+    }
+
+    gCopyProgram.unbind();
+}
+
 void LLPipeline::combineGlow(LLRenderTarget* src, LLRenderTarget* dst)
 {
     LL_PROFILE_GPU_ZONE("glow combine");
@@ -11019,6 +11053,10 @@ void LLPipeline::renderFinalize()
     {
         mVkSnapshotRedirectTarget->bindTarget();
     }
+    else if (mScenePresentRedirect)
+    {
+        mScenePresentRedirect->bindTarget();
+    }
     else
     {
         LLVKLoader::beginSwapchainRendering();
@@ -11049,7 +11087,7 @@ void LLPipeline::renderFinalize()
 
     {
         LLGLDepthTest depth_test(GL_TRUE, GL_TRUE, GL_ALWAYS);
-        if (mVkSnapshotRedirectTarget)
+        if (mVkSnapshotRedirectTarget || mScenePresentRedirect)
         {
             LLGLDisable snapshot_blend_off(GL_BLEND);
             mScreenTriangleVB->setBuffer();

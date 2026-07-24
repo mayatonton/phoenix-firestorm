@@ -1281,6 +1281,7 @@ static bool pushIndirectSpans(LLVKBucket::Bucket& bucket, VkBuffer ring_buf, VkD
         LLRenderTarget* bound_rt = LLRenderTarget::getCurrentBoundTarget();
         if (bound_rt == nullptr)
         {
+            if (LLVKLoader::producerSwapchainFallbackShouldSkip()) { return false; }
             LLVKLoader::beginSwapchainRendering();
         }
         else
@@ -1481,6 +1482,7 @@ namespace
             LLRenderTarget* bound_rt = LLRenderTarget::getCurrentBoundTarget();
             if (bound_rt == nullptr)
             {
+                if (LLVKLoader::producerSwapchainFallbackShouldSkip()) { return false; }
                 LLVKLoader::beginSwapchainRendering();
             }
             else
