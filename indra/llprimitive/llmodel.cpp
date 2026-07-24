@@ -33,6 +33,8 @@
 #include "llvector4a.h"
 #include "hbxxh.h"
 #include "llcontrol.h"
+#include <cmath>
+#include <atomic>
 
 #ifdef LL_USESYSTEMLIBS
 # include <zlib.h>
@@ -1684,15 +1686,32 @@ void LLMeshSkinInfo::fromLLSD(LLSD& skin)
         for (U32 i = 0; i < skin["inverse_bind_matrix"].size(); ++i)
         {
             LLMatrix4 mat;
+            bool ibm_bad = false;
             for (U32 j = 0; j < 4; j++)
             {
                 for (U32 k = 0; k < 4; k++)
                 {
                     mat.mMatrix[j][k] = (F32)skin["inverse_bind_matrix"][i][j*4+k].asReal();
+                    if (!std::isfinite(mat.mMatrix[j][k])) { ibm_bad = true; }
                 }
             }
 
-            mInvBindMatrix.push_back(LLMatrix4a(mat));
+            if (ibm_bad)
+            {
+                static std::atomic<U32> s_ibm_nan_warn{0};
+                if (s_ibm_nan_warn.fetch_add(1, std::memory_order_relaxed) < 20u)
+                {
+                    LL_WARNS("MESHSKININFO") << "non-finite inverse_bind_matrix at decode mesh=" << mMeshID
+                        << " joint#" << i
+                        << " name=" << ((i < mJointNames.size()) ? mJointNames[i] : std::string("?"))
+                        << " -> sanitized to identity" << LL_ENDL;
+                }
+                mInvBindMatrix.push_back(LLMatrix4a::identity());
+            }
+            else
+            {
+                mInvBindMatrix.push_back(LLMatrix4a(mat));
+            }
         }
 
         if (mJointNames.size() != mInvBindMatrix.size())
