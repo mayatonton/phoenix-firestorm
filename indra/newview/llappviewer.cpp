@@ -5809,15 +5809,18 @@ void LLAppViewer::saveFinalSnapshot()
         snap_filename += gDirUtilp->getDirDelimiter();
         snap_filename += LLStartUp::getScreenLastFilename();
         // use full pixel dimensions of viewer window (not post-scale dimensions)
-        gViewerWindow->saveSnapshot(snap_filename,
-                                    gViewerWindow->getWindowWidthRaw(),
-                                    gViewerWindow->getWindowHeightRaw(),
-                                    false,
-                                    gSavedSettings.getBOOL("RenderHUDInSnapshot"),
-                                    true,
-                                    false,
-                                    LLSnapshotModel::SNAPSHOT_TYPE_COLOR,
-                                    LLSnapshotModel::SNAPSHOT_FORMAT_PNG);
+        if (getenv("AYASTORM_VK_VALIDATION") == nullptr)
+        {
+            gViewerWindow->saveSnapshot(snap_filename,
+                                        gViewerWindow->getWindowWidthRaw(),
+                                        gViewerWindow->getWindowHeightRaw(),
+                                        false,
+                                        gSavedSettings.getBOOL("RenderHUDInSnapshot"),
+                                        true,
+                                        false,
+                                        LLSnapshotModel::SNAPSHOT_TYPE_COLOR,
+                                        LLSnapshotModel::SNAPSHOT_FORMAT_PNG);
+        }
         mSavedFinalSnapshot = true;
 
         if (gAgent.isInHomeRegion())

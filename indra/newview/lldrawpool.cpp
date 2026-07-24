@@ -114,6 +114,7 @@ static U64 vkContractDrawInfoKey(const void* p)
 
 extern bool gCubeSnapshot;
 extern bool gHeroProbeMirrorRender;
+extern bool gSnapshot;
 
 static U32 vkContractObjId(const void* p)
 {
@@ -1202,7 +1203,8 @@ void LLRenderPass::pushBatches(U32 type, bool texture, bool batch_textures)
             && batch_textures
             && LLGLSLShader::sCurBoundShaderPtr != nullptr
             && LLGLSLShader::sCurBoundShaderPtr->mVkUsesBindlessHeap
-            && !LLVKLoader::isRecordJobActive())
+            && !LLVKLoader::isRecordJobActive()
+            && !gSnapshot)
         {
             const std::vector<U64>* bits = LLVKBucket::currentVisBits();
             if (bits != nullptr)
@@ -1231,7 +1233,8 @@ void LLRenderPass::pushUntexturedBatches(U32 type)
     if (LLVKBucket::emitActive(type)
         && LLVKLoader::isIndirectDrawEnabled()
         && LLGLSLShader::sCurBoundShaderPtr != nullptr
-        && !LLVKLoader::isRecordJobActive())
+        && !LLVKLoader::isRecordJobActive()
+        && !gSnapshot)
     {
         const std::vector<U64>* bits = LLVKBucket::currentVisBits();
         if (bits != nullptr)
@@ -1434,7 +1437,8 @@ namespace
             && LLVKLoader::skinBindlessEnabled()
             && LLGLSLShader::sCurBoundShaderPtr != nullptr
             && LLGLSLShader::sCurBoundShaderPtr->mVkUsesBindlessHeap
-            && !LLVKLoader::isRecordJobActive();
+            && !LLVKLoader::isRecordJobActive()
+            && !gSnapshot;
     }
 
     struct RiggedMdiRec
