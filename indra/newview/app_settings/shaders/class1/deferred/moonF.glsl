@@ -87,13 +87,7 @@ void main()
 
 #if defined(HAS_EMISSIVE)
     frag_data[0] = vec4(0);
-    // <FS:AYA r30 Phase 3.8 Cinematic mount strategy C> AY r20 uses
-    // gbuffer3.a as the SSS skin mask, so moon writes 0 to opt out.
-    // <FS:AYAstorm r30 BD改善> Cinematic でも r20 SSS dispatch が走るため
-    //   alpha leak で月縁 / 半透明合成物に skin_mask 誤発火。両 mode で 0。
-    frag_data[3] = vec4(c.rgb, 0.0);
-    // </FS:AYAstorm>
-    // </FS:AYA>
+    frag_data[3] = vec4(c.rgb, c.a);
 #else
     frag_data[0] = vec4(c.rgb, c.a);
 #endif

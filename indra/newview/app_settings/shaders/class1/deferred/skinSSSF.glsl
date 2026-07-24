@@ -200,7 +200,9 @@ void main()
     // partial / interpolated values from shaders that may set .a to
     // something other than exactly {0, aya_sss_skin_flag}.
     float skin_mask = texture(emissiveRect, tc).a;
-    float skin_bit  = (skin_mask >= 0.5) ? 1.0 : 0.0;
+    float gbuffer_flag = texture(normalMap, tc).w;
+    bool  real_geom = GET_GBUFFER_FLAG(gbuffer_flag, GBUFFER_FLAG_HAS_ATMOS) || GET_GBUFFER_FLAG(gbuffer_flag, GBUFFER_FLAG_HAS_PBR);
+    float skin_bit  = (real_geom && skin_mask >= 0.5) ? 1.0 : 0.0;
     frag_color = vec4(sum, aya_strength * skin_bit);
     // </FS:AYA>
 }

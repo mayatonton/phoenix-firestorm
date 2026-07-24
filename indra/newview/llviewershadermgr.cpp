@@ -3768,6 +3768,7 @@ bool LLViewerShaderMgr::loadShadersDeferred()
         else
         {
             gDeferredPostProgram.mShaderFiles.push_back(make_pair("deferred/postDeferredF.glsl", GL_FRAGMENT_SHADER));
+            gDeferredPostProgram.addPermutation("FRONT_BLUR", "1");
         }
         // </AYAstorm r30 P4 step 5>
         gDeferredPostProgram.mShaderLevel = mShaderLevel[SHADER_DEFERRED];

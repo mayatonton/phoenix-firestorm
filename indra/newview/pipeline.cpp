@@ -9392,10 +9392,9 @@ void LLPipeline::tonemap(LLRenderTarget* src, LLRenderTarget* dst, bool gamma_co
         LLSettingsSky::ptr_t psky = LLEnvironment::instance().getCurrentSky();
 
         static LLCachedControl<U32> tonemap_type_setting(gSavedSettings, "RenderTonemapType", 0U);
-        const bool force_tonemap = (tonemap_type_setting > 0);
 
         bool no_post = gSnapshotNoPost
-            || (!force_tonemap && psky->getReflectionProbeAmbiance(should_auto_adjust) == 0.f)
+            || (psky->getReflectionProbeAmbiance(should_auto_adjust) == 0.f)
             || (buildNoPost && gFloaterTools && gFloaterTools->isAvailable());
         LLGLSLShader* shader = nullptr;
         if(gamma_correct)
@@ -9427,9 +9426,7 @@ void LLPipeline::tonemap(LLRenderTarget* src, LLRenderTarget* dst, bool gamma_co
 
         F32 e = llclamp(exposure(), 0.5f, 4.f);
 
-        F32 mix_val = force_tonemap
-            ? gSavedSettings.getF32("RenderTonemapMix")
-            : psky->getTonemapMix(should_auto_adjust());
+        F32 mix_val = psky->getTonemapMix(should_auto_adjust());
 
         if (LLVKLoader::isVulkanInitialized())
         {
@@ -9604,7 +9601,7 @@ void LLPipeline::generateGlow(LLRenderTarget* src)
                 ubo_data.lumWeights[0]     = lumWeights.mV[0];
                 ubo_data.lumWeights[1]     = lumWeights.mV[1];
                 ubo_data.lumWeights[2]     = lumWeights.mV[2];
-                ubo_data.minLuminance      = RenderGlowMinLuminance;
+                ubo_data.minLuminance      = isCinematicMode() ? RenderGlowMinLuminance : 9999.f;
                 ubo_data.warmthWeights[0]  = warmthWeights.mV[0];
                 ubo_data.warmthWeights[1]  = warmthWeights.mV[1];
                 ubo_data.warmthWeights[2]  = warmthWeights.mV[2];
@@ -12884,10 +12881,27 @@ void LLPipeline::doSkinSSS()
                 gGL.getTexUnit(channel)->setTextureAddressMode(LLTexUnit::TAM_CLAMP);
             }
         }
+        {
+            S32 nchannel = shader.enableTexture(LLShaderMgr::NORMAL_MAP, deferred_target->getUsage());
+            if (nchannel > -1)
+            {
+                deferred_target->bindTexture(2, nchannel, LLTexUnit::TFO_POINT);
+                gGL.getTexUnit(nchannel)->setTextureAddressMode(LLTexUnit::TAM_CLAMP);
+            }
+        }
         // </FS:AYA>
         // <FS:AYA r20 Phase D world-scale blur> bind deferred depth attachment
         // so the shader can per-pixel scale blur radius by eye distance.
-        shader.bindTexture(LLShaderMgr::DEFERRED_DEPTH, deferred_target, true);
+        {
+            S32 dch = shader.enableTexture(LLShaderMgr::DEFERRED_DEPTH, deferred_target->getUsage());
+            if (dch > -1)
+            {
+                if (LLVKLoader::isVulkanInitialized() && mSceneDepthCopy.isComplete())
+                    gGL.getTexUnit(dch)->bind(&mSceneDepthCopy, true);
+                else
+                    gGL.getTexUnit(dch)->bind(deferred_target, true);
+            }
+        }
         // </FS:AYA>
 
         if (LLVKLoader::isVulkanInitialized()
@@ -12944,10 +12958,27 @@ void LLPipeline::doSkinSSS()
                 gGL.getTexUnit(channel)->setTextureAddressMode(LLTexUnit::TAM_CLAMP);
             }
         }
+        {
+            S32 nchannel = shader.enableTexture(LLShaderMgr::NORMAL_MAP, deferred_target->getUsage());
+            if (nchannel > -1)
+            {
+                deferred_target->bindTexture(2, nchannel, LLTexUnit::TFO_POINT);
+                gGL.getTexUnit(nchannel)->setTextureAddressMode(LLTexUnit::TAM_CLAMP);
+            }
+        }
         // </FS:AYA>
         // <FS:AYA r20 Phase D world-scale blur> bind deferred depth attachment
         // for per-pixel blur-radius scaling in skinSSSF.
-        shader.bindTexture(LLShaderMgr::DEFERRED_DEPTH, deferred_target, true);
+        {
+            S32 dch = shader.enableTexture(LLShaderMgr::DEFERRED_DEPTH, deferred_target->getUsage());
+            if (dch > -1)
+            {
+                if (LLVKLoader::isVulkanInitialized() && mSceneDepthCopy.isComplete())
+                    gGL.getTexUnit(dch)->bind(&mSceneDepthCopy, true);
+                else
+                    gGL.getTexUnit(dch)->bind(deferred_target, true);
+            }
+        }
         // </FS:AYA>
 
         if (LLVKLoader::isVulkanInitialized()
@@ -12975,10 +13006,12 @@ void LLPipeline::doSkinSSS()
         // <FS:AYA r20 Phase C>
         shader.disableTexture(LLShaderMgr::DEFERRED_EMISSIVE, deferred_target->getUsage());
         // </FS:AYA>
+        shader.disableTexture(LLShaderMgr::NORMAL_MAP, deferred_target->getUsage());
         // <FS:AYA r20 Phase D world-scale blur>
         shader.disableTexture(LLShaderMgr::DEFERRED_DEPTH, deferred_target->getUsage());
         // </FS:AYA>
         shader.unbind();
+        getFrameRT()->screen.flush();
     }
 
     gGL.setSceneBlendType(LLRender::BT_ALPHA);
