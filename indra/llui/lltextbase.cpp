@@ -56,6 +56,9 @@ const F32   CURSOR_FLASH_DELAY = 1.0f;  // in seconds
 const S32   CURSOR_THICKNESS = 2;
 const F32   TRIPLE_CLICK_INTERVAL = 0.3f;   // delay between double and triple click.
 
+constexpr F32 FOCUSED_SELECTION_BG_ALPHA = 1;
+constexpr F32 UNFOCUSED_SELECTION_BG_ALPHA = 0.7f;
+
 LLTextBase::line_info::line_info(S32 index_start, S32 index_end, LLRect rect, S32 line_num)
 :   mDocIndexStart(index_start),
     mDocIndexEnd(index_end),
@@ -134,7 +137,7 @@ struct LLTextBase::line_end_compare
 //
 
 // register LLTextBase::Params under name "textbase"
-static LLWidgetNameRegistry::StaticRegistrar sRegisterTextBaseParams(&typeid(LLTextBase::Params), "textbase");
+static LLWidgetNameRegistry::StaticRegistrar sRegisterTextBaseParams(typeid(LLTextBase::Params), "textbase");
 
 LLTextBase::LineSpacingParams::LineSpacingParams()
 :   multiple("multiple", 1.f),
@@ -668,7 +671,7 @@ void LLTextBase::drawSelectionBackground()
         // Draw the selection box (we're using a box instead of reversing the colors on the selected text).
         gGL.getTexUnit(0)->unbind(LLTexUnit::TT_TEXTURE);
         const LLColor4& color = mSelectedBGColor;
-        F32 alpha = hasFocus() ? 0.7f : 0.3f;
+        F32 alpha = hasFocus() ? FOCUSED_SELECTION_BG_ALPHA : UNFOCUSED_SELECTION_BG_ALPHA;
         alpha *= getDrawContext().mAlpha;
 
         LLColor4 selection_color(color.mV[VRED], color.mV[VGREEN], color.mV[VBLUE], alpha);
@@ -1940,6 +1943,7 @@ S32 LLTextBase::getLeftOffset(S32 width)
 void LLTextBase::reflow()
 {
     LL_PROFILE_ZONE_SCOPED_CATEGORY_UI;
+    static LLUICachedControl<S32> font_line_spacing_adjustment("FSFontLineSpacingAdjustment", 0); // <FS:MJR> [FIRE-36802] - Font - Line and Paragraph spacing
 
     updateSegments();
 
@@ -2068,6 +2072,7 @@ void LLTextBase::reflow()
 
                 line_start_index = segment->getStart() + seg_offset;
                 cur_top -= ll_round((F32)line_height * mLineSpacingMult) + mLineSpacingPixels;
+                cur_top -= font_line_spacing_adjustment; // <FS:MJR> [FIRE-36802] - Font - Line and Paragraph spacing
                 remaining_pixels = text_available_width;
                 line_height = 0;
             }
@@ -2080,6 +2085,7 @@ void LLTextBase::reflow()
                                             line_rect,
                                             line_count));
                 cur_top -= ll_round((F32)line_height * mLineSpacingMult) + mLineSpacingPixels;
+                cur_top -= font_line_spacing_adjustment; // <FS:MJR> [FIRE-36802] - Font - Line and Paragraph spacing
                 break;
             }
             // ...or finished a segment and there are segments remaining on this line
@@ -2095,6 +2101,7 @@ void LLTextBase::reflow()
                                                 line_count));
                     line_start_index = segment->getStart() + seg_offset;
                     cur_top -= ll_round((F32)line_height * mLineSpacingMult) + mLineSpacingPixels;
+                    cur_top -= font_line_spacing_adjustment; // <FS:MJR> [FIRE-36802] - Font - Line and Paragraph spacing
                     line_height = 0;
                     remaining_pixels = text_available_width;
                 }
@@ -2632,7 +2639,10 @@ void LLTextBase::appendTextImpl(const std::string& new_text, const LLStyle::Para
         LLUrlMatch match;
         std::string text = new_text;
         while (LLUrlRegistry::instance().findUrl(text, match,
-                boost::bind(&LLTextBase::replaceUrl, this, _1, _2, _3), isContentTrusted() || mAlwaysShowIcons, force_slurl))
+                // <FS:PP> Pass nearby-chat flag for labeled-link masking
+                // boost::bind(&LLTextBase::replaceUrl, this, _1, _2, _3), isContentTrusted() || mAlwaysShowIcons, force_slurl))
+                boost::bind(&LLTextBase::replaceUrl, this, _1, _2, _3), isContentTrusted() || mAlwaysShowIcons, force_slurl, mNearbyChatContent))
+                // </FS:PP>
         {
             start = match.getStart();
             end = match.getEnd()+1;
@@ -2691,6 +2701,12 @@ void LLTextBase::appendTextImpl(const std::string& new_text, const LLStyle::Para
             if (tooltip_required)
             {
                 setLastSegmentToolTip(match.getTooltip());
+                // <FS:PP> Preview real URLs of bracket links
+                if (match.getLabeledLinkMasked())
+                {
+                    setLastSegmentProminentUrlTooltip(match.getLabel(), match.getLabeledLinkTrusted());
+                }
+                // </FS:PP>
             }
 
             // show query part of url with gray color only for LLUrlEntryHTTP url entries
@@ -2753,6 +2769,18 @@ void LLTextBase::setLastSegmentToolTip(const std::string &tooltip)
         segment->setToolTip(tooltip);
     }
 }
+
+// <FS:PP> Preview real URLs of bracket links
+void LLTextBase::setLastSegmentProminentUrlTooltip(const std::string &label, bool trusted)
+{
+    segment_set_t::iterator it = getSegIterContaining(getLength()-1);
+    if (it != mSegments.end())
+    {
+        LLTextSegmentPtr segment = *it;
+        segment->setProminentUrlTooltip(label, trusted);
+    }
+}
+// </FS:PP>
 
 void LLTextBase::appendText(const std::string &new_text, bool prepend_newline, const LLStyle::Params& input_params)
 {
@@ -4141,6 +4169,41 @@ bool LLNormalTextSegment::handleMouseUp(S32 x, S32 y, MASK mask)
 
 bool LLNormalTextSegment::handleToolTip(S32 x, S32 y, MASK mask)
 {
+    // <FS:PP> Preview real URLs of bracket links
+    // Bypasses the BasicUITooltips preference and the normal hover delay on purpose
+    if (mForceProminentUrlTooltip && !mTooltip.empty())
+    {
+        LLToolTip::Params params;
+        params.font(LLFontGL::getFontSansSerifBig());
+        params.delay_time(0.f);
+        params.wrap(true);
+        params.max_width(700);
+        LLUIColorTable& colors = LLUIColorTable::instance();
+
+        if (mProminentUrlTrusted)
+        {
+            params.styled_message.add().text(LLTrans::getString("FSChatLinkTagTrusted") + " ").style.color(colors.getColor("LindenChatColor", LLColor4::green));
+        }
+        else
+        {
+            params.styled_message.add().text(LLTrans::getString("FSChatLinkTagUntrusted") + " ").style.color(colors.getColor("MutedChatColor", LLColor4::grey));
+        }
+
+        if (!mProminentUrlLabel.empty())
+        {
+            params.styled_message.add().text(mProminentUrlLabel + "\n").style.color(colors.getColor("ToolTipTextColor", LLColor4::white));
+        }
+        else
+        {
+            params.styled_message.add().text("\n");
+        }
+
+        params.styled_message.add().text(mTooltip).style.color(colors.getColor("HTMLLinkColorHovertips", LLColor4::blue));
+        LLToolTipMgr::instance().show(params);
+        return true;
+    }
+    // </FS:PP>
+
     std::string msg;
     // do we have a tooltip for a loaded keyword (for script editor)?
     if (mToken && !mToken->getToolTip().empty())
@@ -4169,6 +4232,15 @@ void LLNormalTextSegment::setToolTip(const std::string& tooltip)
     }
     mTooltip = tooltip;
 }
+
+// <FS:PP> Preview real URLs of bracket links
+void LLNormalTextSegment::setProminentUrlTooltip(const std::string& label, bool trusted)
+{
+    mForceProminentUrlTooltip = true;
+    mProminentUrlLabel = label;
+    mProminentUrlTrusted = trusted;
+}
+// </FS:PP>
 
 // virtual
 LLTextSegmentPtr LLNormalTextSegment::clone(LLTextBase& target) const

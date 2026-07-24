@@ -2544,7 +2544,7 @@ bool LLImageGL::computeIsMask(const void* data_in, U32 w, U32 h, S8 alpha_stride
 
 void LLImageGL::analyzeAlpha(const void* data_in, U32 w, U32 h)
 {
-    if(sSkipAnalyzeAlpha || !mNeedsAlphaAndPickMask)
+    if(!data_in || sSkipAnalyzeAlpha || !mNeedsAlphaAndPickMask)
     {
         return ;
     }

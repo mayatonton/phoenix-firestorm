@@ -747,7 +747,7 @@
          tool_tip="Plays a sound when money is spent or received higher then the amount set here."
          mouse_opaque="false"
          top_pad="10"
-         width="117">
+         width="200">
             L$ change threshold:
         </text>
         <spinner
@@ -1457,7 +1457,7 @@
          height="15"
          left="25"
          top_pad="2"
-         width="105"
+         width="120"
          name="noise_suppression_label">
           Noise Suppression:
         </text>
@@ -1542,7 +1542,7 @@
          top_pad="10"
          left="5"
          height="25"
-         width="520"
+         width="525"
          name="textFSExplanation_tab1">
             Here you can change (by providing sound UUIDs), enable or disable default interface sounds.
 Hover your mouse cursor over UUID field to show its default value.

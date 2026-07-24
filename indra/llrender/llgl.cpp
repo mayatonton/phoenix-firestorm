@@ -354,7 +354,7 @@ void rotate_quat(LLQuaternion& rotation)
     gGL.rotatef(angle_radians * RAD_TO_DEG, x, y, z);
 }
 
-thread_local boost::unordered_map<LLGLenum, LLGLboolean> LLGLState::sStateMap;
+thread_local std::unordered_map<LLGLenum, LLGLboolean> LLGLState::sStateMap;
 
 thread_local GLenum LLGLState::sCullFaceMode = GL_BACK;
 

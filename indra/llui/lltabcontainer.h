@@ -205,6 +205,7 @@ public:
     LLPanel*    getCurrentPanel();
     S32         getCurrentPanelIndex() const;
     S32         getTabCount() const;
+    S32         getVisibleTabCount() const;
     LLPanel*    getPanelByIndex(S32 index) const;
     S32         getIndexForPanel(LLPanel* panel) const;
     S32         getPanelIndexByTitle(std::string_view title) const;
@@ -244,6 +245,7 @@ public:
     // <FS:PP> FIRE-35598: Custom filters in inventory (feature idea: Catznip)
     S32         getTabContainedAtPoint(S32 x, S32 y) const;
     void        setTabPadding(S32 index, S32 padding);
+    void setTabButtonVisible(const LLPanel* panel, bool visible);
     // </FS:PP>
 
     TabPosition getTabPosition() const { return mTabPosition; }
@@ -253,6 +255,7 @@ public:
     S32         getMaxTabWidth() const { return mMaxTabWidth; }
 
     void setTabVisibility( LLPanel const *aPanel, bool );
+    bool getTabVisibility(const LLPanel* panel) const;
 
     // <FS:AYAstorm r22> Promote to public so floaters can suppress the tab strip at runtime
     // (e.g. when FSChatHumanObjectTabs is disabled, make the chat floater look unsplit).

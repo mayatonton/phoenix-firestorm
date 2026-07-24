@@ -35,7 +35,6 @@
 #include <fstream>
 #include <algorithm>
 #include <boost/filesystem.hpp>
-#include <boost/lambda/core.hpp>
 #include <boost/regex.hpp>
 
 #include "llagent.h"
@@ -2240,10 +2239,6 @@ void LLViewerWindow::initGLDefaults()
     gBox.prerender();
 }
 
-struct MainPanel : public LLPanel
-{
-};
-
 void LLViewerWindow::initBase()
 {
     S32 height = getWindowHeightScaled();
@@ -2303,6 +2298,8 @@ void LLViewerWindow::initBase()
     }
     main_view->setShape(full_window);
     getRootView()->addChild(main_view);
+
+    mMainView = main_view;
 
     // <FS:Zi> Moved this from the end of this function up here, so all context menus
     //         created right after this get the correct parent assigned.
@@ -2615,24 +2612,35 @@ void LLViewerWindow::initWorldUI()
         physical_mem = LLMemory::getMaxMemKB();
     }
 
-    if (!gNonInteractive && physical_mem > MIN_PHYSICAL_MEMORY)
+    if (!gNonInteractive)
     {
-        LL_INFOS() << "Preloading cef instances" << LL_ENDL;
+        if (physical_mem > MIN_PHYSICAL_MEMORY)
+        {
+            LL_INFOS() << "Preloading cef instances" << LL_ENDL;
 
-        LLFloaterReg::getInstance("destinations");
-        LLFloaterReg::getInstance("avatar_welcome_pack");
-        // <FS:TJ> Preload the CEF instance of the currently used legacy search floater
-        //LLFloaterReg::getInstance("search");
-        if (gSavedSettings.getBOOL("FSUseFSLegacySearch"))
-        {
-            LLFloaterReg::getInstance("search");
+            LLFloaterReg::getInstance("destinations");
+            LLFloaterReg::getInstance("avatar_welcome_pack");
+            // <FS:TJ> Preload the CEF instance of the currently used legacy search floater
+            //LLFloaterReg::getInstance("search");
+            if (gSavedSettings.getBOOL("FSUseFSLegacySearch"))
+            {
+                LLFloaterReg::getInstance("search");
+            }
+            else
+            {
+                LLFloaterReg::getInstance("legacy_search");
+            }
+            // </FS:TJ>
+            LLFloaterReg::getInstance("marketplace");
         }
-        else
+        // <FS:Ansariel> OpenSim support
+        //else if (gSavedSettings.getBOOL("FirstLoginThisInstall"))
+        else if (LLGridManager::instance().isInSecondLife() && gSavedSettings.getBOOL("FirstLoginThisInstall"))
+        // </FS:Ansariel>
         {
-            LLFloaterReg::getInstance("legacy_search");
+            // Preload the welcome pack for first-time login even on low end hardware
+            LLFloaterReg::getInstance("avatar_welcome_pack");
         }
-        // </FS:TJ>
-        LLFloaterReg::getInstance("marketplace");
     }
 
     // <FS:Zi> Autohide main chat bar if applicable
@@ -4353,7 +4361,10 @@ void LLViewerWindow::updateLayout()
         && tool != gToolNull
         && tool != LLToolCompInspect::getInstance()
         && tool != LLToolDragAndDrop::getInstance()
-        && !gSavedSettings.getBOOL("FreezeTime"))
+        // <FS:PP> Speed optimisation
+        // && !gSavedSettings.getBOOL("FreezeTime"))
+        && !LLPipeline::FreezeTime)
+        // </FS:PP>
     {
         // Suppress the toolbox view if our source tool was the pie tool,
         // and we've overridden to something else.
@@ -6050,11 +6061,26 @@ void LLViewerWindow::saveImageLocal(LLImageFormatted *image, const snapshot_save
     if (image->save(filepath))
     {
         playSnapshotAnimAndSound();
+
+        // Show clickable notification with filepath
+        LLSD args;
+        args["FILEPATH"] = filepath;
+
+        LLSD payload;
+        payload["filepath"] = filepath;
+
+// <FS:PP> We don't need forced SnapshotSavedToComputer notiification, since we have SnapshotSavedToDisk string already in place
+//         LLNotificationsUtil::add("SnapshotSavedToComputer",
+//                                  args,
+//                                  payload.with("respond_on_mousedown", true),
+//                                  boost::bind(&LLViewerWindow::onSnapshotNotificationClick, _1, _2));
+// </FS:PP>
+
         if (gSavedSettings.getBOOL("FSLogSnapshotsToLocal"))
         {
-            LLStringUtil::format_map_t args;
-            args["FILENAME"] = filepath;
-            FSCommon::report_to_nearby_chat(LLTrans::getString("SnapshotSavedToDisk", args));
+            LLStringUtil::format_map_t chatlog_args;
+            chatlog_args["FILENAME"] = filepath;
+            FSCommon::report_to_nearby_chat(LLTrans::getString("SnapshotSavedToDisk", chatlog_args));
         }
         success_cb();
     }
@@ -6069,6 +6095,17 @@ void LLViewerWindow::resetSnapshotLoc()
     gSavedPerAccountSettings.setString("SnapshotBaseDir", std::string());
 }
 
+// static
+void LLViewerWindow::onSnapshotNotificationClick(const LLSD& notification, const LLSD& response)
+{
+    std::string filepath = notification["payload"]["filepath"].asString();
+    if (!filepath.empty())
+    {
+        gDirUtilp->openDir(filepath);
+    }
+}
+
+// static
 void LLViewerWindow::movieSize(S32 new_width, S32 new_height)
 {
     // <FS:TS> FIRE-6182: Set Window Size sets random size each time
@@ -7435,11 +7472,15 @@ void LLViewerWindow::setUIVisibility(bool visible)
     }
 
     // <FS:Ansariel> Notification not showing if hiding the UI
-    FSNearbyChat::instance().showDefaultChatBar(visible && !gSavedSettings.getBOOL("AutohideChatBar"));
-    gSavedSettings.setBOOL("FSInternalShowNavbarNavigationPanel", visible && gSavedSettings.getBOOL("ShowNavbarNavigationPanel"));
-    gSavedSettings.setBOOL("FSInternalShowNavbarFavoritesPanel", visible && gSavedSettings.getBOOL("ShowNavbarFavoritesPanel"));
-    mRootView->getChildView("chiclet_container")->setVisible(visible && gSavedSettings.getBOOL("InternalShowGroupNoticesTopRight"));
-    mRootView->getChildView("chiclet_container_bottom")->setVisible(visible && !gSavedSettings.getBOOL("InternalShowGroupNoticesTopRight"));
+    static LLCachedControl<bool> autohide_chat_bar(gSavedSettings, "AutohideChatBar");
+    static LLCachedControl<bool> show_navbar_navigation_panel(gSavedSettings, "ShowNavbarNavigationPanel");
+    static LLCachedControl<bool> show_navbar_favorites_panel(gSavedSettings, "ShowNavbarFavoritesPanel");
+    static LLCachedControl<bool> internal_show_group_notices_top_right(gSavedSettings, "InternalShowGroupNoticesTopRight");
+    FSNearbyChat::instance().showDefaultChatBar(visible && !autohide_chat_bar());
+    gSavedSettings.setBOOL("FSInternalShowNavbarNavigationPanel", visible && show_navbar_navigation_panel());
+    gSavedSettings.setBOOL("FSInternalShowNavbarFavoritesPanel", visible && show_navbar_favorites_panel());
+    mRootView->getChildView("chiclet_container")->setVisible(visible && internal_show_group_notices_top_right());
+    mRootView->getChildView("chiclet_container_bottom")->setVisible(visible && !internal_show_group_notices_top_right());
     // </FS:Ansariel>
 
     // <FS:Zi> Is done inside XUI now, using visibility_control

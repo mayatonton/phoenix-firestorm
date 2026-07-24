@@ -347,7 +347,7 @@ public:
 
     LLSpatialGroup(OctreeNode* node, LLSpatialPartition* part);
 
-    bool isHUDGroup() ;
+    bool isHUDGroup() const;
 
     void clearDrawMap(U32 evict_site);
     void clearDrawMapStaged(const std::unordered_set<LLDrawable*>& preserve,

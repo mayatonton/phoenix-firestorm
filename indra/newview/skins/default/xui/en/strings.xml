@@ -139,6 +139,8 @@ Voice Server Version: [VOICE_VERSION]
 	
 	<string name="AgniGridLabel">Second Life Main Grid (Agni)</string>
 	<string name="AditiGridLabel">Second Life Beta Test Grid (Aditi)</string>
+    <string name="AgniGridLabelShort">Agni (production)</string>
+    <string name="AditiGridLabelShort">Aditi (beta)</string>
 	
 	<string name="ViewerDownloadURL">https://www.firestormviewer.org/choose-your-platform/</string>
 	<string name="LoginFailedViewerNotPermitted">
@@ -333,6 +335,9 @@ If you feel this is an error, please contact support@secondlife.com</string>
 	<!-- tooltips for Urls -->
 	<string name="TooltipHttpUrl">Click to view this web page</string>
 	<string name="TooltipSLURL">Click to view this location's information</string>
+	<string name="FSChatLinkTagTrusted">[Trusted]</string>
+	<string name="FSChatLinkTagUntrusted">[Link]</string>
+
 	<string name="TooltipAgentUrl">Click to view this Resident's profile</string>
 	<string name="TooltipAgentInspect">Learn more about this Resident</string>
 	<string name="TooltipAgentMute">Click to mute this Resident</string>
@@ -599,6 +604,8 @@ https://www.firestormviewer.org/support for help fixing this problem.
 	<string name="reconnect_nearby">You will now be reconnected to Nearby Voice Chat</string>
 	<string name="ScriptQuestionCautionChatGranted">'[OBJECTNAME]', an object owned by '[OWNERNAME]', located in [REGIONNAME] at [REGIONPOS], has been granted permission to: [PERMISSIONS].</string>
 	<string name="ScriptQuestionCautionChatDenied">'[OBJECTNAME]', an object owned by '[OWNERNAME]', located in [REGIONNAME] at [REGIONPOS], has been denied permission to: [PERMISSIONS].</string>
+	<string name="ScriptTakeMoneyCaution">The object &apos;&lt;nolink&gt;[OBJECTNAME]&lt;/nolink&gt;&apos; wants total access to your Linden Dollars account. If you allow access, it can remove funds from your account at any time, or empty your account completely, on an ongoing basis with no additional warnings.</string>
+	<string name="PrivilegedLandAccessCaution">The object &apos;&lt;nolink&gt;[OBJECTNAME]&lt;/nolink&gt;&apos; wants privileged access to your land. If you allow access it may sell your land with no additional warnings.</string>
 	<string name="AdditionalPermissionsRequestHeader">If you allow access to your account, you will also be allowing the object to:</string>
 	<string name="ScriptTakeMoney">Take Linden dollars (L$) from you</string>
 	<string name="ActOnControlInputs">Act on your control inputs</string>
@@ -616,6 +623,7 @@ https://www.firestormviewer.org/support for help fixing this problem.
 	<string name="ChangeYourDefaultAnimations">Change your default animations</string>
 	<string name="ForceSitAvatar">Force your avatar to sit</string>
 	<string name="ChangeEnvSettings">Change your environment settings</string>
+	<string name="PrivilegedLandAccess">Sell land on your behalf.</string>
 	<string name="SnapshotSavedToDisk">Snapshot saved: [FILENAME]</string>
 	
 	<string name="NotConnected">Not Connected</string>
@@ -797,6 +805,7 @@ https://www.firestormviewer.org/support for help fixing this problem.
 	<string name="InventoryNoMatchingRecentItems">Didn't find what you're looking for? Try [secondlife:///app/inventory/filters Show filters].</string>	
 	<string name="InventoryNoMatchingFavorites">You haven't marked any items as favorites.</string>
 	<string name="FSInventoryCustomTabDefaultName">Custom</string>
+	<string name="FSInventoryCustomTabShowHidden">Show hidden tabs</string>
 	<string name="PlacesNoMatchingItems">To add a place to your landmarks, click the star to the right of the location name.</string>
 	<string name="FavoritesNoMatchingItems">Drag a landmark here to add it to your favorites.</string>
 	<string name="MarketplaceNoListing">You have no listings yet.</string>
@@ -1519,6 +1528,9 @@ If this message persists, restart your computer.
 		[APP_NAME] appears to have frozen or crashed on the previous run.
 Would you like to send a crash report?
 	</string>
+    <string name="MBFreezeDetected">
+        [APP_NAME] appears to have frozen. If this issue occurs regularly, please contact support at https://www.firestormviewer.org/support.
+    </string>
 	<string name="MBAlert">Notification</string>
 	<string name="MBNoDirectX">
 		[APP_NAME] is unable to detect DirectX 9.0b or greater.
@@ -3061,6 +3073,16 @@ and report the problem.
 
   <string name="DrawDistanceSteppingGestureObsolete">Due to the changes in code, it is no longer necessary to use this gesture. Progressive Draw Distance stepping has been enabled.</string>
   <string name="FSCameraPositionCopied">Camera position [POS] copied to clipboard.</string>
+  <string name="FSCameraPositionPasted">Camera restored to [POS].</string>
+  <string name="FSCameraPositionParseError">Invalid camera position. Expected: &lt;x, y, z&gt; or &lt;x, y, z&gt;|&lt;fx, fy, fz&gt;|roll (agent-local).</string>
+  <string name="FSCmdLineZOffsetUsage">Set avatar hover height (usage: /zoffset value or +delta).</string>
+  <string name="FSCmdLineNoValidRegion">Could not get a valid region pointer.</string>
+  <string name="FSCmdLineTrackPosUsage">Track a position or avatar on the world map (usage: cmd &lt;x, y, z&gt; or cmd name).</string>
+  <string name="FSCmdLineTrackPosParseError">Invalid position. Use cpcampos format: &lt;x, y, z&gt; or &lt;x, y, z&gt;|&lt;fx, fy, fz&gt;|roll.</string>
+  <string name="FSCmdLineTrackPosLocation">Tracking [REGION] ([POS]).</string>
+  <string name="FSCmdLineTrackPosAvatar">Tracking [NAME].</string>
+  <string name="FSCmdLineTrackPosNotFound">Could not find avatar matching &apos;[NAME]&apos; on radar.</string>
+  <string name="FSCmdLineTrackPosMapError">Could not open the world map.</string>
 
   <string name="FSCmdLineDrawDistanceSet">Draw Distance set to [DISTANCE]m.</string>
   <string name="FSCmdLineRollDiceTotal">Total result for [DICE]d[FACES][MODIFIER]: [RESULT].</string>
@@ -3301,13 +3323,15 @@ Your current position: [AVATAR_POS]
   <string name="Nametag_Texture_Area_Label">Texture Area: [TEXTURE_AREA] m²</string>
 
   <string name="font_unknown">Unknown Font</string>
-  <string name="font_fonts.xml">Deja Vu</string>
+  <string name="font_fonts.xml">Inter</string>
+  <string name="font_fonts_inter_tight.xml">Inter Tight</string>
   <string name="font_fonts_ubuntu.xml">Ubuntu Font Family</string>
   <string name="font_fonts_liberation.xml">Liberation</string>
   <string name="font_fonts_droid.xml">Droid Sans</string>
   <string name="font_fonts_mobi.xml">Mobi Sans</string>
   <string name="font_fonts_roboto.xml">Roboto</string>
   <string name="font_fonts_dyslexia.xml">OpenDyslexic</string>
+  <string name="font_fonts_deja_vu.xml">Deja Vu</string>
   <string name="font_fonts_deja_vu_all_caps.xml">Deja Vu All Caps</string>
   <string name="font_fonts_noto.xml">Noto Sans</string>
   <string name="font_fonts_celestia_medium_redux.xml">Celestia Medium Redux</string>
@@ -3352,6 +3376,9 @@ Your current position: [AVATAR_POS]
   <string name="Maximum">Maximum</string>
 
   <string name="OmnifilterReplacement">Omnifilter Replacement: [REPLACEMENT]</string>
+  <string name="OmnifilterDefaultName">Default</string>
+  <string name="OmnifilterExportDescription">Omnifiler Rule Set: [REPLACEMENT]</string> <!-- Note for translators: This goes into NC's description field, no special chars or diacritics -->
+  <string name="OmnifilterButtonLabel" translate="false">BUTTON_LABEL</string>
   <string name="FSAvatarAlignToggleMini">Mini</string>
   <string name="FSAvatarAlignToggleFull">Full</string>
 </strings>
