@@ -12382,13 +12382,24 @@ Change of this parameter will affect the layout of buttons in notification toast
   <key>RenderVolumetricLightingMultiplier</key>
   <map>
     <key>Comment</key>
-    <string>AYAstorm r30 P3: intensity multiplier for the volumetric lighting composite (godray_multiplier uniform). Default 4.0 keeps godrays visible without saturating the post-tonemap image.</string>
+    <string>AYAstorm r30 P3: intensity multiplier for the volumetric lighting composite (godray_multiplier uniform). Default 0.2 for the VK renderer where the shaft accumulates far stronger than the GL path.</string>
     <key>Persist</key>
     <integer>1</integer>
     <key>Type</key>
     <string>F32</string>
     <key>Value</key>
-    <real>4.0</real>
+    <real>0.2</real>
+  </map>
+  <key>AYAVolMulMigrationVersion</key>
+  <map>
+    <key>Comment</key>
+    <string>RenderVolumetricLightingMultiplier VK default (4.0 -> 0.2) one-shot migration の version sentinel。0=未適用 (起動時に強制 0.2 上書き)、1=適用済 (no-op)。手動で 0 に戻すと再 migration が走る</string>
+    <key>Persist</key>
+    <integer>1</integer>
+    <key>Type</key>
+    <string>S32</string>
+    <key>Value</key>
+    <integer>0</integer>
   </map>
 
   <key>RenderVolumetricLightingFalloffMultiplier</key>

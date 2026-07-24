@@ -319,3 +319,29 @@ void LLCinematicOverlay::applyR15GodraysCinematicMigrationIfNeeded()
         << ENABLED_CONTROL << " " << (old_value ? "true" : "false") << " -> true" << LL_ENDL;
 }
 // </FS:AYAstorm>
+
+// <FS:AYAstorm> RenderVolumetricLightingMultiplier VK default flip (4.0 -> 0.2).
+// The VK volumetric composite accumulates far stronger than the retired GL path,
+// so the shipped 4.0 blows out post-tonemap. New default is 0.2. Released users
+// keep the persisted 4.0, so force-overwrite once on version 0 -> 1 (the engine
+// changed under them). Users can re-tune from the Cinematic floater afterward.
+void LLCinematicOverlay::applyVolMulMigrationIfNeeded()
+{
+    static const char VERSION_CONTROL[] = "AYAVolMulMigrationVersion";
+    static const char VALUE_CONTROL[]   = "RenderVolumetricLightingMultiplier";
+
+    const S32 ver = gSavedSettings.getS32(VERSION_CONTROL);
+    if (ver >= 1)
+    {
+        return;
+    }
+
+    const F32 old_value = gSavedSettings.getF32(VALUE_CONTROL);
+    gSavedSettings.setF32(VALUE_CONTROL, 0.2f);
+    gSavedSettings.setS32(VERSION_CONTROL, 1);
+
+    LL_INFOS("CinematicOverlay")
+        << "VolMul VK migration v0->v1: " << VALUE_CONTROL << " "
+        << old_value << " -> 0.2" << LL_ENDL;
+}
+// </FS:AYAstorm>

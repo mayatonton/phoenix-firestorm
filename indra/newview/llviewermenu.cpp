@@ -10146,7 +10146,7 @@ class AYAResetCinematic : public view_listener_t
             {"RenderScreenSpaceReflections",    LLSD(true)},
             {"RenderVolumetricLighting",        LLSD(true)},
             {"RenderVolumetricLightingResolution", LLSD(LLSD::Integer(16))},
-            {"RenderVolumetricLightingMultiplier", LLSD(4.0)},
+            {"RenderVolumetricLightingMultiplier", LLSD(0.2)},
             {"RenderVolumetricLightingFalloffMultiplier", LLSD(2.0)},
             {"RenderFSAAType",                  LLSD(LLSD::Integer(2))}, // 2 = SMAA
             // BD camera DoF values — LL defaults are conservative, BD ships photo-tuned

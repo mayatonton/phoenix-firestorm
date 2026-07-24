@@ -149,7 +149,7 @@
     <integer>16</integer>
 
     <key>RenderVolumetricLightingMultiplier</key>
-    <real>4.0</real>
+    <real>0.2</real>
 
     <key>RenderVolumetricLightingFalloffMultiplier</key>
     <real>2.0</real>

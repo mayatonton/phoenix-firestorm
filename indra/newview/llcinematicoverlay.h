@@ -43,6 +43,11 @@ namespace LLCinematicOverlay
     // 既存ユーザーが live A/B 期間中 false 持ちで放置していたケースを救済する。
     void applyR15GodraysCinematicMigrationIfNeeded();
     // </FS:AYAstorm>
+
+    // <FS:AYAstorm> RenderVolumetricLightingMultiplier VK default (4.0 -> 0.2)
+    // one-shot force overwrite migration (no-op once AYAVolMulMigrationVersion >= 1).
+    void applyVolMulMigrationIfNeeded();
+    // </FS:AYAstorm>
 }
 
 #endif // LL_CINEMATIC_OVERLAY_H

@@ -3306,6 +3306,11 @@ bool LLAppViewer::initConfiguration()
     LLCinematicOverlay::applyR15GodraysCinematicMigrationIfNeeded();
     // </FS:AYAstorm>
 
+    // <FS:AYAstorm> RenderVolumetricLightingMultiplier VK default (4.0 -> 0.2)
+    // one-shot force overwrite; no-op once AYAVolMulMigrationVersion >= 1.
+    LLCinematicOverlay::applyVolMulMigrationIfNeeded();
+    // </FS:AYAstorm>
+
     // <FS:Ansariel> Debug setting to disable log throttle
     nd::logging::setThrottleEnabled(gSavedSettings.getBOOL("FSEnableLogThrottle"));
 
