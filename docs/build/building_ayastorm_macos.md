@@ -1,10 +1,17 @@
 # AYAstorm Mac版ビルド手順
 
-Date: 2026-05-06
-Target example: `feature/macos-arm64-build-on-latest` (based on `ayastorm-release`)
-Output example: `Phoenix-FirestormOS-AYAstorm-release_arm64-7-2-4-80834.dmg`
+更新日: 2026-07-25
 
-この文書は AYAstorm の macOS arm64 配布用 DMG を作成するための手順です。Firestorm 本体の一般的な macOS ビルド要件は `doc/building_macos.md` も参照してください。
+この文書は macOS arm64 向けのビルド手順である。用途を混同しないこと。
+
+- **ローカル開発 app**: 「R42: ローカル arm64 / MoltenVK 開発 app」を使う。DMG は作らない。
+- **配布用 DMG**: 「環境変数」以降の配布手順を使う。
+- **MoltenVK の通常起動仕様・失敗ログ**:
+  [`docs/specs/ayastorm-r42-macos-moltenvk-runtime-bootstrap.md`](../specs/ayastorm-r42-macos-moltenvk-runtime-bootstrap.md)
+
+出力例: `Phoenix-FirestormOS-AYAstorm-release_arm64-7-2-4-80834.dmg`
+
+この文書は AYAstorm の macOS arm64 におけるローカル開発 app と配布用 DMG の手順を扱う。Firestorm 本体の一般的な macOS ビルド要件は `doc/building_macos.md` も参照してください。
 
 ## 前提
 
@@ -129,6 +136,82 @@ AYAstorm Mac ビルド手順のデフォルトは Dullahan audio callback 経路
 ```
 
 configure 後は `build-darwin-universal/CMakeCache.txt` で `LL_DULLAHAN_AUDIO_CALLBACK:BOOL=` の値を確認してください。
+
+## R42: ローカル arm64 / MoltenVK 開発 app（DMGなし）
+
+Apple Silicon 用のローカル app は配布用 DMG の手順と分ける。これは Vulkan / MoltenVK の実行確認用であり、Release artifact や notarization の手順ではない。
+
+開発 app は executable path に `/build-darwin-` を含むため、可変データを `~/Library/Application Support/AYAstorm-dev/`、対応する cache / temp を `AYAstorm-dev` 名で作る。build tree 外へコピーした app は `~/Library/Application Support/AYAstorm/` を使う。既存の `Firestorm` profile は移動・削除しない。
+
+### 実行前提
+
+この手順は、次の macOS runtime 実装が checkout に入っていることを前提とする。
+
+- `indra/cmake/Variables.cmake`: arm64 をデフォルトにし、明示した `CMAKE_OSX_ARCHITECTURES` を尊重する
+- `indra/cmake/Vulkan.cmake`: `vulkan_sdk_macos` prebuilt から headers と Loader を解決する
+- `indra/cmake/Glslang.cmake`: 同 prebuilt から glslang / SPIRV-Tools を解決する
+- `indra/newview/viewer_manifest.py`: Vulkan Loader、MoltenVK、ICD JSON を app bundle に格納する
+
+これらを含まない checkout では、system Vulkan SDK と system glslang を別途用意しなければ clean configure は成功しない。`vulkan_sdk_macos` archive のローカル URL / hash は git-ignored の `my_autobuild.xml` にだけ登録し、tracked `autobuild.xml` へ開発者ローカルの絶対 path を書かない。
+
+### Configure / Build
+
+既存の `build-darwin-universal` が別のコミットやバージョンから作られた場合は再利用しない。以下では package target を作らず、`ayastorm-bin` だけを arm64 でビルドする。
+
+```bash
+cd "$REPO"
+source .venv/bin/activate
+
+export DEVELOPER_DIR="/Applications/Xcode.app/Contents/Developer"
+export AUTOBUILD_VARIABLES_FILE="$FS_BUILD_VARIABLES"
+export AUTOBUILD_CONFIG_FILE="my_autobuild.xml"
+export CLANG_MODULE_CACHE_PATH="$REPO/build-darwin-universal/ModuleCache"
+
+rm -rf build-darwin-universal
+
+autobuild configure -A 64 -c ReleaseFS_open -- \
+  --fmodstudio \
+  --openal \
+  --chan AYAstorm-r42-phase2 \
+  -DCMAKE_OSX_ARCHITECTURES:STRING=arm64 \
+  -DPACKAGE:BOOL=OFF \
+  -DLL_TESTS:BOOL=FALSE \
+  -DLL_DULLAHAN_AUDIO_CALLBACK:BOOL=TRUE
+
+rg -n 'CMAKE_BUILD_TYPE|CMAKE_OSX_ARCHITECTURES|VIEWER_CHANNEL|PACKAGE|USE_FMODSTUDIO|LL_DULLAHAN_AUDIO_CALLBACK' \
+  build-darwin-universal/CMakeCache.txt
+
+DEVELOPER_DIR="$DEVELOPER_DIR" \
+AUTOBUILD_VARIABLES_FILE="$AUTOBUILD_VARIABLES_FILE" \
+AUTOBUILD_CONFIG_FILE="$AUTOBUILD_CONFIG_FILE" \
+CLANG_MODULE_CACHE_PATH="$CLANG_MODULE_CACHE_PATH" \
+xcodebuild \
+  -project build-darwin-universal/Firestorm.xcodeproj \
+  -scheme ayastorm-bin \
+  -configuration Release \
+  -derivedDataPath build-darwin-universal/DerivedData \
+  ARCHS=arm64 \
+  ONLY_ACTIVE_ARCH=YES \
+  build
+```
+
+期待値は `CMAKE_OSX_ARCHITECTURES:STRING=arm64`、`PACKAGE:BOOL=OFF`、および `build-darwin-universal/newview/Release/AYAstorm.app` である。`llpackage` / DMG はこの手順の対象外とする。
+
+### ローカル app の検証
+
+```bash
+export APP="$REPO/build-darwin-universal/newview/Release/AYAstorm.app"
+
+lipo -archs "$APP/Contents/MacOS/AYAstorm"
+codesign --verify --deep --strict --verbose=2 "$APP"
+test -e "$APP/Contents/Frameworks/libvulkan.dylib"
+test -e "$APP/Contents/Frameworks/libMoltenVK.dylib"
+test -f "$APP/Contents/Resources/vulkan/icd.d/MoltenVK_icd.json"
+```
+
+製品相当の起動確認では `VK_ICD_FILENAMES`、`VK_LAYER_PATH`、`DYLD_LIBRARY_PATH`、`DYLD_INSERT_LIBRARIES`、`AYASTORM_VKCMD_MEMO` などの override を使わない。override を用いた診断 run は、通常起動とは別の証拠として扱う。
+
+通常起動後は `~/Library/Application Support/AYAstorm-dev/logs/AYAstorm.log` を確認する。`initialized device=...`、`Vulkan presentation surface initialized`、`Initializing Login Screen` がこの順で記録され、ログイン画面が全面に描画されることを確認する。詳細な合格条件と cache 復旧ログは [r42 MoltenVK 実行時ブートストラップ仕様](../specs/ayastorm-r42-macos-moltenvk-runtime-bootstrap.md) に従う。
 
 ## 環境変数
 

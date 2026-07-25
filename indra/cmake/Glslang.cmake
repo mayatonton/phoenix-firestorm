@@ -22,11 +22,21 @@
 #   - /usr/lib/x86_64-linux-gnu/libglslang.a + libSPIRV.a + libglslang-default-resource-limits.a (静的)
 #   - /usr/lib/x86_64-linux-gnu/cmake/glslang/glslang-config.cmake (find_package CONFIG mode 対応)
 #
-# Linux first-class baseline (r41 charter §1)、Mac/Win 3 OS bundle 判断は r42-α/β 着手時 (charter §7.5).
+# Linux first-class baseline (r41 charter §1).
+# macOS resolves the same imported targets from the pinned vulkan_sdk_macos prebuilt.
 # 3.3-B exemplar (試作レール、aya_r41_exemplar/sky_placeholder + AyaShaderCompile.cmake +
 # loadSpirvShaderModuleFromFile()) は sub-doc 03 §3.1.3 役割再定義注記で並存維持.
 
-find_package(glslang CONFIG REQUIRED)
+if (DARWIN)
+    include(Prebuilt)
+    use_prebuilt_binary(vulkan_sdk_macos)
+    set(glslang_DIR "${LIBS_PREBUILT_DIR}/lib/cmake/glslang")
+    set("SPIRV-Tools_DIR" "${LIBS_PREBUILT_DIR}/lib/cmake/SPIRV-Tools")
+    set("SPIRV-Tools-opt_DIR" "${LIBS_PREBUILT_DIR}/lib/cmake/SPIRV-Tools-opt")
+    find_package(glslang CONFIG REQUIRED NO_DEFAULT_PATH)
+else()
+    find_package(glslang CONFIG REQUIRED)
+endif()
 
 add_library( ll::glslang INTERFACE IMPORTED )
 

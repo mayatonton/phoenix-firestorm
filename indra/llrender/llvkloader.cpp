@@ -34,6 +34,7 @@
 #include <vector>
 #include <string>
 #include <climits>
+#include <cerrno>
 #include <cstring>
 #include <cstdlib>
 #include <fstream>
@@ -109,6 +110,7 @@ namespace
     std::queue<uint32_t> sTimestampPairFree;
 
     VkSurfaceKHR sSurface           = VK_NULL_HANDLE;
+    LLWindow*    sSurfaceWindow     = nullptr;
 
     VkSwapchainKHR           sSwapchain           = VK_NULL_HANDLE;
     std::vector<VkImage>     sSwapchainImages;
@@ -954,8 +956,11 @@ namespace
                 std::lock_guard<std::mutex> lk(job.sync->m);
                 job.sync->done   = true;
                 job.sync->result = sr;
+                // `sync` belongs to the submitting stack frame. Notify while
+                // holding its mutex so the waiter cannot return and destroy it
+                // before this condition-variable operation has completed.
+                job.sync->cv.notify_all();
             }
-            job.sync->cv.notify_all();
         }
     }
 
@@ -1510,6 +1515,43 @@ namespace
         extensions.push_back(VK_EXT_METAL_SURFACE_EXTENSION_NAME);
 #endif
 
+        U32 extension_count = 0;
+        VkResult extension_result = vkEnumerateInstanceExtensionProperties(nullptr, &extension_count, nullptr);
+        if (extension_result != VK_SUCCESS)
+        {
+            LL_WARNS("Vulkan") << "instance extension enumeration failed result=" << extension_result << LL_ENDL;
+            return false;
+        }
+
+        std::vector<VkExtensionProperties> available_extensions(extension_count);
+        if (extension_count)
+        {
+            extension_result = vkEnumerateInstanceExtensionProperties(nullptr, &extension_count,
+                                                                        available_extensions.data());
+            if (extension_result != VK_SUCCESS)
+            {
+                LL_WARNS("Vulkan") << "instance extension enumeration data failed result=" << extension_result << LL_ENDL;
+                return false;
+            }
+        }
+
+        const auto has_instance_extension = [&available_extensions](const char* name) {
+            return std::any_of(available_extensions.begin(), available_extensions.end(),
+                               [name](const VkExtensionProperties& property) {
+                                   return strcmp(property.extensionName, name) == 0;
+                               });
+        };
+
+#if LL_DARWIN
+        if (!has_instance_extension(VK_KHR_PORTABILITY_ENUMERATION_EXTENSION_NAME))
+        {
+            LL_WARNS("Vulkan") << "VK_KHR_portability_enumeration unavailable" << LL_ENDL;
+            return false;
+        }
+        extensions.push_back(VK_KHR_PORTABILITY_ENUMERATION_EXTENSION_NAME);
+        LL_INFOS("Vulkan") << "VK_KHR_portability_enumeration enabled" << LL_ENDL;
+#endif
+
         bool want_validation = false;
         {
             const char* env = getenv("AYASTORM_VK_VALIDATION");
@@ -1536,21 +1578,7 @@ namespace
                 }
             }
 
-            U32 ext_count = 0;
-            vkEnumerateInstanceExtensionProperties(nullptr, &ext_count, nullptr);
-            std::vector<VkExtensionProperties> avail_exts(ext_count);
-            if (ext_count)
-            {
-                vkEnumerateInstanceExtensionProperties(nullptr, &ext_count, avail_exts.data());
-            }
-            for (const auto& ep : avail_exts)
-            {
-                if (strcmp(ep.extensionName, VK_EXT_DEBUG_UTILS_EXTENSION_NAME) == 0)
-                {
-                    have_debug_utils = true;
-                    break;
-                }
-            }
+            have_debug_utils = has_instance_extension(VK_EXT_DEBUG_UTILS_EXTENSION_NAME);
 
             if (have_validation_layer)
             {
@@ -1574,6 +1602,9 @@ namespace
 
         VkInstanceCreateInfo create_info = {};
         create_info.sType = VK_STRUCTURE_TYPE_INSTANCE_CREATE_INFO;
+#if LL_DARWIN
+        create_info.flags = VK_INSTANCE_CREATE_ENUMERATE_PORTABILITY_BIT_KHR;
+#endif
         create_info.pApplicationInfo = &app_info;
         create_info.enabledLayerCount = (U32)layers.size();
         create_info.ppEnabledLayerNames = layers.data();
@@ -1607,6 +1638,7 @@ namespace
 
         if (result != VK_SUCCESS)
         {
+            LL_WARNS("Vulkan") << "vkCreateInstance failed result=" << result << LL_ENDL;
             return false;
         }
 
@@ -1796,7 +1828,6 @@ namespace
             enabled_features.imageCubeArray = VK_TRUE;
             sImageCubeArrayEnabled = true;
         }
-
         if (supported_features.fillModeNonSolid)
         {
             enabled_features.fillModeNonSolid = VK_TRUE;
@@ -3062,12 +3093,31 @@ namespace
         }
 
         VkResult result = vkCreatePipelineCache(sDevice, &info, nullptr, &sPipelineCache);
-        if (result != VK_SUCCESS)
+        if (result == VK_SUCCESS)
         {
-            return false;
+            return true;
         }
 
-        return true;
+        // Pipeline-cache contents are implementation specific. In particular,
+        // a cache written by a prior MoltenVK/Metal driver must not prevent a
+        // Vulkan-only launch after either component changes.
+        if (info.initialDataSize != 0)
+        {
+            LL_WARNS("Vulkan") << "vkCreatePipelineCache rejected cached data result=" << result
+                               << "; retrying with an empty cache" << LL_ENDL;
+            pcache::sBlob.clear();
+            info.initialDataSize = 0;
+            info.pInitialData    = nullptr;
+            result = vkCreatePipelineCache(sDevice, &info, nullptr, &sPipelineCache);
+            if (result == VK_SUCCESS)
+            {
+                return true;
+            }
+        }
+
+        LL_WARNS("Vulkan") << "vkCreatePipelineCache failed result=" << result << LL_ENDL;
+        sPipelineCache = VK_NULL_HANDLE;
+        return false;
     }
 
     bool createVmaAllocator()
@@ -4072,6 +4122,10 @@ namespace
         if (sDevice == VK_NULL_HANDLE || sPhysicalDevice == VK_NULL_HANDLE ||
             sSurface == VK_NULL_HANDLE)
         {
+            LL_WARNS("Vulkan") << "swapchain prerequisites missing: device="
+                               << (sDevice != VK_NULL_HANDLE) << " physical_device="
+                               << (sPhysicalDevice != VK_NULL_HANDLE) << " surface="
+                               << (sSurface != VK_NULL_HANDLE) << LL_ENDL;
             return false;
         }
 
@@ -4080,6 +4134,7 @@ namespace
                                                                    sSurface, &caps);
         if (cres != VK_SUCCESS)
         {
+            LL_WARNS("Vulkan") << "vkGetPhysicalDeviceSurfaceCapabilitiesKHR failed result=" << cres << LL_ENDL;
             return false;
         }
 
@@ -4088,6 +4143,7 @@ namespace
                                               &format_count, nullptr);
         if (format_count == 0)
         {
+            LL_WARNS("Vulkan") << "surface reports no usable formats" << LL_ENDL;
             return false;
         }
         std::vector<VkSurfaceFormatKHR> formats(format_count);
@@ -4147,14 +4203,35 @@ namespace
                              : "FIFO (vsync ON)") << LL_ENDL;
 
         VkExtent2D extent;
-        if (caps.currentExtent.width != UINT32_MAX)
+#if LL_DARWIN
+        // MoltenVK may report currentExtent in logical points while the
+        // CAMetalLayer drawable is in backing pixels. Always use the native
+        // window's backing-pixel size when it is available. Otherwise a
+        // Retina display presents into one quarter of the layer and leaves
+        // input coordinates out of sync with the visible UI.
+        LLCoordWindow drawable_size;
+        const bool have_drawable_extent =
+            sSurfaceWindow != nullptr && sSurfaceWindow->getSize(&drawable_size) &&
+            drawable_size.mX > 0 && drawable_size.mY > 0;
+        if (have_drawable_extent)
         {
-            extent = caps.currentExtent;
+            extent.width  = (U32)drawable_size.mX;
+            extent.height = (U32)drawable_size.mY;
+            LL_INFOS("Vulkan") << "macOS swapchain drawable extent="
+                               << extent.width << "x" << extent.height
+                               << " (surface extent=" << caps.currentExtent.width
+                               << "x" << caps.currentExtent.height << ")" << LL_ENDL;
         }
         else
+#endif
         {
             U32 w = 1280;
             U32 h = 720;
+            if (caps.currentExtent.width != UINT32_MAX)
+            {
+                w = caps.currentExtent.width;
+                h = caps.currentExtent.height;
+            }
             if (w < caps.minImageExtent.width)  w = caps.minImageExtent.width;
             if (h < caps.minImageExtent.height) h = caps.minImageExtent.height;
             if (w > caps.maxImageExtent.width)  w = caps.maxImageExtent.width;
@@ -4162,6 +4239,11 @@ namespace
             extent.width  = w;
             extent.height = h;
         }
+
+        if (extent.width < caps.minImageExtent.width)  extent.width = caps.minImageExtent.width;
+        if (extent.height < caps.minImageExtent.height) extent.height = caps.minImageExtent.height;
+        if (extent.width > caps.maxImageExtent.width)  extent.width = caps.maxImageExtent.width;
+        if (extent.height > caps.maxImageExtent.height) extent.height = caps.maxImageExtent.height;
 
         U32 image_count = caps.minImageCount + 1;
         if (caps.maxImageCount > 0 && image_count > caps.maxImageCount)
@@ -4188,6 +4270,8 @@ namespace
         VkResult res = vkCreateSwapchainKHR(sDevice, &ci, nullptr, &sSwapchain);
         if (res != VK_SUCCESS)
         {
+            LL_WARNS("Vulkan") << "vkCreateSwapchainKHR failed result=" << res
+                               << " extent=" << extent.width << "x" << extent.height << LL_ENDL;
             sSwapchain = VK_NULL_HANDLE;
             return false;
         }
@@ -4223,6 +4307,8 @@ namespace
                                               &sSwapchainImageViews[i]);
             if (vres != VK_SUCCESS)
             {
+                LL_WARNS("Vulkan") << "vkCreateImageView for swapchain image " << i
+                                   << " failed result=" << vres << LL_ENDL;
                 for (U32 j = 0; j < i; ++j)
                 {
                     if (sSwapchainImageViews[j] != VK_NULL_HANDLE)
@@ -4379,20 +4465,38 @@ bool initVulkan()
         return false;
     }
 
+#if LL_DARWIN
+    const std::string manifest_path = gDirUtilp->getAppRODataDir() + gDirUtilp->getDirDelimiter()
+                                      + "vulkan/icd.d/MoltenVK_icd.json";
+    if (!gDirUtilp->fileExists(manifest_path))
+    {
+        LL_WARNS("Vulkan") << "missing bundled driver manifest: " << manifest_path << LL_ENDL;
+        return false;
+    }
+    if (setenv("VK_DRIVER_FILES", manifest_path.c_str(), 1) != 0)
+    {
+        LL_WARNS("Vulkan") << "could not set VK_DRIVER_FILES errno=" << errno << LL_ENDL;
+        return false;
+    }
+    LL_INFOS("Vulkan") << "macOS Loader driver manifest: " << manifest_path << LL_ENDL;
+#endif
 
     VkResult result = volkInitialize();
     if (result != VK_SUCCESS)
     {
+        LL_WARNS("Vulkan") << "volkInitialize failed result=" << result << LL_ENDL;
         return false;
     }
 
     if (!createInstance())
     {
+        LL_WARNS("Vulkan") << "instance creation failed" << LL_ENDL;
         return false;
     }
 
     if (!selectPhysicalDevice() || !selectQueueFamily() || !createDevice())
     {
+        LL_WARNS("Vulkan") << "physical device, graphics queue, or logical device initialization failed" << LL_ENDL;
         if (sDebugMessenger != VK_NULL_HANDLE && vkDestroyDebugUtilsMessengerEXT != nullptr)
         {
             vkDestroyDebugUtilsMessengerEXT(sInstance, sDebugMessenger, nullptr);
@@ -4408,34 +4512,83 @@ bool initVulkan()
 
     if (!createPipelineCacheStorage())
     {
+        LL_WARNS("Vulkan") << "initialization failed: pipeline cache storage" << LL_ENDL;
         shutdownVulkan();
         return false;
     }
 
-    if (!createCommandPool() || !createDefaultFallbackImage() || !createPipelineCache())
+    if (!createCommandPool())
     {
+        LL_WARNS("Vulkan") << "initialization failed: command pool" << LL_ENDL;
+        shutdownVulkan();
+        return false;
+    }
+    if (!createDefaultFallbackImage())
+    {
+        LL_WARNS("Vulkan") << "initialization failed: 2D fallback image" << LL_ENDL;
+        shutdownVulkan();
+        return false;
+    }
+    if (!createPipelineCache())
+    {
+        LL_WARNS("Vulkan") << "initialization failed: pipeline cache" << LL_ENDL;
         shutdownVulkan();
         return false;
     }
 
     if (!createVmaAllocator())
     {
+        LL_WARNS("Vulkan") << "initialization failed: VMA allocator" << LL_ENDL;
         shutdownVulkan();
         return false;
     }
 
-    if (!createDefaultFallbackCubeArrayImage() || !createDefaultFallbackCubeImage() || !createDefaultFallback3DImage()
-        || !createDefaultFallbackShadowImage())
+    if (!createDefaultFallbackCubeArrayImage())
     {
+        LL_WARNS("Vulkan") << "initialization failed: cube-array fallback image" << LL_ENDL;
+        shutdownVulkan();
+        return false;
+    }
+    if (!createDefaultFallbackCubeImage())
+    {
+        LL_WARNS("Vulkan") << "initialization failed: cube fallback image" << LL_ENDL;
+        shutdownVulkan();
+        return false;
+    }
+    if (!createDefaultFallback3DImage())
+    {
+        LL_WARNS("Vulkan") << "initialization failed: 3D fallback image" << LL_ENDL;
+        shutdownVulkan();
+        return false;
+    }
+    if (!createDefaultFallbackShadowImage())
+    {
+        LL_WARNS("Vulkan") << "initialization failed: shadow fallback image" << LL_ENDL;
         shutdownVulkan();
         return false;
     }
 
-    if (!createPerFrameDescriptorSetLayout() ||
-        !createPerFrameUbos()                ||
-        !initSharedDynamicPersistentUBOs()   ||
-        !createPerFrameDescriptorSets())
+    if (!createPerFrameDescriptorSetLayout())
     {
+        LL_WARNS("Vulkan") << "initialization failed: per-frame descriptor layout" << LL_ENDL;
+        shutdownVulkan();
+        return false;
+    }
+    if (!createPerFrameUbos())
+    {
+        LL_WARNS("Vulkan") << "initialization failed: per-frame UBOs" << LL_ENDL;
+        shutdownVulkan();
+        return false;
+    }
+    if (!initSharedDynamicPersistentUBOs())
+    {
+        LL_WARNS("Vulkan") << "initialization failed: shared persistent UBOs" << LL_ENDL;
+        shutdownVulkan();
+        return false;
+    }
+    if (!createPerFrameDescriptorSets())
+    {
+        LL_WARNS("Vulkan") << "initialization failed: per-frame descriptor sets" << LL_ENDL;
         shutdownVulkan();
         return false;
     }
@@ -4450,6 +4603,7 @@ bool initVulkan()
 
     if (!createStandardSampler())
     {
+        LL_WARNS("Vulkan") << "initialization failed: standard sampler" << LL_ENDL;
         shutdownVulkan();
         return false;
     }
@@ -4458,6 +4612,7 @@ bool initVulkan()
 
     if (!createSyncObjects())
     {
+        LL_WARNS("Vulkan") << "initialization failed: synchronization objects" << LL_ENDL;
         shutdownVulkan();
         return false;
     }
@@ -4465,6 +4620,7 @@ bool initVulkan()
     peStart();
 
     sInitialized = true;
+    LL_INFOS("Vulkan") << "initialized device=" << sPhysicalDeviceProperties.deviceName << LL_ENDL;
     if (getenv("AYASTORM_PAR_SELFTEST") != nullptr)
     {
         LLVKContract::runParallelSelfTest();
@@ -6543,59 +6699,12 @@ bool ensureScenePerDrawDescriptorSet(const ScenePerDrawBindings& b,
             }
         }
 
-        VkDescriptorBufferInfo shared_ubo_infos[11]  = {};
-        VkWriteDescriptorSet   shared_ubo_writes[11] = {};
-        U32                    shared_count          = 0;
-
-        auto add_shared_ubo = [&](U32 binding, VkBuffer buf, VkDeviceSize size)
-        {
-            if (buf == VK_NULL_HANDLE || size == 0)
-            {
-                return;
-            }
-            if (binding < 64 && ((b.layout_binding_mask >> binding) & 1) == 0)
-            {
-                return;
-            }
-            shared_ubo_infos[shared_count].buffer = buf;
-            shared_ubo_infos[shared_count].offset = 0;
-            shared_ubo_infos[shared_count].range  = size;
-
-            shared_ubo_writes[shared_count].sType           = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
-            shared_ubo_writes[shared_count].dstSet          = target_set;
-            shared_ubo_writes[shared_count].dstBinding      = binding;
-            shared_ubo_writes[shared_count].dstArrayElement = 0;
-            shared_ubo_writes[shared_count].descriptorCount = 1;
-            shared_ubo_writes[shared_count].descriptorType  = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
-            shared_ubo_writes[shared_count].pBufferInfo     = &shared_ubo_infos[shared_count];
-            ++shared_count;
-        };
-
-        VkBuffer sbuf = VK_NULL_HANDLE; void* smap = nullptr;
-        if (getSharedWindlightAtmosUBO(sbuf, smap)) add_shared_ubo(8,  sbuf, sizeof(WindlightAtmos_PerProgramBind));
-        sbuf = VK_NULL_HANDLE; smap = nullptr;
-        if (getSharedWindlightSkyUBO(sbuf, smap))   add_shared_ubo(9,  sbuf, sizeof(WindlightSky_PerProgramBind));
-        sbuf = VK_NULL_HANDLE; smap = nullptr;
-        if (getSharedWindlightHDRUBO(sbuf, smap))   add_shared_ubo(10, sbuf, sizeof(WindlightHDR_PerProgramBind));
-        sbuf = VK_NULL_HANDLE; smap = nullptr;
-        if (getSharedWindlightLightUBO(sbuf, smap)) add_shared_ubo(11, sbuf, sizeof(WindlightLight_PerProgramBind));
-        sbuf = VK_NULL_HANDLE; smap = nullptr;
-        if (getSharedWaterFogUBO(sbuf, smap))       add_shared_ubo(14, sbuf, sizeof(WaterFog_PerProgramBind));
-        sbuf = VK_NULL_HANDLE; smap = nullptr;
-        if (getSharedGlobalFUBO(sbuf, smap))        add_shared_ubo(18, sbuf, sizeof(GlobalF_PerProgramBind));
-        sbuf = VK_NULL_HANDLE; smap = nullptr;
-        if (getSharedAoUtilUBO(sbuf, smap))         add_shared_ubo(22, sbuf, sizeof(AoUtil_PerProgramBind));
-        sbuf = VK_NULL_HANDLE; smap = nullptr;
-        if (getSharedTonemapUtilFUBO(sbuf, smap))   add_shared_ubo(26, sbuf, sizeof(TonemapUtilF_PerProgramBind));
-        sbuf = VK_NULL_HANDLE; smap = nullptr;
-        if (getSharedDeferredUtilUBO(sbuf, smap))   add_shared_ubo(30, sbuf, sizeof(DeferredUtil_PerProgramBind));
-        sbuf = VK_NULL_HANDLE; smap = nullptr;
-        if (getSharedShadowUtilUBO(sbuf, smap))     add_shared_ubo(31, sbuf, sizeof(ShadowUtil_PerProgramBind));
-
-        if (shared_count > 0)
-        {
-            vkUpdateDescriptorSets(sDevice, shared_count, shared_ubo_writes, 0, nullptr);
-        }
+        // `b.ubo_writes` is populated from every UBO entry in the exact
+        // descriptor-set layout by LLGLSLShader. Do not issue a second,
+        // hard-coded update for a subset of shared UBO bindings here: it
+        // rewrites descriptors already set above and bypasses that layout's
+        // declared descriptor type. MoltenVK crashed while processing this
+        // duplicate update for the deferred terrain layout.
     }
 
     lane.lru.push_back(key);
@@ -10724,6 +10833,10 @@ bool createCubeArrayImageVk(U32          resolution,
     if (sAllocator == VK_NULL_HANDLE || sDevice == VK_NULL_HANDLE ||
         sCommandPool == VK_NULL_HANDLE || sGraphicsQueue == VK_NULL_HANDLE)
     {
+        LL_WARNS("Vulkan") << "cube-array image prerequisites missing: allocator="
+                           << (sAllocator != VK_NULL_HANDLE) << " device=" << (sDevice != VK_NULL_HANDLE)
+                           << " command_pool=" << (sCommandPool != VK_NULL_HANDLE)
+                           << " graphics_queue=" << (sGraphicsQueue != VK_NULL_HANDLE) << LL_ENDL;
         return false;
     }
 
@@ -10754,6 +10867,7 @@ bool createCubeArrayImageVk(U32          resolution,
     VkResult r = vmaCreateImage(sAllocator, &ici, &aci, &image, &allocation, nullptr);
     if (r != VK_SUCCESS)
     {
+        LL_WARNS("Vulkan") << "vmaCreateImage for cube-array fallback failed result=" << r << LL_ENDL;
         return false;
     }
 
@@ -10776,6 +10890,7 @@ bool createCubeArrayImageVk(U32          resolution,
     r = vkCreateImageView(sDevice, &vci, nullptr, &view);
     if (r != VK_SUCCESS)
     {
+        LL_WARNS("Vulkan") << "vkCreateImageView for cube-array fallback failed result=" << r << LL_ENDL;
         vmaDestroyImage(sAllocator, image, allocation);
         return false;
     }
@@ -12043,6 +12158,7 @@ bool initSurface(LLWindow* window)
 {
     if (!sInitialized)
     {
+        LL_WARNS("Vulkan") << "surface initialization requested before Vulkan initialization completed" << LL_ENDL;
         return false;
     }
     if (sSurface != VK_NULL_HANDLE)
@@ -12051,6 +12167,7 @@ bool initSurface(LLWindow* window)
     }
     if (!window)
     {
+        LL_WARNS("Vulkan") << "surface initialization requested without a native window" << LL_ENDL;
         return false;
     }
 
@@ -12091,23 +12208,31 @@ bool initSurface(LLWindow* window)
         ci.pLayer = static_cast<const CAMetalLayer*>(handles.native_window);
         if (vkCreateMetalSurfaceEXT == nullptr)
         {
+            LL_WARNS("Vulkan") << "VK_EXT_metal_surface entry point is unavailable" << LL_ENDL;
             return false;
         }
         result = vkCreateMetalSurfaceEXT(sInstance, &ci, nullptr, &sSurface);
     }
     else
     {
+        LL_WARNS("Vulkan") << "macOS window did not provide a CAMetalLayer" << LL_ENDL;
         return false;
     }
 #else
+    LL_WARNS("Vulkan") << "no Vulkan window-surface platform was compiled for this target" << LL_ENDL;
     return false;
 #endif
 
     if (result != VK_SUCCESS || sSurface == VK_NULL_HANDLE)
     {
+        LL_WARNS("Vulkan") << "vkCreate*SurfaceKHR failed result=" << result << LL_ENDL;
         sSurface = VK_NULL_HANDLE;
         return false;
     }
+
+    sSurfaceWindow = window;
+
+    LL_INFOS("Vulkan") << "Vulkan presentation surface initialized" << LL_ENDL;
 
     return true;
 }
@@ -12119,6 +12244,7 @@ void shutdownSurface()
         vkDestroySurfaceKHR(sInstance, sSurface, nullptr);
         sSurface = VK_NULL_HANDLE;
     }
+    sSurfaceWindow = nullptr;
 }
 
 VkSurfaceKHR getSurface()
@@ -12433,10 +12559,12 @@ bool initSwapchain()
 {
     if (!sInitialized)
     {
+        LL_WARNS("Vulkan") << "swapchain initialization requested before Vulkan initialization completed" << LL_ENDL;
         return false;
     }
     if (sSurface == VK_NULL_HANDLE)
     {
+        LL_WARNS("Vulkan") << "swapchain initialization requested without a presentation surface" << LL_ENDL;
         return false;
     }
     if (sSwapchain != VK_NULL_HANDLE)
