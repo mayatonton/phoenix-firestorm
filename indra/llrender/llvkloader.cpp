@@ -6294,59 +6294,12 @@ bool ensureScenePerDrawDescriptorSet(const ScenePerDrawBindings& b,
             }
         }
 
-        VkDescriptorBufferInfo shared_ubo_infos[11]  = {};
-        VkWriteDescriptorSet   shared_ubo_writes[11] = {};
-        U32                    shared_count          = 0;
-
-        auto add_shared_ubo = [&](U32 binding, VkBuffer buf, VkDeviceSize size)
-        {
-            if (buf == VK_NULL_HANDLE || size == 0)
-            {
-                return;
-            }
-            if (binding < 64 && ((b.layout_binding_mask >> binding) & 1) == 0)
-            {
-                return;
-            }
-            shared_ubo_infos[shared_count].buffer = buf;
-            shared_ubo_infos[shared_count].offset = 0;
-            shared_ubo_infos[shared_count].range  = size;
-
-            shared_ubo_writes[shared_count].sType           = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
-            shared_ubo_writes[shared_count].dstSet          = target_set;
-            shared_ubo_writes[shared_count].dstBinding      = binding;
-            shared_ubo_writes[shared_count].dstArrayElement = 0;
-            shared_ubo_writes[shared_count].descriptorCount = 1;
-            shared_ubo_writes[shared_count].descriptorType  = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
-            shared_ubo_writes[shared_count].pBufferInfo     = &shared_ubo_infos[shared_count];
-            ++shared_count;
-        };
-
-        VkBuffer sbuf = VK_NULL_HANDLE; void* smap = nullptr;
-        if (getSharedWindlightAtmosUBO(sbuf, smap)) add_shared_ubo(8,  sbuf, sizeof(WindlightAtmos_PerProgramBind));
-        sbuf = VK_NULL_HANDLE; smap = nullptr;
-        if (getSharedWindlightSkyUBO(sbuf, smap))   add_shared_ubo(9,  sbuf, sizeof(WindlightSky_PerProgramBind));
-        sbuf = VK_NULL_HANDLE; smap = nullptr;
-        if (getSharedWindlightHDRUBO(sbuf, smap))   add_shared_ubo(10, sbuf, sizeof(WindlightHDR_PerProgramBind));
-        sbuf = VK_NULL_HANDLE; smap = nullptr;
-        if (getSharedWindlightLightUBO(sbuf, smap)) add_shared_ubo(11, sbuf, sizeof(WindlightLight_PerProgramBind));
-        sbuf = VK_NULL_HANDLE; smap = nullptr;
-        if (getSharedWaterFogUBO(sbuf, smap))       add_shared_ubo(14, sbuf, sizeof(WaterFog_PerProgramBind));
-        sbuf = VK_NULL_HANDLE; smap = nullptr;
-        if (getSharedGlobalFUBO(sbuf, smap))        add_shared_ubo(18, sbuf, sizeof(GlobalF_PerProgramBind));
-        sbuf = VK_NULL_HANDLE; smap = nullptr;
-        if (getSharedAoUtilUBO(sbuf, smap))         add_shared_ubo(22, sbuf, sizeof(AoUtil_PerProgramBind));
-        sbuf = VK_NULL_HANDLE; smap = nullptr;
-        if (getSharedTonemapUtilFUBO(sbuf, smap))   add_shared_ubo(26, sbuf, sizeof(TonemapUtilF_PerProgramBind));
-        sbuf = VK_NULL_HANDLE; smap = nullptr;
-        if (getSharedDeferredUtilUBO(sbuf, smap))   add_shared_ubo(30, sbuf, sizeof(DeferredUtil_PerProgramBind));
-        sbuf = VK_NULL_HANDLE; smap = nullptr;
-        if (getSharedShadowUtilUBO(sbuf, smap))     add_shared_ubo(31, sbuf, sizeof(ShadowUtil_PerProgramBind));
-
-        if (shared_count > 0)
-        {
-            vkUpdateDescriptorSets(sDevice, shared_count, shared_ubo_writes, 0, nullptr);
-        }
+        // `b.ubo_writes` is populated from every UBO entry in the exact
+        // descriptor-set layout by LLGLSLShader. Do not issue a second,
+        // hard-coded update for a subset of shared UBO bindings here: it
+        // rewrites descriptors already set above and bypasses that layout's
+        // declared descriptor type. MoltenVK crashed while processing this
+        // duplicate update for the deferred terrain layout.
     }
 
     lane.lru.push_back(key);
