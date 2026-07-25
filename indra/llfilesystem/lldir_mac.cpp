@@ -64,8 +64,6 @@ LLDir_Mac::LLDir_Mac()
 {
     mDirDelimiter = "/";
 
-    const std::string     secondLifeString = "Firestorm";
-
     std::string executablepathstr = getSystemExecutableFolder();
 
     //NOTE:  LLINFOS/LLERRS will not output to log here.  The streams are not initialized.
@@ -95,6 +93,7 @@ LLDir_Mac::LLDir_Mac()
         // If this is really for skins, it should JUST apply to skins.
 
         std::string::size_type build_dir_pos = mExecutableDir.rfind("/build-darwin-");
+        const bool running_from_dev_tree = build_dir_pos != std::string::npos;
         if (build_dir_pos != std::string::npos)
         {
             // ...we're in a dev checkout
@@ -109,12 +108,17 @@ LLDir_Mac::LLDir_Mac()
             mSkinBaseDir = mAppRODataDir + mDirDelimiter + "skins";
         }
 
+        // Keep development builds isolated from installed AYAstorm releases.
+        const std::string profile_directory = running_from_dev_tree
+            ? "AYAstorm-dev"
+            : "AYAstorm";
+
         // mOSUserDir
         std::string appdir = getSystemApplicationSupportFolder();
         std::string rootdir;
 
         //Create root directory
-        if (CreateDirectory(appdir, secondLifeString, &rootdir))
+        if (CreateDirectory(appdir, profile_directory, &rootdir))
         {
 
             // Save the full path to the folder
@@ -135,7 +139,7 @@ LLDir_Mac::LLDir_Mac()
             //TODO:  This changes from ~/Library/Cache/Secondlife to ~/Library/Cache/com.app.secondlife/Secondlife.  Last dir level could go away.
             //<FS:TS> Adjust the cache directory to match what's expected in lldir.
             //CreateDirectory(mOSCacheDir, secondLifeString, NULL);
-            std::string FSCacheDirName = secondLifeString;
+            std::string FSCacheDirName = profile_directory;
             // This was lifted from Cinder's fix for FIRE-8226.
 #ifdef OPENSIM
   #if ADDRESS_SIZE == 64
@@ -160,7 +164,7 @@ LLDir_Mac::LLDir_Mac()
         std::string tmpdir = getSystemTempFolder();
         if (!tmpdir.empty())
         {
-            CreateDirectory(tmpdir, secondLifeString, &mTempDir);
+            CreateDirectory(tmpdir, profile_directory, &mTempDir);
         }
 
         mWorkingDir = getCurPath();
