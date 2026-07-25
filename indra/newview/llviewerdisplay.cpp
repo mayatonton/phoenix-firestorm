@@ -262,6 +262,14 @@ void display_update_camera()
 void display_stats()
 {
     LL_PROFILE_ZONE_SCOPED;
+    static LLTimer s_frame_interval_timer;
+    static std::vector<F32> s_frame_times_ms;
+    const F32 frame_ms = s_frame_interval_timer.getElapsedTimeF32() * 1000.f;
+    s_frame_interval_timer.reset();
+    if (frame_ms > 0.f && frame_ms < 60000.f && s_frame_times_ms.size() < 16384)
+    {
+        s_frame_times_ms.push_back(frame_ms);
+    }
     constexpr F32 FPS_LOG_FREQUENCY = 10.f;
     if (gRecentFPSTime.getElapsedTimeF32() >= FPS_LOG_FREQUENCY)
     {
@@ -271,6 +279,20 @@ void display_stats()
         F64 normalized_period_jitter = recording.getLastValue(LLStatViewer::NORMALIZED_FRAMTIME_JITTER_PERIOD);
         F32 fps = gRecentFrameCount / FPS_LOG_FREQUENCY;
         LL_INFOS() << llformat("FPS: %.02f SESSION JITTER: %.4f PERIOD JITTER: %.4f", fps, normalized_session_jitter, normalized_period_jitter) << LL_ENDL;
+        if (!s_frame_times_ms.empty())
+        {
+            std::sort(s_frame_times_ms.begin(), s_frame_times_ms.end());
+            const size_t n = s_frame_times_ms.size();
+            F64 sum = 0.0;
+            for (F32 v : s_frame_times_ms) { sum += v; }
+            const F32 avg = (F32)(sum / (F64)n);
+            const F32 p95 = s_frame_times_ms[llmin(n - 1, (size_t)((F64)n * 0.95))];
+            const F32 p99 = s_frame_times_ms[llmin(n - 1, (size_t)((F64)n * 0.99))];
+            const F32 mx  = s_frame_times_ms.back();
+            LL_INFOS() << llformat("FRAMETIME ms: avg %.2f p95 %.2f p99 %.2f max %.2f n %d",
+                                   avg, p95, p99, mx, (S32)n) << LL_ENDL;
+            s_frame_times_ms.clear();
+        }
         gRecentFrameCount = 0;
         gRecentFPSTime.reset();
     }

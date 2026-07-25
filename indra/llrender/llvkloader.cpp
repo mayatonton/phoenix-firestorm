@@ -688,6 +688,16 @@ namespace
     VkImageLayout sSwapchainDepthLayout = VK_IMAGE_LAYOUT_UNDEFINED;
 
     std::atomic<bool> sSwapchainRecreatePending{false};
+    enum : U32
+    {
+        RECREATE_REASON_RESIZE          = 1,
+        RECREATE_REASON_ACQ_SUBOPTIMAL  = 2,
+        RECREATE_REASON_ACQ_OUT_OF_DATE = 4,
+        RECREATE_REASON_PRS_SUBOPTIMAL  = 8,
+        RECREATE_REASON_PRS_OUT_OF_DATE = 16,
+        RECREATE_REASON_VSYNC_SETTING   = 32
+    };
+    std::atomic<U32> sRecreateReasonMask{0};
     U32  sPendingResizeWidth       = 0;
     U32  sPendingResizeHeight      = 0;
     U32  sMonotonicFrameCount      = 0;
@@ -922,6 +932,31 @@ namespace
 
     void peExecute(PEJob& job)
     {
+        if (sVkDeviceLost.load(std::memory_order_acquire))
+        {
+            if (job.is_frame)
+            {
+                {
+                    std::lock_guard<std::mutex> lk(sPESlotMutex);
+                    sPESlotState[job.slot].store(PE_SLOT_FAILED);
+                }
+                sPESlotCv.notify_all();
+            }
+            else if (job.is_oneshot && job.fence != VK_NULL_HANDLE)
+            {
+                std::lock_guard<std::mutex> lk(sPEFailedMutex);
+                sPEFailedOneShotFences.push_back(job.fence);
+            }
+            static bool s_lost_skip_logged = false;
+            if (!s_lost_skip_logged)
+            {
+                s_lost_skip_logged = true;
+                LL_WARNS("Vulkan") << "PresentEngine: device lost — all further submits skipped"
+                                   << " (first skipped: is_frame=" << (job.is_frame ? 1 : 0)
+                                   << " is_oneshot=" << (job.is_oneshot ? 1 : 0) << ")" << LL_ENDL;
+            }
+            return;
+        }
         VkSubmitInfo si = {};
         si.sType = VK_STRUCTURE_TYPE_SUBMIT_INFO;
         std::vector<VkCommandBuffer> submit_cmds;
@@ -1048,6 +1083,9 @@ namespace
                     std::chrono::steady_clock::now() - p0).count();
                 if (pr == VK_ERROR_OUT_OF_DATE_KHR || pr == VK_SUBOPTIMAL_KHR)
                 {
+                    sRecreateReasonMask.fetch_or((pr == VK_SUBOPTIMAL_KHR)
+                                                     ? RECREATE_REASON_PRS_SUBOPTIMAL
+                                                     : RECREATE_REASON_PRS_OUT_OF_DATE);
                     sSwapchainRecreatePending = true;
                 }
                 else if (pr == VK_ERROR_DEVICE_LOST)
@@ -4535,8 +4573,17 @@ namespace
             return false;
         }
 
+        const U32        reason_mask = sRecreateReasonMask.exchange(0);
+        const VkExtent2D old_extent  = sSwapchainExtent;
+        const U32 frames_since_last  = (sLastRecreateFrame == 0)
+                                           ? 0
+                                           : (sMonotonicFrameCount - sLastRecreateFrame);
+
+        const auto drain_t0 = std::chrono::steady_clock::now();
         peDrain();
+        const auto drain_t1 = std::chrono::steady_clock::now();
         vkDeviceWaitIdle(sDevice);
+        const auto drain_t2 = std::chrono::steady_clock::now();
         for (VkImageView& view : sSwapchainImageViews)
         {
             if (view != VK_NULL_HANDLE)
@@ -4563,6 +4610,22 @@ namespace
         sSwapchainRecreatePending = false;
         sLastRecreateFrame        = sMonotonicFrameCount;
 
+        std::string reasons;
+        if (reason_mask & RECREATE_REASON_RESIZE)          { reasons += "resize,"; }
+        if (reason_mask & RECREATE_REASON_ACQ_SUBOPTIMAL)  { reasons += "acq-suboptimal,"; }
+        if (reason_mask & RECREATE_REASON_ACQ_OUT_OF_DATE) { reasons += "acq-out-of-date,"; }
+        if (reason_mask & RECREATE_REASON_PRS_SUBOPTIMAL)  { reasons += "present-suboptimal,"; }
+        if (reason_mask & RECREATE_REASON_PRS_OUT_OF_DATE) { reasons += "present-out-of-date,"; }
+        if (reason_mask & RECREATE_REASON_VSYNC_SETTING)   { reasons += "vsync-setting,"; }
+        if (reasons.empty())                               { reasons = "unknown,"; }
+        reasons.pop_back();
+        LL_INFOS("Vulkan") << "recreateSwapchain: reason=" << reasons
+                           << " old=" << old_extent.width << "x" << old_extent.height
+                           << " new=" << sSwapchainExtent.width << "x" << sSwapchainExtent.height
+                           << " frames_since_last=" << frames_since_last
+                           << " drain_us=" << std::chrono::duration_cast<std::chrono::microseconds>(drain_t1 - drain_t0).count()
+                           << " wait_idle_us=" << std::chrono::duration_cast<std::chrono::microseconds>(drain_t2 - drain_t1).count()
+                           << " ok=" << (ok ? 1 : 0) << LL_ENDL;
 
         return ok;
     }
@@ -5198,7 +5261,10 @@ void shutdownSwapchainAndSurface()
 {
     if (sDevice != VK_NULL_HANDLE)
     {
-        vkDeviceWaitIdle(sDevice);
+        if (!sVkDeviceLost.load(std::memory_order_acquire))
+        {
+            vkDeviceWaitIdle(sDevice);
+        }
         auxWindowShutdownVk();
         destroySwapchain();
     }
@@ -5369,6 +5435,7 @@ bool beginFrame(bool acquire_swapchain)
         }
         else
         {
+            sRecreateReasonMask.fetch_or(RECREATE_REASON_RESIZE);
             sSwapchainRecreatePending = true;
         }
     }
@@ -5454,11 +5521,13 @@ bool beginFrame(bool acquire_swapchain)
             sImageAcquired = true;
             if (acquire_res == VK_SUBOPTIMAL_KHR)
             {
+                sRecreateReasonMask.fetch_or(RECREATE_REASON_ACQ_SUBOPTIMAL);
                 sSwapchainRecreatePending = true;
             }
         }
         else if (acquire_res == VK_ERROR_OUT_OF_DATE_KHR)
         {
+            sRecreateReasonMask.fetch_or(RECREATE_REASON_ACQ_OUT_OF_DATE);
             sSwapchainRecreatePending = true;
         }
     }
@@ -6403,6 +6472,7 @@ bool isVulkanInitialized()
 void setVsyncEnabled(bool enabled)
 {
     sVsyncEnabled.store(enabled);
+    sRecreateReasonMask.fetch_or(RECREATE_REASON_VSYNC_SETTING);
     sSwapchainRecreatePending = true;
 }
 
@@ -13438,6 +13508,7 @@ void notifyWindowResize(U32 width, U32 height)
         return;
     }
 
+    sRecreateReasonMask.fetch_or(RECREATE_REASON_RESIZE);
     sSwapchainRecreatePending = true;
 
 }

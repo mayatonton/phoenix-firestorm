@@ -814,6 +814,7 @@ void LLRender::resetVertexBuffer()
 void LLRender::shutdown()
 {
     resetVertexBuffer();
+    sVBCache.clear();
 }
 
 void LLRender::refreshState(void)
