@@ -4419,7 +4419,7 @@ namespace
         if (extent.width > caps.maxImageExtent.width)  extent.width = caps.maxImageExtent.width;
         if (extent.height > caps.maxImageExtent.height) extent.height = caps.maxImageExtent.height;
 
-        U32 image_count = caps.minImageCount + 1;
+        U32 image_count = caps.minImageCount + FRAMES_IN_FLIGHT - 1;
         if (caps.maxImageCount > 0 && image_count > caps.maxImageCount)
         {
             image_count = caps.maxImageCount;
@@ -12596,7 +12596,7 @@ static bool auxCreateSwapchain()
         return false;
     }
 
-    U32 image_count = caps.minImageCount + 1;
+    U32 image_count = caps.minImageCount + FRAMES_IN_FLIGHT - 1;
     if (caps.maxImageCount > 0 && image_count > caps.maxImageCount)
     {
         image_count = caps.maxImageCount;
