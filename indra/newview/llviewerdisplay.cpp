@@ -1625,8 +1625,7 @@ void render_ui(F32 zoom_factor, int subfield)
     }
 
     // apply gamma correction and post effects
-    static const bool s_uiscene = (getenv("AYASTORM_UISCENE") != nullptr);
-    const bool uiscene_present = s_uiscene && !gPipeline.mVkSnapshotRedirectTarget && !gSnapshot
+    const bool uiscene_present = !gPipeline.mVkSnapshotRedirectTarget && !gSnapshot
                                  && (LLStartUp::getStartupState() == STATE_STARTED);
     const bool aya_async    = uiscene_present && LLVKLoader::isUISceneAsync()
                               && LLVKLoader::asyncFrameEngaged();

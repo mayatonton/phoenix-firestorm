@@ -57,7 +57,7 @@
 
 ---
 ## OPEN(実装中に確定・申告必須)
-- **#5 3D HUD/attachments 帰属**(`render_ui_3d`・`gGLLastModelView` snapshot 使用): 設計者裁定 = **Consumer 側**(snapshot 行列で毎 present 再実行)。2b で配置確定。実装者は実挙動を申告。
+- **#5 3D HUD/attachments 帰属**: ~~設計者裁定 = Consumer 側~~ **→ 設計 C で Producer 側に確定(2026-07-25・AYA 受容済)**。HUD は in-place source-alpha(`lldrawpoolalpha.cpp:391`)ゆえ scene target 上必須 = producer back RT へ finalize 直後に in-place 描画。3D HUD/name tag/selection = scene cadence・2D UI = present cadence。実装 = commit `ad76d083213`・詳細 = memory `handoff_uiscene_decouple_async` §3。
 - **#4 Consumer→Producer 先行上限**: 2c で実測して固定。
 - **double-buffer の image view 登録**: front/back 両 RT の view を bindless/descriptor 側で active 解決(2c)。
 - **layout 遷移**: mScenePresentRT の color↔sampled 遷移(2a から)。
@@ -65,5 +65,5 @@
 ## 設計者の裁定(申告に記録済)
 - presentable RT = **LDR**(現 renderFinalize final と同一 = 品質トレード無し)。
 - renderFinalize 全体 = **Producer 側**(scene 依存 post を分割しない)。
-- 3D HUD = **Consumer 側**。
+- 3D HUD = **Producer 側**(設計 C・2026-07-25 改定・上記 OPEN #5 参照)。
 - **やらないこと**: L2(別スレッド)/ Snapshot-camera / world snapshot 契約 / Chat logic-offload / multi-window(Step3)。本 Brief は単一窓の L1 のみ。

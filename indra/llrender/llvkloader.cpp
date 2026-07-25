@@ -561,8 +561,8 @@ namespace
     VkCommandBuffer sConsumerCommandBuffers[FRAMES_IN_FLIGHT] = {
         VK_NULL_HANDLE, VK_NULL_HANDLE, VK_NULL_HANDLE
     };
-    bool sUISceneSplit = (getenv("AYASTORM_UISCENE") != nullptr);
-    bool sUISceneAsync = (getenv("AYASTORM_UISCENE_ASYNC") != nullptr);
+    constexpr bool sUISceneSplit = true;
+    constexpr bool sUISceneAsync = true;
     bool sConsumerActiveThisFrame = false;
 
     VkCommandBuffer sAsyncProducerCommandBuffer = VK_NULL_HANDLE;
@@ -573,6 +573,7 @@ namespace
     bool            sAsyncFrameEngaged          = false;
     U32             sAsyncProducerSubmitMonotonic = 0;
     U32             sAsyncProducerRecordSlot      = 0;
+    U32             sAsyncProducerSubmitCount     = 0;
     VkFence sInFlightFences[FRAMES_IN_FLIGHT] = {
         VK_NULL_HANDLE, VK_NULL_HANDLE, VK_NULL_HANDLE
     };
@@ -5318,6 +5319,14 @@ bool endFrame()
             const U32 frames = sMonotonicFrameCount - s_last_frame;
             if (frames > 0)
             {
+                if (isUISceneAsync())
+                {
+                    static U32 s_last_prod = 0;
+                    const U32 prod = sAsyncProducerSubmitCount - s_last_prod;
+                    s_last_prod = sAsyncProducerSubmitCount;
+                    LL_INFOS("VkPerf") << "uiscene consumer_fps=" << ((F64)frames / elapsed)
+                                       << " producer_fps=" << ((F64)prod / elapsed) << LL_ENDL;
+                }
                 const U64 draws = gVkPerf.desc_bind.load() + gVkPerf.desc_skip.load();
                 LL_INFOS("VkPerf") << "frames=" << frames
                                    << " fps=" << ((F64)frames / elapsed)
@@ -5725,42 +5734,9 @@ bool endFrame()
             peEnqueue(std::move(apjob));
             sAsyncProducerInFlight        = true;
             sAsyncProducerSubmitMonotonic = sMonotonicFrameCount;
+            ++sAsyncProducerSubmitCount;
             sAsyncRenderSceneThisFrame    = false;
         }
-    }
-    else if (sUISceneSplit && sConsumerActiveThisFrame)
-    {
-        PEJob pjob;
-        pjob.is_frame = false;
-        pjob.slot     = sFrameIndex;
-        pjob.pre_cmds = std::move(sPendingPreFrameCmds);
-        sPendingPreFrameCmds.clear();
-        pjob.cmd      = sCommandBuffers[sFrameIndex];
-        pjob.fence    = sProducerFences[sFrameIndex];
-
-        PEJob cjob;
-        cjob.is_frame = true;
-        cjob.slot     = sFrameIndex;
-        cjob.cmd      = sConsumerCommandBuffers[sFrameIndex];
-        cjob.fence    = sInFlightFences[sFrameIndex];
-        if (sImageAcquired)
-        {
-            cjob.wait_semaphore   = sImageAvailableSemaphores[sFrameIndex];
-            cjob.signal_semaphore = sRenderFinishedSemaphores[sFrameIndex];
-            if (sSwapchain != VK_NULL_HANDLE)
-            {
-                PEPresentTarget target;
-                target.swapchain      = sSwapchain;
-                target.image_index    = sAcquiredImageIndex;
-                target.wait_semaphore = sRenderFinishedSemaphores[sFrameIndex];
-                cjob.presents.push_back(target);
-            }
-        }
-        sFrameSubmittedMonotonic[sFrameIndex] = sMonotonicFrameCount;
-        sPESlotState[sFrameIndex].store(PE_SLOT_PENDING);
-        sProducerFencePending[sFrameIndex] = true;
-        peEnqueue(std::move(cjob));
-        peEnqueue(std::move(pjob));
     }
     else
     {
