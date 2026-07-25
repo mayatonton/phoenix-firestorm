@@ -1823,7 +1823,8 @@ bool LLAppViewer::doFrame()
                         static LLAuxWindowHandlesSDL s_aux_handles;
                         static bool s_aux_done = false;
                         if (!LLVKLoader::auxWindowActiveVk() && !s_aux_done && !LLApp::isExiting()
-                            && LLVKLoader::isVulkanInitialized())
+                            && LLVKLoader::isVulkanInitialized()
+                            && LLStartUp::getStartupState() == STATE_STARTED)
                         {
                             if (!(llCreateAuxWindowSDL("AYAstorm aux", 640, 480, s_aux_handles)
                                   && LLVKLoader::auxWindowInitVk(s_aux_handles.native_display,
@@ -1831,6 +1832,10 @@ bool LLAppViewer::doFrame()
                             {
                                 llDestroyAuxWindowSDL(s_aux_handles);
                                 s_aux_done = true;
+                            }
+                            else if (gViewerWindow && gViewerWindow->getWindow())
+                            {
+                                gViewerWindow->getWindow()->bringToFront();
                             }
                         }
                         if (LLVKLoader::auxWindowActiveVk())
@@ -1841,9 +1846,75 @@ bool LLAppViewer::doFrame()
                                 llDestroyAuxWindowSDL(s_aux_handles);
                                 s_aux_done = true;
                             }
+                            else if (LLVKLoader::auxWindowBeginUIFrameVk())
+                            {
+                                const U32 s_aux_draws_before = LLVertexBuffer::sVkDrawCallCount.load();
+                                U32 aw_w = 0, aw_h = 0;
+                                LLVKLoader::auxWindowExtentVk(aw_w, aw_h);
+                                gGL.matrixMode(LLRender::MM_PROJECTION);
+                                gGL.pushMatrix();
+                                gGL.loadIdentity();
+                                gGL.ortho(0.0f, (F32)aw_w, 0.0f, (F32)aw_h, -1.0f, 1.0f);
+                                gGL.matrixMode(LLRender::MM_MODELVIEW);
+                                gGL.pushMatrix();
+                                gGL.loadIdentity();
+                                gUIProgram.bind();
+                                gGL.getTexUnit(0)->bind(LLViewerFetchedTexture::sWhiteImagep);
+                                gGL.begin(LLRender::TRIANGLES);
+                                gGL.color4f(0.9f, 0.55f, 0.1f, 1.0f);
+                                gGL.texCoord2f(0.5f, 0.5f);
+                                gGL.vertex2f(40.0f, 40.0f);
+                                gGL.texCoord2f(0.5f, 0.5f);
+                                gGL.vertex2f((F32)aw_w - 40.0f, 40.0f);
+                                gGL.texCoord2f(0.5f, 0.5f);
+                                gGL.vertex2f((F32)aw_w - 40.0f, (F32)aw_h * 0.45f);
+                                gGL.texCoord2f(0.5f, 0.5f);
+                                gGL.vertex2f(40.0f, 40.0f);
+                                gGL.texCoord2f(0.5f, 0.5f);
+                                gGL.vertex2f((F32)aw_w - 40.0f, (F32)aw_h * 0.45f);
+                                gGL.texCoord2f(0.5f, 0.5f);
+                                gGL.vertex2f(40.0f, (F32)aw_h * 0.45f);
+                                gGL.color4f(0.15f, 0.6f, 0.9f, 1.0f);
+                                gGL.texCoord2f(0.5f, 0.5f);
+                                gGL.vertex2f(40.0f, (F32)aw_h * 0.55f);
+                                gGL.texCoord2f(0.5f, 0.5f);
+                                gGL.vertex2f((F32)aw_w - 40.0f, (F32)aw_h * 0.55f);
+                                gGL.texCoord2f(0.5f, 0.5f);
+                                gGL.vertex2f((F32)aw_w - 40.0f, (F32)aw_h - 40.0f);
+                                gGL.texCoord2f(0.5f, 0.5f);
+                                gGL.vertex2f(40.0f, (F32)aw_h * 0.55f);
+                                gGL.texCoord2f(0.5f, 0.5f);
+                                gGL.vertex2f((F32)aw_w - 40.0f, (F32)aw_h - 40.0f);
+                                gGL.texCoord2f(0.5f, 0.5f);
+                                gGL.vertex2f(40.0f, (F32)aw_h - 40.0f);
+                                gGL.end();
+                                gGL.flush();
+                                gGL.getTexUnit(0)->unbind(LLTexUnit::TT_TEXTURE);
+                                gUIProgram.unbind();
+                                gGL.matrixMode(LLRender::MM_MODELVIEW);
+                                gGL.popMatrix();
+                                gGL.matrixMode(LLRender::MM_PROJECTION);
+                                gGL.popMatrix();
+                                gGL.matrixMode(LLRender::MM_MODELVIEW);
+                                LLVKLoader::auxWindowEndUIFrameVk();
+                                static U32 s_aux_frame_logs = 0;
+                                if (s_aux_frame_logs < 3)
+                                {
+                                    ++s_aux_frame_logs;
+                                    LL_WARNS("AuxWin") << "aux UI frame ok extent=" << aw_w << "x" << aw_h
+                                                       << " draw_delta=" << (LLVertexBuffer::sVkDrawCallCount.load() - s_aux_draws_before)
+                                                       << LL_ENDL;
+                                }
+                            }
                             else
                             {
-                                LLVKLoader::auxWindowPresentClearVk(0.10f, 0.15f, 0.35f);
+                                static U64 s_aux_begin_failed = 0;
+                                ++s_aux_begin_failed;
+                                if (s_aux_begin_failed == 1 || s_aux_begin_failed == 10
+                                    || s_aux_begin_failed == 100 || s_aux_begin_failed == 1000)
+                                {
+                                    LL_WARNS("AuxWin") << "aux begin failed (count=" << (S64)s_aux_begin_failed << ")" << LL_ENDL;
+                                }
                             }
                         }
                     }

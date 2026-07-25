@@ -1568,6 +1568,14 @@ void LLWindowSDL::gatherInput()
             }
             continue;
         }
+        if (event.type == SDL_WINDOWEVENT && event.window.event == SDL_WINDOWEVENT_CLOSE)
+        {
+            if (mCallbacks->handleCloseRequest(this, true))
+            {
+                mCallbacks->handleQuit(this);
+            }
+            continue;
+        }
         switch (event.type)
         {
             case SDL_SYSWMEVENT:
@@ -2553,8 +2561,11 @@ bool llCreateAuxWindowSDL(const char* title, int width, int height, LLAuxWindowH
     {
         return false;
     }
+#ifdef SDL_HINT_WINDOW_NO_ACTIVATION_WHEN_SHOWN
+    SDL_SetHint(SDL_HINT_WINDOW_NO_ACTIVATION_WHEN_SHOWN, "1");
+#endif
     SDL_Window* w = SDL_CreateWindow(title, SDL_WINDOWPOS_UNDEFINED, SDL_WINDOWPOS_UNDEFINED,
-                                     width, height, 0);
+                                     width, height, SDL_WINDOW_ALWAYS_ON_TOP | SDL_WINDOW_HIDDEN);
     if (w == nullptr)
     {
         return false;
@@ -2566,6 +2577,13 @@ bool llCreateAuxWindowSDL(const char* title, int width, int height, LLAuxWindowH
     {
         out.native_display = info.info.x11.display;
         out.native_window  = reinterpret_cast<void*>(static_cast<uintptr_t>(info.info.x11.window));
+        Display* xdpy = info.info.x11.display;
+        Window   xwin = info.info.x11.window;
+        Atom user_time_atom = XInternAtom(xdpy, "_NET_WM_USER_TIME", False);
+        unsigned long zero_time = 0;
+        XChangeProperty(xdpy, xwin, user_time_atom, XA_CARDINAL, 32, PropModeReplace,
+                        reinterpret_cast<unsigned char*>(&zero_time), 1);
+        XSync(xdpy, False);
     }
     else
     {
@@ -2576,6 +2594,7 @@ bool llCreateAuxWindowSDL(const char* title, int width, int height, LLAuxWindowH
     SDL_DestroyWindow(w);
     return false;
 #endif
+    SDL_ShowWindow(w);
     out.sdl_window    = w;
     out.sdl_window_id = SDL_GetWindowID(w);
     out.width         = width;

@@ -12333,6 +12333,29 @@ static bool auxCreateSwapchain()
     vkGetSwapchainImagesKHR(sDevice, aw.swapchain, &actual, nullptr);
     aw.images.assign(actual, VK_NULL_HANDLE);
     vkGetSwapchainImagesKHR(sDevice, aw.swapchain, &actual, aw.images.data());
+    aw.views.assign(actual, VK_NULL_HANDLE);
+    for (U32 i = 0; i < actual; ++i)
+    {
+        VkImageViewCreateInfo vci = {};
+        vci.sType                           = VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO;
+        vci.image                           = aw.images[i];
+        vci.viewType                        = VK_IMAGE_VIEW_TYPE_2D;
+        vci.format                          = aw.format;
+        vci.subresourceRange.aspectMask     = VK_IMAGE_ASPECT_COLOR_BIT;
+        vci.subresourceRange.baseMipLevel   = 0;
+        vci.subresourceRange.levelCount     = 1;
+        vci.subresourceRange.baseArrayLayer = 0;
+        vci.subresourceRange.layerCount     = 1;
+        if (vkCreateImageView(sDevice, &vci, nullptr, &aw.views[i]) != VK_SUCCESS)
+        {
+            for (U32 j = 0; j < i; ++j)
+            {
+                vkDestroyImageView(sDevice, aw.views[j], nullptr);
+            }
+            aw.views.clear();
+            return false;
+        }
+    }
     return true;
 }
 
@@ -12349,6 +12372,14 @@ static void auxDestroySwapchain()
             aw.fenceInFlight[i] = false;
         }
     }
+    for (VkImageView v : aw.views)
+    {
+        if (v != VK_NULL_HANDLE)
+        {
+            vkDestroyImageView(sDevice, v, nullptr);
+        }
+    }
+    aw.views.clear();
     aw.images.clear();
     if (aw.swapchain != VK_NULL_HANDLE)
     {
@@ -12451,6 +12482,25 @@ bool auxWindowActiveVk()
     return sAuxWindow.active;
 }
 
+static bool auxRecycleAcquireSemaphores()
+{
+    for (U32 i = 0; i < FRAMES_IN_FLIGHT; ++i)
+    {
+        if (sAuxWindow.imageAvailable[i] != VK_NULL_HANDLE)
+        {
+            vkDestroySemaphore(sDevice, sAuxWindow.imageAvailable[i], nullptr);
+            sAuxWindow.imageAvailable[i] = VK_NULL_HANDLE;
+        }
+        VkSemaphoreCreateInfo si = {};
+        si.sType = VK_STRUCTURE_TYPE_SEMAPHORE_CREATE_INFO;
+        if (vkCreateSemaphore(sDevice, &si, nullptr, &sAuxWindow.imageAvailable[i]) != VK_SUCCESS)
+        {
+            return false;
+        }
+    }
+    return true;
+}
+
 bool auxWindowPresentClearVk(F32 r, F32 g, F32 b)
 {
     AuxWindowVk& aw = sAuxWindow;
@@ -12460,8 +12510,17 @@ bool auxWindowPresentClearVk(F32 r, F32 g, F32 b)
     }
     if (aw.recreatePending)
     {
+        for (U32 i = 0; i < FRAMES_IN_FLIGHT; ++i)
+        {
+            if (aw.fenceInFlight[i])
+            {
+                vkWaitForFences(sDevice, 1, &aw.fences[i], VK_TRUE, UINT64_MAX);
+                vkResetFences(sDevice, 1, &aw.fences[i]);
+                aw.fenceInFlight[i] = false;
+            }
+        }
         auxDestroySwapchain();
-        if (!auxCreateSwapchain())
+        if (!auxCreateSwapchain() || !auxRecycleAcquireSemaphores())
         {
             return false;
         }
@@ -12536,6 +12595,240 @@ bool auxWindowPresentClearVk(F32 r, F32 g, F32 b)
     to_present.srcAccessMask = VK_ACCESS_TRANSFER_WRITE_BIT;
     to_present.dstAccessMask = 0;
     vkCmdPipelineBarrier(cmd, VK_PIPELINE_STAGE_TRANSFER_BIT, VK_PIPELINE_STAGE_BOTTOM_OF_PIPE_BIT,
+                         0, 0, nullptr, 0, nullptr, 1, &to_present);
+
+    vkEndCommandBuffer(cmd);
+
+    PEJob job;
+    job.cmd              = cmd;
+    job.fence            = aw.fences[slot];
+    job.wait_semaphore   = aw.imageAvailable[slot];
+    job.signal_semaphore = aw.renderFinished[slot];
+    PEPresentTarget target;
+    target.swapchain      = aw.swapchain;
+    target.image_index    = image_index;
+    target.wait_semaphore = aw.renderFinished[slot];
+    job.presents.push_back(target);
+    peEnqueue(std::move(job));
+    aw.fenceInFlight[slot] = true;
+    return true;
+}
+
+bool auxWindowExtentVk(U32& out_w, U32& out_h)
+{
+    if (!sAuxWindow.active)
+    {
+        return false;
+    }
+    out_w = sAuxWindow.extent.width;
+    out_h = sAuxWindow.extent.height;
+    return out_w > 0 && out_h > 0;
+}
+
+static U32  sAuxUISlot        = 0;
+static U32  sAuxUIImageIndex  = 0;
+static bool sAuxUIFrameActive = false;
+static S32  sAuxUISavedViewport[4] = {0, 0, 0, 0};
+static VkCommandBuffer            sAuxUISavedOverride   = VK_NULL_HANDLE;
+static bool                       sAuxUISavedInDR       = false;
+static VkRenderingAttachmentInfo  sAuxUISavedColor[4]   = {};
+static U32                        sAuxUISavedColorCount = 0;
+static bool                       sAuxUISavedHasDepth   = false;
+static VkRenderingAttachmentInfo  sAuxUISavedDepth      = {};
+static U32                        sAuxUISavedAreaHeight = 0;
+static U32                        sAuxUISavedRenderW    = 0;
+static U32                        sAuxUISavedRenderH    = 0;
+
+bool auxWindowBeginUIFrameVk()
+{
+    AuxWindowVk& aw = sAuxWindow;
+    if (!aw.active || sAuxUIFrameActive
+        || sVkDeviceLost.load(std::memory_order_acquire))
+    {
+        return false;
+    }
+    if (aw.recreatePending)
+    {
+        for (U32 i = 0; i < FRAMES_IN_FLIGHT; ++i)
+        {
+            if (aw.fenceInFlight[i])
+            {
+                vkWaitForFences(sDevice, 1, &aw.fences[i], VK_TRUE, UINT64_MAX);
+                vkResetFences(sDevice, 1, &aw.fences[i]);
+                aw.fenceInFlight[i] = false;
+            }
+        }
+        auxDestroySwapchain();
+        if (!auxCreateSwapchain() || !auxRecycleAcquireSemaphores())
+        {
+            return false;
+        }
+        aw.recreatePending = false;
+    }
+
+    const U32 slot = sFrameIndex % FRAMES_IN_FLIGHT;
+    if (aw.fenceInFlight[slot])
+    {
+        vkWaitForFences(sDevice, 1, &aw.fences[slot], VK_TRUE, UINT64_MAX);
+        vkResetFences(sDevice, 1, &aw.fences[slot]);
+        aw.fenceInFlight[slot] = false;
+    }
+
+    U32 image_index = 0;
+    VkResult ar;
+    {
+        std::lock_guard<std::mutex> lk(sSwapchainAccessMutex);
+        ar = vkAcquireNextImageKHR(sDevice, aw.swapchain, UINT64_MAX,
+                                   aw.imageAvailable[slot], VK_NULL_HANDLE, &image_index);
+    }
+    if (ar == VK_ERROR_OUT_OF_DATE_KHR)
+    {
+        aw.recreatePending = true;
+        return false;
+    }
+    if (ar != VK_SUCCESS && ar != VK_SUBOPTIMAL_KHR)
+    {
+        return false;
+    }
+    if (ar == VK_SUBOPTIMAL_KHR)
+    {
+        aw.recreatePending = true;
+    }
+    if (image_index >= (U32)aw.views.size() || aw.views[image_index] == VK_NULL_HANDLE)
+    {
+        return false;
+    }
+
+    VkCommandBuffer cmd = aw.cbs[slot];
+    vkResetCommandBuffer(cmd, 0);
+    ++tCmdRecordEpoch;
+    VkCommandBufferBeginInfo bi = {};
+    bi.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO;
+    bi.flags = VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT;
+    vkBeginCommandBuffer(cmd, &bi);
+
+    VkImageMemoryBarrier to_color = {};
+    to_color.sType               = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER;
+    to_color.oldLayout           = VK_IMAGE_LAYOUT_UNDEFINED;
+    to_color.newLayout           = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
+    to_color.srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+    to_color.dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+    to_color.image               = aw.images[image_index];
+    to_color.srcAccessMask       = 0;
+    to_color.dstAccessMask       = VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT;
+    to_color.subresourceRange.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
+    to_color.subresourceRange.levelCount = 1;
+    to_color.subresourceRange.layerCount = 1;
+    vkCmdPipelineBarrier(cmd, VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT,
+                         VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT,
+                         0, 0, nullptr, 0, nullptr, 1, &to_color);
+
+    sAuxUISavedOverride   = tRecordCmdOverride;
+    sAuxUISavedInDR       = sInDynamicRendering;
+    sAuxUISavedColorCount = sSavedColorCount;
+    sAuxUISavedHasDepth   = sSavedHasDepth;
+    sAuxUISavedDepth      = sSavedDepthInfo;
+    sAuxUISavedAreaHeight = sCurrentRenderAreaHeight;
+    sAuxUISavedRenderW    = sSavedRenderWidth;
+    sAuxUISavedRenderH    = sSavedRenderHeight;
+    for (U32 i = 0; i < 4; ++i)
+    {
+        sAuxUISavedColor[i] = sSavedColorInfos[i];
+    }
+
+    tRecordCmdOverride  = cmd;
+    sInDynamicRendering = false;
+
+    DynamicRenderingAttachment color = {};
+    color.image_view   = aw.views[image_index];
+    color.image_layout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
+    color.load_op      = VK_ATTACHMENT_LOAD_OP_CLEAR;
+    color.store_op     = VK_ATTACHMENT_STORE_OP_STORE;
+    color.clear_value  = {};
+    color.clear_value.color.float32[3] = 1.0f;
+    beginDynamicRendering(aw.extent.width, aw.extent.height, &color, 1, nullptr);
+    if (!sInDynamicRendering)
+    {
+        tRecordCmdOverride  = sAuxUISavedOverride;
+        sInDynamicRendering = sAuxUISavedInDR;
+        sSavedColorCount    = sAuxUISavedColorCount;
+        sSavedHasDepth      = sAuxUISavedHasDepth;
+        sSavedDepthInfo     = sAuxUISavedDepth;
+        sCurrentRenderAreaHeight = sAuxUISavedAreaHeight;
+        sSavedRenderWidth   = sAuxUISavedRenderW;
+        sSavedRenderHeight  = sAuxUISavedRenderH;
+        for (U32 i = 0; i < 4; ++i)
+        {
+            sSavedColorInfos[i] = sAuxUISavedColor[i];
+        }
+        vkEndCommandBuffer(cmd);
+        return false;
+    }
+
+    for (U32 i = 0; i < 4; ++i)
+    {
+        sAuxUISavedViewport[i] = sVkRenderViewport[i];
+    }
+    sVkRenderViewport[0] = 0;
+    sVkRenderViewport[1] = 0;
+    sVkRenderViewport[2] = (S32)aw.extent.width;
+    sVkRenderViewport[3] = (S32)aw.extent.height;
+
+    sAuxUISlot        = slot;
+    sAuxUIImageIndex  = image_index;
+    sAuxUIFrameActive = true;
+    return true;
+}
+
+bool auxWindowEndUIFrameVk()
+{
+    AuxWindowVk& aw = sAuxWindow;
+    if (!sAuxUIFrameActive)
+    {
+        return false;
+    }
+    const U32 slot        = sAuxUISlot;
+    const U32 image_index = sAuxUIImageIndex;
+    VkCommandBuffer cmd   = aw.cbs[slot];
+
+    if (sInDynamicRendering)
+    {
+        vkCmdEndRendering(cmd);
+        sInDynamicRendering = false;
+    }
+    tRecordCmdOverride  = sAuxUISavedOverride;
+    sInDynamicRendering = sAuxUISavedInDR;
+    sSavedColorCount    = sAuxUISavedColorCount;
+    sSavedHasDepth      = sAuxUISavedHasDepth;
+    sSavedDepthInfo     = sAuxUISavedDepth;
+    sCurrentRenderAreaHeight = sAuxUISavedAreaHeight;
+    sSavedRenderWidth   = sAuxUISavedRenderW;
+    sSavedRenderHeight  = sAuxUISavedRenderH;
+    for (U32 i = 0; i < 4; ++i)
+    {
+        sSavedColorInfos[i] = sAuxUISavedColor[i];
+    }
+    sAuxUIFrameActive  = false;
+    for (U32 i = 0; i < 4; ++i)
+    {
+        sVkRenderViewport[i] = sAuxUISavedViewport[i];
+    }
+    ++tCmdRecordEpoch;
+
+    VkImageMemoryBarrier to_present = {};
+    to_present.sType               = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER;
+    to_present.oldLayout           = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
+    to_present.newLayout           = VK_IMAGE_LAYOUT_PRESENT_SRC_KHR;
+    to_present.srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+    to_present.dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+    to_present.image               = aw.images[image_index];
+    to_present.srcAccessMask       = VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT;
+    to_present.dstAccessMask       = 0;
+    to_present.subresourceRange.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
+    to_present.subresourceRange.levelCount = 1;
+    to_present.subresourceRange.layerCount = 1;
+    vkCmdPipelineBarrier(cmd, VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT,
+                         VK_PIPELINE_STAGE_BOTTOM_OF_PIPE_BIT,
                          0, 0, nullptr, 0, nullptr, 1, &to_present);
 
     vkEndCommandBuffer(cmd);
