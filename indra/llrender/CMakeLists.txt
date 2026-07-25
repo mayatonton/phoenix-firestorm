@@ -102,6 +102,16 @@ target_include_directories( llrender  INTERFACE   ${CMAKE_CURRENT_SOURCE_DIR})
 # 利用は llvkloader.cpp 1 translation unit に限定 (#define VMA_IMPLEMENTATION 経由)。
 target_include_directories(llrender PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/vendor)
 
+# VMA 3.3.0 is a third-party header implemented only by llvkloader.cpp.
+# Apple Clang 16 diagnoses its unannotated pointers and an unused private
+# implementation field in this translation unit; keep those warning
+# exceptions local to Darwin and do not weaken project-wide warnings or
+# non-macOS builds.
+if (DARWIN)
+  set_source_files_properties(llvkloader.cpp PROPERTIES
+    COMPILE_OPTIONS "-Wno-nullability-completeness;-Wno-unused-private-field")
+endif()
+
 set_property(TARGET llrender PROPERTY POSITION_INDEPENDENT_CODE ON)
 
 # Libraries on which this library depends, needed for Linux builds
@@ -117,4 +127,3 @@ target_link_libraries(llrender
         ll::vulkan
         ll::glslang
         )
-

@@ -1594,6 +1594,12 @@ class Darwin_x86_64_Manifest(ViewerManifest):
             with self.prefix(src=relpkgdir, dst="Frameworks"):
                 self.path("libndofdev.dylib")
 
+                # Bundle the Vulkan Loader and MoltenVK driver together. Keep
+                # the Loader's symlink chain intact so volk's bare-name dlopen
+                # resolves the same SONAME layout as the prebuilt package.
+                self.path("libvulkan*.dylib")
+                self.path("libMoltenVK.dylib")
+
                 if self.args.get('bugsplat'):
                     self.path2basename(relpkgdir, "BugsplatMac.framework")
                     self.path2basename(relpkgdir, "CrashReporter.framework")
@@ -1677,6 +1683,35 @@ class Darwin_x86_64_Manifest(ViewerManifest):
             # most everything goes in the Resources directory
             with self.prefix(dst="Resources"):
                 super().construct()
+
+                moltenvk_icd_path = os.path.join(
+                    pkgdir, "share", "vulkan", "icd.d", "MoltenVK_icd.json")
+                with open(moltenvk_icd_path, "r", encoding="utf-8") as icd_file:
+                    moltenvk_icd = json.load(icd_file)
+
+                if moltenvk_icd.get("file_format_version") != "1.0.0":
+                    raise ManifestError(
+                        "MoltenVK ICD must use file_format_version 1.0.0")
+
+                icd = moltenvk_icd.get("ICD")
+                if not isinstance(icd, dict):
+                    raise ManifestError("MoltenVK ICD manifest has no ICD object")
+
+                library_path = icd.get("library_path")
+                if (not isinstance(library_path, str) or
+                        os.path.basename(library_path) != "libMoltenVK.dylib"):
+                    raise ManifestError(
+                        "MoltenVK ICD library_path must name libMoltenVK.dylib")
+
+                if icd.get("is_portability_driver") is not True:
+                    raise ManifestError(
+                        "MoltenVK ICD must set is_portability_driver to true")
+
+                icd["library_path"] = "../../../Frameworks/libMoltenVK.dylib"
+                self.put_in_file(
+                    (json.dumps(moltenvk_icd, indent=2) + "\n").encode("utf-8"),
+                    os.path.join("vulkan", "icd.d", "MoltenVK_icd.json"),
+                    src=moltenvk_icd_path)
 
                 with self.prefix(src_dst="cursors_mac"):
                     self.path("*.tif")

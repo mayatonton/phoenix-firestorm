@@ -3845,9 +3845,13 @@ bool LLAppViewer::initWindow()
 
     if (LLVKLoader::isVulkanInitialized() && gViewerWindow && gViewerWindow->getWindow())
     {
-        if (LLVKLoader::initSurface(gViewerWindow->getWindow()))
+        if (!LLVKLoader::initSurface(gViewerWindow->getWindow()))
         {
-            LLVKLoader::initSwapchain();
+            LL_WARNS("Vulkan") << "Vulkan presentation surface initialization failed" << LL_ENDL;
+        }
+        else if (!LLVKLoader::initSwapchain())
+        {
+            LL_WARNS("Vulkan") << "Vulkan swapchain initialization failed" << LL_ENDL;
         }
     }
 
