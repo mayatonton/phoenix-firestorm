@@ -9529,6 +9529,7 @@ void LLPipeline::tonemap(LLRenderTarget* src, LLRenderTarget* dst, bool gamma_co
     LL_PROFILE_GPU_ZONE("tonemap");
 
     dst->bindTarget();
+    LLVKLoader::gpuCheckpoint("tm:bind");
     // gamma correct lighting
     {
         static LLCachedControl<bool> buildNoPost(gSavedSettings, "RenderDisablePostProcessing", false);
@@ -9569,8 +9570,10 @@ void LLPipeline::tonemap(LLRenderTarget* src, LLRenderTarget* dst, bool gamma_co
         S32 channel = 0;
 
         shader->bindTexture(LLShaderMgr::DEFERRED_DIFFUSE, src, false, LLTexUnit::TFO_POINT);
+        LLVKLoader::gpuCheckpoint("tm:src_bound");
 
         shader->bindTexture(LLShaderMgr::EXPOSURE_MAP, &mExposureMap);
+        LLVKLoader::gpuCheckpoint("tm:exp_bound");
 
         static LLCachedControl<F32> exposure(gSavedSettings, "RenderExposure", 1.f);
 
@@ -9625,6 +9628,7 @@ void LLPipeline::tonemap(LLRenderTarget* src, LLRenderTarget* dst, bool gamma_co
 
         mScreenTriangleVB->setBuffer();
         mScreenTriangleVB->drawArrays(LLRender::TRIANGLES, 0, 3);
+        LLVKLoader::gpuCheckpoint("tm:draw");
 
         if (lut_channel > -1)
             gGL.getTexUnit(lut_channel)->unbind(LLTexUnit::TT_TEXTURE_3D);
@@ -9632,6 +9636,7 @@ void LLPipeline::tonemap(LLRenderTarget* src, LLRenderTarget* dst, bool gamma_co
         shader->unbind();
     }
     dst->flush();
+    LLVKLoader::gpuCheckpoint("tm:flush");
 }
 
 void LLPipeline::gammaCorrect(LLRenderTarget* src, LLRenderTarget* dst)
@@ -9870,6 +9875,7 @@ void LLPipeline::applyCAS(LLRenderTarget* src, LLRenderTarget* dst)
 
     // Bind setup:
     dst->bindTarget();
+    LLVKLoader::gpuCheckpoint("cas:bind");
 
     sharpen_shader->bind();
 
@@ -9909,10 +9915,12 @@ void LLPipeline::applyCAS(LLRenderTarget* src, LLRenderTarget* dst)
     // Draw
     gPipeline.mScreenTriangleVB->setBuffer();
     gPipeline.mScreenTriangleVB->drawArrays(LLRender::TRIANGLES, 0, 3);
+    LLVKLoader::gpuCheckpoint("cas:draw");
 
     sharpen_shader->unbind();
 
     dst->flush();
+    LLVKLoader::gpuCheckpoint("cas:flush");
 }
 
 void LLPipeline::applyFXAA(LLRenderTarget* src, LLRenderTarget* dst)
@@ -10939,6 +10947,7 @@ void LLPipeline::renderFinalize()
     gGL.setColorMask(true, true);
     gGL.setClearColor(0, 0, 0, 0);
 
+    LLVKLoader::gpuCheckpoint("fin:fwdflip");
     compositeForwardFlip();
 
     // <AYAstorm r30 P5 transparent-DoF C-(a) pre-tonemap composite>
@@ -10946,6 +10955,7 @@ void LLPipeline::renderFinalize()
     if (mAYAAlphaColor.isComplete() && gAYAAlphaPlateCompositeProgram.isComplete())
     {
         LL_PROFILE_GPU_ZONE("aya plate pre-tonemap composite");
+        LLVKLoader::gpuCheckpoint("fin:plate");
         getFrameRT()->screen.bindTarget();
 
         LLGLEnable blend_on(GL_BLEND);
@@ -10993,30 +11003,37 @@ void LLPipeline::renderFinalize()
     bool hdr = gGLManager.mGLVersion > 4.05f && has_hdr();
     if (hdr)
     {
+        LLVKLoader::gpuCheckpoint("fin:ssr_copy");
         copyScreenSpaceReflections(&getFrameRT()->screen, &mSceneMap);
 
+        LLVKLoader::gpuCheckpoint("fin:luminance");
         generateLuminance(&getFrameRT()->screen, &mLuminanceMap);
 
+        LLVKLoader::gpuCheckpoint("fin:exposure");
         generateExposure(&mLuminanceMap, &mExposureMap);
 
         static LLCachedControl<F32> cas_sharpness(gSavedSettings, "RenderCASSharpness", 0.4f);
         bool apply_cas = cas_sharpness != 0.0f && gCASProgram.isComplete() && gCASLegacyGammaProgram.isComplete();
 
+        LLVKLoader::gpuCheckpoint("fin:tonemap");
         tonemap(&getFrameRT()->screen, apply_cas ? &getFrameRT()->deferredLight : &mPostPingMap, !apply_cas);
 
         if (apply_cas)
         {
             // Gamma Corrects
+            LLVKLoader::gpuCheckpoint("fin:cas");
             applyCAS(&getFrameRT()->deferredLight, &mPostPingMap);
         }
     }
     else
     {
+        LLVKLoader::gpuCheckpoint("fin:gamma");
         gammaCorrect(&getFrameRT()->screen, &mPostPingMap);
     }
 
     LLVertexBuffer::unbind();
 
+    LLVKLoader::gpuCheckpoint("fin:glow");
     generateGlow(&mPostPingMap);
 
     LLRenderTarget* sourceBuffer = &mPostPingMap;
@@ -11026,9 +11043,11 @@ void LLPipeline::renderFinalize()
         && gSavedSettings.getBOOL("RenderVolumetricLighting")
         && !gCubeSnapshot)
     {
+        LLVKLoader::gpuCheckpoint("fin:volumetric");
         renderVolumetric(sourceBuffer);
     }
 
+    LLVKLoader::gpuCheckpoint("fin:combine_glow");
     combineGlow(sourceBuffer, targetBuffer);
     std::swap(sourceBuffer, targetBuffer);
 
@@ -11039,6 +11058,7 @@ void LLPipeline::renderFinalize()
     if (RenderMotionBlur && mVelocityMap.isComplete() && motion_blur_strength > 0 && !gCubeSnapshot)
     // </FS:AYAstorm r30 P4>
     {
+        LLVKLoader::gpuCheckpoint("fin:motion_blur");
         renderMotionBlurComposite(sourceBuffer, targetBuffer);
         std::swap(sourceBuffer, targetBuffer);
     }
@@ -11057,6 +11077,7 @@ void LLPipeline::renderFinalize()
 
     if (dof_gate_pass)
     {
+        LLVKLoader::gpuCheckpoint("fin:dof");
         renderDoF(sourceBuffer, targetBuffer);
         std::swap(sourceBuffer, targetBuffer);
     }
@@ -11068,11 +11089,13 @@ void LLPipeline::renderFinalize()
      // </AYAstorm r30 P2 step 5d>
      if (RenderFSAAType == 1)
     {
+        LLVKLoader::gpuCheckpoint("fin:fxaa");
         applyFXAA(sourceBuffer, targetBuffer);
         std::swap(sourceBuffer, targetBuffer);
     }
     else if (RenderFSAAType == 2 || RenderFSAAType == 3)
     {
+        LLVKLoader::gpuCheckpoint("fin:smaa");
         generateSMAABuffers(sourceBuffer);
         applySMAA(sourceBuffer, targetBuffer);
         std::swap(sourceBuffer, targetBuffer);
@@ -11088,6 +11111,7 @@ void LLPipeline::renderFinalize()
         sT2xJitterEnabled = t2x_active;
         if (t2x_active)
         {
+            LLVKLoader::gpuCheckpoint("fin:smaa_t2x");
             resolveSMAAT2x(sourceBuffer, targetBuffer);
             std::swap(sourceBuffer, targetBuffer);
             mSMAAFrameIndex ^= 1;
@@ -11109,12 +11133,14 @@ void LLPipeline::renderFinalize()
     }
 // [/RLVa:KB]
 
+    LLVKLoader::gpuCheckpoint("fin:vignette");
     if (renderVignette(auxActiveBuffer, auxTargetBuffer))
     {
         std::swap(auxActiveBuffer, auxTargetBuffer);
     };
     // </FS:Beq>
     // <FS:Beq> new shader for snapshot frame helper
+    LLVKLoader::gpuCheckpoint("fin:snapframe");
     if (renderSnapshotFrame(auxActiveBuffer, auxTargetBuffer))
     {
         std::swap(auxActiveBuffer, auxTargetBuffer);
@@ -11123,6 +11149,7 @@ void LLPipeline::renderFinalize()
     sourceBuffer = auxActiveBuffer;
     // </FS:Beq>
     mLastPresentedLdrRT = sourceBuffer;
+    LLVKLoader::gpuCheckpoint("fin:bufviz");
     if (RenderBufferVisualization > -1)
     {
         switch (RenderBufferVisualization)
@@ -11169,6 +11196,7 @@ void LLPipeline::renderFinalize()
 
     // Present the screen target.
 
+    LLVKLoader::gpuCheckpoint("fin:present_composite");
     if (mVkSnapshotRedirectTarget)
     {
         mVkSnapshotRedirectTarget->bindTarget();
@@ -11234,6 +11262,8 @@ void LLPipeline::renderFinalize()
 
     LLVertexBuffer::unbind();
 
+
+    LLVKLoader::gpuCheckpoint("fin:end");
 
     // flush calls made to "addTrianglesDrawn" so far to stats machinery
     recordTrianglesDrawn();

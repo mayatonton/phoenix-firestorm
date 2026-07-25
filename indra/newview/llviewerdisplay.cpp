@@ -1645,6 +1645,7 @@ void render_ui(F32 zoom_factor, int subfield)
     auto world_overlays = [&]()
     {
         LL_PROFILE_ZONE_NAMED_CATEGORY_UI("HUD");
+        LLVKLoader::gpuCheckpoint("ui:world");
     render_hud_elements();
 // [RLVa:KB] - Checked: RLVa-2.2 (@setoverlay)
         if (RlvActions::hasBehaviour(RLV_BHVR_SETOVERLAY))
@@ -1697,6 +1698,7 @@ void render_ui(F32 zoom_factor, int subfield)
     {
         LLGLSDefault gls_default;
         LLGLSUIDefault gls_ui;
+        LLVKLoader::gpuCheckpoint("ui:2d");
         if (gPipeline.hasRenderDebugFeatureMask(LLPipeline::RENDER_DEBUG_FEATURE_UI))
         {
             LL_PROFILE_ZONE_NAMED_CATEGORY_UI("UI 2D"); //LL_RECORD_BLOCK_TIME(FTM_RENDER_UI_2D);

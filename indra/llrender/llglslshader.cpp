@@ -2409,6 +2409,41 @@ void LLGLSLShader::vkPinPerDrawSlot(LLVKLoader::PerDrawCacheLane& lane, U32 fram
     lane.ev[frame]  = ev;
 }
 
+void LLGLSLShader::purgePerDrawPinsForDeadViews(const std::unordered_set<U64>& dead_views)
+{
+    for (LLGLSLShader* shader : sInstances)
+    {
+        for (U32 L = 0; L < LLVKLoader::MAX_RECORD_LANES; ++L)
+        {
+            for (U32 i = 0; i < 3; ++i)
+            {
+                LLVKLoader::PerDrawEvidence& ev = shader->mVkPerDrawLane[L].ev[i];
+                bool hit = false;
+                for (U8 r = 0; r < ev.refCount && !hit; ++r)
+                {
+                    hit = dead_views.count((U64)(uintptr_t)ev.refView[r]) != 0;
+                }
+                if (hit)
+                {
+                    LLVKLoader::releaseScenePerDrawEntry(shader->mVkPerDrawLane[L].tok[i],
+                                                         shader->mVkPerDrawLane[L].pinEpoch[i]);
+                    shader->mVkPerDrawLane[L].tok[i] = nullptr;
+                    shader->mVkPerDrawLane[L].set[i] = VK_NULL_HANDLE;
+                    shader->mVkPerDrawLane[L].ev[i]  = LLVKLoader::PerDrawEvidence();
+                }
+            }
+        }
+    }
+}
+
+void LLGLSLShader::purgeAllPerDrawPins()
+{
+    for (LLGLSLShader* shader : sInstances)
+    {
+        shader->clearVkPerDrawLanePins();
+    }
+}
+
 void LLGLSLShader::clearVkPerDrawLanePins()
 {
     for (U32 L = 0; L < LLVKLoader::MAX_RECORD_LANES; ++L)

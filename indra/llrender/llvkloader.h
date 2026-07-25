@@ -1510,6 +1510,7 @@ namespace LLVKLoader
         std::atomic<U64> setb_us[4] = {};
         std::atomic<U64> ens_hit{0};
         std::atomic<U64> ens_alloc{0};
+        std::atomic<U64> set1_dead_purge{0};
         std::atomic<U64> phase_us[16] = {};
         std::atomic<U64> idle_us[32] = {};
         std::atomic<U64> img_us[12] = {};

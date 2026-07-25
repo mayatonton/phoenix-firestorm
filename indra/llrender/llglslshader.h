@@ -37,6 +37,7 @@
 #include <array>
 #include <cstring>
 #include <unordered_map>
+#include <unordered_set>
 
 struct VkPipelineStateKey
 {
@@ -412,6 +413,8 @@ public:
 
     LLVKLoader::PerDrawCacheLane mVkPerDrawLane[LLVKLoader::MAX_RECORD_LANES];
     void clearVkPerDrawLanePins();
+    static void purgePerDrawPinsForDeadViews(const std::unordered_set<U64>& dead_views);
+    static void purgeAllPerDrawPins();
 
     static bool vkValidatePerDrawSlot(LLGLSLShader* cur, const LLVKLoader::PerDrawEvidence& ev);
     static U64  vkComputePerDrawRingSig(LLGLSLShader* cur);

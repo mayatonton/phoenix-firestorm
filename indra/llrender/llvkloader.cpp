@@ -91,6 +91,7 @@ namespace
     U32              sGraphicsQueueFamily = UINT_MAX;
     bool             sInitialized         = false;
     bool             sCheckpointsEnabled  = false;
+    bool             sDeviceFaultEnabled  = false;
 
     VkDebugUtilsMessengerEXT sDebugMessenger = VK_NULL_HANDLE;
 
@@ -486,8 +487,71 @@ namespace
         std::unordered_map<ScenePerDrawCacheKey, ScenePerDrawCacheEntry, ScenePerDrawCacheKeyHash> cache;
         std::list<ScenePerDrawCacheKey> lru;
         std::vector<ScenePerDrawDeferredFreeEntry> deferred_free;
+        std::unordered_multimap<U64, ScenePerDrawCacheKey> by_view;
+        std::unordered_multimap<U64, ScenePerDrawCacheKey> by_buf;
     };
     PerDrawDescLane sPerDrawDescLanes[MAX_RECORD_LANES];
+
+    static void laneIndexKey(PerDrawDescLane& lane, const ScenePerDrawCacheKey& key)
+    {
+        for (U32 i = 0; i < key.sampler_count; ++i)
+        {
+            if (key.sampler_views[i] != VK_NULL_HANDLE)
+            {
+                lane.by_view.emplace((U64)key.sampler_views[i], key);
+            }
+        }
+        if (key.ubo != VK_NULL_HANDLE)
+        {
+            lane.by_buf.emplace((U64)key.ubo, key);
+        }
+        for (U32 i = 0; i < key.ubo_count; ++i)
+        {
+            if (key.ubo_write_bufs[i] != VK_NULL_HANDLE)
+            {
+                lane.by_buf.emplace((U64)key.ubo_write_bufs[i], key);
+            }
+        }
+    }
+
+    template <typename INDEX_T>
+    static void laneUnindexHandle(INDEX_T& index, U64 handle, const ScenePerDrawCacheKey& key)
+    {
+        auto range = index.equal_range(handle);
+        for (auto it = range.first; it != range.second; )
+        {
+            if (it->second == key)
+            {
+                it = index.erase(it);
+            }
+            else
+            {
+                ++it;
+            }
+        }
+    }
+
+    static void laneUnindexKey(PerDrawDescLane& lane, const ScenePerDrawCacheKey& key)
+    {
+        for (U32 i = 0; i < key.sampler_count; ++i)
+        {
+            if (key.sampler_views[i] != VK_NULL_HANDLE)
+            {
+                laneUnindexHandle(lane.by_view, (U64)key.sampler_views[i], key);
+            }
+        }
+        if (key.ubo != VK_NULL_HANDLE)
+        {
+            laneUnindexHandle(lane.by_buf, (U64)key.ubo, key);
+        }
+        for (U32 i = 0; i < key.ubo_count; ++i)
+        {
+            if (key.ubo_write_bufs[i] != VK_NULL_HANDLE)
+            {
+                laneUnindexHandle(lane.by_buf, (U64)key.ubo_write_bufs[i], key);
+            }
+        }
+    }
 
 
     struct DeferredUtilOverrideSlot
@@ -742,6 +806,56 @@ namespace
         }
     }
 
+    void dumpDeviceFaultOnDeviceLost()
+    {
+        if (!sDeviceFaultEnabled || sDevice == VK_NULL_HANDLE || vkGetDeviceFaultInfoEXT == nullptr)
+        {
+            return;
+        }
+        VkDeviceFaultCountsEXT counts = {};
+        counts.sType = VK_STRUCTURE_TYPE_DEVICE_FAULT_COUNTS_EXT;
+        if (vkGetDeviceFaultInfoEXT(sDevice, &counts, nullptr) != VK_SUCCESS)
+        {
+            LL_WARNS("Vulkan") << "GPU fault @devlost: count query failed" << LL_ENDL;
+            return;
+        }
+        std::vector<VkDeviceFaultAddressInfoEXT> addrs(counts.addressInfoCount);
+        for (auto& a : addrs) { a = {}; }
+        std::vector<VkDeviceFaultVendorInfoEXT> vendors(counts.vendorInfoCount);
+        for (auto& v : vendors) { v = {}; }
+        counts.vendorBinarySize = 0;
+        VkDeviceFaultInfoEXT info = {};
+        info.sType         = VK_STRUCTURE_TYPE_DEVICE_FAULT_INFO_EXT;
+        info.pAddressInfos = addrs.empty() ? nullptr : addrs.data();
+        info.pVendorInfos  = vendors.empty() ? nullptr : vendors.data();
+        if (vkGetDeviceFaultInfoEXT(sDevice, &counts, &info) != VK_SUCCESS)
+        {
+            LL_WARNS("Vulkan") << "GPU fault @devlost: info query failed" << LL_ENDL;
+            return;
+        }
+        LL_WARNS("Vulkan") << "GPU fault @devlost: desc='" << info.description
+                           << "' addrs=" << counts.addressInfoCount
+                           << " vendors=" << counts.vendorInfoCount << LL_ENDL;
+        static const char* addr_type_names[] = {
+            "NONE", "READ_INVALID", "WRITE_INVALID", "EXECUTE_INVALID",
+            "IP_UNKNOWN", "IP_INVALID", "IP_FAULT"
+        };
+        for (U32 i = 0; i < counts.addressInfoCount; ++i)
+        {
+            const U32 t = (U32)addrs[i].addressType;
+            LL_WARNS("Vulkan") << "GPU fault addr[" << i << "]: type="
+                               << (t < 7 ? addr_type_names[t] : "?") << "(" << t << ")"
+                               << " va=0x" << std::hex << addrs[i].reportedAddress
+                               << " precision=0x" << addrs[i].addressPrecision << std::dec << LL_ENDL;
+        }
+        for (U32 i = 0; i < counts.vendorInfoCount; ++i)
+        {
+            LL_WARNS("Vulkan") << "GPU fault vendor[" << i << "]: '" << vendors[i].description
+                               << "' code=0x" << std::hex << vendors[i].vendorFaultCode
+                               << " data=0x" << vendors[i].vendorFaultData << std::dec << LL_ENDL;
+        }
+    }
+
     enum : U32
     {
         PE_SLOT_IDLE      = 0,
@@ -871,6 +985,7 @@ namespace
                 {
                     s_bc_dumped = true;
                     dumpCheckpointsOnDeviceLost();
+                    dumpDeviceFaultOnDeviceLost();
                 }
                 sVkDeviceLost.store(true, std::memory_order_release);
             }
@@ -1922,9 +2037,22 @@ namespace
                 }
             }
         }
+        VkPhysicalDeviceFaultFeaturesEXT fault_features_enable = {};
+        fault_features_enable.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_FAULT_FEATURES_EXT;
         if (device_fault_supported)
         {
-            device_extensions.push_back("VK_EXT_device_fault");
+            VkPhysicalDeviceFaultFeaturesEXT fault_query = {};
+            fault_query.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_FAULT_FEATURES_EXT;
+            VkPhysicalDeviceFeatures2 fault_f2 = {};
+            fault_f2.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_FEATURES_2;
+            fault_f2.pNext = &fault_query;
+            vkGetPhysicalDeviceFeatures2(sPhysicalDevice, &fault_f2);
+            if (fault_query.deviceFault)
+            {
+                device_extensions.push_back("VK_EXT_device_fault");
+                fault_features_enable.deviceFault = VK_TRUE;
+                sDeviceFaultEnabled = true;
+            }
         }
         if (checkpoints_supported)
         {
@@ -2074,6 +2202,11 @@ namespace
             present_wait_features_enable.pNext = &present_id_features_enable;
             device_info.pNext                  = &present_wait_features_enable;
         }
+        if (sDeviceFaultEnabled)
+        {
+            fault_features_enable.pNext = const_cast<void*>(device_info.pNext);
+            device_info.pNext           = &fault_features_enable;
+        }
         device_info.queueCreateInfoCount = 1;
         device_info.pQueueCreateInfos = &queue_info;
         device_info.enabledExtensionCount = (U32)device_extensions.size();
@@ -2105,7 +2238,12 @@ namespace
         {
             sCheckpointsEnabled = false;
         }
-        LL_INFOS("Vulkan") << "GPU breadcrumb checkpoints enabled=" << (sCheckpointsEnabled ? 1 : 0) << LL_ENDL;
+        if (sDeviceFaultEnabled && vkGetDeviceFaultInfoEXT == nullptr)
+        {
+            sDeviceFaultEnabled = false;
+        }
+        LL_INFOS("Vulkan") << "GPU breadcrumb checkpoints enabled=" << (sCheckpointsEnabled ? 1 : 0)
+                           << " device_fault enabled=" << (sDeviceFaultEnabled ? 1 : 0) << LL_ENDL;
         LL_INFOS("Vulkan") << "present_wait (vsync sleep) enabled=" << (sPresentWaitEnabled ? 1 : 0) << LL_ENDL;
         vkGetDeviceQueue(sDevice, sGraphicsQueueFamily, 0, &sGraphicsQueue);
 
@@ -4788,6 +4926,8 @@ void shutdownVulkan(bool device_lost)
             lane.cache.clear();
             lane.lru.clear();
             lane.deferred_free.clear();
+            lane.by_view.clear();
+            lane.by_buf.clear();
         }
 
         if (sStandardLinearSampler != VK_NULL_HANDLE)
@@ -5482,6 +5622,8 @@ bool endFrame()
 
     VkPerfMainScope mlp_total(4);
 
+    gpuCheckpointImpl("frame:tail");
+
     static const F64 s_perf_interval = []() -> F64 {
         const char* e = getenv("AYASTORM_PERF_LOG");
         if (e == nullptr)
@@ -5606,6 +5748,8 @@ bool endFrame()
                                                       gVkPerf.setb_us[3].load() / 1000.0,
                                                       (unsigned long long)gVkPerf.ens_hit.load(),
                                                       (unsigned long long)gVkPerf.ens_alloc.load());
+                                        s += llformat(" dpurge=%llu",
+                                                      (unsigned long long)gVkPerf.set1_dead_purge.load());
                                         return s; }()
                                    << [](){ std::string s = " | rhw";
                                         static const char* rn[16] = {
@@ -6431,6 +6575,7 @@ bool ensureScenePerDrawDescriptorSet(const ScenePerDrawBindings& b,
                 deferred.enqueue_frame = sMonotonicFrameCount;
                 lane.deferred_free.push_back(deferred);
                 lane.lru.erase(cache_it->second.lru_pos);
+                laneUnindexKey(lane, cache_it->first);
                 lane.cache.erase(cache_it);
                 cache_it = lane.cache.end();
             }
@@ -6490,6 +6635,7 @@ bool ensureScenePerDrawDescriptorSet(const ScenePerDrawBindings& b,
                 deferred.enqueue_frame = sMonotonicFrameCount;
                 lane.deferred_free.push_back(deferred);
 
+                laneUnindexKey(lane, cit->first);
                 lane.cache.erase(cit);
                 lru_it = lane.lru.erase(lru_it);
                 ++evicted;
@@ -6573,6 +6719,7 @@ bool ensureScenePerDrawDescriptorSet(const ScenePerDrawBindings& b,
                 deferred.enqueue_frame = sMonotonicFrameCount;
                 lane.deferred_free.push_back(deferred);
 
+                laneUnindexKey(lane, cit->first);
                 lane.cache.erase(cit);
                 lru_it = lane.lru.erase(lru_it);
                 evicted = true;
@@ -6708,6 +6855,7 @@ bool ensureScenePerDrawDescriptorSet(const ScenePerDrawBindings& b,
     }
 
     lane.lru.push_back(key);
+    laneIndexKey(lane, key);
     ScenePerDrawCacheEntry& entry = lane.cache.try_emplace(key).first->second;
     for (U32 i = 0; i < FRAMES_IN_FLIGHT; ++i)
     {
@@ -8282,12 +8430,90 @@ void destroyBufferVk(VkBuffer buffer, void* allocation)
     sPendingBufferFrees.push_back(pending);
 }
 
+static void purgePerDrawDeadHandles(const std::unordered_set<U64>& dead_views,
+                                    const std::unordered_set<U64>& dead_bufs)
+{
+    if (dead_views.empty() && dead_bufs.empty())
+    {
+        return;
+    }
+    if (!dead_views.empty())
+    {
+        LLGLSLShader::purgePerDrawPinsForDeadViews(dead_views);
+    }
+    bool pinned_leftover = false;
+    for (int pass = 0; pass < 2; ++pass)
+    {
+        pinned_leftover = false;
+        for (PerDrawDescLane& lane : sPerDrawDescLanes)
+        {
+            auto purge_index = [&](auto& index, const std::unordered_set<U64>& dead)
+            {
+                for (U64 h : dead)
+                {
+                    auto range = index.equal_range(h);
+                    if (range.first == range.second)
+                    {
+                        continue;
+                    }
+                    std::vector<ScenePerDrawCacheKey> keys;
+                    for (auto it = range.first; it != range.second; ++it)
+                    {
+                        keys.push_back(it->second);
+                    }
+                    for (const ScenePerDrawCacheKey& k : keys)
+                    {
+                        auto cit = lane.cache.find(k);
+                        if (cit == lane.cache.end())
+                        {
+                            laneUnindexHandle(index, h, k);
+                            continue;
+                        }
+                        if (cit->second.refs.load(std::memory_order_relaxed) > 0)
+                        {
+                            pinned_leftover = true;
+                            continue;
+                        }
+                        ScenePerDrawDeferredFreeEntry deferred = {};
+                        for (U32 i = 0; i < FRAMES_IN_FLIGHT; ++i)
+                        {
+                            deferred.sets[i] = cit->second.sets[i];
+                        }
+                        deferred.pool_index    = cit->second.pool_index;
+                        deferred.enqueue_frame = sMonotonicFrameCount;
+                        lane.deferred_free.push_back(deferred);
+                        lane.lru.erase(cit->second.lru_pos);
+                        laneUnindexKey(lane, cit->first);
+                        lane.cache.erase(cit);
+                        ++gVkPerf.set1_dead_purge;
+                    }
+                }
+            };
+            purge_index(lane.by_view, dead_views);
+            purge_index(lane.by_buf, dead_bufs);
+        }
+        if (!pinned_leftover)
+        {
+            break;
+        }
+        if (pass == 0)
+        {
+            LLGLSLShader::purgeAllPerDrawPins();
+        }
+    }
+    if (pinned_leftover)
+    {
+        LL_WARNS_ONCE("Vulkan") << "per-draw cache purge: pinned entry with dead handle survived full pin purge" << LL_ENDL;
+    }
+}
+
 void tickDeferredBufferFreeQueue()
 {
     if (sAllocator == VK_NULL_HANDLE)
     {
         return;
     }
+    std::unordered_set<U64> dead_bufs;
     size_t w = 0;
     const size_t n = sPendingBufferFrees.size();
     for (size_t r = 0; r < n; ++r)
@@ -8298,6 +8524,7 @@ void tickDeferredBufferFreeQueue()
             vmaDestroyBuffer(sAllocator, e.buffer, e.allocation);
             if (e.buffer != VK_NULL_HANDLE)
             {
+                dead_bufs.insert((U64)e.buffer);
                 std::lock_guard<std::mutex> lk(sDeadHandleMutex);
                 sDeadBufferHandles.insert((U64)e.buffer);
             }
@@ -8312,6 +8539,8 @@ void tickDeferredBufferFreeQueue()
         }
     }
     sPendingBufferFrees.resize(w);
+
+    purgePerDrawDeadHandles({}, dead_bufs);
 }
 
 bool submitOneShotVk(VkCommandBuffer cmd, VkBuffer staging_buffer, VmaAllocation staging_allocation)
@@ -9546,6 +9775,7 @@ void tickDeferredImageFreeQueue()
     {
         return;
     }
+    std::unordered_set<U64> dead_views;
     size_t w = 0;
     const size_t n = sPendingImageFrees.size();
     for (size_t r = 0; r < n; ++r)
@@ -9556,6 +9786,7 @@ void tickDeferredImageFreeQueue()
             if (e.view != VK_NULL_HANDLE && sDevice != VK_NULL_HANDLE)
             {
                 vkDestroyImageView(sDevice, e.view, nullptr);
+                dead_views.insert((U64)e.view);
                 {
                     std::lock_guard<std::mutex> lk(sDeadHandleMutex);
                     sDeadViewHandles.insert((U64)e.view);
@@ -9581,6 +9812,8 @@ void tickDeferredImageFreeQueue()
         }
     }
     sPendingImageFrees.resize(w);
+
+    purgePerDrawDeadHandles(dead_views, {});
 
     {
         std::lock_guard<std::mutex> guard(sBindlessSlotMutex);
