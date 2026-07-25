@@ -2679,7 +2679,17 @@ void llDestroyAuxWindowSDL(LLAuxWindowHandlesSDL& handles)
         {
             sAuxInputMap = AuxInputMapSDL();
         }
-        SDL_DestroyWindow(static_cast<SDL_Window*>(handles.sdl_window));
+        SDL_Window* w = static_cast<SDL_Window*>(handles.sdl_window);
+        SDL_CaptureMouse(SDL_FALSE);
+        SDL_SetWindowGrab(w, SDL_FALSE);
+        SDL_HideWindow(w);
+#if LL_X11
+        if (handles.native_display != nullptr)
+        {
+            XSync(static_cast<Display*>(handles.native_display), False);
+        }
+#endif
+        SDL_DestroyWindow(w);
     }
     handles = LLAuxWindowHandlesSDL();
 }

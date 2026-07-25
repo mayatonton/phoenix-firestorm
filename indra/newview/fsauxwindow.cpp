@@ -43,6 +43,55 @@
 #include "llviewershadermgr.h"
 #include "llviewerwindow.h"
 
+namespace
+{
+    constexpr S32 AUX_ANCHOR_X = 100000;
+    constexpr S32 AUX_ANCHOR_Y = 100000;
+
+    class FSAuxGateRoot : public LLView
+    {
+    public:
+        FSAuxGateRoot(const LLView::Params& p) : LLView(p) {}
+    };
+
+    LLHandle<LLFloater>    sAuxExtHandle;
+    LLRect                 sAuxRegion;
+    LLAuxWindowHandlesSDL  sAuxHandles;
+    bool                   sAuxDone  = false;
+    bool                   sAuxShown = false;
+}
+
+static bool auxModeOn()
+{
+    static const bool s_env_force = (getenv("AYASTORM_AUX_WINDOW") != nullptr);
+    if (s_env_force)
+    {
+        return true;
+    }
+    static bool s_latched = false;
+    static bool s_mode    = false;
+    if (!s_latched && LLStartUp::getStartupState() == STATE_STARTED)
+    {
+        s_mode    = gSavedSettings.getBOOL("AYAMultiWindowMode");
+        s_latched = true;
+    }
+    return s_latched && s_mode;
+}
+
+bool FSAuxWindow::pointInAuxRegion(S32 x, S32 y)
+{
+    return !sAuxRegion.isEmpty() && sAuxRegion.pointInRect(x, y);
+}
+
+LLFloater* FSAuxWindow::auxRegionFloater(S32 x, S32 y)
+{
+    if (sAuxRegion.isEmpty() || !sAuxRegion.pointInRect(x, y))
+    {
+        return nullptr;
+    }
+    return sAuxExtHandle.get();
+}
+
 static LLFloater* auxTargetFloater()
 {
     LLFloater* target = ayastorm_is_ll_style()
@@ -55,17 +104,58 @@ static LLFloater* auxTargetFloater()
     return target;
 }
 
+static void auxExternalizeTarget()
+{
+    LLFloater* aux_chat = auxTargetFloater();
+    if (!aux_chat || !aux_chat->getRect().isValid())
+    {
+        return;
+    }
+    if (!aux_chat->isAuxExternalized()
+        || aux_chat->getRect().mLeft != AUX_ANCHOR_X
+        || aux_chat->getRect().mBottom != AUX_ANCHOR_Y)
+    {
+        if (!aux_chat->isAuxExternalized())
+        {
+            aux_chat->setAuxExternalized(true, aux_chat->getRect());
+        }
+        aux_chat->setOrigin(AUX_ANCHOR_X, AUX_ANCHOR_Y);
+        sAuxExtHandle = aux_chat->getHandle();
+    }
+}
+
+void FSAuxWindow::preDisplay()
+{
+    if (!auxModeOn() || sAuxDone || LLApp::isExiting())
+    {
+        return;
+    }
+    auxExternalizeTarget();
+}
+
 void FSAuxWindow::frame()
 {
-    static const bool s_aux_window = (getenv("AYASTORM_AUX_WINDOW") != nullptr);
-    if (!s_aux_window)
+    if (!auxModeOn())
     {
         return;
     }
 
-    static LLAuxWindowHandlesSDL s_aux_handles;
-    static bool s_aux_done = false;
-    static bool s_aux_shown = false;
+    LLAuxWindowHandlesSDL& s_aux_handles = sAuxHandles;
+    bool& s_aux_done  = sAuxDone;
+    bool& s_aux_shown = sAuxShown;
+
+    static const bool s_query_registered = []() {
+        LLMenuGL::sPopupConstraintQuery = []() -> LLRect {
+            LLFloater* ext = sAuxExtHandle.get();
+            if (ext && llAuxWindowHasFocusSDL(sAuxHandles))
+            {
+                return ext->calcScreenRect();
+            }
+            return LLRect();
+        };
+        return true;
+    }();
+    (void)s_query_registered;
 
     LLFloater* aux_chat = auxTargetFloater();
     const bool aux_rect_ok = aux_chat && aux_chat->getRect().isValid();
@@ -87,6 +177,16 @@ void FSAuxWindow::frame()
         {
             llDestroyAuxWindowSDL(s_aux_handles);
             s_aux_done = true;
+            if (LLFloater* ext = sAuxExtHandle.get())
+            {
+                const LLRect saved = ext->getAuxSavedRect();
+                ext->setAuxExternalized(false);
+                if (saved.isValid())
+                {
+                    ext->setOrigin(saved.mLeft, saved.mBottom);
+                }
+                sAuxExtHandle = LLHandle<LLFloater>();
+            }
         }
         else
         {
@@ -98,10 +198,27 @@ void FSAuxWindow::frame()
         }
     }
 
-    if (!LLVKLoader::auxWindowActiveVk())
+    const bool aux_active = LLVKLoader::auxWindowActiveVk();
+
+    if (LLFloater* ext = sAuxExtHandle.get();
+        ext && aux_active && ext != aux_chat)
     {
+        const LLRect saved = ext->getAuxSavedRect();
+        ext->setAuxExternalized(false);
+        if (saved.isValid())
+        {
+            ext->setOrigin(saved.mLeft, saved.mBottom);
+        }
+        sAuxExtHandle = LLHandle<LLFloater>();
+    }
+
+    if (!aux_active)
+    {
+        sAuxRegion = LLRect();
         return;
     }
+
+    auxExternalizeTarget();
 
     if (target_shown != s_aux_shown)
     {
@@ -147,16 +264,19 @@ void FSAuxWindow::frame()
             map_on = true;
         }
         llSetAuxWindowInputMapSDL(s_aux_handles, map_ox, map_oy, (int)map_h, map_on);
-        LLMenuGL::sPopupConstraintRect = (map_on && llAuxWindowHasFocusSDL(s_aux_handles))
-            ? aux_chat->calcScreenRect()
-            : LLRect();
+        sAuxRegion = map_on ? aux_chat->calcScreenRect() : LLRect();
     }
 
     if (llAuxWindowCloseRequestedSDL(s_aux_handles.sdl_window_id))
     {
         LLVKLoader::auxWindowShutdownVk();
         llDestroyAuxWindowSDL(s_aux_handles);
-        s_aux_done = true;
+        s_aux_shown = false;
+        sAuxRegion = LLRect();
+        if (aux_chat)
+        {
+            aux_chat->closeFloater();
+        }
     }
     else if (target_shown && LLVKLoader::auxWindowBeginUIFrameVk())
     {
@@ -174,7 +294,18 @@ void FSAuxWindow::frame()
             gGL.loadIdentity();
 
             const LLRect aux_saved_dirty = LLView::sDirtyRect;
-            LLView::sDirtyRect = gViewerWindow->getWindowRectScaled();
+            LLView::sDirtyRect = LLRect(0, AUX_ANCHOR_Y * 4, AUX_ANCHOR_X * 4, 0);
+
+            static FSAuxGateRoot* s_gate_root = nullptr;
+            if (s_gate_root == nullptr)
+            {
+                LLView::Params p;
+                p.name = "aux_gate_root";
+                p.rect = LLRect(0, AUX_ANCHOR_Y * 4, AUX_ANCHOR_X * 4, 0);
+                s_gate_root = new FSAuxGateRoot(p);
+            }
+            LLView* aux_saved_root = LLUI::getInstance()->getRootView();
+            LLUI::getInstance()->setRootView(s_gate_root);
 
             gUIProgram.bind();
             gGL.color4f(1.f, 1.f, 1.f, 1.f);
@@ -209,6 +340,7 @@ void FSAuxWindow::frame()
             gGL.popMatrix();
             gUIProgram.unbind();
 
+            LLUI::getInstance()->setRootView(aux_saved_root);
             LLView::sDirtyRect = aux_saved_dirty;
 
             gGL.matrixMode(LLRender::MM_MODELVIEW);
@@ -223,8 +355,22 @@ void FSAuxWindow::frame()
 
 #else
 
+void FSAuxWindow::preDisplay()
+{
+}
+
 void FSAuxWindow::frame()
 {
+}
+
+bool FSAuxWindow::pointInAuxRegion(S32, S32)
+{
+    return false;
+}
+
+LLFloater* FSAuxWindow::auxRegionFloater(S32, S32)
+{
+    return nullptr;
 }
 
 #endif

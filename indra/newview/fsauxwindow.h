@@ -22,9 +22,16 @@
 #ifndef FS_AUXWINDOW_H
 #define FS_AUXWINDOW_H
 
+#include "stdtypes.h"
+
+class LLFloater;
+
 namespace FSAuxWindow
 {
+    void preDisplay();
     void frame();
+    bool pointInAuxRegion(S32 x, S32 y);
+    LLFloater* auxRegionFloater(S32 x, S32 y);
 }
 
 #endif

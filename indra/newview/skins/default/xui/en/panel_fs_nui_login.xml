@@ -417,6 +417,16 @@ based on Firestorm
     height="54"
     left_pad="10"
     top="25"/>
+    <check_box
+      control_name="AYAMultiWindowMode"
+      follows="left|top|right"
+      font="SansSerifMedium"
+      left_delta="0"
+      height="16"
+      label="Multi-window mode"
+      name="aya_multiwindow_check"
+      top_pad="6"
+      width="140" />
     <text
       follows="left|top|right"
       font="SansSerifMedium"
@@ -424,7 +434,7 @@ based on Firestorm
       left_delta="0"
       height="16"
       name="create_new_account_text"
-      top_pad="14"
+      top_pad="6"
       width="140">
         Create an account
     </text>

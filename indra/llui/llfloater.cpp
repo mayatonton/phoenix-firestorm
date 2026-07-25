@@ -587,7 +587,7 @@ void LLFloater::storeRectControl()
     if (mTornOff && !mRectControl.empty())
     // </FS:Zi>
     {
-        getControlGroup()->setRect( mRectControl, getRect() );
+        getControlGroup()->setRect( mRectControl, mAuxExternalized ? mAuxSavedRect : getRect() );
     }
     if (!mPosXControl.empty() && mPositioning == LLFloaterEnums::POSITIONING_RELATIVE)
     {
@@ -2664,6 +2664,11 @@ void LLFloaterView::reshape(S32 width, S32 height, bool called_from_parent)
             continue;
         }
 
+        if (floaterp->isAuxExternalized())
+        {
+            continue;
+        }
+
         if (!floaterp->isMinimized() && floaterp->getCanDrag())
         {
             LLRect old_rect = floaterp->getRect();
@@ -3242,6 +3247,11 @@ void LLFloaterView::adjustToFitScreen(LLFloater* floater, bool allow_partial_out
     if (floater->getParent() != this)
     {
         // floater is hosted elsewhere, so ignore
+        return;
+    }
+
+    if (floater->isAuxExternalized())
+    {
         return;
     }
 

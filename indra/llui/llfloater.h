@@ -307,6 +307,14 @@ public:
     static std::string      getControlName(const std::string& name, const LLSD& key);
     static LLControlGroup*  getControlGroup();
 
+    void            setAuxExternalized(bool externalized, const LLRect& saved_rect = LLRect())
+    {
+        mAuxExternalized = externalized;
+        mAuxSavedRect    = saved_rect;
+    }
+    bool            isAuxExternalized() const { return mAuxExternalized; }
+    const LLRect&   getAuxSavedRect() const { return mAuxSavedRect; }
+
     bool            isMinimizeable() const{ return mCanMinimize; }
     bool            isCloseable() const{ return mCanClose; }
     bool            isDragOnLeft() const{ return mDragOnLeft; }
@@ -515,6 +523,9 @@ private:
     bool            mIsReuseInitialized;  // true if mReuseInstance already set from parameters
     // <FS:Ansariel> Make this accessible from child classes
     //std::string       mInstanceName;        // Store the instance name so we can remove ourselves from the list
+
+    bool            mAuxExternalized = false;
+    LLRect          mAuxSavedRect;
 
     bool            mDropShadow;        // ## Zi: Optional Drop Shadows
     bool            mCanTearOff;

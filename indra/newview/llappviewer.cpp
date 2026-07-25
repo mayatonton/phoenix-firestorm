@@ -1788,6 +1788,7 @@ bool LLAppViewer::doFrame()
                                            << LL_ENDL;
                     }
                 }
+                FSAuxWindow::preDisplay();
                 {
                     LLVKLoader::VkPerfPhaseScope ph(1);
                     display();
