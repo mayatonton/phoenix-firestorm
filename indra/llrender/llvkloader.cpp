@@ -914,8 +914,11 @@ namespace
                 std::lock_guard<std::mutex> lk(job.sync->m);
                 job.sync->done   = true;
                 job.sync->result = sr;
+                // `sync` belongs to the submitting stack frame. Notify while
+                // holding its mutex so the waiter cannot return and destroy it
+                // before this condition-variable operation has completed.
+                job.sync->cv.notify_all();
             }
-            job.sync->cv.notify_all();
         }
     }
 
