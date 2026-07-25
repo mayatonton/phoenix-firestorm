@@ -66,6 +66,7 @@ public:
     virtual bool onActivate();
     void    onDeactivate();
     virtual bool onUpdate(F32 time, U8* joint_mask);
+    virtual void preComputeGroundMain();
 
 public:
     //-------------------------------------------------------------------------
@@ -110,6 +111,7 @@ public:
     LLQuaternion        mLastGoodPelvisRotation;
     LLVector3           mLastGoodPosition;
     bool                mTrackAnkles;
+    bool                mGroundPreComputed;
 
     S32                 mFrameNum;
 } LL_ALIGN_POSTFIX(16);

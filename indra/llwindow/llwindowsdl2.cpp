@@ -41,6 +41,7 @@
 #include "lldir.h"
 #include "llfindlocale.h"
 #include "llframetimer.h"
+#include <set>
 
 // if there is a better methood to get at the settings from llwindow/ let me know! -Zi
 #include "llcontrol.h"
@@ -83,6 +84,7 @@ static bool ATIbug = false;
 // maintain in the constructor and destructor.  This assumes that there will
 // be only one object of this class at any time.  Currently this is true.
 static LLWindowSDL *gWindowImplementation = NULL;
+static std::set<unsigned int> sAuxWindowsCloseRequested;
 
 // extern "C" Bool XineramaIsActive (Display *dpy)
 // {
@@ -1542,8 +1544,30 @@ void LLWindowSDL::gatherInput()
     static U32 altGrMask = 0x00;
 
     // Handle all outstanding SDL events
+    const Uint32 main_window_id = (mWindow != nullptr) ? SDL_GetWindowID(mWindow) : 0;
     while (SDL_PollEvent(&event))
     {
+        Uint32 event_window_id = 0;
+        switch (event.type)
+        {
+            case SDL_MOUSEMOTION:     event_window_id = event.motion.windowID; break;
+            case SDL_MOUSEBUTTONDOWN:
+            case SDL_MOUSEBUTTONUP:   event_window_id = event.button.windowID; break;
+            case SDL_MOUSEWHEEL:      event_window_id = event.wheel.windowID;  break;
+            case SDL_KEYDOWN:
+            case SDL_KEYUP:           event_window_id = event.key.windowID;    break;
+            case SDL_TEXTINPUT:       event_window_id = event.text.windowID;   break;
+            case SDL_WINDOWEVENT:     event_window_id = event.window.windowID; break;
+            default: break;
+        }
+        if (event_window_id != 0 && main_window_id != 0 && event_window_id != main_window_id)
+        {
+            if (event.type == SDL_WINDOWEVENT && event.window.event == SDL_WINDOWEVENT_CLOSE)
+            {
+                sAuxWindowsCloseRequested.insert(event_window_id);
+            }
+            continue;
+        }
         switch (event.type)
         {
             case SDL_SYSWMEVENT:
@@ -2520,6 +2544,64 @@ void LLWindowSDL::allowLanguageTextInput(LLPreeditor *preeditor, bool b)
     {
         SDL_StopTextInput();
     }
+}
+
+bool llCreateAuxWindowSDL(const char* title, int width, int height, LLAuxWindowHandlesSDL& out)
+{
+    out = LLAuxWindowHandlesSDL();
+    if (SDL_WasInit(SDL_INIT_VIDEO) == 0)
+    {
+        return false;
+    }
+    SDL_Window* w = SDL_CreateWindow(title, SDL_WINDOWPOS_UNDEFINED, SDL_WINDOWPOS_UNDEFINED,
+                                     width, height, 0);
+    if (w == nullptr)
+    {
+        return false;
+    }
+#if LL_X11
+    SDL_SysWMinfo info;
+    SDL_VERSION(&info.version);
+    if (SDL_GetWindowWMInfo(w, &info) && info.subsystem == SDL_SYSWM_X11)
+    {
+        out.native_display = info.info.x11.display;
+        out.native_window  = reinterpret_cast<void*>(static_cast<uintptr_t>(info.info.x11.window));
+    }
+    else
+    {
+        SDL_DestroyWindow(w);
+        return false;
+    }
+#else
+    SDL_DestroyWindow(w);
+    return false;
+#endif
+    out.sdl_window    = w;
+    out.sdl_window_id = SDL_GetWindowID(w);
+    out.width         = width;
+    out.height        = height;
+    return true;
+}
+
+void llDestroyAuxWindowSDL(LLAuxWindowHandlesSDL& handles)
+{
+    if (handles.sdl_window != nullptr)
+    {
+        sAuxWindowsCloseRequested.erase(handles.sdl_window_id);
+        SDL_DestroyWindow(static_cast<SDL_Window*>(handles.sdl_window));
+    }
+    handles = LLAuxWindowHandlesSDL();
+}
+
+bool llAuxWindowCloseRequestedSDL(unsigned int sdl_window_id)
+{
+    auto it = sAuxWindowsCloseRequested.find(sdl_window_id);
+    if (it == sAuxWindowsCloseRequested.end())
+    {
+        return false;
+    }
+    sAuxWindowsCloseRequested.erase(it);
+    return true;
 }
 
 #endif // LL_SDL

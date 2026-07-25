@@ -270,4 +270,18 @@ public:
 
 S32 OSMessageBoxSDL(const std::string& text, const std::string& caption, U32 type);
 
+struct LLAuxWindowHandlesSDL
+{
+    void*        sdl_window     = nullptr;
+    unsigned int sdl_window_id  = 0;
+    void*        native_display = nullptr;
+    void*        native_window  = nullptr;
+    int          width          = 0;
+    int          height         = 0;
+};
+
+bool llCreateAuxWindowSDL(const char* title, int width, int height, LLAuxWindowHandlesSDL& out);
+void llDestroyAuxWindowSDL(LLAuxWindowHandlesSDL& handles);
+bool llAuxWindowCloseRequestedSDL(unsigned int sdl_window_id);
+
 #endif //LL_LLWINDOWSDL_H

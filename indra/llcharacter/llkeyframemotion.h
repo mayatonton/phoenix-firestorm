@@ -144,6 +144,8 @@ public:
     // must return false when the motion is completed.
     virtual bool onUpdate(F32 time, U8* joint_mask);
 
+    virtual void preComputeGroundMain();
+
     // called when a motion is deactivated
     virtual void onDeactivate();
 
@@ -254,6 +256,9 @@ protected:
         bool                        mActive;
         LLVector3d                  mGroundPos;
         LLVector3                   mGroundNorm;
+        LLVector3d                  mGroundPosPre;
+        LLVector3                   mGroundNormPre;
+        bool                        mGroundPreComputed;
         LLJoint*                    mSourceVolume;
         LLJoint*                    mTargetVolume;
         F32                         mFixupDistanceRMS;

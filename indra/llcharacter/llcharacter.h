@@ -31,6 +31,7 @@
 // Header Files
 //-----------------------------------------------------------------------------
 #include <string>
+#include <mutex>
 
 #include "lljoint.h"
 #include "llmotioncontroller.h"
@@ -295,6 +296,7 @@ protected:
 
     typedef std::map<std::string, void *> animation_data_map_t;
     animation_data_map_t mAnimationData;
+    mutable std::mutex   mAnimationDataMutex;
 
     F32                 mPreferredPelvisHeight;
     ESex                mSex;

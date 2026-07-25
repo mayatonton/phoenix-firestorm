@@ -489,6 +489,18 @@ void display(bool rebuild, F32 zoom_factor, int subfield, bool for_snapshot)
 
     gSnapshot = for_snapshot;
 
+    LLVKLoader::setProducerPresentActive(LLVKLoader::isUISceneSplit() && !gSnapshot
+                                         && (LLStartUp::getStartupState() == STATE_STARTED));
+
+    const bool aya_async_frame = LLVKLoader::isUISceneAsync() && !gSnapshot
+                                 && (LLStartUp::getStartupState() == STATE_STARTED);
+    const bool aya_async_engaged = aya_async_frame && !gDisconnected && !LLApp::isExiting();
+    LLVKLoader::setAsyncFrameEngaged(aya_async_engaged);
+    if (aya_async_frame && LLVKLoader::asyncProducerTryComplete())
+    {
+        gPipeline.mScenePresentFront = LLVKLoader::asyncProducerBackIndex();
+    }
+
     if (LLPipelineFrameContext::getInstance().isRenderingDeferred())
     { //hack to make sky show up in deferred snapshots
         for_snapshot = false;
@@ -777,8 +789,14 @@ void display(bool rebuild, F32 zoom_factor, int subfield, bool for_snapshot)
     // Actually push all of our triangles to the screen.
     //
 
+    if (aya_async_engaged && !LLVKLoader::isAsyncProducerInFlight())
+    {
+        LLVKLoader::asyncProducerBeginScene(1 - gPipeline.mScenePresentFront);
+    }
+
     // do render-to-texture stuff here
-    if (gPipeline.hasRenderDebugFeatureMask(LLPipeline::RENDER_DEBUG_FEATURE_DYNAMIC_TEXTURES))
+    if (gPipeline.hasRenderDebugFeatureMask(LLPipeline::RENDER_DEBUG_FEATURE_DYNAMIC_TEXTURES)
+        && LLVKLoader::asyncShouldRenderScene())
     {
         LLAppViewer::instance()->pingMainloopTimeout("Display:DynamicTextures");
         LL_PROFILE_ZONE_NAMED_CATEGORY_DISPLAY("Update Dynamic Textures");
@@ -796,7 +814,7 @@ void display(bool rebuild, F32 zoom_factor, int subfield, bool for_snapshot)
     {
         // Render mirrors and associated hero probes before we render the rest of the scene.
         // This ensures the scene state in the hero probes are exactly the same as the rest of the scene before we render it.
-        if (gPipeline.RenderMirrors && !gSnapshot)
+        if (gPipeline.RenderMirrors && !gSnapshot && LLVKLoader::asyncShouldRenderScene())
         {
             LL_PROFILE_ZONE_NAMED_CATEGORY_DISPLAY("Update hero probes");
             LL_PROFILE_GPU_ZONE("hero manager")
@@ -878,7 +896,7 @@ void display(bool rebuild, F32 zoom_factor, int subfield, bool for_snapshot)
             gGL.setClearColor(0.f, 0.f, 0.f, 0.f);
 
 
-            if (!for_snapshot)
+            if (!for_snapshot && LLVKLoader::asyncShouldRenderScene())
             {
                 if (gFrameCount > 1 && !for_snapshot)
                 { //for some reason, ATI 4800 series will error out if you
@@ -1006,6 +1024,8 @@ void display(bool rebuild, F32 zoom_factor, int subfield, bool for_snapshot)
 // </FS:CR> Aurora Sim
 
 
+        if (LLVKLoader::asyncShouldRenderScene())
+        {
         gGL.setColorMask(true, true);
 
         gPipeline.updateBrdfLut();
@@ -1087,6 +1107,7 @@ void display(bool rebuild, F32 zoom_factor, int subfield, bool for_snapshot)
         {
             //capture the frame buffer.
             LLSceneMonitor::getInstance()->capture();
+        }
         }
 
         LLAppViewer::instance()->pingMainloopTimeout("Display:RenderUI");
@@ -1604,11 +1625,25 @@ void render_ui(F32 zoom_factor, int subfield)
     }
 
     // apply gamma correction and post effects
-    gPipeline.renderFinalize();
-
+    const bool uiscene_present = !gPipeline.mVkSnapshotRedirectTarget && !gSnapshot
+                                 && (LLStartUp::getStartupState() == STATE_STARTED);
+    const bool aya_async    = uiscene_present && LLVKLoader::isUISceneAsync()
+                              && LLVKLoader::asyncFrameEngaged();
+    const bool render_scene = LLVKLoader::asyncShouldRenderScene();
+    const U32  back_idx     = aya_async ? LLVKLoader::asyncProducerBackIndex()
+                                        : (1 - gPipeline.mScenePresentFront);
+    LLRenderTarget* scene_present_back = &gPipeline.mScenePresentRT[back_idx];
+    if (uiscene_present && render_scene)
     {
-
-
+        gPipeline.mScenePresentRedirect = scene_present_back;
+        LLVKLoader::setProducerPresentActive(true);
+    }
+    if (render_scene)
+    {
+        gPipeline.renderFinalize();
+    }
+    auto world_overlays = [&]()
+    {
         LL_PROFILE_ZONE_NAMED_CATEGORY_UI("HUD");
     render_hud_elements();
 // [RLVa:KB] - Checked: RLVa-2.2 (@setoverlay)
@@ -1647,9 +1682,7 @@ void render_ui(F32 zoom_factor, int subfield)
 
         if (render_ui)
         {
-            LL_PROFILE_ZONE_NAMED_CATEGORY_UI("UI 2D"); //LL_RECORD_BLOCK_TIME(FTM_RENDER_UI_2D);
             LLHUDObject::renderAll();
-            render_ui_2d();
         }
         // <FS:Beq> FIRE-33239 - particles do not sie when UI is disabled
         if (!render_ui)
@@ -1658,10 +1691,56 @@ void render_ui(F32 zoom_factor, int subfield)
             LLHUDObject::renderAllForTimer();
         }
         // </FS:Beq>
+    };
 
+    auto ui_overlay_2d = [&]()
+    {
+        LLGLSDefault gls_default;
+        LLGLSUIDefault gls_ui;
+        if (gPipeline.hasRenderDebugFeatureMask(LLPipeline::RENDER_DEBUG_FEATURE_UI))
+        {
+            LL_PROFILE_ZONE_NAMED_CATEGORY_UI("UI 2D"); //LL_RECORD_BLOCK_TIME(FTM_RENDER_UI_2D);
+            render_ui_2d();
+        }
         gViewerWindow->setup2DRender();
         gViewerWindow->updateDebugText();
         gViewerWindow->drawDebugText();
+    };
+
+    if (uiscene_present)
+    {
+        if (render_scene)
+        {
+            world_overlays();
+            if (LLRenderTarget::getCurrentBoundTarget() == scene_present_back)
+            {
+                scene_present_back->flush();
+            }
+            gPipeline.mScenePresentRedirect = nullptr;
+            if (LLStartUp::getStartupState() == STATE_STARTED)
+            {
+                gPipeline.mReflectionMapManager.update();
+            }
+        }
+        LLVKLoader::recordToConsumer(true);
+        const bool swapchain_ready = LLVKLoader::isSwapchainImageAcquired();
+        if (swapchain_ready)
+        {
+            gPipeline.blitScenePresentToSwapchain();
+        }
+        if (!aya_async)
+        {
+            gPipeline.mScenePresentFront = 1 - gPipeline.mScenePresentFront;
+        }
+        if (swapchain_ready)
+        {
+            ui_overlay_2d();
+        }
+    }
+    else
+    {
+        world_overlays();
+        ui_overlay_2d();
     }
 
     if (!gSnapshot)
@@ -1669,6 +1748,8 @@ void render_ui(F32 zoom_factor, int subfield)
         set_current_modelview(saved_view);
         gGL.popMatrix();
     }
+
+    LLVKLoader::finalizeConsumerSwapchain();
 }
 
 void swap()

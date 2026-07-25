@@ -29,6 +29,7 @@
 #include "llwindow.h"
 #include "llimagegl.h"
 #include "llglslshader.h"
+#include "llrendertarget.h"
 
 #include <vector>
 #include <string>
@@ -560,9 +561,50 @@ namespace
     VkCommandBuffer sCommandBuffers[FRAMES_IN_FLIGHT] = {
         VK_NULL_HANDLE, VK_NULL_HANDLE, VK_NULL_HANDLE
     };
+    VkCommandBuffer sConsumerCommandBuffers[FRAMES_IN_FLIGHT] = {
+        VK_NULL_HANDLE, VK_NULL_HANDLE, VK_NULL_HANDLE
+    };
+    constexpr bool sUISceneSplit = true;
+    constexpr bool sUISceneAsync = true;
+    bool sConsumerActiveThisFrame = false;
+
+    VkCommandBuffer sAsyncProducerCommandBuffer = VK_NULL_HANDLE;
+    VkFence         sAsyncProducerFence         = VK_NULL_HANDLE;
+    bool            sAsyncProducerInFlight      = false;
+    U32             sAsyncProducerBackIndex     = 0;
+    bool            sAsyncRenderSceneThisFrame  = false;
+    bool            sAsyncFrameEngaged          = false;
+    U32             sAsyncProducerSubmitMonotonic = 0;
+    U32             sAsyncProducerRecordSlot      = 0;
+    U32             sAsyncProducerSubmitCount     = 0;
+
+    struct AuxWindowVk
+    {
+        bool                     active    = false;
+        VkSurfaceKHR             surface   = VK_NULL_HANDLE;
+        VkSwapchainKHR           swapchain = VK_NULL_HANDLE;
+        std::vector<VkImage>     images;
+        std::vector<VkImageView> views;
+        VkFormat                 format = VK_FORMAT_UNDEFINED;
+        VkExtent2D               extent = {0, 0};
+        VkSemaphore     imageAvailable[FRAMES_IN_FLIGHT] = { VK_NULL_HANDLE, VK_NULL_HANDLE, VK_NULL_HANDLE };
+        VkSemaphore     renderFinished[FRAMES_IN_FLIGHT] = { VK_NULL_HANDLE, VK_NULL_HANDLE, VK_NULL_HANDLE };
+        VkFence         fences[FRAMES_IN_FLIGHT]         = { VK_NULL_HANDLE, VK_NULL_HANDLE, VK_NULL_HANDLE };
+        VkCommandBuffer cbs[FRAMES_IN_FLIGHT]            = { VK_NULL_HANDLE, VK_NULL_HANDLE, VK_NULL_HANDLE };
+        bool            fenceInFlight[FRAMES_IN_FLIGHT]  = { false, false, false };
+        bool            recreatePending = false;
+    };
+    AuxWindowVk sAuxWindow;
+
     VkFence sInFlightFences[FRAMES_IN_FLIGHT] = {
         VK_NULL_HANDLE, VK_NULL_HANDLE, VK_NULL_HANDLE
     };
+
+    VkFence sProducerFences[FRAMES_IN_FLIGHT] = {
+        VK_NULL_HANDLE, VK_NULL_HANDLE, VK_NULL_HANDLE
+    };
+    bool sProducerFencePending[FRAMES_IN_FLIGHT] = { false, false, false };
+    bool sProducerPresentActive = false;
 
     VkSemaphore sImageAvailableSemaphores[FRAMES_IN_FLIGHT] = {
         VK_NULL_HANDLE, VK_NULL_HANDLE, VK_NULL_HANDLE
@@ -2163,6 +2205,23 @@ namespace
         alloc_info.commandBufferCount = FRAMES_IN_FLIGHT;
 
         result = vkAllocateCommandBuffers(sDevice, &alloc_info, sCommandBuffers);
+        if (result != VK_SUCCESS)
+        {
+            return false;
+        }
+
+        result = vkAllocateCommandBuffers(sDevice, &alloc_info, sConsumerCommandBuffers);
+        if (result != VK_SUCCESS)
+        {
+            return false;
+        }
+
+        VkCommandBufferAllocateInfo async_alloc = {};
+        async_alloc.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO;
+        async_alloc.commandPool = sCommandPool;
+        async_alloc.level = VK_COMMAND_BUFFER_LEVEL_PRIMARY;
+        async_alloc.commandBufferCount = 1;
+        result = vkAllocateCommandBuffers(sDevice, &async_alloc, &sAsyncProducerCommandBuffer);
         if (result != VK_SUCCESS)
         {
             return false;
@@ -3939,6 +3998,41 @@ namespace
             }
         }
 
+        VkFenceCreateInfo producer_fence_info = {};
+        producer_fence_info.sType = VK_STRUCTURE_TYPE_FENCE_CREATE_INFO;
+        for (U32 i = 0; i < FRAMES_IN_FLIGHT; ++i)
+        {
+            sProducerFencePending[i] = false;
+            VkResult result = vkCreateFence(sDevice, &producer_fence_info, nullptr, &sProducerFences[i]);
+            if (result != VK_SUCCESS)
+            {
+                for (U32 j = 0; j < i; ++j)
+                {
+                    vkDestroyFence(sDevice, sProducerFences[j], nullptr);
+                    sProducerFences[j] = VK_NULL_HANDLE;
+                }
+                for (U32 j = 0; j < FRAMES_IN_FLIGHT; ++j)
+                {
+                    vkDestroyFence(sDevice, sInFlightFences[j], nullptr);
+                    sInFlightFences[j] = VK_NULL_HANDLE;
+                }
+                return false;
+            }
+        }
+
+        sAsyncProducerInFlight = false;
+        if (vkCreateFence(sDevice, &producer_fence_info, nullptr, &sAsyncProducerFence) != VK_SUCCESS)
+        {
+            for (U32 j = 0; j < FRAMES_IN_FLIGHT; ++j)
+            {
+                vkDestroyFence(sDevice, sProducerFences[j], nullptr);
+                sProducerFences[j] = VK_NULL_HANDLE;
+                vkDestroyFence(sDevice, sInFlightFences[j], nullptr);
+                sInFlightFences[j] = VK_NULL_HANDLE;
+            }
+            return false;
+        }
+
 
         VkSemaphoreCreateInfo sem_info = {};
         sem_info.sType = VK_STRUCTURE_TYPE_SEMAPHORE_CREATE_INFO;
@@ -3997,6 +4091,18 @@ namespace
             {
                 vkDestroyFence(sDevice, sInFlightFences[i], nullptr);
                 sInFlightFences[i] = VK_NULL_HANDLE;
+            }
+            if (sProducerFences[i] != VK_NULL_HANDLE)
+            {
+                vkDestroyFence(sDevice, sProducerFences[i], nullptr);
+                sProducerFences[i] = VK_NULL_HANDLE;
+            }
+            sProducerFencePending[i] = false;
+            if (i == 0 && sAsyncProducerFence != VK_NULL_HANDLE)
+            {
+                vkDestroyFence(sDevice, sAsyncProducerFence, nullptr);
+                sAsyncProducerFence = VK_NULL_HANDLE;
+                sAsyncProducerInFlight = false;
             }
             if (sImageAvailableSemaphores[i] != VK_NULL_HANDLE)
             {
@@ -4580,6 +4686,7 @@ void shutdownVulkan(bool device_lost)
         }
         sSubmitFencePool.clear();
 
+        auxWindowShutdownVk();
         destroySwapchain();
 
         if (sDefaultFallbackImageView != VK_NULL_HANDLE)
@@ -4952,6 +5059,7 @@ void shutdownSwapchainAndSurface()
     if (sDevice != VK_NULL_HANDLE)
     {
         vkDeviceWaitIdle(sDevice);
+        auxWindowShutdownVk();
         destroySwapchain();
     }
     shutdownSurface();
@@ -4979,6 +5087,102 @@ static void reapAllDeferred(ReapMode mode)
         tickScenePerDrawDescriptorCache();
     }
     sReapForceAll = false;
+}
+
+bool isUISceneSplit()
+{
+    return sUISceneSplit;
+}
+
+bool isUISceneAsync()
+{
+    return sUISceneSplit && sUISceneAsync;
+}
+
+bool asyncProducerTryComplete()
+{
+    if (!sAsyncProducerInFlight || sAsyncProducerFence == VK_NULL_HANDLE)
+    {
+        return false;
+    }
+    if (vkGetFenceStatus(sDevice, sAsyncProducerFence) == VK_SUCCESS)
+    {
+        vkResetFences(sDevice, 1, &sAsyncProducerFence);
+        sAsyncProducerInFlight = false;
+        return true;
+    }
+    return false;
+}
+
+bool isAsyncProducerInFlight()
+{
+    return sAsyncProducerInFlight;
+}
+
+U32 asyncProducerBackIndex()
+{
+    return sAsyncProducerBackIndex;
+}
+
+bool asyncShouldRenderScene()
+{
+    return !sAsyncFrameEngaged || sAsyncRenderSceneThisFrame;
+}
+
+void setAsyncFrameEngaged(bool on)
+{
+    sAsyncFrameEngaged = on;
+}
+
+bool asyncFrameEngaged()
+{
+    return sAsyncFrameEngaged;
+}
+
+bool isSwapchainImageAcquired()
+{
+    return sImageAcquired;
+}
+
+void asyncProducerBeginScene(U32 back_index)
+{
+    if (!sInFrame || sAsyncProducerCommandBuffer == VK_NULL_HANDLE)
+    {
+        return;
+    }
+    sAsyncProducerBackIndex    = back_index;
+    sAsyncProducerRecordSlot   = sFrameIndex;
+    sAsyncRenderSceneThisFrame = true;
+    vkResetCommandBuffer(sAsyncProducerCommandBuffer, 0);
+    VkCommandBufferBeginInfo bi = {};
+    bi.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO;
+    bi.flags = VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT;
+    vkBeginCommandBuffer(sAsyncProducerCommandBuffer, &bi);
+    tRecordCmdOverride = sAsyncProducerCommandBuffer;
+}
+
+void setProducerPresentActive(bool on)
+{
+    sProducerPresentActive = on;
+}
+
+bool producerSwapchainFallbackShouldSkip()
+{
+    return sUISceneSplit && sProducerPresentActive && sInFrame &&
+           tRecordCmdOverride != sConsumerCommandBuffers[sFrameIndex];
+}
+
+void recordToConsumer(bool on)
+{
+    if (on && sUISceneSplit && sInFrame)
+    {
+        tRecordCmdOverride     = sConsumerCommandBuffers[sFrameIndex];
+        sConsumerActiveThisFrame = true;
+    }
+    else
+    {
+        tRecordCmdOverride = VK_NULL_HANDLE;
+    }
 }
 
 bool beginFrame(bool acquire_swapchain)
@@ -5066,6 +5270,22 @@ bool beginFrame(bool acquire_swapchain)
         }
         vkResetFences(sDevice, 1, &sInFlightFences[sFrameIndex]);
     }
+    if (sProducerFencePending[sFrameIndex] && sProducerFences[sFrameIndex] != VK_NULL_HANDLE)
+    {
+        vkWaitForFences(sDevice, 1, &sProducerFences[sFrameIndex], VK_TRUE, UINT64_MAX);
+        vkResetFences(sDevice, 1, &sProducerFences[sFrameIndex]);
+        sProducerFencePending[sFrameIndex] = false;
+    }
+    if (sAsyncProducerInFlight && sAsyncProducerSubmitMonotonic > 0 &&
+        sLastCompletedMonotonic >= sAsyncProducerSubmitMonotonic)
+    {
+        sLastCompletedMonotonic = sAsyncProducerSubmitMonotonic - 1;
+    }
+    if (sAsyncProducerInFlight && sAsyncProducerRecordSlot == sFrameIndex &&
+        sAsyncProducerFence != VK_NULL_HANDLE)
+    {
+        vkWaitForFences(sDevice, 1, &sAsyncProducerFence, VK_TRUE, UINT64_MAX);
+    }
     sPESlotState[sFrameIndex].store(PE_SLOT_IDLE);
 
     if (sFrameIndex < FRAMES_IN_FLIGHT)
@@ -5115,11 +5335,26 @@ bool beginFrame(bool acquire_swapchain)
         return false;
     }
 
+    sConsumerActiveThisFrame = false;
+    sProducerPresentActive   = false;
+    sAsyncRenderSceneThisFrame = false;
+    sAsyncFrameEngaged         = false;
+    if (sUISceneSplit)
+    {
+        vkResetCommandBuffer(sConsumerCommandBuffers[sFrameIndex], 0);
+        VkResult cresult = vkBeginCommandBuffer(sConsumerCommandBuffers[sFrameIndex], &begin_info);
+        if (cresult != VK_SUCCESS)
+        {
+            return false;
+        }
+    }
+
     reapAllDeferred(REAP_CHURN);
 
     sInFrame = true;
 
-    if (sImageAcquired &&
+    if (!sUISceneSplit &&
+        sImageAcquired &&
         sAcquiredImageIndex < (U32)sSwapchainImages.size() &&
         sSwapchainImages[sAcquiredImageIndex] != VK_NULL_HANDLE)
     {
@@ -5267,6 +5502,14 @@ bool endFrame()
             const U32 frames = sMonotonicFrameCount - s_last_frame;
             if (frames > 0)
             {
+                if (isUISceneAsync())
+                {
+                    static U32 s_last_prod = 0;
+                    const U32 prod = sAsyncProducerSubmitCount - s_last_prod;
+                    s_last_prod = sAsyncProducerSubmitCount;
+                    LL_INFOS("VkPerf") << "uiscene consumer_fps=" << ((F64)frames / elapsed)
+                                       << " producer_fps=" << ((F64)prod / elapsed) << LL_ENDL;
+                }
                 const U64 draws = gVkPerf.desc_bind.load() + gVkPerf.desc_skip.load();
                 LL_INFOS("VkPerf") << "frames=" << frames
                                    << " fps=" << ((F64)frames / elapsed)
@@ -5587,21 +5830,39 @@ bool endFrame()
         }
     }
 
-    endSwapchainRendering();
-
-    if (sImageAcquired &&
-        sAcquiredImageIndex < (U32)sSwapchainImages.size() &&
-        sSwapchainImages[sAcquiredImageIndex] != VK_NULL_HANDLE)
+    if (!sConsumerActiveThisFrame)
     {
-        transitionImageLayoutVk(sSwapchainImages[sAcquiredImageIndex],
-                                VK_IMAGE_ASPECT_COLOR_BIT,
-                                VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL,
-                                VK_IMAGE_LAYOUT_PRESENT_SRC_KHR,
-                                VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT,
-                                VK_PIPELINE_STAGE_BOTTOM_OF_PIPE_BIT,
-                                VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT,
-                                0);
+        endSwapchainRendering();
 
+        if (sImageAcquired &&
+            sAcquiredImageIndex < (U32)sSwapchainImages.size() &&
+            sSwapchainImages[sAcquiredImageIndex] != VK_NULL_HANDLE)
+        {
+            const VkImageLayout present_old =
+                (sUISceneSplit && !sSwapchainClearedThisFrame)
+                    ? VK_IMAGE_LAYOUT_UNDEFINED
+                    : VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
+            transitionImageLayoutVk(sSwapchainImages[sAcquiredImageIndex],
+                                    VK_IMAGE_ASPECT_COLOR_BIT,
+                                    present_old,
+                                    VK_IMAGE_LAYOUT_PRESENT_SRC_KHR,
+                                    VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT,
+                                    VK_PIPELINE_STAGE_BOTTOM_OF_PIPE_BIT,
+                                    VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT,
+                                    0);
+        }
+    }
+
+    if (sUISceneSplit)
+    {
+        tRecordCmdOverride = VK_NULL_HANDLE;
+        VkResult cend = vkEndCommandBuffer(sConsumerCommandBuffers[sFrameIndex]);
+        if (cend != VK_SUCCESS)
+        {
+            sInFrame = false;
+            sImageAcquired = false;
+            return false;
+        }
     }
 
     VkResult result = vkEndCommandBuffer(sCommandBuffers[sFrameIndex]);
@@ -5612,6 +5873,55 @@ bool endFrame()
         return false;
     }
 
+    if (sUISceneSplit && sConsumerActiveThisFrame && isUISceneAsync())
+    {
+        PEJob cjob;
+        cjob.is_frame = true;
+        cjob.slot     = sFrameIndex;
+        cjob.pre_cmds = std::move(sPendingPreFrameCmds);
+        sPendingPreFrameCmds.clear();
+        cjob.cmd      = sConsumerCommandBuffers[sFrameIndex];
+        cjob.fence    = sInFlightFences[sFrameIndex];
+        if (sImageAcquired)
+        {
+            cjob.wait_semaphore   = sImageAvailableSemaphores[sFrameIndex];
+            cjob.signal_semaphore = sRenderFinishedSemaphores[sFrameIndex];
+            if (sSwapchain != VK_NULL_HANDLE)
+            {
+                PEPresentTarget target;
+                target.swapchain      = sSwapchain;
+                target.image_index    = sAcquiredImageIndex;
+                target.wait_semaphore = sRenderFinishedSemaphores[sFrameIndex];
+                cjob.presents.push_back(target);
+            }
+        }
+        sFrameSubmittedMonotonic[sFrameIndex] = sMonotonicFrameCount;
+        sPESlotState[sFrameIndex].store(PE_SLOT_PENDING);
+        peEnqueue(std::move(cjob));
+
+        PEJob pjob;
+        pjob.is_frame = false;
+        pjob.slot     = sFrameIndex;
+        pjob.cmd      = sCommandBuffers[sFrameIndex];
+        pjob.fence    = sProducerFences[sFrameIndex];
+        sProducerFencePending[sFrameIndex] = true;
+        peEnqueue(std::move(pjob));
+
+        if (sAsyncRenderSceneThisFrame)
+        {
+            vkEndCommandBuffer(sAsyncProducerCommandBuffer);
+            PEJob apjob;
+            apjob.is_frame = false;
+            apjob.cmd      = sAsyncProducerCommandBuffer;
+            apjob.fence    = sAsyncProducerFence;
+            peEnqueue(std::move(apjob));
+            sAsyncProducerInFlight        = true;
+            sAsyncProducerSubmitMonotonic = sMonotonicFrameCount;
+            ++sAsyncProducerSubmitCount;
+            sAsyncRenderSceneThisFrame    = false;
+        }
+    }
+    else
     {
         PEJob job;
         job.is_frame = true;
@@ -5669,6 +5979,22 @@ bool beginOffscreenFrameVk()
             }
         }
         vkResetFences(sDevice, 1, &sInFlightFences[sFrameIndex]);
+    }
+    if (sProducerFencePending[sFrameIndex] && sProducerFences[sFrameIndex] != VK_NULL_HANDLE)
+    {
+        vkWaitForFences(sDevice, 1, &sProducerFences[sFrameIndex], VK_TRUE, UINT64_MAX);
+        vkResetFences(sDevice, 1, &sProducerFences[sFrameIndex]);
+        sProducerFencePending[sFrameIndex] = false;
+    }
+    if (sAsyncProducerInFlight && sAsyncProducerSubmitMonotonic > 0 &&
+        sLastCompletedMonotonic >= sAsyncProducerSubmitMonotonic)
+    {
+        sLastCompletedMonotonic = sAsyncProducerSubmitMonotonic - 1;
+    }
+    if (sAsyncProducerInFlight && sAsyncProducerRecordSlot == sFrameIndex &&
+        sAsyncProducerFence != VK_NULL_HANDLE)
+    {
+        vkWaitForFences(sDevice, 1, &sAsyncProducerFence, VK_TRUE, UINT64_MAX);
     }
     sPESlotState[sFrameIndex].store(PE_SLOT_IDLE);
 
@@ -6673,6 +6999,20 @@ void beginSwapchainRendering()
 
     const bool first_use_this_frame = !sSwapchainClearedThisFrame;
 
+    if (sUISceneSplit && first_use_this_frame &&
+        sAcquiredImageIndex < (U32)sSwapchainImages.size() &&
+        sSwapchainImages[sAcquiredImageIndex] != VK_NULL_HANDLE)
+    {
+        transitionImageLayoutVk(sSwapchainImages[sAcquiredImageIndex],
+                                VK_IMAGE_ASPECT_COLOR_BIT,
+                                VK_IMAGE_LAYOUT_UNDEFINED,
+                                VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL,
+                                VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT,
+                                VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT,
+                                0,
+                                VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT);
+    }
+
     DynamicRenderingAttachment color = {};
     color.image_view   = sSwapchainImageViews[sAcquiredImageIndex];
     color.image_layout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
@@ -6742,6 +7082,32 @@ void endSwapchainRendering()
 
     endDynamicRendering();
 
+}
+
+void finalizeConsumerSwapchain()
+{
+    if (!sUISceneSplit || !sConsumerActiveThisFrame || !sInFrame)
+    {
+        return;
+    }
+
+    endSwapchainRendering();
+
+    if (sImageAcquired &&
+        sAcquiredImageIndex < (U32)sSwapchainImages.size() &&
+        sSwapchainImages[sAcquiredImageIndex] != VK_NULL_HANDLE)
+    {
+        transitionImageLayoutVk(sSwapchainImages[sAcquiredImageIndex],
+                                VK_IMAGE_ASPECT_COLOR_BIT,
+                                VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL,
+                                VK_IMAGE_LAYOUT_PRESENT_SRC_KHR,
+                                VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT,
+                                VK_PIPELINE_STAGE_BOTTOM_OF_PIPE_BIT,
+                                VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT,
+                                0);
+    }
+
+    tRecordCmdOverride = VK_NULL_HANDLE;
 }
 
 VkShaderModule loadSpirvShaderModule(const U32* spv_code, size_t code_size_bytes)
@@ -7953,6 +8319,25 @@ bool submitOneShotVk(VkCommandBuffer cmd, VkBuffer staging_buffer, VmaAllocation
     return submitOneShotVkFromPool(cmd, sCommandPool, staging_buffer, staging_allocation, 0);
 }
 
+static VkCommandBuffer beginOneShotCommandBufferVk()
+{
+    VkCommandBufferAllocateInfo cbai = {};
+    cbai.sType              = VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO;
+    cbai.commandPool        = sCommandPool;
+    cbai.level              = VK_COMMAND_BUFFER_LEVEL_PRIMARY;
+    cbai.commandBufferCount = 1;
+    VkCommandBuffer cmd = VK_NULL_HANDLE;
+    if (vkAllocateCommandBuffers(sDevice, &cbai, &cmd) != VK_SUCCESS || cmd == VK_NULL_HANDLE)
+    {
+        return VK_NULL_HANDLE;
+    }
+    VkCommandBufferBeginInfo cbbi = {};
+    cbbi.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO;
+    cbbi.flags = VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT;
+    vkBeginCommandBuffer(cmd, &cbbi);
+    return cmd;
+}
+
 bool submitOneShotVkFromPool(VkCommandBuffer cmd, VkCommandPool pool, VkBuffer staging_buffer,
                              VmaAllocation staging_allocation, U32 staging_bytes)
 {
@@ -9144,7 +9529,7 @@ void destroyImageVk(VkImage image, VkImageView view, void* allocation)
     pending.image         = image;
     pending.view          = view;
     pending.allocation    = reinterpret_cast<VmaAllocation>(allocation);
-    pending.enqueue_frame = sMonotonicFrameCount;
+    pending.enqueue_frame = sInFrame ? sMonotonicFrameCount : (sMonotonicFrameCount + 1);
     sPendingImageFrees.push_back(pending);
     if (view != VK_NULL_HANDLE && vkValidationRequested())
     {
@@ -9388,24 +9773,12 @@ bool uploadImageDataVk(VkImage     image,
 
     memcpy(staging_mapped, data, data_size_bytes);
 
-    VkCommandBufferAllocateInfo cbai = {};
-    cbai.sType              = VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO;
-    cbai.commandPool        = sCommandPool;
-    cbai.level              = VK_COMMAND_BUFFER_LEVEL_PRIMARY;
-    cbai.commandBufferCount = 1;
-
-    VkCommandBuffer cmd = VK_NULL_HANDLE;
-    VkResult cr = vkAllocateCommandBuffers(sDevice, &cbai, &cmd);
-    if (cr != VK_SUCCESS || cmd == VK_NULL_HANDLE)
+    VkCommandBuffer cmd = beginOneShotCommandBufferVk();
+    if (cmd == VK_NULL_HANDLE)
     {
         vmaDestroyBuffer(sAllocator, staging_buffer, staging_allocation);
         return false;
     }
-
-    VkCommandBufferBeginInfo cbbi = {};
-    cbbi.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO;
-    cbbi.flags = VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT;
-    vkBeginCommandBuffer(cmd, &cbbi);
 
     {
         VkImageMemoryBarrier b = {};
@@ -9423,7 +9796,7 @@ bool uploadImageDataVk(VkImage     image,
         b.subresourceRange.baseArrayLayer = 0;
         b.subresourceRange.layerCount     = 1;
         vkCmdPipelineBarrier(cmd,
-                             VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT,
+                             VK_PIPELINE_STAGE_ALL_COMMANDS_BIT,
                              VK_PIPELINE_STAGE_TRANSFER_BIT,
                              0, 0, nullptr, 0, nullptr, 1, &b);
     }
@@ -9460,7 +9833,7 @@ bool uploadImageDataVk(VkImage     image,
         b.subresourceRange.layerCount     = 1;
         vkCmdPipelineBarrier(cmd,
                              VK_PIPELINE_STAGE_TRANSFER_BIT,
-                             VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT,
+                             VK_PIPELINE_STAGE_ALL_COMMANDS_BIT,
                              0, 0, nullptr, 0, nullptr, 1, &b);
     }
 
@@ -9487,20 +9860,11 @@ bool generateMipChainBlitVk(VkImage image, U32 base_w, U32 base_h, U32 mip_count
         return false;
     }
 
-    VkCommandBufferAllocateInfo cbai = {};
-    cbai.sType              = VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO;
-    cbai.commandPool        = sCommandPool;
-    cbai.level              = VK_COMMAND_BUFFER_LEVEL_PRIMARY;
-    cbai.commandBufferCount = 1;
-    VkCommandBuffer cmd = VK_NULL_HANDLE;
-    if (vkAllocateCommandBuffers(sDevice, &cbai, &cmd) != VK_SUCCESS)
+    VkCommandBuffer cmd = beginOneShotCommandBufferVk();
+    if (cmd == VK_NULL_HANDLE)
     {
         return false;
     }
-    VkCommandBufferBeginInfo cbbi = {};
-    cbbi.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO;
-    cbbi.flags = VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT;
-    vkBeginCommandBuffer(cmd, &cbbi);
 
     auto mip_barrier = [&](U32 level, VkImageLayout oldL, VkImageLayout newL,
                            VkAccessFlags srcA, VkAccessFlags dstA,
@@ -9616,21 +9980,12 @@ bool downscaleImageVk(VkImage      src_image,
         return false;
     }
 
-    VkCommandBufferAllocateInfo cbai = {};
-    cbai.sType              = VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO;
-    cbai.commandPool        = sCommandPool;
-    cbai.level              = VK_COMMAND_BUFFER_LEVEL_PRIMARY;
-    cbai.commandBufferCount = 1;
-    VkCommandBuffer cmd = VK_NULL_HANDLE;
-    if (vkAllocateCommandBuffers(sDevice, &cbai, &cmd) != VK_SUCCESS)
+    VkCommandBuffer cmd = beginOneShotCommandBufferVk();
+    if (cmd == VK_NULL_HANDLE)
     {
         destroyImageVk(new_image, new_view, new_alloc);
         return false;
     }
-    VkCommandBufferBeginInfo cbbi = {};
-    cbbi.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO;
-    cbbi.flags = VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT;
-    vkBeginCommandBuffer(cmd, &cbbi);
 
     auto image_barrier = [&](VkImage img, U32 level, VkImageLayout oldL, VkImageLayout newL,
                              VkAccessFlags srcA, VkAccessFlags dstA,
@@ -9726,20 +10081,11 @@ bool blitCubeArrayVk(VkImage       src,
         return false;
     }
 
-    VkCommandBufferAllocateInfo cbai = {};
-    cbai.sType              = VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO;
-    cbai.commandPool        = sCommandPool;
-    cbai.level              = VK_COMMAND_BUFFER_LEVEL_PRIMARY;
-    cbai.commandBufferCount = 1;
-    VkCommandBuffer cmd = VK_NULL_HANDLE;
-    if (vkAllocateCommandBuffers(sDevice, &cbai, &cmd) != VK_SUCCESS)
+    VkCommandBuffer cmd = beginOneShotCommandBufferVk();
+    if (cmd == VK_NULL_HANDLE)
     {
         return false;
     }
-    VkCommandBufferBeginInfo cbbi = {};
-    cbbi.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO;
-    cbbi.flags = VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT;
-    vkBeginCommandBuffer(cmd, &cbbi);
 
     auto image_barrier = [&](VkImage img, VkImageLayout oldL, VkImageLayout newL,
                              VkAccessFlags srcA, VkAccessFlags dstA,
@@ -10039,24 +10385,12 @@ bool uploadImageData3DVk(VkImage     image,
 
     memcpy(staging_mapped, data, data_size_bytes);
 
-    VkCommandBufferAllocateInfo cbai = {};
-    cbai.sType              = VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO;
-    cbai.commandPool        = sCommandPool;
-    cbai.level              = VK_COMMAND_BUFFER_LEVEL_PRIMARY;
-    cbai.commandBufferCount = 1;
-
-    VkCommandBuffer cmd = VK_NULL_HANDLE;
-    VkResult cr = vkAllocateCommandBuffers(sDevice, &cbai, &cmd);
-    if (cr != VK_SUCCESS || cmd == VK_NULL_HANDLE)
+    VkCommandBuffer cmd = beginOneShotCommandBufferVk();
+    if (cmd == VK_NULL_HANDLE)
     {
         vmaDestroyBuffer(sAllocator, staging_buffer, staging_allocation);
         return false;
     }
-
-    VkCommandBufferBeginInfo cbbi = {};
-    cbbi.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO;
-    cbbi.flags = VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT;
-    vkBeginCommandBuffer(cmd, &cbbi);
 
     {
         VkImageMemoryBarrier b = {};
@@ -10195,23 +10529,12 @@ bool uploadImageSubregionVk(VkImage     image,
         }
     }
 
-    VkCommandBufferAllocateInfo cbai = {};
-    cbai.sType              = VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO;
-    cbai.commandPool        = sCommandPool;
-    cbai.level              = VK_COMMAND_BUFFER_LEVEL_PRIMARY;
-    cbai.commandBufferCount = 1;
-    VkCommandBuffer cmd = VK_NULL_HANDLE;
-    VkResult cr = vkAllocateCommandBuffers(sDevice, &cbai, &cmd);
-    if (cr != VK_SUCCESS || cmd == VK_NULL_HANDLE)
+    VkCommandBuffer cmd = beginOneShotCommandBufferVk();
+    if (cmd == VK_NULL_HANDLE)
     {
         vmaDestroyBuffer(sAllocator, staging_buffer, staging_allocation);
         return false;
     }
-
-    VkCommandBufferBeginInfo cbbi = {};
-    cbbi.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO;
-    cbbi.flags = VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT;
-    vkBeginCommandBuffer(cmd, &cbbi);
 
     {
         VkImageMemoryBarrier b = {};
@@ -10229,7 +10552,7 @@ bool uploadImageSubregionVk(VkImage     image,
         b.subresourceRange.baseArrayLayer = 0;
         b.subresourceRange.layerCount     = 1;
         vkCmdPipelineBarrier(cmd,
-                             VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT,
+                             VK_PIPELINE_STAGE_ALL_COMMANDS_BIT,
                              VK_PIPELINE_STAGE_TRANSFER_BIT,
                              0, 0, nullptr, 0, nullptr, 1, &b);
     }
@@ -10266,7 +10589,7 @@ bool uploadImageSubregionVk(VkImage     image,
         b.subresourceRange.layerCount     = 1;
         vkCmdPipelineBarrier(cmd,
                              VK_PIPELINE_STAGE_TRANSFER_BIT,
-                             VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT,
+                             VK_PIPELINE_STAGE_ALL_COMMANDS_BIT,
                              0, 0, nullptr, 0, nullptr, 1, &b);
     }
 
@@ -10419,24 +10742,12 @@ bool uploadCubeImageDataVk(VkImage           image,
         }
     }
 
-    VkCommandBufferAllocateInfo cbai = {};
-    cbai.sType              = VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO;
-    cbai.commandPool        = sCommandPool;
-    cbai.level              = VK_COMMAND_BUFFER_LEVEL_PRIMARY;
-    cbai.commandBufferCount = 1;
-
-    VkCommandBuffer cmd = VK_NULL_HANDLE;
-    VkResult cr = vkAllocateCommandBuffers(sDevice, &cbai, &cmd);
-    if (cr != VK_SUCCESS || cmd == VK_NULL_HANDLE)
+    VkCommandBuffer cmd = beginOneShotCommandBufferVk();
+    if (cmd == VK_NULL_HANDLE)
     {
         vmaDestroyBuffer(sAllocator, staging_buffer, staging_allocation);
         return false;
     }
-
-    VkCommandBufferBeginInfo cbbi = {};
-    cbbi.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO;
-    cbbi.flags = VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT;
-    vkBeginCommandBuffer(cmd, &cbbi);
 
     {
         VkImageMemoryBarrier b = {};
@@ -10585,19 +10896,9 @@ bool createCubeArrayImageVk(U32          resolution,
     }
     noteViewHandleCreated(view);
 
-    VkCommandBufferAllocateInfo cbai = {};
-    cbai.sType              = VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO;
-    cbai.commandPool        = sCommandPool;
-    cbai.level              = VK_COMMAND_BUFFER_LEVEL_PRIMARY;
-    cbai.commandBufferCount = 1;
-    VkCommandBuffer cmd = VK_NULL_HANDLE;
-    if (vkAllocateCommandBuffers(sDevice, &cbai, &cmd) == VK_SUCCESS && cmd != VK_NULL_HANDLE)
+    VkCommandBuffer cmd = beginOneShotCommandBufferVk();
+    if (cmd != VK_NULL_HANDLE)
     {
-        VkCommandBufferBeginInfo cbbi = {};
-        cbbi.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO;
-        cbbi.flags = VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT;
-        vkBeginCommandBuffer(cmd, &cbbi);
-
         VkImageSubresourceRange full_range = {};
         full_range.aspectMask     = VK_IMAGE_ASPECT_COLOR_BIT;
         full_range.baseMipLevel   = 0;
@@ -11079,23 +11380,12 @@ bool readbackColorImageRegionVk(VkImage       image,
         staging_mapped = info.pMappedData;
     }
 
-    VkCommandBufferAllocateInfo cbai = {};
-    cbai.sType              = VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO;
-    cbai.commandPool        = sCommandPool;
-    cbai.level              = VK_COMMAND_BUFFER_LEVEL_PRIMARY;
-    cbai.commandBufferCount = 1;
-    VkCommandBuffer cmd = VK_NULL_HANDLE;
-    VkResult cr = vkAllocateCommandBuffers(sDevice, &cbai, &cmd);
-    if (cr != VK_SUCCESS || cmd == VK_NULL_HANDLE)
+    VkCommandBuffer cmd = beginOneShotCommandBufferVk();
+    if (cmd == VK_NULL_HANDLE)
     {
         vmaDestroyBuffer(sAllocator, staging_buffer, staging_allocation);
         return false;
     }
-
-    VkCommandBufferBeginInfo cbbi = {};
-    cbbi.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO;
-    cbbi.flags = VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT;
-    vkBeginCommandBuffer(cmd, &cbbi);
 
     {
         VkImageMemoryBarrier b = {};
@@ -11240,23 +11530,12 @@ bool readbackDepthImageRegionVk(VkImage       image,
         has_stencil ? (VK_IMAGE_ASPECT_DEPTH_BIT | VK_IMAGE_ASPECT_STENCIL_BIT)
                     : VK_IMAGE_ASPECT_DEPTH_BIT;
 
-    VkCommandBufferAllocateInfo cbai = {};
-    cbai.sType              = VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO;
-    cbai.commandPool        = sCommandPool;
-    cbai.level              = VK_COMMAND_BUFFER_LEVEL_PRIMARY;
-    cbai.commandBufferCount = 1;
-    VkCommandBuffer cmd = VK_NULL_HANDLE;
-    VkResult cr = vkAllocateCommandBuffers(sDevice, &cbai, &cmd);
-    if (cr != VK_SUCCESS || cmd == VK_NULL_HANDLE)
+    VkCommandBuffer cmd = beginOneShotCommandBufferVk();
+    if (cmd == VK_NULL_HANDLE)
     {
         vmaDestroyBuffer(sAllocator, staging_buffer, staging_allocation);
         return false;
     }
-
-    VkCommandBufferBeginInfo cbbi = {};
-    cbbi.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO;
-    cbbi.flags = VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT;
-    vkBeginCommandBuffer(cmd, &cbbi);
 
     {
         VkImageMemoryBarrier b = {};
@@ -11771,21 +12050,11 @@ void transitionImageLayoutVk(VkImage              image,
         {
             return;
         }
-        VkCommandBufferAllocateInfo cbai = {};
-        cbai.sType              = VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO;
-        cbai.commandPool        = sCommandPool;
-        cbai.level              = VK_COMMAND_BUFFER_LEVEL_PRIMARY;
-        cbai.commandBufferCount = 1;
-        VkCommandBuffer oneshot_cmd = VK_NULL_HANDLE;
-        if (vkAllocateCommandBuffers(sDevice, &cbai, &oneshot_cmd) != VK_SUCCESS ||
-            oneshot_cmd == VK_NULL_HANDLE)
+        VkCommandBuffer oneshot_cmd = beginOneShotCommandBufferVk();
+        if (oneshot_cmd == VK_NULL_HANDLE)
         {
             return;
         }
-        VkCommandBufferBeginInfo cbbi = {};
-        cbbi.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO;
-        cbbi.flags = VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT;
-        vkBeginCommandBuffer(oneshot_cmd, &cbbi);
         VkImageMemoryBarrier oneshot_barrier = {};
         oneshot_barrier.sType                           = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER;
         oneshot_barrier.oldLayout                       = old_layout;
@@ -11983,6 +12252,309 @@ VkSurfaceKHR getSurface()
     return sSurface;
 }
 
+static bool auxCreateSwapchain()
+{
+    AuxWindowVk& aw = sAuxWindow;
+    if (sDevice == VK_NULL_HANDLE || aw.surface == VK_NULL_HANDLE)
+    {
+        return false;
+    }
+
+    VkSurfaceCapabilitiesKHR caps = {};
+    if (vkGetPhysicalDeviceSurfaceCapabilitiesKHR(sPhysicalDevice, aw.surface, &caps) != VK_SUCCESS)
+    {
+        return false;
+    }
+    const VkImageUsageFlags want_usage = VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT | VK_IMAGE_USAGE_TRANSFER_DST_BIT;
+    if ((caps.supportedUsageFlags & want_usage) != want_usage)
+    {
+        return false;
+    }
+
+    U32 format_count = 0;
+    vkGetPhysicalDeviceSurfaceFormatsKHR(sPhysicalDevice, aw.surface, &format_count, nullptr);
+    if (format_count == 0)
+    {
+        return false;
+    }
+    std::vector<VkSurfaceFormatKHR> formats(format_count);
+    vkGetPhysicalDeviceSurfaceFormatsKHR(sPhysicalDevice, aw.surface, &format_count, formats.data());
+    VkSurfaceFormatKHR chosen = formats[0];
+    for (const VkSurfaceFormatKHR& f : formats)
+    {
+        if (f.format == VK_FORMAT_B8G8R8A8_UNORM && f.colorSpace == VK_COLOR_SPACE_SRGB_NONLINEAR_KHR)
+        {
+            chosen = f;
+            break;
+        }
+    }
+
+    VkExtent2D extent = caps.currentExtent;
+    if (extent.width == UINT32_MAX)
+    {
+        extent.width  = llclamp(640u, caps.minImageExtent.width,  caps.maxImageExtent.width);
+        extent.height = llclamp(480u, caps.minImageExtent.height, caps.maxImageExtent.height);
+    }
+    if (extent.width == 0 || extent.height == 0)
+    {
+        return false;
+    }
+
+    U32 image_count = caps.minImageCount + 1;
+    if (caps.maxImageCount > 0 && image_count > caps.maxImageCount)
+    {
+        image_count = caps.maxImageCount;
+    }
+
+    VkSwapchainCreateInfoKHR ci = {};
+    ci.sType            = VK_STRUCTURE_TYPE_SWAPCHAIN_CREATE_INFO_KHR;
+    ci.surface          = aw.surface;
+    ci.minImageCount    = image_count;
+    ci.imageFormat      = chosen.format;
+    ci.imageColorSpace  = chosen.colorSpace;
+    ci.imageExtent      = extent;
+    ci.imageArrayLayers = 1;
+    ci.imageUsage       = want_usage;
+    ci.imageSharingMode = VK_SHARING_MODE_EXCLUSIVE;
+    ci.preTransform     = caps.currentTransform;
+    ci.compositeAlpha   = VK_COMPOSITE_ALPHA_OPAQUE_BIT_KHR;
+    ci.presentMode      = VK_PRESENT_MODE_FIFO_KHR;
+    ci.clipped          = VK_TRUE;
+
+    if (vkCreateSwapchainKHR(sDevice, &ci, nullptr, &aw.swapchain) != VK_SUCCESS)
+    {
+        aw.swapchain = VK_NULL_HANDLE;
+        return false;
+    }
+    aw.format = chosen.format;
+    aw.extent = extent;
+
+    U32 actual = 0;
+    vkGetSwapchainImagesKHR(sDevice, aw.swapchain, &actual, nullptr);
+    aw.images.assign(actual, VK_NULL_HANDLE);
+    vkGetSwapchainImagesKHR(sDevice, aw.swapchain, &actual, aw.images.data());
+    return true;
+}
+
+static void auxDestroySwapchain()
+{
+    AuxWindowVk& aw = sAuxWindow;
+    peDrain();
+    for (U32 i = 0; i < FRAMES_IN_FLIGHT; ++i)
+    {
+        if (aw.fenceInFlight[i] && aw.fences[i] != VK_NULL_HANDLE)
+        {
+            vkWaitForFences(sDevice, 1, &aw.fences[i], VK_TRUE, UINT64_MAX);
+            vkResetFences(sDevice, 1, &aw.fences[i]);
+            aw.fenceInFlight[i] = false;
+        }
+    }
+    aw.images.clear();
+    if (aw.swapchain != VK_NULL_HANDLE)
+    {
+        vkDestroySwapchainKHR(sDevice, aw.swapchain, nullptr);
+        aw.swapchain = VK_NULL_HANDLE;
+    }
+    aw.format = VK_FORMAT_UNDEFINED;
+    aw.extent = {0, 0};
+}
+
+bool auxWindowInitVk(void* native_display, void* native_window)
+{
+    if (!sInitialized || sAuxWindow.active)
+    {
+        return sAuxWindow.active;
+    }
+#if defined(VK_USE_PLATFORM_XLIB_KHR)
+    if (native_display == nullptr || native_window == nullptr)
+    {
+        return false;
+    }
+    VkXlibSurfaceCreateInfoKHR ci = {};
+    ci.sType  = VK_STRUCTURE_TYPE_XLIB_SURFACE_CREATE_INFO_KHR;
+    ci.dpy    = static_cast<Display*>(native_display);
+    ci.window = static_cast<Window>(reinterpret_cast<uintptr_t>(native_window));
+    if (vkCreateXlibSurfaceKHR(sInstance, &ci, nullptr, &sAuxWindow.surface) != VK_SUCCESS)
+    {
+        sAuxWindow.surface = VK_NULL_HANDLE;
+        return false;
+    }
+#else
+    return false;
+#endif
+
+    if (!auxCreateSwapchain())
+    {
+        vkDestroySurfaceKHR(sInstance, sAuxWindow.surface, nullptr);
+        sAuxWindow.surface = VK_NULL_HANDLE;
+        return false;
+    }
+
+    VkSemaphoreCreateInfo si = {};
+    si.sType = VK_STRUCTURE_TYPE_SEMAPHORE_CREATE_INFO;
+    VkFenceCreateInfo fi = {};
+    fi.sType = VK_STRUCTURE_TYPE_FENCE_CREATE_INFO;
+    VkCommandBufferAllocateInfo ai = {};
+    ai.sType              = VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO;
+    ai.commandPool        = sCommandPool;
+    ai.level              = VK_COMMAND_BUFFER_LEVEL_PRIMARY;
+    ai.commandBufferCount = FRAMES_IN_FLIGHT;
+    bool ok = vkAllocateCommandBuffers(sDevice, &ai, sAuxWindow.cbs) == VK_SUCCESS;
+    for (U32 i = 0; ok && i < FRAMES_IN_FLIGHT; ++i)
+    {
+        ok = ok && vkCreateSemaphore(sDevice, &si, nullptr, &sAuxWindow.imageAvailable[i]) == VK_SUCCESS;
+        ok = ok && vkCreateSemaphore(sDevice, &si, nullptr, &sAuxWindow.renderFinished[i]) == VK_SUCCESS;
+        ok = ok && vkCreateFence(sDevice, &fi, nullptr, &sAuxWindow.fences[i]) == VK_SUCCESS;
+    }
+    if (!ok)
+    {
+        auxWindowShutdownVk();
+        return false;
+    }
+    sAuxWindow.active = true;
+    return true;
+}
+
+void auxWindowShutdownVk()
+{
+    AuxWindowVk& aw = sAuxWindow;
+    if (sDevice != VK_NULL_HANDLE)
+    {
+        auxDestroySwapchain();
+        for (U32 i = 0; i < FRAMES_IN_FLIGHT; ++i)
+        {
+            if (aw.imageAvailable[i] != VK_NULL_HANDLE) vkDestroySemaphore(sDevice, aw.imageAvailable[i], nullptr);
+            if (aw.renderFinished[i] != VK_NULL_HANDLE) vkDestroySemaphore(sDevice, aw.renderFinished[i], nullptr);
+            if (aw.fences[i] != VK_NULL_HANDLE)         vkDestroyFence(sDevice, aw.fences[i], nullptr);
+            aw.imageAvailable[i] = VK_NULL_HANDLE;
+            aw.renderFinished[i] = VK_NULL_HANDLE;
+            aw.fences[i]         = VK_NULL_HANDLE;
+            aw.fenceInFlight[i]  = false;
+        }
+        if (aw.cbs[0] != VK_NULL_HANDLE)
+        {
+            vkFreeCommandBuffers(sDevice, sCommandPool, FRAMES_IN_FLIGHT, aw.cbs);
+            for (U32 i = 0; i < FRAMES_IN_FLIGHT; ++i) aw.cbs[i] = VK_NULL_HANDLE;
+        }
+    }
+    if (aw.surface != VK_NULL_HANDLE && sInstance != VK_NULL_HANDLE)
+    {
+        vkDestroySurfaceKHR(sInstance, aw.surface, nullptr);
+    }
+    aw.surface = VK_NULL_HANDLE;
+    aw.active  = false;
+    aw.recreatePending = false;
+}
+
+bool auxWindowActiveVk()
+{
+    return sAuxWindow.active;
+}
+
+bool auxWindowPresentClearVk(F32 r, F32 g, F32 b)
+{
+    AuxWindowVk& aw = sAuxWindow;
+    if (!aw.active || sVkDeviceLost.load(std::memory_order_acquire))
+    {
+        return false;
+    }
+    if (aw.recreatePending)
+    {
+        auxDestroySwapchain();
+        if (!auxCreateSwapchain())
+        {
+            return false;
+        }
+        aw.recreatePending = false;
+    }
+
+    const U32 slot = sFrameIndex % FRAMES_IN_FLIGHT;
+    if (aw.fenceInFlight[slot])
+    {
+        vkWaitForFences(sDevice, 1, &aw.fences[slot], VK_TRUE, UINT64_MAX);
+        vkResetFences(sDevice, 1, &aw.fences[slot]);
+        aw.fenceInFlight[slot] = false;
+    }
+
+    U32 image_index = 0;
+    VkResult ar;
+    {
+        std::lock_guard<std::mutex> lk(sSwapchainAccessMutex);
+        ar = vkAcquireNextImageKHR(sDevice, aw.swapchain, UINT64_MAX,
+                                   aw.imageAvailable[slot], VK_NULL_HANDLE, &image_index);
+    }
+    if (ar == VK_ERROR_OUT_OF_DATE_KHR)
+    {
+        aw.recreatePending = true;
+        return false;
+    }
+    if (ar != VK_SUCCESS && ar != VK_SUBOPTIMAL_KHR)
+    {
+        return false;
+    }
+    if (ar == VK_SUBOPTIMAL_KHR)
+    {
+        aw.recreatePending = true;
+    }
+
+    VkCommandBuffer cmd = aw.cbs[slot];
+    vkResetCommandBuffer(cmd, 0);
+    VkCommandBufferBeginInfo bi = {};
+    bi.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO;
+    bi.flags = VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT;
+    vkBeginCommandBuffer(cmd, &bi);
+
+    VkImageMemoryBarrier to_dst = {};
+    to_dst.sType               = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER;
+    to_dst.oldLayout           = VK_IMAGE_LAYOUT_UNDEFINED;
+    to_dst.newLayout           = VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL;
+    to_dst.srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+    to_dst.dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+    to_dst.image               = aw.images[image_index];
+    to_dst.srcAccessMask       = 0;
+    to_dst.dstAccessMask       = VK_ACCESS_TRANSFER_WRITE_BIT;
+    to_dst.subresourceRange.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
+    to_dst.subresourceRange.levelCount = 1;
+    to_dst.subresourceRange.layerCount = 1;
+    vkCmdPipelineBarrier(cmd, VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT, VK_PIPELINE_STAGE_TRANSFER_BIT,
+                         0, 0, nullptr, 0, nullptr, 1, &to_dst);
+
+    VkClearColorValue color = {};
+    color.float32[0] = r;
+    color.float32[1] = g;
+    color.float32[2] = b;
+    color.float32[3] = 1.0f;
+    VkImageSubresourceRange range = {};
+    range.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
+    range.levelCount = 1;
+    range.layerCount = 1;
+    vkCmdClearColorImage(cmd, aw.images[image_index], VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, &color, 1, &range);
+
+    VkImageMemoryBarrier to_present = to_dst;
+    to_present.oldLayout     = VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL;
+    to_present.newLayout     = VK_IMAGE_LAYOUT_PRESENT_SRC_KHR;
+    to_present.srcAccessMask = VK_ACCESS_TRANSFER_WRITE_BIT;
+    to_present.dstAccessMask = 0;
+    vkCmdPipelineBarrier(cmd, VK_PIPELINE_STAGE_TRANSFER_BIT, VK_PIPELINE_STAGE_BOTTOM_OF_PIPE_BIT,
+                         0, 0, nullptr, 0, nullptr, 1, &to_present);
+
+    vkEndCommandBuffer(cmd);
+
+    PEJob job;
+    job.cmd              = cmd;
+    job.fence            = aw.fences[slot];
+    job.wait_semaphore   = aw.imageAvailable[slot];
+    job.signal_semaphore = aw.renderFinished[slot];
+    PEPresentTarget target;
+    target.swapchain      = aw.swapchain;
+    target.image_index    = image_index;
+    target.wait_semaphore = aw.renderFinished[slot];
+    job.presents.push_back(target);
+    peEnqueue(std::move(job));
+    aw.fenceInFlight[slot] = true;
+    return true;
+}
+
 bool initSwapchain()
 {
     if (!sInitialized)
@@ -12048,6 +12620,82 @@ bool hasSwapchainDepth()
 bool isInRenderPassScope()
 {
     return sInDynamicRendering;
+}
+
+bool beginShaderDrawOrSkip(LLGLSLShader* shader, U32 render_mode, VkCommandBuffer& out_cmd)
+{
+    out_cmd = VK_NULL_HANDLE;
+    VkDescriptorSet set_to_bind = LLGLSLShader::vkResolvePerCallSetForDraw();
+    if (set_to_bind == VK_NULL_HANDLE)
+    {
+        LLVKContract::drawSkipped(LLVKContract::C_UNKNOWN,
+                                  shader != nullptr ? shader->mName : std::string("(no-shader)"));
+        return false;
+    }
+    if (shader == nullptr)
+    {
+        LLVKContract::drawSkipped(LLVKContract::C_NO_SHADER_OR_LAYOUT, std::string("(no-shader)"));
+        return false;
+    }
+    VkCommandBuffer cmd = getCurrentCommandBuffer();
+    if (cmd == VK_NULL_HANDLE)
+    {
+        LLVKContract::drawSkipped(LLVKContract::C_CMD_NULL, shader->mName);
+        return false;
+    }
+    VkPipeline pipeline = shader->getOrCreateVkPipelineForBoundRT(render_mode);
+    if (pipeline == VK_NULL_HANDLE)
+    {
+        LLVKContract::drawSkipped(LLVKContract::C_PIPELINE_NULL, shader->mName);
+        return false;
+    }
+    if (!isInRenderPassScope())
+    {
+        LLRenderTarget* bound_rt = LLRenderTarget::getCurrentBoundTarget();
+        if (bound_rt == nullptr)
+        {
+            if (producerSwapchainFallbackShouldSkip())
+            {
+                return false;
+            }
+            beginSwapchainRendering();
+            if (!isInRenderPassScope())
+            {
+                LLVKContract::drawSkipped(LLVKContract::C_CMD_NULL, shader->mName);
+                return false;
+            }
+        }
+        else
+        {
+            static U32 s_rt_resume_count = 0;
+            ++s_rt_resume_count;
+            if ((s_rt_resume_count & (s_rt_resume_count - 1)) == 0)
+            {
+                LL_WARNS("Vulkan") << "draw with bound RT outside pass scope: resuming"
+                                   << " shader='" << shader->mName
+                                   << "' count=" << s_rt_resume_count << LL_ENDL;
+            }
+            bound_rt->resumeVkDynamicRendering();
+        }
+    }
+    bindGraphicsPipelineOnce(cmd, pipeline);
+    {
+        const bool vk_screen_space_copy = LLGLSLShader::vkUsePositiveViewport(
+            LLRenderTarget::getCurrentBoundTarget() != nullptr,
+            LLGLSLShader::vkCaptureRegimeActive());
+        setupViewportAndScissor(cmd, vk_screen_space_copy);
+    }
+    bindDrawDescriptorSetsOnce(cmd,
+                               shader->mVkPipelineLayout,
+                               getCurrentPerFrameDescriptorSet(),
+                               set_to_bind,
+                               shader->mVkSet1DynamicCount,
+                               LLGLSLShader::sCurPerCallVkDynamicOffsets);
+    pushModelviewOnce(cmd,
+                      shader->mVkPipelineLayout,
+                      getCurrentModelviewMatrix());
+    out_cmd = cmd;
+    return true;
 }
 
 U64 currentPassAttachmentSig()

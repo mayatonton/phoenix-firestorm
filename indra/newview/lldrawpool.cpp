@@ -1256,54 +1256,11 @@ static bool pushIndirectSpans(LLVKBucket::Bucket& bucket, VkBuffer ring_buf, VkD
 {
     LLGLSLShader* shader = LLGLSLShader::sCurBoundShaderPtr;
     LLVKContract::DrawScope vkc_scope(nullptr, "mdi");
-    VkDescriptorSet set_to_bind = LLGLSLShader::vkResolvePerCallSetForDraw();
-    if (set_to_bind == VK_NULL_HANDLE)
+    VkCommandBuffer cmd = VK_NULL_HANDLE;
+    if (!LLVKLoader::beginShaderDrawOrSkip(shader, LLRender::TRIANGLES, cmd))
     {
-        LLVKContract::drawSkipped(LLVKContract::C_UNKNOWN,
-                                  shader ? shader->mName : std::string("(no-shader)"));
         return false;
     }
-    VkCommandBuffer cmd = LLVKLoader::getCurrentCommandBuffer();
-    if (cmd == VK_NULL_HANDLE)
-    {
-        LLVKContract::drawSkipped(LLVKContract::C_CMD_NULL,
-                                  shader ? shader->mName : std::string("(no-shader)"));
-        return false;
-    }
-    VkPipeline pipeline = shader->getOrCreateVkPipelineForBoundRT(LLRender::TRIANGLES);
-    if (pipeline == VK_NULL_HANDLE)
-    {
-        LLVKContract::drawSkipped(LLVKContract::C_PIPELINE_NULL, shader->mName);
-        return false;
-    }
-    if (!LLVKLoader::isInRenderPassScope())
-    {
-        LLRenderTarget* bound_rt = LLRenderTarget::getCurrentBoundTarget();
-        if (bound_rt == nullptr)
-        {
-            LLVKLoader::beginSwapchainRendering();
-        }
-        else
-        {
-            bound_rt->resumeVkDynamicRendering();
-        }
-    }
-    LLVKLoader::bindGraphicsPipelineOnce(cmd, pipeline);
-    {
-        const bool vk_screen_space_copy = LLGLSLShader::vkUsePositiveViewport(
-            LLRenderTarget::getCurrentBoundTarget() != nullptr,
-            LLGLSLShader::vkCaptureRegimeActive());
-        LLVKLoader::setupViewportAndScissor(cmd, vk_screen_space_copy);
-    }
-    LLVKLoader::bindDrawDescriptorSetsOnce(cmd,
-                                           shader->mVkPipelineLayout,
-                                           LLVKLoader::getCurrentPerFrameDescriptorSet(),
-                                           set_to_bind,
-                                           shader->mVkSet1DynamicCount,
-                                           LLGLSLShader::sCurPerCallVkDynamicOffsets);
-    LLVKLoader::pushModelviewOnce(cmd,
-                                  shader->mVkPipelineLayout,
-                                  LLVKLoader::getCurrentModelviewMatrix());
     for (const LLVKBucket::TplChunkSpan& span : bucket.mTplChunkSpans)
     {
         span.mRep->mVertexBuffer->setBuffer();
@@ -1456,54 +1413,11 @@ namespace
                                  const std::vector<std::pair<U32, U32> >& spans)
     {
         LLVKContract::DrawScope vkc_scope(nullptr, "mdi_rig");
-        VkDescriptorSet set_to_bind = LLGLSLShader::vkResolvePerCallSetForDraw();
-        if (set_to_bind == VK_NULL_HANDLE)
+        VkCommandBuffer cmd = VK_NULL_HANDLE;
+        if (!LLVKLoader::beginShaderDrawOrSkip(shader, LLRender::TRIANGLES, cmd))
         {
-            LLVKContract::drawSkipped(LLVKContract::C_UNKNOWN,
-                                      shader ? shader->mName : std::string("(no-shader)"));
             return false;
         }
-        VkCommandBuffer cmd = LLVKLoader::getCurrentCommandBuffer();
-        if (cmd == VK_NULL_HANDLE)
-        {
-            LLVKContract::drawSkipped(LLVKContract::C_CMD_NULL,
-                                      shader ? shader->mName : std::string("(no-shader)"));
-            return false;
-        }
-        VkPipeline pipeline = shader->getOrCreateVkPipelineForBoundRT(LLRender::TRIANGLES);
-        if (pipeline == VK_NULL_HANDLE)
-        {
-            LLVKContract::drawSkipped(LLVKContract::C_PIPELINE_NULL, shader->mName);
-            return false;
-        }
-        if (!LLVKLoader::isInRenderPassScope())
-        {
-            LLRenderTarget* bound_rt = LLRenderTarget::getCurrentBoundTarget();
-            if (bound_rt == nullptr)
-            {
-                LLVKLoader::beginSwapchainRendering();
-            }
-            else
-            {
-                bound_rt->resumeVkDynamicRendering();
-            }
-        }
-        LLVKLoader::bindGraphicsPipelineOnce(cmd, pipeline);
-        {
-            const bool vk_screen_space_copy = LLGLSLShader::vkUsePositiveViewport(
-                LLRenderTarget::getCurrentBoundTarget() != nullptr,
-                LLGLSLShader::vkCaptureRegimeActive());
-            LLVKLoader::setupViewportAndScissor(cmd, vk_screen_space_copy);
-        }
-        LLVKLoader::bindDrawDescriptorSetsOnce(cmd,
-                                               shader->mVkPipelineLayout,
-                                               LLVKLoader::getCurrentPerFrameDescriptorSet(),
-                                               set_to_bind,
-                                               shader->mVkSet1DynamicCount,
-                                               LLGLSLShader::sCurPerCallVkDynamicOffsets);
-        LLVKLoader::pushModelviewOnce(cmd,
-                                      shader->mVkPipelineLayout,
-                                      LLVKLoader::getCurrentModelviewMatrix());
         for (const std::pair<U32, U32>& span : spans)
         {
             items[span.first].rep->setBuffer();

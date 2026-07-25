@@ -1174,6 +1174,10 @@ bool LLPipeline::allocateScreenBufferInternal(U32 resX, U32 resY)
             }
         }
 
+        if (!mScenePresentRT[0].allocate(resX, resY, GL_RGBA, true)) return false;
+        if (!mScenePresentRT[1].allocate(resX, resY, GL_RGBA)) return false;
+        mScenePresentRT[0].shareDepthBuffer(mScenePresentRT[1]);
+
         // <AYAstorm:r21.1> GPU self-rigged picker ID buffer.
         // Allocated only on the main RT (not aux / hero probe). Borrows the
         // deferred depth buffer so the ID pass agrees pixel-for-pixel with
@@ -1288,10 +1292,10 @@ bool LLPipeline::allocateScreenBufferInternal(U32 resX, U32 resY)
             mSceneMap.release();
         }
 
-        {LL_PROFILE_ZONE_NAMED_CATEGORY_DISPLAY("mPostMapBuffer"); // <FS:Beq/> improve Tracy scoping 
+        {LL_PROFILE_ZONE_NAMED_CATEGORY_DISPLAY("mPostMapBuffer"); // <FS:Beq/> improve Tracy scoping
         mPostPingMap.allocate(resX, resY, GL_RGBA);
         mPostPongMap.allocate(resX, resY, GL_RGBA);
-        } // <FS:Beq/> improve Tracy scoping 
+        } // <FS:Beq/> improve Tracy scoping
         // The water exclusion mask needs its own depth buffer so we can take care of the problem of multiple water planes.
         // Should we ever make water not just a plane, it also aids with that as well as the water planes will be rendered into the mask.
         // Why do we do this? Because it saves us some janky logic in the exclusion shader when we generate the mask.
@@ -1662,6 +1666,9 @@ void LLPipeline::releaseGLBuffers()
     mFXAAMap.release();
 
     mUIScreen.release();
+
+    mScenePresentRT[0].release();
+    mScenePresentRT[1].release();
 
     mDownResMap.release();
 
@@ -4081,6 +4088,92 @@ void LLPipeline::markRebuild(LLDrawable *drawablep, LLDrawable::EDrawableFlags f
     }
 }
 
+static void vkcClassifyEmptyOtherGroup(LLSpatialGroup* group, U32* cls, std::vector<LLUUID>& hole_uuids)
+{
+    static LLCachedControl<bool> sa_protect(gSavedSettings, "RenderVolumeSAProtection");
+    static LLCachedControl<F32> volume_sa_thresh(gSavedSettings, "RenderVolumeSAThreshold");
+    static LLCachedControl<F32> sculpt_sa_thresh(gSavedSettings, "RenderSculptSAThreshold");
+
+    for (LLSpatialGroup::element_iter it = group->getDataBegin(); it != group->getDataEnd(); ++it)
+    {
+        LLDrawable* drawablep = (LLDrawable*)(*it)->getDrawable();
+        if (!drawablep || drawablep->isDead() || drawablep->isState(LLDrawable::FORCE_INVISIBLE))
+        {
+            ++cls[0];
+            continue;
+        }
+        if (LLPipeline::isParcelHideAlive(drawablep))
+        {
+            ++cls[1];
+            continue;
+        }
+        LLVOVolume* vobj = drawablep->getVOVolume();
+        if (!vobj || vobj->isDead())
+        {
+            ++cls[0];
+            continue;
+        }
+        if (vobj->mGLTFAsset)
+        {
+            ++cls[2];
+            continue;
+        }
+        if (vobj->isMesh())
+        {
+            if ((vobj->getVolume() && !vobj->getVolume()->isMeshAssetLoaded()) || !gMeshRepo.meshRezEnabled())
+            {
+                ++cls[3];
+                continue;
+            }
+            if (!vobj->getSkinInfo() && !vobj->isSkinInfoUnavaliable())
+            {
+                ++cls[4];
+                continue;
+            }
+        }
+        if (sa_protect && vobj->mVolumeSurfaceArea > (vobj->isSculpted() ? (F32)sculpt_sa_thresh : (F32)volume_sa_thresh))
+        {
+            ++cls[5];
+            continue;
+        }
+        bool any_geom = false;
+        bool any_visible = false;
+        for (S32 i = 0; i < drawablep->getNumFaces(); ++i)
+        {
+            LLFace* facep = drawablep->getFace(i);
+            if (!facep || facep->getIndicesCount() <= 0 || facep->getGeomCount() <= 0)
+            {
+                continue;
+            }
+            any_geom = true;
+            const LLTextureEntry* te = facep->getTextureEntry();
+            LLGLTFMaterial* gltf_mat = te ? te->getGLTFRenderMaterial() : nullptr;
+            F32 alpha = gltf_mat ? gltf_mat->mBaseColor.mV[3] : (te ? te->getColor().mV[3] : 1.f);
+            if (alpha > 0.f || (te && te->getGlow() > 0.f))
+            {
+                any_visible = true;
+                break;
+            }
+        }
+        if (any_visible)
+        {
+            ++cls[8];
+            if (hole_uuids.size() < 8)
+            {
+                hole_uuids.push_back(vobj->getID());
+            }
+        }
+        else if (any_geom)
+        {
+            ++cls[7];
+        }
+        else
+        {
+            ++cls[6];
+        }
+    }
+}
+
 void LLPipeline::stateSort(LLCamera& camera, LLCullResult &result)
 {
     LL_PROFILE_ZONE_SCOPED_CATEGORY_PIPELINE;
@@ -4173,6 +4266,8 @@ void LLPipeline::stateSort(LLCamera& camera, LLCullResult &result)
     U32 vkc_empty_inflight = 0;
     U32 vkc_empty_dirty    = 0;
     U32 vkc_empty_other    = 0;
+    static U32 s_vkc_other_class[9] = {};
+    static std::vector<LLUUID> s_vkc_hole_uuids;
     for (LLCullResult::sg_iterator iter = getFrameCull()->beginVisibleGroups(); iter != getFrameCull()->endVisibleGroups(); ++iter)
     {
         LLSpatialGroup* group = *iter;
@@ -4193,6 +4288,10 @@ void LLPipeline::stateSort(LLCamera& camera, LLCullResult &result)
             else
             {
                 ++vkc_empty_other;
+                if (LLVKContract::verboseEnabled())
+                {
+                    vkcClassifyEmptyOtherGroup(group, s_vkc_other_class, s_vkc_hole_uuids);
+                }
             }
         }
         group->checkOcclusion();
@@ -4221,10 +4320,37 @@ void LLPipeline::stateSort(LLCamera& camera, LLCullResult &result)
         s_acc_other    += vkc_empty_other;
         if ((++s_vkc_empty_frames % 60) == 1)
         {
+            std::ostringstream cls;
+            if (LLVKContract::verboseEnabled())
+            {
+                cls << " other_class{dead=" << s_vkc_other_class[0]
+                    << " parcel=" << s_vkc_other_class[1]
+                    << " gltf=" << s_vkc_other_class[2]
+                    << " meshwait=" << s_vkc_other_class[3]
+                    << " skinwait=" << s_vkc_other_class[4]
+                    << " sa=" << s_vkc_other_class[5]
+                    << " zerogeom=" << s_vkc_other_class[6]
+                    << " transp=" << s_vkc_other_class[7]
+                    << " hasgeom=" << s_vkc_other_class[8] << "}";
+                if (!s_vkc_hole_uuids.empty())
+                {
+                    cls << " hole_uuid[";
+                    for (size_t u = 0; u < s_vkc_hole_uuids.size(); ++u)
+                    {
+                        cls << (u ? " " : "") << s_vkc_hole_uuids[u];
+                    }
+                    cls << "]";
+                }
+            }
             LL_WARNS("VKGeo") << "visible empty-drawmap groups (60f acc): inflight=" << s_acc_inflight
                               << " dirty=" << s_acc_dirty
-                              << " other=" << s_acc_other << LL_ENDL;
+                              << " other=" << s_acc_other << cls.str() << LL_ENDL;
             s_acc_inflight = s_acc_dirty = s_acc_other = 0;
+            for (U32 ci = 0; ci < 9; ++ci)
+            {
+                s_vkc_other_class[ci] = 0;
+            }
+            s_vkc_hole_uuids.clear();
         }
     }}
 
@@ -10182,6 +10308,34 @@ void LLPipeline::copyRenderTarget(LLRenderTarget* src, LLRenderTarget* dst)
     dst->flush();
 }
 
+void LLPipeline::blitScenePresentToSwapchain()
+{
+    LL_PROFILE_GPU_ZONE("blitScenePresentToSwapchain");
+
+    gGLViewport[0] = gViewerWindow->getWorldViewRectRaw().mLeft;
+    gGLViewport[1] = gViewerWindow->getWorldViewRectRaw().mBottom;
+    gGLViewport[2] = gViewerWindow->getWorldViewRectRaw().getWidth();
+    gGLViewport[3] = gViewerWindow->getWorldViewRectRaw().getHeight();
+
+    LLVKLoader::beginSwapchainRendering();
+
+    gCopyProgram.bind();
+    gGL.getTexUnit(0)->bind(&mScenePresentRT[mScenePresentFront]);
+    if (LLVKLoader::isVulkanInitialized())
+    {
+        mScenePresentRT[mScenePresentFront].bindForShaderRead();
+    }
+
+    {
+        LLGLDepthTest depth_test(GL_TRUE, GL_TRUE, GL_ALWAYS);
+        LLGLDisable blend_off(GL_BLEND);
+        mScreenTriangleVB->setBuffer();
+        mScreenTriangleVB->drawArrays(LLRender::TRIANGLES, 0, 3);
+    }
+
+    gCopyProgram.unbind();
+}
+
 void LLPipeline::combineGlow(LLRenderTarget* src, LLRenderTarget* dst)
 {
     LL_PROFILE_GPU_ZONE("glow combine");
@@ -11019,6 +11173,10 @@ void LLPipeline::renderFinalize()
     {
         mVkSnapshotRedirectTarget->bindTarget();
     }
+    else if (mScenePresentRedirect)
+    {
+        mScenePresentRedirect->bindTarget();
+    }
     else
     {
         LLVKLoader::beginSwapchainRendering();
@@ -11049,7 +11207,7 @@ void LLPipeline::renderFinalize()
 
     {
         LLGLDepthTest depth_test(GL_TRUE, GL_TRUE, GL_ALWAYS);
-        if (mVkSnapshotRedirectTarget)
+        if (mVkSnapshotRedirectTarget || mScenePresentRedirect)
         {
             LLGLDisable snapshot_blend_off(GL_BLEND);
             mScreenTriangleVB->setBuffer();
@@ -13544,11 +13702,30 @@ static LLTrace::BlockTimerStatHandle FTM_SHADOW_ALPHA_TREE("Alpha Tree");
 static LLTrace::BlockTimerStatHandle FTM_SHADOW_ALPHA_GRASS("Alpha Grass");
 static LLTrace::BlockTimerStatHandle FTM_SHADOW_FULLBRIGHT_ALPHA_MASKED("Fullbright Alpha Masked");
 
+static bool shadowMatricesFinite(const glm::mat4& view, const glm::mat4& proj)
+{
+    const F32* vp = glm::value_ptr(view);
+    const F32* pp = glm::value_ptr(proj);
+    for (U32 fi = 0; fi < 16u; ++fi)
+    {
+        if (!std::isfinite(vp[fi]) || !std::isfinite(pp[fi]))
+        {
+            return false;
+        }
+    }
+    return true;
+}
+
 void LLPipeline::renderShadow(const glm::mat4& view, const glm::mat4& proj, LLCamera& shadow_cam, LLCullResult& result, bool depth_clamp)
 {
     LL_PROFILE_ZONE_SCOPED_CATEGORY_PIPELINE; //LL_RECORD_BLOCK_TIME(FTM_SHADOW_RENDER);
     LL_PROFILE_GPU_ZONE("renderShadow");
     LLVKLoader::gpuCheckpoint("renderShadow");
+
+    if (!shadowMatricesFinite(view, proj))
+    {
+        return;
+    }
 
     LLPipelineFrameContext::getInstance().setShadowPass(true);
 
@@ -14616,9 +14793,12 @@ void LLPipeline::generateSunShadow(LLCamera& camera)
             set_last_modelview(mShadowModelview[j]);
             set_last_projection(mShadowProjection[j]);
 
-            mShadowModelview[j] = view[j];
-            mShadowProjection[j] = proj[j];
-            mSunShadowMatrix[j] = sGlNdcToSampleBias*proj[j]*view[j]*inv_view;
+            if (shadowMatricesFinite(view[j], proj[j]))
+            {
+                mShadowModelview[j] = view[j];
+                mShadowProjection[j] = proj[j];
+                mSunShadowMatrix[j] = sGlNdcToSampleBias*proj[j]*view[j]*inv_view;
+            }
 
 
             {
@@ -14770,13 +14950,20 @@ void LLPipeline::generateSunShadow(LLCamera& camera)
             set_current_modelview(view[i + 4]);
             set_current_projection(proj[i + 4]);
 
-            mSunShadowMatrix[i + 4] = sGlNdcToSampleBias * proj[i + 4] * view[i + 4] * inv_view;
+            const bool spot_mats_finite = shadowMatricesFinite(view[i + 4], proj[i + 4]);
+            if (spot_mats_finite)
+            {
+                mSunShadowMatrix[i + 4] = sGlNdcToSampleBias * proj[i + 4] * view[i + 4] * inv_view;
+            }
 
             set_last_modelview(mShadowModelview[i + 4]);
             set_last_projection(mShadowProjection[i + 4]);
 
-            mShadowModelview[i + 4] = view[i + 4];
-            mShadowProjection[i + 4] = proj[i + 4];
+            if (spot_mats_finite)
+            {
+                mShadowModelview[i + 4] = view[i + 4];
+                mShadowProjection[i + 4] = proj[i + 4];
+            }
 
             if (!gCubeSnapshot) //skip updating spot shadow maps during cubemap updates
             {

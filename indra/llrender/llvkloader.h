@@ -30,6 +30,7 @@
 #include <vector>
 
 class LLWindow;
+class LLGLSLShader;
 
 namespace LLVKLoader
 {
@@ -46,6 +47,20 @@ namespace LLVKLoader
 
     bool beginFrame(bool acquire_swapchain = true);
     bool endFrame();
+    void recordToConsumer(bool on);
+    void finalizeConsumerSwapchain();
+    bool isUISceneSplit();
+    bool isUISceneAsync();
+    bool asyncProducerTryComplete();
+    bool isAsyncProducerInFlight();
+    U32  asyncProducerBackIndex();
+    bool asyncShouldRenderScene();
+    void setAsyncFrameEngaged(bool on);
+    bool asyncFrameEngaged();
+    bool isSwapchainImageAcquired();
+    void asyncProducerBeginScene(U32 back_index);
+    void setProducerPresentActive(bool on);
+    bool producerSwapchainFallbackShouldSkip();
     bool beginOffscreenFrameVk();
     void endOffscreenFrameVk();
     VkCommandBuffer getCurrentCommandBuffer();
@@ -1386,6 +1401,10 @@ namespace LLVKLoader
                                  VkAccessFlags        dst_access_mask);
 
     bool         initSurface(LLWindow* window);
+    bool         auxWindowInitVk(void* native_display, void* native_window);
+    void         auxWindowShutdownVk();
+    bool         auxWindowActiveVk();
+    bool         auxWindowPresentClearVk(F32 r, F32 g, F32 b);
     VkSurfaceKHR getSurface();
 
     bool           initSwapchain();
@@ -1404,6 +1423,7 @@ namespace LLVKLoader
     void        beginSwapchainRendering();
 
     bool        isInRenderPassScope();
+    bool        beginShaderDrawOrSkip(LLGLSLShader* shader, U32 render_mode, VkCommandBuffer& out_cmd);
     bool        isImageViewActivePassAttachment(VkImageView view);
     U64         currentPassAttachmentSig();
     void        setupViewportAndScissor(VkCommandBuffer cmd, bool screen_space_copy = false);

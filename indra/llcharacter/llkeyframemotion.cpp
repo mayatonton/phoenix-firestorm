@@ -878,10 +878,18 @@ void LLKeyframeMotion::activateConstraint(JointConstraint* constraint)
     // grab ground position if we need to
     if (shared_data->mConstraintTargetType == CONSTRAINT_TARGET_TYPE_GROUND)
     {
-        LLVector3 source_pos = mCharacter->getVolumePos(shared_data->mSourceConstraintVolume, shared_data->mSourceConstraintOffset);
-        LLVector3 ground_pos_agent;
-        mCharacter->getGround(source_pos, ground_pos_agent, constraint->mGroundNorm);
-        constraint->mGroundPos = mCharacter->getPosGlobalFromAgent(ground_pos_agent + shared_data->mTargetConstraintOffset);
+        if (constraint->mGroundPreComputed)
+        {
+            constraint->mGroundPos  = constraint->mGroundPosPre;
+            constraint->mGroundNorm = constraint->mGroundNormPre;
+        }
+        else
+        {
+            LLVector3 source_pos = mCharacter->getVolumePos(shared_data->mSourceConstraintVolume, shared_data->mSourceConstraintOffset);
+            LLVector3 ground_pos_agent;
+            mCharacter->getGround(source_pos, ground_pos_agent, constraint->mGroundNorm);
+            constraint->mGroundPos = mCharacter->getPosGlobalFromAgent(ground_pos_agent + shared_data->mTargetConstraintOffset);
+        }
     }
 
     for (joint_num = 1; joint_num < shared_data->mChainLength; joint_num++)
@@ -915,6 +923,22 @@ void LLKeyframeMotion::deactivateConstraint(JointConstraint *constraintp)
         }
     }
     constraintp->mActive = false;
+}
+
+void LLKeyframeMotion::preComputeGroundMain()
+{
+    for (JointConstraint* constraintp : mConstraints)
+    {
+        JointConstraintSharedData* shared_data = constraintp->mSharedData;
+        if (shared_data && shared_data->mConstraintTargetType == CONSTRAINT_TARGET_TYPE_GROUND)
+        {
+            LLVector3 source_pos = mCharacter->getVolumePos(shared_data->mSourceConstraintVolume, shared_data->mSourceConstraintOffset);
+            LLVector3 ground_pos_agent;
+            mCharacter->getGround(source_pos, ground_pos_agent, constraintp->mGroundNormPre);
+            constraintp->mGroundPosPre = mCharacter->getPosGlobalFromAgent(ground_pos_agent + shared_data->mTargetConstraintOffset);
+            constraintp->mGroundPreComputed = true;
+        }
+    }
 }
 
 //-----------------------------------------------------------------------------
@@ -2594,6 +2618,7 @@ LLKeyframeMotion::JointConstraint::JointConstraint(JointConstraintSharedData* sh
     mWeight = 0.f;
     mTotalLength = 0.f;
     mActive = false;
+    mGroundPreComputed = false;
     mSourceVolume = NULL;
     mTargetVolume = NULL;
     mFixupDistanceRMS = 0.f;

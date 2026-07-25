@@ -302,73 +302,28 @@ void flushTerrainRun(TerrainRun& run)
         LLRenderPass::applyModelMatrix(run.mMatrix);
         gGL.syncMatrices();
         LLVKContract::DrawScope vkc_scope(nullptr, "terrainRun");
-        VkDescriptorSet set_to_bind = LLGLSLShader::vkResolvePerCallSetForDraw();
-        VkCommandBuffer cmd = LLVKLoader::getCurrentCommandBuffer();
-        if (set_to_bind == VK_NULL_HANDLE)
+        VkCommandBuffer cmd = VK_NULL_HANDLE;
+        if (LLVKLoader::beginShaderDrawOrSkip(shader, LLRender::TRIANGLES, cmd))
         {
-            LLVKContract::drawSkipped(LLVKContract::C_UNKNOWN, shader->mName);
-        }
-        else if (cmd == VK_NULL_HANDLE)
-        {
-            LLVKContract::drawSkipped(LLVKContract::C_CMD_NULL, shader->mName);
-        }
-        if (set_to_bind != VK_NULL_HANDLE && cmd != VK_NULL_HANDLE)
-        {
-            VkPipeline pipeline = shader->getOrCreateVkPipelineForBoundRT(LLRender::TRIANGLES);
-            if (pipeline == VK_NULL_HANDLE)
+            run.mVB->setBuffer();
+            VkBuffer     ring_buf    = VK_NULL_HANDLE;
+            VkDeviceSize ring_offset = 0;
+            void*        ring_mapped = nullptr;
+            if (LLVKLoader::indirectRingAlloc((U32)run.mCmds.size(), ring_buf, ring_offset, ring_mapped))
             {
-                LLVKContract::drawSkipped(LLVKContract::C_PIPELINE_NULL, shader->mName);
+                std::memcpy(ring_mapped, run.mCmds.data(),
+                            run.mCmds.size() * sizeof(VkDrawIndexedIndirectCommand));
+                vkCmdDrawIndexedIndirect(cmd, ring_buf, ring_offset,
+                                         (U32)run.mCmds.size(),
+                                         sizeof(VkDrawIndexedIndirectCommand));
+                ++LLVKLoader::gVkPerf.mdi_call;
+                LLVKLoader::gVkPerf.mdi_rec += (U64)run.mCmds.size();
             }
             else
             {
-                if (!LLVKLoader::isInRenderPassScope())
+                for (const VkDrawIndexedIndirectCommand& dc : run.mCmds)
                 {
-                    LLRenderTarget* bound_rt = LLRenderTarget::getCurrentBoundTarget();
-                    if (bound_rt == nullptr)
-                    {
-                        LLVKLoader::beginSwapchainRendering();
-                    }
-                    else
-                    {
-                        bound_rt->resumeVkDynamicRendering();
-                    }
-                }
-                LLVKLoader::bindGraphicsPipelineOnce(cmd, pipeline);
-                {
-                    const bool vk_screen_space_copy = LLGLSLShader::vkUsePositiveViewport(
-                        LLRenderTarget::getCurrentBoundTarget() != nullptr,
-                        LLGLSLShader::vkCaptureRegimeActive());
-                    LLVKLoader::setupViewportAndScissor(cmd, vk_screen_space_copy);
-                }
-                LLVKLoader::bindDrawDescriptorSetsOnce(cmd,
-                                                       shader->mVkPipelineLayout,
-                                                       LLVKLoader::getCurrentPerFrameDescriptorSet(),
-                                                       set_to_bind,
-                                                       shader->mVkSet1DynamicCount,
-                                                       LLGLSLShader::sCurPerCallVkDynamicOffsets);
-                LLVKLoader::pushModelviewOnce(cmd,
-                                              shader->mVkPipelineLayout,
-                                              LLVKLoader::getCurrentModelviewMatrix());
-                run.mVB->setBuffer();
-                VkBuffer     ring_buf    = VK_NULL_HANDLE;
-                VkDeviceSize ring_offset = 0;
-                void*        ring_mapped = nullptr;
-                if (LLVKLoader::indirectRingAlloc((U32)run.mCmds.size(), ring_buf, ring_offset, ring_mapped))
-                {
-                    std::memcpy(ring_mapped, run.mCmds.data(),
-                                run.mCmds.size() * sizeof(VkDrawIndexedIndirectCommand));
-                    vkCmdDrawIndexedIndirect(cmd, ring_buf, ring_offset,
-                                             (U32)run.mCmds.size(),
-                                             sizeof(VkDrawIndexedIndirectCommand));
-                    ++LLVKLoader::gVkPerf.mdi_call;
-                    LLVKLoader::gVkPerf.mdi_rec += (U64)run.mCmds.size();
-                }
-                else
-                {
-                    for (const VkDrawIndexedIndirectCommand& dc : run.mCmds)
-                    {
-                        vkCmdDrawIndexed(cmd, dc.indexCount, 1, dc.firstIndex, dc.vertexOffset, dc.firstInstance);
-                    }
+                    vkCmdDrawIndexed(cmd, dc.indexCount, 1, dc.firstIndex, dc.vertexOffset, dc.firstInstance);
                 }
             }
         }

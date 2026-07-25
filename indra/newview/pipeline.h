@@ -165,6 +165,7 @@ public:
     void generateImpostor(LLVOAvatar* avatar, bool preview_avatar = false, bool for_profile = false, LLViewerObject* specific_attachment = nullptr);
 
     void renderFinalize();
+    void blitScenePresentToSwapchain();
     void copyScreenSpaceReflections(LLRenderTarget* src, LLRenderTarget* dst);
     void generateLuminance(LLRenderTarget* src, LLRenderTarget* dst);
     void generateExposure(LLRenderTarget* src, LLRenderTarget* dst, bool use_history = true);
@@ -880,6 +881,10 @@ public:
     RenderTargetPack mHeroProbeRT;
 
     LLRenderTarget* mVkSnapshotRedirectTarget = nullptr;
+
+    LLRenderTarget  mScenePresentRT[2];
+    U32             mScenePresentFront = 0;
+    LLRenderTarget* mScenePresentRedirect = nullptr;
 
     LLRenderTarget          mSpotShadow[LLPipeline::kSpotShadowCount];
 
