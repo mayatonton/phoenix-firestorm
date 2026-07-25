@@ -12482,6 +12482,14 @@ bool auxWindowActiveVk()
     return sAuxWindow.active;
 }
 
+void auxWindowNotifyResizeVk()
+{
+    if (sAuxWindow.active)
+    {
+        sAuxWindow.recreatePending = true;
+    }
+}
+
 static bool auxRecycleAcquireSemaphores()
 {
     for (U32 i = 0; i < FRAMES_IN_FLIGHT; ++i)

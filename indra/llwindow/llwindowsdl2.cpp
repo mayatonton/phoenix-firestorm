@@ -41,6 +41,7 @@
 #include "lldir.h"
 #include "llfindlocale.h"
 #include "llframetimer.h"
+#include <map>
 #include <set>
 
 // if there is a better methood to get at the settings from llwindow/ let me know! -Zi
@@ -85,6 +86,7 @@ static bool ATIbug = false;
 // be only one object of this class at any time.  Currently this is true.
 static LLWindowSDL *gWindowImplementation = NULL;
 static std::set<unsigned int> sAuxWindowsCloseRequested;
+static std::map<unsigned int, std::pair<int, int>> sAuxWindowsResized;
 
 struct AuxInputMapSDL
 {
@@ -1010,6 +1012,18 @@ bool LLWindowSDL::getCursorPosition(LLCoordWindow *position)
     int x, y;
     SDL_GetMouseState(&x, &y);
 
+    if (sAuxInputMap.enabled && mSurface != nullptr)
+    {
+        SDL_Window* mouse_focus = SDL_GetMouseFocus();
+        if (mouse_focus != nullptr && SDL_GetWindowID(mouse_focus) == sAuxInputMap.id)
+        {
+            const int gx = sAuxInputMap.ox + x;
+            const int gy = sAuxInputMap.oy + (sAuxInputMap.h - y - 1);
+            x = gx;
+            y = mSurface->h - gy - 1;
+        }
+    }
+
     screen_pos.mX = x;
     screen_pos.mY = y;
 
@@ -1575,6 +1589,11 @@ void LLWindowSDL::gatherInput()
             if (event.type == SDL_WINDOWEVENT && event.window.event == SDL_WINDOWEVENT_CLOSE)
             {
                 sAuxWindowsCloseRequested.insert(event_window_id);
+                continue;
+            }
+            if (event.type == SDL_WINDOWEVENT && event.window.event == SDL_WINDOWEVENT_RESIZED)
+            {
+                sAuxWindowsResized[event_window_id] = { event.window.data1, event.window.data2 };
                 continue;
             }
             bool routed = false;
@@ -2620,7 +2639,7 @@ void LLWindowSDL::allowLanguageTextInput(LLPreeditor *preeditor, bool b)
 }
 
 bool llCreateAuxWindowSDL(const char* title, int width, int height, LLAuxWindowHandlesSDL& out,
-                          int pos_x, int pos_y)
+                          int pos_x, int pos_y, bool resizable)
 {
     out = LLAuxWindowHandlesSDL();
     if (SDL_WasInit(SDL_INIT_VIDEO) == 0)
@@ -2632,8 +2651,12 @@ bool llCreateAuxWindowSDL(const char* title, int width, int height, LLAuxWindowH
 #endif
     const int create_x = (pos_x == -32768) ? SDL_WINDOWPOS_UNDEFINED : pos_x;
     const int create_y = (pos_y == -32768) ? SDL_WINDOWPOS_UNDEFINED : pos_y;
-    SDL_Window* w = SDL_CreateWindow(title, create_x, create_y,
-                                     width, height, SDL_WINDOW_ALWAYS_ON_TOP | SDL_WINDOW_HIDDEN);
+    Uint32 flags = SDL_WINDOW_ALWAYS_ON_TOP | SDL_WINDOW_HIDDEN;
+    if (resizable)
+    {
+        flags |= SDL_WINDOW_RESIZABLE;
+    }
+    SDL_Window* w = SDL_CreateWindow(title, create_x, create_y, width, height, flags);
     if (w == nullptr)
     {
         return false;
@@ -2702,6 +2725,19 @@ bool llAuxWindowCloseRequestedSDL(unsigned int sdl_window_id)
         return false;
     }
     sAuxWindowsCloseRequested.erase(it);
+    return true;
+}
+
+bool llAuxWindowTakeResizeSDL(unsigned int sdl_window_id, int& out_w, int& out_h)
+{
+    auto it = sAuxWindowsResized.find(sdl_window_id);
+    if (it == sAuxWindowsResized.end())
+    {
+        return false;
+    }
+    out_w = it->second.first;
+    out_h = it->second.second;
+    sAuxWindowsResized.erase(it);
     return true;
 }
 

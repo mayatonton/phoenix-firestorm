@@ -65,6 +65,7 @@
 			</layout_stack>
 			<!-- vert_stack -->
 			<button label="ログイン" name="connect_btn"/>
+			<check_box label="マルチウィンドウモード" name="aya_multiwindow_check"/>
 			<text name="create_new_account_text">
 				アカウントを作成
 			</text>

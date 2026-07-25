@@ -281,8 +281,9 @@ struct LLAuxWindowHandlesSDL
 };
 
 bool llCreateAuxWindowSDL(const char* title, int width, int height, LLAuxWindowHandlesSDL& out,
-                          int pos_x = -32768, int pos_y = -32768);
+                          int pos_x = -32768, int pos_y = -32768, bool resizable = false);
 bool llGetAuxWindowPositionSDL(const LLAuxWindowHandlesSDL& handles, int& out_x, int& out_y);
+bool llAuxWindowTakeResizeSDL(unsigned int sdl_window_id, int& out_w, int& out_h);
 void llDestroyAuxWindowSDL(LLAuxWindowHandlesSDL& handles);
 bool llAuxWindowCloseRequestedSDL(unsigned int sdl_window_id);
 void llSetAuxWindowVisibleSDL(LLAuxWindowHandlesSDL& handles, bool visible);

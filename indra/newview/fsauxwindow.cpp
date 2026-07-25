@@ -171,7 +171,7 @@ void FSAuxWindow::frame()
         const S32 aux_h = ll_round((aux_chat->getRect().getHeight() - aux_chat->getHeaderHeight()) * ds.mV[VY]);
         const S32 saved_x = gSavedSettings.getS32("AYAAuxWindowPosX");
         const S32 saved_y = gSavedSettings.getS32("AYAAuxWindowPosY");
-        if (!(llCreateAuxWindowSDL(aux_chat->getTitle().c_str(), aux_w, aux_h, s_aux_handles, saved_x, saved_y)
+        if (!(llCreateAuxWindowSDL(aux_chat->getTitle().c_str(), aux_w, aux_h, s_aux_handles, saved_x, saved_y, true)
               && LLVKLoader::auxWindowInitVk(s_aux_handles.native_display,
                                              s_aux_handles.native_window)))
         {
@@ -234,6 +234,33 @@ void FSAuxWindow::frame()
         {
             llSetAuxWindowTitleSDL(s_aux_handles, title.c_str());
             s_aux_title = title;
+        }
+    }
+
+    {
+        int rw = 0, rh = 0;
+        if (llAuxWindowTakeResizeSDL(s_aux_handles.sdl_window_id, rw, rh)
+            && aux_rect_ok && gViewerWindow && rw > 0 && rh > 0)
+        {
+            const LLVector2& ds = gViewerWindow->getDisplayScale();
+            const S32 fw = llmax(aux_chat->getMinWidth(), (S32)ll_round(rw / ds.mV[VX]));
+            const S32 fh = llmax(aux_chat->getMinHeight(),
+                                 (S32)ll_round(rh / ds.mV[VY]) + aux_chat->getHeaderHeight());
+            LLRect r = aux_chat->getRect();
+            if (fw != r.getWidth() || fh != r.getHeight())
+            {
+                r.mRight = r.mLeft + fw;
+                r.mTop   = r.mBottom + fh;
+                aux_chat->setShape(r, true);
+                LLRect saved = aux_chat->getAuxSavedRect();
+                if (saved.isValid())
+                {
+                    saved.mRight = saved.mLeft + fw;
+                    saved.mTop   = saved.mBottom + fh;
+                    aux_chat->setAuxExternalized(true, saved);
+                }
+            }
+            LLVKLoader::auxWindowNotifyResizeVk();
         }
     }
 
