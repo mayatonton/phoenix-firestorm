@@ -1174,8 +1174,9 @@ bool LLPipeline::allocateScreenBufferInternal(U32 resX, U32 resY)
             }
         }
 
-        if (!mScenePresentRT[0].allocate(resX, resY, GL_RGBA)) return false;
+        if (!mScenePresentRT[0].allocate(resX, resY, GL_RGBA, true)) return false;
         if (!mScenePresentRT[1].allocate(resX, resY, GL_RGBA)) return false;
+        mScenePresentRT[0].shareDepthBuffer(mScenePresentRT[1]);
 
         // <AYAstorm:r21.1> GPU self-rigged picker ID buffer.
         // Allocated only on the main RT (not aux / hero probe). Borrows the

@@ -55,6 +55,7 @@ namespace LLVKLoader
     U32  asyncProducerBackIndex();
     bool asyncShouldRenderScene();
     void setAsyncFrameEngaged(bool on);
+    bool asyncFrameEngaged();
     void asyncProducerBeginScene(U32 back_index);
     void setProducerPresentActive(bool on);
     bool producerSwapchainFallbackShouldSkip();

@@ -571,6 +571,8 @@ namespace
     U32             sAsyncProducerBackIndex     = 0;
     bool            sAsyncRenderSceneThisFrame  = false;
     bool            sAsyncFrameEngaged          = false;
+    U32             sAsyncProducerSubmitMonotonic = 0;
+    U32             sAsyncProducerRecordSlot      = 0;
     VkFence sInFlightFences[FRAMES_IN_FLIGHT] = {
         VK_NULL_HANDLE, VK_NULL_HANDLE, VK_NULL_HANDLE
     };
@@ -4953,6 +4955,11 @@ void setAsyncFrameEngaged(bool on)
     sAsyncFrameEngaged = on;
 }
 
+bool asyncFrameEngaged()
+{
+    return sAsyncFrameEngaged;
+}
+
 void asyncProducerBeginScene(U32 back_index)
 {
     if (!sInFrame || sAsyncProducerCommandBuffer == VK_NULL_HANDLE)
@@ -4960,6 +4967,7 @@ void asyncProducerBeginScene(U32 back_index)
         return;
     }
     sAsyncProducerBackIndex    = back_index;
+    sAsyncProducerRecordSlot   = sFrameIndex;
     sAsyncRenderSceneThisFrame = true;
     vkResetCommandBuffer(sAsyncProducerCommandBuffer, 0);
     VkCommandBufferBeginInfo bi = {};
@@ -5083,6 +5091,16 @@ bool beginFrame(bool acquire_swapchain)
         vkWaitForFences(sDevice, 1, &sProducerFences[sFrameIndex], VK_TRUE, UINT64_MAX);
         vkResetFences(sDevice, 1, &sProducerFences[sFrameIndex]);
         sProducerFencePending[sFrameIndex] = false;
+    }
+    if (sAsyncProducerInFlight && sAsyncProducerSubmitMonotonic > 0 &&
+        sLastCompletedMonotonic >= sAsyncProducerSubmitMonotonic)
+    {
+        sLastCompletedMonotonic = sAsyncProducerSubmitMonotonic - 1;
+    }
+    if (sAsyncProducerInFlight && sAsyncProducerRecordSlot == sFrameIndex &&
+        sAsyncProducerFence != VK_NULL_HANDLE)
+    {
+        vkWaitForFences(sDevice, 1, &sAsyncProducerFence, VK_TRUE, UINT64_MAX);
     }
     sPESlotState[sFrameIndex].store(PE_SLOT_IDLE);
 
@@ -5689,6 +5707,14 @@ bool endFrame()
         sPESlotState[sFrameIndex].store(PE_SLOT_PENDING);
         peEnqueue(std::move(cjob));
 
+        PEJob pjob;
+        pjob.is_frame = false;
+        pjob.slot     = sFrameIndex;
+        pjob.cmd      = sCommandBuffers[sFrameIndex];
+        pjob.fence    = sProducerFences[sFrameIndex];
+        sProducerFencePending[sFrameIndex] = true;
+        peEnqueue(std::move(pjob));
+
         if (sAsyncRenderSceneThisFrame)
         {
             vkEndCommandBuffer(sAsyncProducerCommandBuffer);
@@ -5697,8 +5723,9 @@ bool endFrame()
             apjob.cmd      = sAsyncProducerCommandBuffer;
             apjob.fence    = sAsyncProducerFence;
             peEnqueue(std::move(apjob));
-            sAsyncProducerInFlight     = true;
-            sAsyncRenderSceneThisFrame = false;
+            sAsyncProducerInFlight        = true;
+            sAsyncProducerSubmitMonotonic = sMonotonicFrameCount;
+            sAsyncRenderSceneThisFrame    = false;
         }
     }
     else if (sUISceneSplit && sConsumerActiveThisFrame)
@@ -5799,6 +5826,16 @@ bool beginOffscreenFrameVk()
         vkWaitForFences(sDevice, 1, &sProducerFences[sFrameIndex], VK_TRUE, UINT64_MAX);
         vkResetFences(sDevice, 1, &sProducerFences[sFrameIndex]);
         sProducerFencePending[sFrameIndex] = false;
+    }
+    if (sAsyncProducerInFlight && sAsyncProducerSubmitMonotonic > 0 &&
+        sLastCompletedMonotonic >= sAsyncProducerSubmitMonotonic)
+    {
+        sLastCompletedMonotonic = sAsyncProducerSubmitMonotonic - 1;
+    }
+    if (sAsyncProducerInFlight && sAsyncProducerRecordSlot == sFrameIndex &&
+        sAsyncProducerFence != VK_NULL_HANDLE)
+    {
+        vkWaitForFences(sDevice, 1, &sAsyncProducerFence, VK_TRUE, UINT64_MAX);
     }
     sPESlotState[sFrameIndex].store(PE_SLOT_IDLE);
 
