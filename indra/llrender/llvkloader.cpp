@@ -33,6 +33,7 @@
 #include <vector>
 #include <string>
 #include <climits>
+#include <cerrno>
 #include <cstring>
 #include <cstdlib>
 #include <fstream>
@@ -108,6 +109,7 @@ namespace
     std::queue<uint32_t> sTimestampPairFree;
 
     VkSurfaceKHR sSurface           = VK_NULL_HANDLE;
+    LLWindow*    sSurfaceWindow     = nullptr;
 
     VkSwapchainKHR           sSwapchain           = VK_NULL_HANDLE;
     std::vector<VkImage>     sSwapchainImages;
@@ -1468,6 +1470,43 @@ namespace
         extensions.push_back(VK_EXT_METAL_SURFACE_EXTENSION_NAME);
 #endif
 
+        U32 extension_count = 0;
+        VkResult extension_result = vkEnumerateInstanceExtensionProperties(nullptr, &extension_count, nullptr);
+        if (extension_result != VK_SUCCESS)
+        {
+            LL_WARNS("Vulkan") << "instance extension enumeration failed result=" << extension_result << LL_ENDL;
+            return false;
+        }
+
+        std::vector<VkExtensionProperties> available_extensions(extension_count);
+        if (extension_count)
+        {
+            extension_result = vkEnumerateInstanceExtensionProperties(nullptr, &extension_count,
+                                                                        available_extensions.data());
+            if (extension_result != VK_SUCCESS)
+            {
+                LL_WARNS("Vulkan") << "instance extension enumeration data failed result=" << extension_result << LL_ENDL;
+                return false;
+            }
+        }
+
+        const auto has_instance_extension = [&available_extensions](const char* name) {
+            return std::any_of(available_extensions.begin(), available_extensions.end(),
+                               [name](const VkExtensionProperties& property) {
+                                   return strcmp(property.extensionName, name) == 0;
+                               });
+        };
+
+#if LL_DARWIN
+        if (!has_instance_extension(VK_KHR_PORTABILITY_ENUMERATION_EXTENSION_NAME))
+        {
+            LL_WARNS("Vulkan") << "VK_KHR_portability_enumeration unavailable" << LL_ENDL;
+            return false;
+        }
+        extensions.push_back(VK_KHR_PORTABILITY_ENUMERATION_EXTENSION_NAME);
+        LL_INFOS("Vulkan") << "VK_KHR_portability_enumeration enabled" << LL_ENDL;
+#endif
+
         bool want_validation = false;
         {
             const char* env = getenv("AYASTORM_VK_VALIDATION");
@@ -1494,21 +1533,7 @@ namespace
                 }
             }
 
-            U32 ext_count = 0;
-            vkEnumerateInstanceExtensionProperties(nullptr, &ext_count, nullptr);
-            std::vector<VkExtensionProperties> avail_exts(ext_count);
-            if (ext_count)
-            {
-                vkEnumerateInstanceExtensionProperties(nullptr, &ext_count, avail_exts.data());
-            }
-            for (const auto& ep : avail_exts)
-            {
-                if (strcmp(ep.extensionName, VK_EXT_DEBUG_UTILS_EXTENSION_NAME) == 0)
-                {
-                    have_debug_utils = true;
-                    break;
-                }
-            }
+            have_debug_utils = has_instance_extension(VK_EXT_DEBUG_UTILS_EXTENSION_NAME);
 
             if (have_validation_layer)
             {
@@ -1532,6 +1557,9 @@ namespace
 
         VkInstanceCreateInfo create_info = {};
         create_info.sType = VK_STRUCTURE_TYPE_INSTANCE_CREATE_INFO;
+#if LL_DARWIN
+        create_info.flags = VK_INSTANCE_CREATE_ENUMERATE_PORTABILITY_BIT_KHR;
+#endif
         create_info.pApplicationInfo = &app_info;
         create_info.enabledLayerCount = (U32)layers.size();
         create_info.ppEnabledLayerNames = layers.data();
@@ -1565,6 +1593,7 @@ namespace
 
         if (result != VK_SUCCESS)
         {
+            LL_WARNS("Vulkan") << "vkCreateInstance failed result=" << result << LL_ENDL;
             return false;
         }
 
@@ -4041,14 +4070,35 @@ namespace
                              : "FIFO (vsync ON)") << LL_ENDL;
 
         VkExtent2D extent;
-        if (caps.currentExtent.width != UINT32_MAX)
+#if LL_DARWIN
+        // MoltenVK may report currentExtent in logical points while the
+        // CAMetalLayer drawable is in backing pixels. Always use the native
+        // window's backing-pixel size when it is available. Otherwise a
+        // Retina display presents into one quarter of the layer and leaves
+        // input coordinates out of sync with the visible UI.
+        LLCoordWindow drawable_size;
+        const bool have_drawable_extent =
+            sSurfaceWindow != nullptr && sSurfaceWindow->getSize(&drawable_size) &&
+            drawable_size.mX > 0 && drawable_size.mY > 0;
+        if (have_drawable_extent)
         {
-            extent = caps.currentExtent;
+            extent.width  = (U32)drawable_size.mX;
+            extent.height = (U32)drawable_size.mY;
+            LL_INFOS("Vulkan") << "macOS swapchain drawable extent="
+                               << extent.width << "x" << extent.height
+                               << " (surface extent=" << caps.currentExtent.width
+                               << "x" << caps.currentExtent.height << ")" << LL_ENDL;
         }
         else
+#endif
         {
             U32 w = 1280;
             U32 h = 720;
+            if (caps.currentExtent.width != UINT32_MAX)
+            {
+                w = caps.currentExtent.width;
+                h = caps.currentExtent.height;
+            }
             if (w < caps.minImageExtent.width)  w = caps.minImageExtent.width;
             if (h < caps.minImageExtent.height) h = caps.minImageExtent.height;
             if (w > caps.maxImageExtent.width)  w = caps.maxImageExtent.width;
@@ -4056,6 +4106,11 @@ namespace
             extent.width  = w;
             extent.height = h;
         }
+
+        if (extent.width < caps.minImageExtent.width)  extent.width = caps.minImageExtent.width;
+        if (extent.height < caps.minImageExtent.height) extent.height = caps.minImageExtent.height;
+        if (extent.width > caps.maxImageExtent.width)  extent.width = caps.maxImageExtent.width;
+        if (extent.height > caps.maxImageExtent.height) extent.height = caps.maxImageExtent.height;
 
         U32 image_count = caps.minImageCount + 1;
         if (caps.maxImageCount > 0 && image_count > caps.maxImageCount)
@@ -4273,20 +4328,38 @@ bool initVulkan()
         return false;
     }
 
+#if LL_DARWIN
+    const std::string manifest_path = gDirUtilp->getAppRODataDir() + gDirUtilp->getDirDelimiter()
+                                      + "vulkan/icd.d/MoltenVK_icd.json";
+    if (!gDirUtilp->fileExists(manifest_path))
+    {
+        LL_WARNS("Vulkan") << "missing bundled driver manifest: " << manifest_path << LL_ENDL;
+        return false;
+    }
+    if (setenv("VK_DRIVER_FILES", manifest_path.c_str(), 1) != 0)
+    {
+        LL_WARNS("Vulkan") << "could not set VK_DRIVER_FILES errno=" << errno << LL_ENDL;
+        return false;
+    }
+    LL_INFOS("Vulkan") << "macOS Loader driver manifest: " << manifest_path << LL_ENDL;
+#endif
 
     VkResult result = volkInitialize();
     if (result != VK_SUCCESS)
     {
+        LL_WARNS("Vulkan") << "volkInitialize failed result=" << result << LL_ENDL;
         return false;
     }
 
     if (!createInstance())
     {
+        LL_WARNS("Vulkan") << "instance creation failed" << LL_ENDL;
         return false;
     }
 
     if (!selectPhysicalDevice() || !selectQueueFamily() || !createDevice())
     {
+        LL_WARNS("Vulkan") << "physical device, graphics queue, or logical device initialization failed" << LL_ENDL;
         if (sDebugMessenger != VK_NULL_HANDLE && vkDestroyDebugUtilsMessengerEXT != nullptr)
         {
             vkDestroyDebugUtilsMessengerEXT(sInstance, sDebugMessenger, nullptr);
@@ -4359,6 +4432,7 @@ bool initVulkan()
     peStart();
 
     sInitialized = true;
+    LL_INFOS("Vulkan") << "initialized device=" << sPhysicalDeviceProperties.deviceName << LL_ENDL;
     if (getenv("AYASTORM_PAR_SELFTEST") != nullptr)
     {
         LLVKContract::runParallelSelfTest();
@@ -11840,6 +11914,8 @@ bool initSurface(LLWindow* window)
         return false;
     }
 
+    sSurfaceWindow = window;
+
     return true;
 }
 
@@ -11850,6 +11926,7 @@ void shutdownSurface()
         vkDestroySurfaceKHR(sInstance, sSurface, nullptr);
         sSurface = VK_NULL_HANDLE;
     }
+    sSurfaceWindow = nullptr;
 }
 
 VkSurfaceKHR getSurface()

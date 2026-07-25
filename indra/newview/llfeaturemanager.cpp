@@ -456,6 +456,22 @@ bool LLFeatureManager::loadGPUClass()
         gSavedSettings.setBOOL("UseOcclusion", false);
     }
 
+    // The legacy benchmark renders to offscreen targets while the viewer is
+    // still constructing its first window.  With MoltenVK that happens before
+    // the normal frame/swapchain lifecycle is established, so it must not
+    // become the renderer's startup gate.  Apple Silicon is already assigned
+    // the conservative class 3 fallback when that benchmark is unavailable.
+#if LL_DARWIN
+    if (LLVKLoader::isVulkanInitialized())
+    {
+        mGPUMemoryBandwidth = 0.f;
+        mGPUClass = GPU_CLASS_3;
+        LL_INFOS("RenderInit")
+            << "Vulkan/MoltenVK startup: bypassing legacy GPU benchmark; using GPU class 3"
+            << LL_ENDL;
+    }
+    else
+#endif
     if (!gSavedSettings.getBOOL("SkipBenchmark"))
     {
         F32 class1_gbps = gSavedSettings.getF32("RenderClass1MemoryBandwidth");
