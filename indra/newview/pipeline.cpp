@@ -13702,22 +13702,29 @@ static LLTrace::BlockTimerStatHandle FTM_SHADOW_ALPHA_TREE("Alpha Tree");
 static LLTrace::BlockTimerStatHandle FTM_SHADOW_ALPHA_GRASS("Alpha Grass");
 static LLTrace::BlockTimerStatHandle FTM_SHADOW_FULLBRIGHT_ALPHA_MASKED("Fullbright Alpha Masked");
 
+static bool shadowMatricesFinite(const glm::mat4& view, const glm::mat4& proj)
+{
+    const F32* vp = glm::value_ptr(view);
+    const F32* pp = glm::value_ptr(proj);
+    for (U32 fi = 0; fi < 16u; ++fi)
+    {
+        if (!std::isfinite(vp[fi]) || !std::isfinite(pp[fi]))
+        {
+            return false;
+        }
+    }
+    return true;
+}
+
 void LLPipeline::renderShadow(const glm::mat4& view, const glm::mat4& proj, LLCamera& shadow_cam, LLCullResult& result, bool depth_clamp)
 {
     LL_PROFILE_ZONE_SCOPED_CATEGORY_PIPELINE; //LL_RECORD_BLOCK_TIME(FTM_SHADOW_RENDER);
     LL_PROFILE_GPU_ZONE("renderShadow");
     LLVKLoader::gpuCheckpoint("renderShadow");
 
+    if (!shadowMatricesFinite(view, proj))
     {
-        const F32* vp = glm::value_ptr(view);
-        const F32* pp = glm::value_ptr(proj);
-        for (U32 fi = 0; fi < 16u; ++fi)
-        {
-            if (!std::isfinite(vp[fi]) || !std::isfinite(pp[fi]))
-            {
-                return;
-            }
-        }
+        return;
     }
 
     LLPipelineFrameContext::getInstance().setShadowPass(true);
@@ -14786,9 +14793,12 @@ void LLPipeline::generateSunShadow(LLCamera& camera)
             set_last_modelview(mShadowModelview[j]);
             set_last_projection(mShadowProjection[j]);
 
-            mShadowModelview[j] = view[j];
-            mShadowProjection[j] = proj[j];
-            mSunShadowMatrix[j] = sGlNdcToSampleBias*proj[j]*view[j]*inv_view;
+            if (shadowMatricesFinite(view[j], proj[j]))
+            {
+                mShadowModelview[j] = view[j];
+                mShadowProjection[j] = proj[j];
+                mSunShadowMatrix[j] = sGlNdcToSampleBias*proj[j]*view[j]*inv_view;
+            }
 
 
             {
@@ -14940,13 +14950,20 @@ void LLPipeline::generateSunShadow(LLCamera& camera)
             set_current_modelview(view[i + 4]);
             set_current_projection(proj[i + 4]);
 
-            mSunShadowMatrix[i + 4] = sGlNdcToSampleBias * proj[i + 4] * view[i + 4] * inv_view;
+            const bool spot_mats_finite = shadowMatricesFinite(view[i + 4], proj[i + 4]);
+            if (spot_mats_finite)
+            {
+                mSunShadowMatrix[i + 4] = sGlNdcToSampleBias * proj[i + 4] * view[i + 4] * inv_view;
+            }
 
             set_last_modelview(mShadowModelview[i + 4]);
             set_last_projection(mShadowProjection[i + 4]);
 
-            mShadowModelview[i + 4] = view[i + 4];
-            mShadowProjection[i + 4] = proj[i + 4];
+            if (spot_mats_finite)
+            {
+                mShadowModelview[i + 4] = view[i + 4];
+                mShadowProjection[i + 4] = proj[i + 4];
+            }
 
             if (!gCubeSnapshot) //skip updating spot shadow maps during cubemap updates
             {
