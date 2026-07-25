@@ -239,6 +239,7 @@ void LLCharacter::dumpCharacter( LLJoint* joint )
 //-----------------------------------------------------------------------------
 void LLCharacter::setAnimationData(std::string name, void *data)
 {
+    std::lock_guard<std::mutex> lk(mAnimationDataMutex);
     mAnimationData[name] = data;
 }
 
@@ -247,6 +248,7 @@ void LLCharacter::setAnimationData(std::string name, void *data)
 //-----------------------------------------------------------------------------
 void* LLCharacter::getAnimationData(std::string name)
 {
+    std::lock_guard<std::mutex> lk(mAnimationDataMutex);
     return get_if_there(mAnimationData, name, (void*)NULL);
 }
 
@@ -255,6 +257,7 @@ void* LLCharacter::getAnimationData(std::string name)
 //-----------------------------------------------------------------------------
 void LLCharacter::removeAnimationData(std::string name)
 {
+    std::lock_guard<std::mutex> lk(mAnimationDataMutex);
     mAnimationData.erase(name);
 }
 
@@ -442,6 +445,7 @@ void LLCharacter::addSharedVisualParam(LLVisualParam *param)
 //-----------------------------------------------------------------------------
 void LLCharacter::addVisualParam(LLVisualParam *param)
 {
+    auto struct_lk = mMotionController.lockForStructuralMutation();
     S32 index = param->getID();
     // Add Index map
     std::pair<visual_param_index_map_t::iterator, bool> idxres;

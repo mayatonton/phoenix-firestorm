@@ -148,6 +148,8 @@ public:
     // must return false when the motion is completed.
     virtual bool onUpdate(F32 activeTime, U8* joint_mask) = 0;
 
+    virtual void preComputeGroundMain() {}
+
     // called when a motion is deactivated
     virtual void onDeactivate() = 0;
 

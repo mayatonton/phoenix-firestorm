@@ -13589,6 +13589,18 @@ void LLPipeline::renderShadow(const glm::mat4& view, const glm::mat4& proj, LLCa
     LL_PROFILE_GPU_ZONE("renderShadow");
     LLVKLoader::gpuCheckpoint("renderShadow");
 
+    {
+        const F32* vp = glm::value_ptr(view);
+        const F32* pp = glm::value_ptr(proj);
+        for (U32 fi = 0; fi < 16u; ++fi)
+        {
+            if (!std::isfinite(vp[fi]) || !std::isfinite(pp[fi]))
+            {
+                return;
+            }
+        }
+    }
+
     LLPipelineFrameContext::getInstance().setShadowPass(true);
 
     // disable occlusion culling during shadow render

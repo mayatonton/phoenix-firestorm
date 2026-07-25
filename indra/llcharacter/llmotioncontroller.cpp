@@ -930,6 +930,11 @@ void LLMotionController::updateMotionsAsync(bool force_update)
 
     motionCapture();
 
+    for (LLMotion* motionp : mActiveMotions)
+    {
+        motionp->preComputeGroundMain();
+    }
+
     mComputeForceUpdate = force_update;
     mComputeWorkerDone.store(false, std::memory_order_release);
     mComputeWindowOpen = true;
@@ -943,6 +948,11 @@ void LLMotionController::updateMotionsAsync(bool force_update)
 void LLMotionController::updateMotions(bool force_update)
 {
     LL_PROFILE_ZONE_SCOPED_CATEGORY_AVATAR;
+
+    if (!drainComputeWindow())
+    {
+        return;
+    }
 
     if (asyncActive())
     {

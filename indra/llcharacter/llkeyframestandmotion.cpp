@@ -143,6 +143,7 @@ bool LLKeyframeStandMotion::onActivate()
     mLastGoodPosition.clearVec();
 
     mFrameNum = 0;
+    mGroundPreComputed = false;
 
     return LLKeyframeMotion::onActivate();
 }
@@ -172,7 +173,7 @@ bool LLKeyframeStandMotion::onUpdate(F32 time, U8* joint_mask)
     LLVector3 root_world_pos = mPelvisState->getJoint()->getParent()->getWorldPosition();
 
     // have we received a valid world position for this avatar?
-    if (root_world_pos.isExactlyZero())
+    if (root_world_pos.isExactlyZero() || !root_world_pos.isFinite())
     {
         return true;
     }
@@ -265,13 +266,17 @@ bool LLKeyframeStandMotion::onUpdate(F32 time, U8* joint_mask)
     //-------------------------------------------------------------------------
     if ( mTrackAnkles )
     {
-        mCharacter->getGround( mAnkleLeftJoint.getWorldPosition(), mPositionLeft, mNormalLeft);
-        mCharacter->getGround( mAnkleRightJoint.getWorldPosition(), mPositionRight, mNormalRight);
+        if ( !mGroundPreComputed )
+        {
+            mCharacter->getGround( mAnkleLeftJoint.getWorldPosition(), mPositionLeft, mNormalLeft);
+            mCharacter->getGround( mAnkleRightJoint.getWorldPosition(), mPositionRight, mNormalRight);
+        }
 
         // SL-315
         mTargetLeft.setPosition( mPositionLeft );
         mTargetRight.setPosition( mPositionRight );
     }
+    mGroundPreComputed = false;
 
     //-------------------------------------------------------------------------
     // update solvers
@@ -337,6 +342,16 @@ bool LLKeyframeStandMotion::onUpdate(F32 time, U8* joint_mask)
 
 //  LL_INFOS() << "DEBUG: " << speed << " : " << mTrackAnkles << LL_ENDL;
     return true;
+}
+
+void LLKeyframeStandMotion::preComputeGroundMain()
+{
+    if ( mTrackAnkles && mFrameNum >= 2 )
+    {
+        mCharacter->getGround( mAnkleLeftJoint.getWorldPosition(), mPositionLeft, mNormalLeft);
+        mCharacter->getGround( mAnkleRightJoint.getWorldPosition(), mPositionRight, mNormalRight);
+        mGroundPreComputed = true;
+    }
 }
 
 // End

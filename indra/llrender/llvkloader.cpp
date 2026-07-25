@@ -9400,7 +9400,7 @@ void destroyImageVk(VkImage image, VkImageView view, void* allocation)
     pending.image         = image;
     pending.view          = view;
     pending.allocation    = reinterpret_cast<VmaAllocation>(allocation);
-    pending.enqueue_frame = sMonotonicFrameCount;
+    pending.enqueue_frame = sInFrame ? sMonotonicFrameCount : (sMonotonicFrameCount + 1);
     sPendingImageFrees.push_back(pending);
     if (view != VK_NULL_HANDLE && vkValidationRequested())
     {
@@ -9679,7 +9679,7 @@ bool uploadImageDataVk(VkImage     image,
         b.subresourceRange.baseArrayLayer = 0;
         b.subresourceRange.layerCount     = 1;
         vkCmdPipelineBarrier(cmd,
-                             VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT,
+                             VK_PIPELINE_STAGE_ALL_COMMANDS_BIT,
                              VK_PIPELINE_STAGE_TRANSFER_BIT,
                              0, 0, nullptr, 0, nullptr, 1, &b);
     }
@@ -9716,7 +9716,7 @@ bool uploadImageDataVk(VkImage     image,
         b.subresourceRange.layerCount     = 1;
         vkCmdPipelineBarrier(cmd,
                              VK_PIPELINE_STAGE_TRANSFER_BIT,
-                             VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT,
+                             VK_PIPELINE_STAGE_ALL_COMMANDS_BIT,
                              0, 0, nullptr, 0, nullptr, 1, &b);
     }
 
@@ -10485,7 +10485,7 @@ bool uploadImageSubregionVk(VkImage     image,
         b.subresourceRange.baseArrayLayer = 0;
         b.subresourceRange.layerCount     = 1;
         vkCmdPipelineBarrier(cmd,
-                             VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT,
+                             VK_PIPELINE_STAGE_ALL_COMMANDS_BIT,
                              VK_PIPELINE_STAGE_TRANSFER_BIT,
                              0, 0, nullptr, 0, nullptr, 1, &b);
     }
@@ -10522,7 +10522,7 @@ bool uploadImageSubregionVk(VkImage     image,
         b.subresourceRange.layerCount     = 1;
         vkCmdPipelineBarrier(cmd,
                              VK_PIPELINE_STAGE_TRANSFER_BIT,
-                             VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT,
+                             VK_PIPELINE_STAGE_ALL_COMMANDS_BIT,
                              0, 0, nullptr, 0, nullptr, 1, &b);
     }
 
