@@ -589,6 +589,12 @@ void LLVertexBuffer::drawRange(U32 mode, U32 start, U32 end, U32 count, U32 indi
                         {
                             if (LLVKLoader::producerSwapchainFallbackShouldSkip()) { return; }
                             LLVKLoader::beginSwapchainRendering();
+                            if (!LLVKLoader::isInRenderPassScope())
+                            {
+                                LLVKContract::drawSkipped(LLVKContract::C_CMD_NULL,
+                                                          LLGLSLShader::sCurBoundShaderPtr->mName);
+                                return;
+                            }
                         }
                         else
                         {
@@ -683,6 +689,12 @@ void LLVertexBuffer::drawRangeFast(U32 mode, U32 start, U32 end, U32 count, U32 
                             {
                                 if (LLVKLoader::producerSwapchainFallbackShouldSkip()) { return; }
                                 LLVKLoader::beginSwapchainRendering();
+                                if (!LLVKLoader::isInRenderPassScope())
+                                {
+                                    LLVKContract::drawSkipped(LLVKContract::C_CMD_NULL,
+                                                              LLGLSLShader::sCurBoundShaderPtr->mName);
+                                    return;
+                                }
                             }
                             else
                             {
@@ -786,6 +798,12 @@ void LLVertexBuffer::drawArrays(U32 mode, U32 first, U32 count) const
                         {
                             if (LLVKLoader::producerSwapchainFallbackShouldSkip()) { return; }
                             LLVKLoader::beginSwapchainRendering();
+                            if (!LLVKLoader::isInRenderPassScope())
+                            {
+                                LLVKContract::drawSkipped(LLVKContract::C_CMD_NULL,
+                                                          LLGLSLShader::sCurBoundShaderPtr->mName);
+                                return;
+                            }
                         }
                         else
                         {

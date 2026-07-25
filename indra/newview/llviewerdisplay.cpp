@@ -1723,12 +1723,19 @@ void render_ui(F32 zoom_factor, int subfield)
             }
         }
         LLVKLoader::recordToConsumer(true);
-        gPipeline.blitScenePresentToSwapchain();
+        const bool swapchain_ready = LLVKLoader::isSwapchainImageAcquired();
+        if (swapchain_ready)
+        {
+            gPipeline.blitScenePresentToSwapchain();
+        }
         if (!aya_async)
         {
             gPipeline.mScenePresentFront = 1 - gPipeline.mScenePresentFront;
         }
-        ui_overlay_2d();
+        if (swapchain_ready)
+        {
+            ui_overlay_2d();
+        }
     }
     else
     {

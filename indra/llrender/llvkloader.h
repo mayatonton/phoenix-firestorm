@@ -56,6 +56,7 @@ namespace LLVKLoader
     bool asyncShouldRenderScene();
     void setAsyncFrameEngaged(bool on);
     bool asyncFrameEngaged();
+    bool isSwapchainImageAcquired();
     void asyncProducerBeginScene(U32 back_index);
     void setProducerPresentActive(bool on);
     bool producerSwapchainFallbackShouldSkip();
@@ -1399,6 +1400,10 @@ namespace LLVKLoader
                                  VkAccessFlags        dst_access_mask);
 
     bool         initSurface(LLWindow* window);
+    bool         auxWindowInitVk(void* native_display, void* native_window);
+    void         auxWindowShutdownVk();
+    bool         auxWindowActiveVk();
+    bool         auxWindowPresentClearVk(F32 r, F32 g, F32 b);
     VkSurfaceKHR getSurface();
 
     bool           initSwapchain();

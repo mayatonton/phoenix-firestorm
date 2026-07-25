@@ -328,6 +328,11 @@ void flushTerrainRun(TerrainRun& run)
                     {
                         if (LLVKLoader::producerSwapchainFallbackShouldSkip()) { return; }
                         LLVKLoader::beginSwapchainRendering();
+                        if (!LLVKLoader::isInRenderPassScope())
+                        {
+                            LLVKContract::drawSkipped(LLVKContract::C_CMD_NULL, shader->mName);
+                            return;
+                        }
                     }
                     else
                     {

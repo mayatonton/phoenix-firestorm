@@ -574,6 +574,25 @@ namespace
     U32             sAsyncProducerSubmitMonotonic = 0;
     U32             sAsyncProducerRecordSlot      = 0;
     U32             sAsyncProducerSubmitCount     = 0;
+
+    struct AuxWindowVk
+    {
+        bool                     active    = false;
+        VkSurfaceKHR             surface   = VK_NULL_HANDLE;
+        VkSwapchainKHR           swapchain = VK_NULL_HANDLE;
+        std::vector<VkImage>     images;
+        std::vector<VkImageView> views;
+        VkFormat                 format = VK_FORMAT_UNDEFINED;
+        VkExtent2D               extent = {0, 0};
+        VkSemaphore     imageAvailable[FRAMES_IN_FLIGHT] = { VK_NULL_HANDLE, VK_NULL_HANDLE, VK_NULL_HANDLE };
+        VkSemaphore     renderFinished[FRAMES_IN_FLIGHT] = { VK_NULL_HANDLE, VK_NULL_HANDLE, VK_NULL_HANDLE };
+        VkFence         fences[FRAMES_IN_FLIGHT]         = { VK_NULL_HANDLE, VK_NULL_HANDLE, VK_NULL_HANDLE };
+        VkCommandBuffer cbs[FRAMES_IN_FLIGHT]            = { VK_NULL_HANDLE, VK_NULL_HANDLE, VK_NULL_HANDLE };
+        bool            fenceInFlight[FRAMES_IN_FLIGHT]  = { false, false, false };
+        bool            recreatePending = false;
+    };
+    AuxWindowVk sAuxWindow;
+
     VkFence sInFlightFences[FRAMES_IN_FLIGHT] = {
         VK_NULL_HANDLE, VK_NULL_HANDLE, VK_NULL_HANDLE
     };
@@ -4510,6 +4529,7 @@ void shutdownVulkan(bool device_lost)
         }
         sSubmitFencePool.clear();
 
+        auxWindowShutdownVk();
         destroySwapchain();
 
         if (sDefaultFallbackImageView != VK_NULL_HANDLE)
@@ -4882,6 +4902,7 @@ void shutdownSwapchainAndSurface()
     if (sDevice != VK_NULL_HANDLE)
     {
         vkDeviceWaitIdle(sDevice);
+        auxWindowShutdownVk();
         destroySwapchain();
     }
     shutdownSurface();
@@ -4959,6 +4980,11 @@ void setAsyncFrameEngaged(bool on)
 bool asyncFrameEngaged()
 {
     return sAsyncFrameEngaged;
+}
+
+bool isSwapchainImageAcquired()
+{
+    return sImageAcquired;
 }
 
 void asyncProducerBeginScene(U32 back_index)
@@ -12194,6 +12220,309 @@ void shutdownSurface()
 VkSurfaceKHR getSurface()
 {
     return sSurface;
+}
+
+static bool auxCreateSwapchain()
+{
+    AuxWindowVk& aw = sAuxWindow;
+    if (sDevice == VK_NULL_HANDLE || aw.surface == VK_NULL_HANDLE)
+    {
+        return false;
+    }
+
+    VkSurfaceCapabilitiesKHR caps = {};
+    if (vkGetPhysicalDeviceSurfaceCapabilitiesKHR(sPhysicalDevice, aw.surface, &caps) != VK_SUCCESS)
+    {
+        return false;
+    }
+    const VkImageUsageFlags want_usage = VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT | VK_IMAGE_USAGE_TRANSFER_DST_BIT;
+    if ((caps.supportedUsageFlags & want_usage) != want_usage)
+    {
+        return false;
+    }
+
+    U32 format_count = 0;
+    vkGetPhysicalDeviceSurfaceFormatsKHR(sPhysicalDevice, aw.surface, &format_count, nullptr);
+    if (format_count == 0)
+    {
+        return false;
+    }
+    std::vector<VkSurfaceFormatKHR> formats(format_count);
+    vkGetPhysicalDeviceSurfaceFormatsKHR(sPhysicalDevice, aw.surface, &format_count, formats.data());
+    VkSurfaceFormatKHR chosen = formats[0];
+    for (const VkSurfaceFormatKHR& f : formats)
+    {
+        if (f.format == VK_FORMAT_B8G8R8A8_UNORM && f.colorSpace == VK_COLOR_SPACE_SRGB_NONLINEAR_KHR)
+        {
+            chosen = f;
+            break;
+        }
+    }
+
+    VkExtent2D extent = caps.currentExtent;
+    if (extent.width == UINT32_MAX)
+    {
+        extent.width  = llclamp(640u, caps.minImageExtent.width,  caps.maxImageExtent.width);
+        extent.height = llclamp(480u, caps.minImageExtent.height, caps.maxImageExtent.height);
+    }
+    if (extent.width == 0 || extent.height == 0)
+    {
+        return false;
+    }
+
+    U32 image_count = caps.minImageCount + 1;
+    if (caps.maxImageCount > 0 && image_count > caps.maxImageCount)
+    {
+        image_count = caps.maxImageCount;
+    }
+
+    VkSwapchainCreateInfoKHR ci = {};
+    ci.sType            = VK_STRUCTURE_TYPE_SWAPCHAIN_CREATE_INFO_KHR;
+    ci.surface          = aw.surface;
+    ci.minImageCount    = image_count;
+    ci.imageFormat      = chosen.format;
+    ci.imageColorSpace  = chosen.colorSpace;
+    ci.imageExtent      = extent;
+    ci.imageArrayLayers = 1;
+    ci.imageUsage       = want_usage;
+    ci.imageSharingMode = VK_SHARING_MODE_EXCLUSIVE;
+    ci.preTransform     = caps.currentTransform;
+    ci.compositeAlpha   = VK_COMPOSITE_ALPHA_OPAQUE_BIT_KHR;
+    ci.presentMode      = VK_PRESENT_MODE_FIFO_KHR;
+    ci.clipped          = VK_TRUE;
+
+    if (vkCreateSwapchainKHR(sDevice, &ci, nullptr, &aw.swapchain) != VK_SUCCESS)
+    {
+        aw.swapchain = VK_NULL_HANDLE;
+        return false;
+    }
+    aw.format = chosen.format;
+    aw.extent = extent;
+
+    U32 actual = 0;
+    vkGetSwapchainImagesKHR(sDevice, aw.swapchain, &actual, nullptr);
+    aw.images.assign(actual, VK_NULL_HANDLE);
+    vkGetSwapchainImagesKHR(sDevice, aw.swapchain, &actual, aw.images.data());
+    return true;
+}
+
+static void auxDestroySwapchain()
+{
+    AuxWindowVk& aw = sAuxWindow;
+    peDrain();
+    for (U32 i = 0; i < FRAMES_IN_FLIGHT; ++i)
+    {
+        if (aw.fenceInFlight[i] && aw.fences[i] != VK_NULL_HANDLE)
+        {
+            vkWaitForFences(sDevice, 1, &aw.fences[i], VK_TRUE, UINT64_MAX);
+            vkResetFences(sDevice, 1, &aw.fences[i]);
+            aw.fenceInFlight[i] = false;
+        }
+    }
+    aw.images.clear();
+    if (aw.swapchain != VK_NULL_HANDLE)
+    {
+        vkDestroySwapchainKHR(sDevice, aw.swapchain, nullptr);
+        aw.swapchain = VK_NULL_HANDLE;
+    }
+    aw.format = VK_FORMAT_UNDEFINED;
+    aw.extent = {0, 0};
+}
+
+bool auxWindowInitVk(void* native_display, void* native_window)
+{
+    if (!sInitialized || sAuxWindow.active)
+    {
+        return sAuxWindow.active;
+    }
+#if defined(VK_USE_PLATFORM_XLIB_KHR)
+    if (native_display == nullptr || native_window == nullptr)
+    {
+        return false;
+    }
+    VkXlibSurfaceCreateInfoKHR ci = {};
+    ci.sType  = VK_STRUCTURE_TYPE_XLIB_SURFACE_CREATE_INFO_KHR;
+    ci.dpy    = static_cast<Display*>(native_display);
+    ci.window = static_cast<Window>(reinterpret_cast<uintptr_t>(native_window));
+    if (vkCreateXlibSurfaceKHR(sInstance, &ci, nullptr, &sAuxWindow.surface) != VK_SUCCESS)
+    {
+        sAuxWindow.surface = VK_NULL_HANDLE;
+        return false;
+    }
+#else
+    return false;
+#endif
+
+    if (!auxCreateSwapchain())
+    {
+        vkDestroySurfaceKHR(sInstance, sAuxWindow.surface, nullptr);
+        sAuxWindow.surface = VK_NULL_HANDLE;
+        return false;
+    }
+
+    VkSemaphoreCreateInfo si = {};
+    si.sType = VK_STRUCTURE_TYPE_SEMAPHORE_CREATE_INFO;
+    VkFenceCreateInfo fi = {};
+    fi.sType = VK_STRUCTURE_TYPE_FENCE_CREATE_INFO;
+    VkCommandBufferAllocateInfo ai = {};
+    ai.sType              = VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO;
+    ai.commandPool        = sCommandPool;
+    ai.level              = VK_COMMAND_BUFFER_LEVEL_PRIMARY;
+    ai.commandBufferCount = FRAMES_IN_FLIGHT;
+    bool ok = vkAllocateCommandBuffers(sDevice, &ai, sAuxWindow.cbs) == VK_SUCCESS;
+    for (U32 i = 0; ok && i < FRAMES_IN_FLIGHT; ++i)
+    {
+        ok = ok && vkCreateSemaphore(sDevice, &si, nullptr, &sAuxWindow.imageAvailable[i]) == VK_SUCCESS;
+        ok = ok && vkCreateSemaphore(sDevice, &si, nullptr, &sAuxWindow.renderFinished[i]) == VK_SUCCESS;
+        ok = ok && vkCreateFence(sDevice, &fi, nullptr, &sAuxWindow.fences[i]) == VK_SUCCESS;
+    }
+    if (!ok)
+    {
+        auxWindowShutdownVk();
+        return false;
+    }
+    sAuxWindow.active = true;
+    return true;
+}
+
+void auxWindowShutdownVk()
+{
+    AuxWindowVk& aw = sAuxWindow;
+    if (sDevice != VK_NULL_HANDLE)
+    {
+        auxDestroySwapchain();
+        for (U32 i = 0; i < FRAMES_IN_FLIGHT; ++i)
+        {
+            if (aw.imageAvailable[i] != VK_NULL_HANDLE) vkDestroySemaphore(sDevice, aw.imageAvailable[i], nullptr);
+            if (aw.renderFinished[i] != VK_NULL_HANDLE) vkDestroySemaphore(sDevice, aw.renderFinished[i], nullptr);
+            if (aw.fences[i] != VK_NULL_HANDLE)         vkDestroyFence(sDevice, aw.fences[i], nullptr);
+            aw.imageAvailable[i] = VK_NULL_HANDLE;
+            aw.renderFinished[i] = VK_NULL_HANDLE;
+            aw.fences[i]         = VK_NULL_HANDLE;
+            aw.fenceInFlight[i]  = false;
+        }
+        if (aw.cbs[0] != VK_NULL_HANDLE)
+        {
+            vkFreeCommandBuffers(sDevice, sCommandPool, FRAMES_IN_FLIGHT, aw.cbs);
+            for (U32 i = 0; i < FRAMES_IN_FLIGHT; ++i) aw.cbs[i] = VK_NULL_HANDLE;
+        }
+    }
+    if (aw.surface != VK_NULL_HANDLE && sInstance != VK_NULL_HANDLE)
+    {
+        vkDestroySurfaceKHR(sInstance, aw.surface, nullptr);
+    }
+    aw.surface = VK_NULL_HANDLE;
+    aw.active  = false;
+    aw.recreatePending = false;
+}
+
+bool auxWindowActiveVk()
+{
+    return sAuxWindow.active;
+}
+
+bool auxWindowPresentClearVk(F32 r, F32 g, F32 b)
+{
+    AuxWindowVk& aw = sAuxWindow;
+    if (!aw.active || sVkDeviceLost.load(std::memory_order_acquire))
+    {
+        return false;
+    }
+    if (aw.recreatePending)
+    {
+        auxDestroySwapchain();
+        if (!auxCreateSwapchain())
+        {
+            return false;
+        }
+        aw.recreatePending = false;
+    }
+
+    const U32 slot = sFrameIndex % FRAMES_IN_FLIGHT;
+    if (aw.fenceInFlight[slot])
+    {
+        vkWaitForFences(sDevice, 1, &aw.fences[slot], VK_TRUE, UINT64_MAX);
+        vkResetFences(sDevice, 1, &aw.fences[slot]);
+        aw.fenceInFlight[slot] = false;
+    }
+
+    U32 image_index = 0;
+    VkResult ar;
+    {
+        std::lock_guard<std::mutex> lk(sSwapchainAccessMutex);
+        ar = vkAcquireNextImageKHR(sDevice, aw.swapchain, UINT64_MAX,
+                                   aw.imageAvailable[slot], VK_NULL_HANDLE, &image_index);
+    }
+    if (ar == VK_ERROR_OUT_OF_DATE_KHR)
+    {
+        aw.recreatePending = true;
+        return false;
+    }
+    if (ar != VK_SUCCESS && ar != VK_SUBOPTIMAL_KHR)
+    {
+        return false;
+    }
+    if (ar == VK_SUBOPTIMAL_KHR)
+    {
+        aw.recreatePending = true;
+    }
+
+    VkCommandBuffer cmd = aw.cbs[slot];
+    vkResetCommandBuffer(cmd, 0);
+    VkCommandBufferBeginInfo bi = {};
+    bi.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO;
+    bi.flags = VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT;
+    vkBeginCommandBuffer(cmd, &bi);
+
+    VkImageMemoryBarrier to_dst = {};
+    to_dst.sType               = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER;
+    to_dst.oldLayout           = VK_IMAGE_LAYOUT_UNDEFINED;
+    to_dst.newLayout           = VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL;
+    to_dst.srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+    to_dst.dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+    to_dst.image               = aw.images[image_index];
+    to_dst.srcAccessMask       = 0;
+    to_dst.dstAccessMask       = VK_ACCESS_TRANSFER_WRITE_BIT;
+    to_dst.subresourceRange.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
+    to_dst.subresourceRange.levelCount = 1;
+    to_dst.subresourceRange.layerCount = 1;
+    vkCmdPipelineBarrier(cmd, VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT, VK_PIPELINE_STAGE_TRANSFER_BIT,
+                         0, 0, nullptr, 0, nullptr, 1, &to_dst);
+
+    VkClearColorValue color = {};
+    color.float32[0] = r;
+    color.float32[1] = g;
+    color.float32[2] = b;
+    color.float32[3] = 1.0f;
+    VkImageSubresourceRange range = {};
+    range.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
+    range.levelCount = 1;
+    range.layerCount = 1;
+    vkCmdClearColorImage(cmd, aw.images[image_index], VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, &color, 1, &range);
+
+    VkImageMemoryBarrier to_present = to_dst;
+    to_present.oldLayout     = VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL;
+    to_present.newLayout     = VK_IMAGE_LAYOUT_PRESENT_SRC_KHR;
+    to_present.srcAccessMask = VK_ACCESS_TRANSFER_WRITE_BIT;
+    to_present.dstAccessMask = 0;
+    vkCmdPipelineBarrier(cmd, VK_PIPELINE_STAGE_TRANSFER_BIT, VK_PIPELINE_STAGE_BOTTOM_OF_PIPE_BIT,
+                         0, 0, nullptr, 0, nullptr, 1, &to_present);
+
+    vkEndCommandBuffer(cmd);
+
+    PEJob job;
+    job.cmd              = cmd;
+    job.fence            = aw.fences[slot];
+    job.wait_semaphore   = aw.imageAvailable[slot];
+    job.signal_semaphore = aw.renderFinished[slot];
+    PEPresentTarget target;
+    target.swapchain      = aw.swapchain;
+    target.image_index    = image_index;
+    target.wait_semaphore = aw.renderFinished[slot];
+    job.presents.push_back(target);
+    peEnqueue(std::move(job));
+    aw.fenceInFlight[slot] = true;
+    return true;
 }
 
 bool initSwapchain()

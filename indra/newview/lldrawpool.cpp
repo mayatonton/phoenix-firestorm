@@ -1283,6 +1283,11 @@ static bool pushIndirectSpans(LLVKBucket::Bucket& bucket, VkBuffer ring_buf, VkD
         {
             if (LLVKLoader::producerSwapchainFallbackShouldSkip()) { return false; }
             LLVKLoader::beginSwapchainRendering();
+            if (!LLVKLoader::isInRenderPassScope())
+            {
+                LLVKContract::drawSkipped(LLVKContract::C_CMD_NULL, shader->mName);
+                return false;
+            }
         }
         else
         {
@@ -1484,6 +1489,11 @@ namespace
             {
                 if (LLVKLoader::producerSwapchainFallbackShouldSkip()) { return false; }
                 LLVKLoader::beginSwapchainRendering();
+                if (!LLVKLoader::isInRenderPassScope())
+                {
+                    LLVKContract::drawSkipped(LLVKContract::C_CMD_NULL, shader->mName);
+                    return false;
+                }
             }
             else
             {
