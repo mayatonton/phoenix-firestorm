@@ -29,6 +29,7 @@
 #include "llwindow.h"
 #include "llimagegl.h"
 #include "llglslshader.h"
+#include "llrendertarget.h"
 
 #include <vector>
 #include <string>
@@ -8209,6 +8210,25 @@ bool submitOneShotVk(VkCommandBuffer cmd, VkBuffer staging_buffer, VmaAllocation
     return submitOneShotVkFromPool(cmd, sCommandPool, staging_buffer, staging_allocation, 0);
 }
 
+static VkCommandBuffer beginOneShotCommandBufferVk()
+{
+    VkCommandBufferAllocateInfo cbai = {};
+    cbai.sType              = VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO;
+    cbai.commandPool        = sCommandPool;
+    cbai.level              = VK_COMMAND_BUFFER_LEVEL_PRIMARY;
+    cbai.commandBufferCount = 1;
+    VkCommandBuffer cmd = VK_NULL_HANDLE;
+    if (vkAllocateCommandBuffers(sDevice, &cbai, &cmd) != VK_SUCCESS || cmd == VK_NULL_HANDLE)
+    {
+        return VK_NULL_HANDLE;
+    }
+    VkCommandBufferBeginInfo cbbi = {};
+    cbbi.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO;
+    cbbi.flags = VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT;
+    vkBeginCommandBuffer(cmd, &cbbi);
+    return cmd;
+}
+
 bool submitOneShotVkFromPool(VkCommandBuffer cmd, VkCommandPool pool, VkBuffer staging_buffer,
                              VmaAllocation staging_allocation, U32 staging_bytes)
 {
@@ -9644,24 +9664,12 @@ bool uploadImageDataVk(VkImage     image,
 
     memcpy(staging_mapped, data, data_size_bytes);
 
-    VkCommandBufferAllocateInfo cbai = {};
-    cbai.sType              = VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO;
-    cbai.commandPool        = sCommandPool;
-    cbai.level              = VK_COMMAND_BUFFER_LEVEL_PRIMARY;
-    cbai.commandBufferCount = 1;
-
-    VkCommandBuffer cmd = VK_NULL_HANDLE;
-    VkResult cr = vkAllocateCommandBuffers(sDevice, &cbai, &cmd);
-    if (cr != VK_SUCCESS || cmd == VK_NULL_HANDLE)
+    VkCommandBuffer cmd = beginOneShotCommandBufferVk();
+    if (cmd == VK_NULL_HANDLE)
     {
         vmaDestroyBuffer(sAllocator, staging_buffer, staging_allocation);
         return false;
     }
-
-    VkCommandBufferBeginInfo cbbi = {};
-    cbbi.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO;
-    cbbi.flags = VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT;
-    vkBeginCommandBuffer(cmd, &cbbi);
 
     {
         VkImageMemoryBarrier b = {};
@@ -9743,20 +9751,11 @@ bool generateMipChainBlitVk(VkImage image, U32 base_w, U32 base_h, U32 mip_count
         return false;
     }
 
-    VkCommandBufferAllocateInfo cbai = {};
-    cbai.sType              = VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO;
-    cbai.commandPool        = sCommandPool;
-    cbai.level              = VK_COMMAND_BUFFER_LEVEL_PRIMARY;
-    cbai.commandBufferCount = 1;
-    VkCommandBuffer cmd = VK_NULL_HANDLE;
-    if (vkAllocateCommandBuffers(sDevice, &cbai, &cmd) != VK_SUCCESS)
+    VkCommandBuffer cmd = beginOneShotCommandBufferVk();
+    if (cmd == VK_NULL_HANDLE)
     {
         return false;
     }
-    VkCommandBufferBeginInfo cbbi = {};
-    cbbi.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO;
-    cbbi.flags = VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT;
-    vkBeginCommandBuffer(cmd, &cbbi);
 
     auto mip_barrier = [&](U32 level, VkImageLayout oldL, VkImageLayout newL,
                            VkAccessFlags srcA, VkAccessFlags dstA,
@@ -9872,21 +9871,12 @@ bool downscaleImageVk(VkImage      src_image,
         return false;
     }
 
-    VkCommandBufferAllocateInfo cbai = {};
-    cbai.sType              = VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO;
-    cbai.commandPool        = sCommandPool;
-    cbai.level              = VK_COMMAND_BUFFER_LEVEL_PRIMARY;
-    cbai.commandBufferCount = 1;
-    VkCommandBuffer cmd = VK_NULL_HANDLE;
-    if (vkAllocateCommandBuffers(sDevice, &cbai, &cmd) != VK_SUCCESS)
+    VkCommandBuffer cmd = beginOneShotCommandBufferVk();
+    if (cmd == VK_NULL_HANDLE)
     {
         destroyImageVk(new_image, new_view, new_alloc);
         return false;
     }
-    VkCommandBufferBeginInfo cbbi = {};
-    cbbi.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO;
-    cbbi.flags = VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT;
-    vkBeginCommandBuffer(cmd, &cbbi);
 
     auto image_barrier = [&](VkImage img, U32 level, VkImageLayout oldL, VkImageLayout newL,
                              VkAccessFlags srcA, VkAccessFlags dstA,
@@ -9982,20 +9972,11 @@ bool blitCubeArrayVk(VkImage       src,
         return false;
     }
 
-    VkCommandBufferAllocateInfo cbai = {};
-    cbai.sType              = VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO;
-    cbai.commandPool        = sCommandPool;
-    cbai.level              = VK_COMMAND_BUFFER_LEVEL_PRIMARY;
-    cbai.commandBufferCount = 1;
-    VkCommandBuffer cmd = VK_NULL_HANDLE;
-    if (vkAllocateCommandBuffers(sDevice, &cbai, &cmd) != VK_SUCCESS)
+    VkCommandBuffer cmd = beginOneShotCommandBufferVk();
+    if (cmd == VK_NULL_HANDLE)
     {
         return false;
     }
-    VkCommandBufferBeginInfo cbbi = {};
-    cbbi.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO;
-    cbbi.flags = VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT;
-    vkBeginCommandBuffer(cmd, &cbbi);
 
     auto image_barrier = [&](VkImage img, VkImageLayout oldL, VkImageLayout newL,
                              VkAccessFlags srcA, VkAccessFlags dstA,
@@ -10295,24 +10276,12 @@ bool uploadImageData3DVk(VkImage     image,
 
     memcpy(staging_mapped, data, data_size_bytes);
 
-    VkCommandBufferAllocateInfo cbai = {};
-    cbai.sType              = VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO;
-    cbai.commandPool        = sCommandPool;
-    cbai.level              = VK_COMMAND_BUFFER_LEVEL_PRIMARY;
-    cbai.commandBufferCount = 1;
-
-    VkCommandBuffer cmd = VK_NULL_HANDLE;
-    VkResult cr = vkAllocateCommandBuffers(sDevice, &cbai, &cmd);
-    if (cr != VK_SUCCESS || cmd == VK_NULL_HANDLE)
+    VkCommandBuffer cmd = beginOneShotCommandBufferVk();
+    if (cmd == VK_NULL_HANDLE)
     {
         vmaDestroyBuffer(sAllocator, staging_buffer, staging_allocation);
         return false;
     }
-
-    VkCommandBufferBeginInfo cbbi = {};
-    cbbi.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO;
-    cbbi.flags = VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT;
-    vkBeginCommandBuffer(cmd, &cbbi);
 
     {
         VkImageMemoryBarrier b = {};
@@ -10451,23 +10420,12 @@ bool uploadImageSubregionVk(VkImage     image,
         }
     }
 
-    VkCommandBufferAllocateInfo cbai = {};
-    cbai.sType              = VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO;
-    cbai.commandPool        = sCommandPool;
-    cbai.level              = VK_COMMAND_BUFFER_LEVEL_PRIMARY;
-    cbai.commandBufferCount = 1;
-    VkCommandBuffer cmd = VK_NULL_HANDLE;
-    VkResult cr = vkAllocateCommandBuffers(sDevice, &cbai, &cmd);
-    if (cr != VK_SUCCESS || cmd == VK_NULL_HANDLE)
+    VkCommandBuffer cmd = beginOneShotCommandBufferVk();
+    if (cmd == VK_NULL_HANDLE)
     {
         vmaDestroyBuffer(sAllocator, staging_buffer, staging_allocation);
         return false;
     }
-
-    VkCommandBufferBeginInfo cbbi = {};
-    cbbi.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO;
-    cbbi.flags = VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT;
-    vkBeginCommandBuffer(cmd, &cbbi);
 
     {
         VkImageMemoryBarrier b = {};
@@ -10675,24 +10633,12 @@ bool uploadCubeImageDataVk(VkImage           image,
         }
     }
 
-    VkCommandBufferAllocateInfo cbai = {};
-    cbai.sType              = VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO;
-    cbai.commandPool        = sCommandPool;
-    cbai.level              = VK_COMMAND_BUFFER_LEVEL_PRIMARY;
-    cbai.commandBufferCount = 1;
-
-    VkCommandBuffer cmd = VK_NULL_HANDLE;
-    VkResult cr = vkAllocateCommandBuffers(sDevice, &cbai, &cmd);
-    if (cr != VK_SUCCESS || cmd == VK_NULL_HANDLE)
+    VkCommandBuffer cmd = beginOneShotCommandBufferVk();
+    if (cmd == VK_NULL_HANDLE)
     {
         vmaDestroyBuffer(sAllocator, staging_buffer, staging_allocation);
         return false;
     }
-
-    VkCommandBufferBeginInfo cbbi = {};
-    cbbi.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO;
-    cbbi.flags = VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT;
-    vkBeginCommandBuffer(cmd, &cbbi);
 
     {
         VkImageMemoryBarrier b = {};
@@ -10835,19 +10781,9 @@ bool createCubeArrayImageVk(U32          resolution,
     }
     noteViewHandleCreated(view);
 
-    VkCommandBufferAllocateInfo cbai = {};
-    cbai.sType              = VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO;
-    cbai.commandPool        = sCommandPool;
-    cbai.level              = VK_COMMAND_BUFFER_LEVEL_PRIMARY;
-    cbai.commandBufferCount = 1;
-    VkCommandBuffer cmd = VK_NULL_HANDLE;
-    if (vkAllocateCommandBuffers(sDevice, &cbai, &cmd) == VK_SUCCESS && cmd != VK_NULL_HANDLE)
+    VkCommandBuffer cmd = beginOneShotCommandBufferVk();
+    if (cmd != VK_NULL_HANDLE)
     {
-        VkCommandBufferBeginInfo cbbi = {};
-        cbbi.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO;
-        cbbi.flags = VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT;
-        vkBeginCommandBuffer(cmd, &cbbi);
-
         VkImageSubresourceRange full_range = {};
         full_range.aspectMask     = VK_IMAGE_ASPECT_COLOR_BIT;
         full_range.baseMipLevel   = 0;
@@ -11329,23 +11265,12 @@ bool readbackColorImageRegionVk(VkImage       image,
         staging_mapped = info.pMappedData;
     }
 
-    VkCommandBufferAllocateInfo cbai = {};
-    cbai.sType              = VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO;
-    cbai.commandPool        = sCommandPool;
-    cbai.level              = VK_COMMAND_BUFFER_LEVEL_PRIMARY;
-    cbai.commandBufferCount = 1;
-    VkCommandBuffer cmd = VK_NULL_HANDLE;
-    VkResult cr = vkAllocateCommandBuffers(sDevice, &cbai, &cmd);
-    if (cr != VK_SUCCESS || cmd == VK_NULL_HANDLE)
+    VkCommandBuffer cmd = beginOneShotCommandBufferVk();
+    if (cmd == VK_NULL_HANDLE)
     {
         vmaDestroyBuffer(sAllocator, staging_buffer, staging_allocation);
         return false;
     }
-
-    VkCommandBufferBeginInfo cbbi = {};
-    cbbi.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO;
-    cbbi.flags = VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT;
-    vkBeginCommandBuffer(cmd, &cbbi);
 
     {
         VkImageMemoryBarrier b = {};
@@ -11490,23 +11415,12 @@ bool readbackDepthImageRegionVk(VkImage       image,
         has_stencil ? (VK_IMAGE_ASPECT_DEPTH_BIT | VK_IMAGE_ASPECT_STENCIL_BIT)
                     : VK_IMAGE_ASPECT_DEPTH_BIT;
 
-    VkCommandBufferAllocateInfo cbai = {};
-    cbai.sType              = VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO;
-    cbai.commandPool        = sCommandPool;
-    cbai.level              = VK_COMMAND_BUFFER_LEVEL_PRIMARY;
-    cbai.commandBufferCount = 1;
-    VkCommandBuffer cmd = VK_NULL_HANDLE;
-    VkResult cr = vkAllocateCommandBuffers(sDevice, &cbai, &cmd);
-    if (cr != VK_SUCCESS || cmd == VK_NULL_HANDLE)
+    VkCommandBuffer cmd = beginOneShotCommandBufferVk();
+    if (cmd == VK_NULL_HANDLE)
     {
         vmaDestroyBuffer(sAllocator, staging_buffer, staging_allocation);
         return false;
     }
-
-    VkCommandBufferBeginInfo cbbi = {};
-    cbbi.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO;
-    cbbi.flags = VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT;
-    vkBeginCommandBuffer(cmd, &cbbi);
 
     {
         VkImageMemoryBarrier b = {};
@@ -12021,21 +11935,11 @@ void transitionImageLayoutVk(VkImage              image,
         {
             return;
         }
-        VkCommandBufferAllocateInfo cbai = {};
-        cbai.sType              = VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO;
-        cbai.commandPool        = sCommandPool;
-        cbai.level              = VK_COMMAND_BUFFER_LEVEL_PRIMARY;
-        cbai.commandBufferCount = 1;
-        VkCommandBuffer oneshot_cmd = VK_NULL_HANDLE;
-        if (vkAllocateCommandBuffers(sDevice, &cbai, &oneshot_cmd) != VK_SUCCESS ||
-            oneshot_cmd == VK_NULL_HANDLE)
+        VkCommandBuffer oneshot_cmd = beginOneShotCommandBufferVk();
+        if (oneshot_cmd == VK_NULL_HANDLE)
         {
             return;
         }
-        VkCommandBufferBeginInfo cbbi = {};
-        cbbi.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO;
-        cbbi.flags = VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT;
-        vkBeginCommandBuffer(oneshot_cmd, &cbbi);
         VkImageMemoryBarrier oneshot_barrier = {};
         oneshot_barrier.sType                           = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER;
         oneshot_barrier.oldLayout                       = old_layout;
@@ -12588,6 +12492,82 @@ bool hasSwapchainDepth()
 bool isInRenderPassScope()
 {
     return sInDynamicRendering;
+}
+
+bool beginShaderDrawOrSkip(LLGLSLShader* shader, U32 render_mode, VkCommandBuffer& out_cmd)
+{
+    out_cmd = VK_NULL_HANDLE;
+    VkDescriptorSet set_to_bind = LLGLSLShader::vkResolvePerCallSetForDraw();
+    if (set_to_bind == VK_NULL_HANDLE)
+    {
+        LLVKContract::drawSkipped(LLVKContract::C_UNKNOWN,
+                                  shader != nullptr ? shader->mName : std::string("(no-shader)"));
+        return false;
+    }
+    if (shader == nullptr)
+    {
+        LLVKContract::drawSkipped(LLVKContract::C_NO_SHADER_OR_LAYOUT, std::string("(no-shader)"));
+        return false;
+    }
+    VkCommandBuffer cmd = getCurrentCommandBuffer();
+    if (cmd == VK_NULL_HANDLE)
+    {
+        LLVKContract::drawSkipped(LLVKContract::C_CMD_NULL, shader->mName);
+        return false;
+    }
+    VkPipeline pipeline = shader->getOrCreateVkPipelineForBoundRT(render_mode);
+    if (pipeline == VK_NULL_HANDLE)
+    {
+        LLVKContract::drawSkipped(LLVKContract::C_PIPELINE_NULL, shader->mName);
+        return false;
+    }
+    if (!isInRenderPassScope())
+    {
+        LLRenderTarget* bound_rt = LLRenderTarget::getCurrentBoundTarget();
+        if (bound_rt == nullptr)
+        {
+            if (producerSwapchainFallbackShouldSkip())
+            {
+                return false;
+            }
+            beginSwapchainRendering();
+            if (!isInRenderPassScope())
+            {
+                LLVKContract::drawSkipped(LLVKContract::C_CMD_NULL, shader->mName);
+                return false;
+            }
+        }
+        else
+        {
+            static U32 s_rt_resume_count = 0;
+            ++s_rt_resume_count;
+            if ((s_rt_resume_count & (s_rt_resume_count - 1)) == 0)
+            {
+                LL_WARNS("Vulkan") << "draw with bound RT outside pass scope: resuming"
+                                   << " shader='" << shader->mName
+                                   << "' count=" << s_rt_resume_count << LL_ENDL;
+            }
+            bound_rt->resumeVkDynamicRendering();
+        }
+    }
+    bindGraphicsPipelineOnce(cmd, pipeline);
+    {
+        const bool vk_screen_space_copy = LLGLSLShader::vkUsePositiveViewport(
+            LLRenderTarget::getCurrentBoundTarget() != nullptr,
+            LLGLSLShader::vkCaptureRegimeActive());
+        setupViewportAndScissor(cmd, vk_screen_space_copy);
+    }
+    bindDrawDescriptorSetsOnce(cmd,
+                               shader->mVkPipelineLayout,
+                               getCurrentPerFrameDescriptorSet(),
+                               set_to_bind,
+                               shader->mVkSet1DynamicCount,
+                               LLGLSLShader::sCurPerCallVkDynamicOffsets);
+    pushModelviewOnce(cmd,
+                      shader->mVkPipelineLayout,
+                      getCurrentModelviewMatrix());
+    out_cmd = cmd;
+    return true;
 }
 
 U64 currentPassAttachmentSig()

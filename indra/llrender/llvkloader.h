@@ -30,6 +30,7 @@
 #include <vector>
 
 class LLWindow;
+class LLGLSLShader;
 
 namespace LLVKLoader
 {
@@ -1422,6 +1423,7 @@ namespace LLVKLoader
     void        beginSwapchainRendering();
 
     bool        isInRenderPassScope();
+    bool        beginShaderDrawOrSkip(LLGLSLShader* shader, U32 render_mode, VkCommandBuffer& out_cmd);
     bool        isImageViewActivePassAttachment(VkImageView view);
     U64         currentPassAttachmentSig();
     void        setupViewportAndScissor(VkCommandBuffer cmd, bool screen_space_copy = false);

@@ -1011,90 +1011,39 @@ void flushAlphaRun(AlphaRun& run)
     {
         gGL.syncMatrices();
         LLVKContract::DrawScope vkc_scope(run.mSpans.empty() ? nullptr : run.mSpans.back().mRep, "alphaRun");
-        VkDescriptorSet set_to_bind = LLGLSLShader::vkResolvePerCallSetForDraw();
-        VkCommandBuffer cmd = LLVKLoader::getCurrentCommandBuffer();
-        if (set_to_bind == VK_NULL_HANDLE)
+        VkCommandBuffer cmd = VK_NULL_HANDLE;
+        if (LLVKLoader::beginShaderDrawOrSkip(shader, LLRender::TRIANGLES, cmd))
         {
-            LLVKContract::drawSkipped(LLVKContract::C_UNKNOWN, shader->mName);
-        }
-        else if (cmd == VK_NULL_HANDLE)
-        {
-            LLVKContract::drawSkipped(LLVKContract::C_CMD_NULL, shader->mName);
-        }
-        if (set_to_bind != VK_NULL_HANDLE && cmd != VK_NULL_HANDLE)
-        {
-            VkPipeline pipeline = shader->getOrCreateVkPipelineForBoundRT(LLRender::TRIANGLES);
-            if (pipeline == VK_NULL_HANDLE)
+            VkBuffer     ring_buf    = VK_NULL_HANDLE;
+            VkDeviceSize ring_offset = 0;
+            void*        ring_mapped = nullptr;
+            if (LLVKLoader::indirectRingAlloc((U32)run.mCmds.size(), ring_buf, ring_offset, ring_mapped))
             {
-                LLVKContract::drawSkipped(LLVKContract::C_PIPELINE_NULL, shader->mName);
+                std::memcpy(ring_mapped, run.mCmds.data(),
+                            run.mCmds.size() * sizeof(VkDrawIndexedIndirectCommand));
+                for (const AlphaRunSpan& span : run.mSpans)
+                {
+                    span.mRep->mVertexBuffer->setBuffer();
+                    vkCmdDrawIndexedIndirect(cmd, ring_buf,
+                                             ring_offset + (VkDeviceSize)span.mFirst * sizeof(VkDrawIndexedIndirectCommand),
+                                             span.mCount,
+                                             sizeof(VkDrawIndexedIndirectCommand));
+                    ++LLVKLoader::gVkPerf.mdi_call;
+                }
             }
             else
             {
-                if (!LLVKLoader::isInRenderPassScope())
+                for (const AlphaRunSpan& span : run.mSpans)
                 {
-                    LLRenderTarget* bound_rt = LLRenderTarget::getCurrentBoundTarget();
-                    if (bound_rt == nullptr)
+                    span.mRep->mVertexBuffer->setBuffer();
+                    for (U32 c = span.mFirst; c < span.mFirst + span.mCount; ++c)
                     {
-                        if (LLVKLoader::producerSwapchainFallbackShouldSkip()) { return; }
-                        LLVKLoader::beginSwapchainRendering();
-                        if (!LLVKLoader::isInRenderPassScope())
-                        {
-                            LLVKContract::drawSkipped(LLVKContract::C_CMD_NULL, shader->mName);
-                            return;
-                        }
-                    }
-                    else
-                    {
-                        bound_rt->resumeVkDynamicRendering();
+                        const VkDrawIndexedIndirectCommand& dc = run.mCmds[c];
+                        vkCmdDrawIndexed(cmd, dc.indexCount, 1, dc.firstIndex, dc.vertexOffset, dc.firstInstance);
                     }
                 }
-                LLVKLoader::bindGraphicsPipelineOnce(cmd, pipeline);
-                {
-                    const bool vk_screen_space_copy = LLGLSLShader::vkUsePositiveViewport(
-                        LLRenderTarget::getCurrentBoundTarget() != nullptr,
-                        LLGLSLShader::vkCaptureRegimeActive());
-                    LLVKLoader::setupViewportAndScissor(cmd, vk_screen_space_copy);
-                }
-                LLVKLoader::bindDrawDescriptorSetsOnce(cmd,
-                                                       shader->mVkPipelineLayout,
-                                                       LLVKLoader::getCurrentPerFrameDescriptorSet(),
-                                                       set_to_bind,
-                                                       shader->mVkSet1DynamicCount,
-                                                       LLGLSLShader::sCurPerCallVkDynamicOffsets);
-                LLVKLoader::pushModelviewOnce(cmd,
-                                              shader->mVkPipelineLayout,
-                                              LLVKLoader::getCurrentModelviewMatrix());
-                VkBuffer     ring_buf    = VK_NULL_HANDLE;
-                VkDeviceSize ring_offset = 0;
-                void*        ring_mapped = nullptr;
-                if (LLVKLoader::indirectRingAlloc((U32)run.mCmds.size(), ring_buf, ring_offset, ring_mapped))
-                {
-                    std::memcpy(ring_mapped, run.mCmds.data(),
-                                run.mCmds.size() * sizeof(VkDrawIndexedIndirectCommand));
-                    for (const AlphaRunSpan& span : run.mSpans)
-                    {
-                        span.mRep->mVertexBuffer->setBuffer();
-                        vkCmdDrawIndexedIndirect(cmd, ring_buf,
-                                                 ring_offset + (VkDeviceSize)span.mFirst * sizeof(VkDrawIndexedIndirectCommand),
-                                                 span.mCount,
-                                                 sizeof(VkDrawIndexedIndirectCommand));
-                        ++LLVKLoader::gVkPerf.mdi_call;
-                    }
-                }
-                else
-                {
-                    for (const AlphaRunSpan& span : run.mSpans)
-                    {
-                        span.mRep->mVertexBuffer->setBuffer();
-                        for (U32 c = span.mFirst; c < span.mFirst + span.mCount; ++c)
-                        {
-                            const VkDrawIndexedIndirectCommand& dc = run.mCmds[c];
-                            vkCmdDrawIndexed(cmd, dc.indexCount, 1, dc.firstIndex, dc.vertexOffset, dc.firstInstance);
-                        }
-                    }
-                }
-                ++LLVKLoader::gVkPerf.alp_run;
             }
+            ++LLVKLoader::gVkPerf.alp_run;
         }
     }
     if (flu_t0 != 0)

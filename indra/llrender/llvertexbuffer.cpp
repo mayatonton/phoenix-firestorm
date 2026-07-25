@@ -555,87 +555,17 @@ void LLVertexBuffer::drawRange(U32 mode, U32 start, U32 end, U32 count, U32 indi
     if (LLVKLoader::shouldUseVulkanRender()
         && LLGLSLShader::sCurBoundShaderPtr != nullptr)
     {
-        VkDescriptorSet set_to_bind = LLGLSLShader::vkResolvePerCallSetForDraw();
-
-        if (set_to_bind == VK_NULL_HANDLE)
+        VkCommandBuffer cmd = VK_NULL_HANDLE;
+        if (LLVKLoader::beginShaderDrawOrSkip(LLGLSLShader::sCurBoundShaderPtr, mode, cmd))
         {
-            LLVKContract::drawSkipped(LLVKContract::C_UNKNOWN,
-                                      LLGLSLShader::sCurBoundShaderPtr->mName);
-        }
-
-        if (set_to_bind != VK_NULL_HANDLE)
-        {
-            VkCommandBuffer cmd = LLVKLoader::getCurrentCommandBuffer();
-            if (cmd == VK_NULL_HANDLE)
+            if (LLGLSLShader::sCurBoundShaderPtr->mVkUsesBindlessHeap)
             {
-                LLVKContract::drawSkipped(LLVKContract::C_CMD_NULL,
-                                          LLGLSLShader::sCurBoundShaderPtr->mName);
+                LLVKContract::checkDrawDataIDAtFire(LLVKLoader::getCurrentDrawDataID());
             }
-            if (cmd != VK_NULL_HANDLE)
-            {
-                VkPipeline pipeline =
-                    LLGLSLShader::sCurBoundShaderPtr->getOrCreateVkPipelineForBoundRT(mode);
-                if (pipeline == VK_NULL_HANDLE)
-                {
-                    LLVKContract::drawSkipped(LLVKContract::C_PIPELINE_NULL,
-                                              LLGLSLShader::sCurBoundShaderPtr->mName);
-                }
-                else
-                {
-                    if (!LLVKLoader::isInRenderPassScope())
-                    {
-                        LLRenderTarget* bound_rt = LLRenderTarget::getCurrentBoundTarget();
-                        if (bound_rt == nullptr)
-                        {
-                            if (LLVKLoader::producerSwapchainFallbackShouldSkip()) { return; }
-                            LLVKLoader::beginSwapchainRendering();
-                            if (!LLVKLoader::isInRenderPassScope())
-                            {
-                                LLVKContract::drawSkipped(LLVKContract::C_CMD_NULL,
-                                                          LLGLSLShader::sCurBoundShaderPtr->mName);
-                                return;
-                            }
-                        }
-                        else
-                        {
-                            static U32 s_rt_resume_count = 0;
-                            ++s_rt_resume_count;
-                            if ((s_rt_resume_count & (s_rt_resume_count - 1)) == 0)
-                            {
-                                LL_WARNS("Vulkan") << "draw with bound RT outside pass scope: resuming"
-                                                   << " shader='" << (LLGLSLShader::sCurBoundShaderPtr ? LLGLSLShader::sCurBoundShaderPtr->mName : std::string("?"))
-                                                   << "' count=" << s_rt_resume_count << LL_ENDL;
-                            }
-                            bound_rt->resumeVkDynamicRendering();
-                        }
-                    }
-                    LLVKLoader::bindGraphicsPipelineOnce(cmd, pipeline);
-                    {
-                        const bool vk_screen_space_copy = LLGLSLShader::vkUsePositiveViewport(
-                            LLRenderTarget::getCurrentBoundTarget() != nullptr,
-                            LLGLSLShader::vkCaptureRegimeActive());
-                        LLVKLoader::setupViewportAndScissor(cmd, vk_screen_space_copy);
-                    }
-                    const U32 dyn_count = LLGLSLShader::sCurBoundShaderPtr->mVkSet1DynamicCount;
-                    LLVKLoader::bindDrawDescriptorSetsOnce(cmd,
-                                                           LLGLSLShader::sCurBoundShaderPtr->mVkPipelineLayout,
-                                                           LLVKLoader::getCurrentPerFrameDescriptorSet(),
-                                                           set_to_bind,
-                                                           dyn_count,
-                                                           LLGLSLShader::sCurPerCallVkDynamicOffsets);
-                    LLVKLoader::pushModelviewOnce(cmd,
-                                                  LLGLSLShader::sCurBoundShaderPtr->mVkPipelineLayout,
-                                                  LLVKLoader::getCurrentModelviewMatrix());
-                    if (LLGLSLShader::sCurBoundShaderPtr->mVkUsesBindlessHeap)
-                    {
-                        LLVKContract::checkDrawDataIDAtFire(LLVKLoader::getCurrentDrawDataID());
-                    }
-                    vkCmdDrawIndexed(cmd, count, 1, mVkIndexSlice.offset / mIndicesStride + indices_offset, (S32)mVkVertexSlice.first, LLVKLoader::getCurrentDrawDataID());
-                    ++sVkDrawCallCount;
-                    vk_fired = true;
-                    LLVKContract::drawFired();
-                }
-            }
+            vkCmdDrawIndexed(cmd, count, 1, mVkIndexSlice.offset / mIndicesStride + indices_offset, (S32)mVkVertexSlice.first, LLVKLoader::getCurrentDrawDataID());
+            ++sVkDrawCallCount;
+            vk_fired = true;
+            LLVKContract::drawFired();
         }
     }
 
@@ -657,85 +587,17 @@ void LLVertexBuffer::drawRangeFast(U32 mode, U32 start, U32 end, U32 count, U32 
         bool vk_fired = false;
         if (LLGLSLShader::sCurBoundShaderPtr != nullptr)
         {
-            VkDescriptorSet set_to_bind = LLGLSLShader::vkResolvePerCallSetForDraw();
-            if (set_to_bind == VK_NULL_HANDLE)
+            VkCommandBuffer cmd = VK_NULL_HANDLE;
+            if (LLVKLoader::beginShaderDrawOrSkip(LLGLSLShader::sCurBoundShaderPtr, mode, cmd))
             {
-                LLVKContract::drawSkipped(LLVKContract::C_UNKNOWN,
-                                          LLGLSLShader::sCurBoundShaderPtr->mName);
-            }
-            else
-            {
-                VkCommandBuffer cmd = LLVKLoader::getCurrentCommandBuffer();
-                if (cmd == VK_NULL_HANDLE)
+                if (LLGLSLShader::sCurBoundShaderPtr->mVkUsesBindlessHeap)
                 {
-                    LLVKContract::drawSkipped(LLVKContract::C_CMD_NULL,
-                                              LLGLSLShader::sCurBoundShaderPtr->mName);
+                    LLVKContract::checkDrawDataIDAtFire(LLVKLoader::getCurrentDrawDataID());
                 }
-                else
-                {
-                    VkPipeline pipeline =
-                        LLGLSLShader::sCurBoundShaderPtr->getOrCreateVkPipelineForBoundRT(mode);
-                    if (pipeline == VK_NULL_HANDLE)
-                    {
-                        LLVKContract::drawSkipped(LLVKContract::C_PIPELINE_NULL,
-                                                  LLGLSLShader::sCurBoundShaderPtr->mName);
-                    }
-                    else
-                    {
-                        if (!LLVKLoader::isInRenderPassScope())
-                        {
-                            LLRenderTarget* bound_rt = LLRenderTarget::getCurrentBoundTarget();
-                            if (bound_rt == nullptr)
-                            {
-                                if (LLVKLoader::producerSwapchainFallbackShouldSkip()) { return; }
-                                LLVKLoader::beginSwapchainRendering();
-                                if (!LLVKLoader::isInRenderPassScope())
-                                {
-                                    LLVKContract::drawSkipped(LLVKContract::C_CMD_NULL,
-                                                              LLGLSLShader::sCurBoundShaderPtr->mName);
-                                    return;
-                                }
-                            }
-                            else
-                            {
-                                static U32 s_rt_resume_count = 0;
-                                ++s_rt_resume_count;
-                                if ((s_rt_resume_count & (s_rt_resume_count - 1)) == 0)
-                                {
-                                    LL_WARNS("Vulkan") << "draw with bound RT outside pass scope: resuming"
-                                                       << " shader='" << (LLGLSLShader::sCurBoundShaderPtr ? LLGLSLShader::sCurBoundShaderPtr->mName : std::string("?"))
-                                                       << "' count=" << s_rt_resume_count << LL_ENDL;
-                                }
-                                bound_rt->resumeVkDynamicRendering();
-                            }
-                        }
-                        LLVKLoader::bindGraphicsPipelineOnce(cmd, pipeline);
-                        {
-                            const bool vk_screen_space_copy = LLGLSLShader::vkUsePositiveViewport(
-                                LLRenderTarget::getCurrentBoundTarget() != nullptr,
-                                LLGLSLShader::vkCaptureRegimeActive());
-                            LLVKLoader::setupViewportAndScissor(cmd, vk_screen_space_copy);
-                        }
-                        const U32 dyn_count = LLGLSLShader::sCurBoundShaderPtr->mVkSet1DynamicCount;
-                        LLVKLoader::bindDrawDescriptorSetsOnce(cmd,
-                                                               LLGLSLShader::sCurBoundShaderPtr->mVkPipelineLayout,
-                                                               LLVKLoader::getCurrentPerFrameDescriptorSet(),
-                                                               set_to_bind,
-                                                               dyn_count,
-                                                               LLGLSLShader::sCurPerCallVkDynamicOffsets);
-                        LLVKLoader::pushModelviewOnce(cmd,
-                                                      LLGLSLShader::sCurBoundShaderPtr->mVkPipelineLayout,
-                                                      LLVKLoader::getCurrentModelviewMatrix());
-                        if (LLGLSLShader::sCurBoundShaderPtr->mVkUsesBindlessHeap)
-                        {
-                            LLVKContract::checkDrawDataIDAtFire(LLVKLoader::getCurrentDrawDataID());
-                        }
-                        vkCmdDrawIndexed(cmd, count, 1, mVkIndexSlice.offset / mIndicesStride + indices_offset, (S32)mVkVertexSlice.first, LLVKLoader::getCurrentDrawDataID());
-                        ++sVkDrawCallCount;
-                        vk_fired = true;
-                        LLVKContract::drawFired();
-                    }
-                }
+                vkCmdDrawIndexed(cmd, count, 1, mVkIndexSlice.offset / mIndicesStride + indices_offset, (S32)mVkVertexSlice.first, LLVKLoader::getCurrentDrawDataID());
+                ++sVkDrawCallCount;
+                vk_fired = true;
+                LLVKContract::drawFired();
             }
         }
         if (!vk_fired && LLGLSLShader::sCurBoundShaderPtr == nullptr)
@@ -764,87 +626,17 @@ void LLVertexBuffer::drawArrays(U32 mode, U32 first, U32 count) const
     if (LLVKLoader::shouldUseVulkanRender()
         && LLGLSLShader::sCurBoundShaderPtr != nullptr)
     {
-        VkDescriptorSet set_to_bind = LLGLSLShader::vkResolvePerCallSetForDraw();
-
-        if (set_to_bind == VK_NULL_HANDLE)
+        VkCommandBuffer cmd = VK_NULL_HANDLE;
+        if (LLVKLoader::beginShaderDrawOrSkip(LLGLSLShader::sCurBoundShaderPtr, mode, cmd))
         {
-            LLVKContract::drawSkipped(LLVKContract::C_UNKNOWN,
-                                      LLGLSLShader::sCurBoundShaderPtr->mName);
-        }
-
-        if (set_to_bind != VK_NULL_HANDLE)
-        {
-            VkCommandBuffer cmd = LLVKLoader::getCurrentCommandBuffer();
-            if (cmd == VK_NULL_HANDLE)
+            if (LLGLSLShader::sCurBoundShaderPtr->mVkUsesBindlessHeap)
             {
-                LLVKContract::drawSkipped(LLVKContract::C_CMD_NULL,
-                                          LLGLSLShader::sCurBoundShaderPtr->mName);
+                LLVKContract::checkDrawDataIDAtFire(LLVKLoader::getCurrentDrawDataID());
             }
-            if (cmd != VK_NULL_HANDLE)
-            {
-                VkPipeline pipeline =
-                    LLGLSLShader::sCurBoundShaderPtr->getOrCreateVkPipelineForBoundRT(mode);
-                if (pipeline == VK_NULL_HANDLE)
-                {
-                    LLVKContract::drawSkipped(LLVKContract::C_PIPELINE_NULL,
-                                              LLGLSLShader::sCurBoundShaderPtr->mName);
-                }
-                else
-                {
-                    if (!LLVKLoader::isInRenderPassScope())
-                    {
-                        LLRenderTarget* bound_rt = LLRenderTarget::getCurrentBoundTarget();
-                        if (bound_rt == nullptr)
-                        {
-                            if (LLVKLoader::producerSwapchainFallbackShouldSkip()) { return; }
-                            LLVKLoader::beginSwapchainRendering();
-                            if (!LLVKLoader::isInRenderPassScope())
-                            {
-                                LLVKContract::drawSkipped(LLVKContract::C_CMD_NULL,
-                                                          LLGLSLShader::sCurBoundShaderPtr->mName);
-                                return;
-                            }
-                        }
-                        else
-                        {
-                            static U32 s_rt_resume_count = 0;
-                            ++s_rt_resume_count;
-                            if ((s_rt_resume_count & (s_rt_resume_count - 1)) == 0)
-                            {
-                                LL_WARNS("Vulkan") << "draw with bound RT outside pass scope: resuming"
-                                                   << " shader='" << (LLGLSLShader::sCurBoundShaderPtr ? LLGLSLShader::sCurBoundShaderPtr->mName : std::string("?"))
-                                                   << "' count=" << s_rt_resume_count << LL_ENDL;
-                            }
-                            bound_rt->resumeVkDynamicRendering();
-                        }
-                    }
-                    LLVKLoader::bindGraphicsPipelineOnce(cmd, pipeline);
-                    {
-                        const bool vk_screen_space_copy = LLGLSLShader::vkUsePositiveViewport(
-                            LLRenderTarget::getCurrentBoundTarget() != nullptr,
-                            LLGLSLShader::vkCaptureRegimeActive());
-                        LLVKLoader::setupViewportAndScissor(cmd, vk_screen_space_copy);
-                    }
-                    const U32 dyn_count = LLGLSLShader::sCurBoundShaderPtr->mVkSet1DynamicCount;
-                    LLVKLoader::bindDrawDescriptorSetsOnce(cmd,
-                                                           LLGLSLShader::sCurBoundShaderPtr->mVkPipelineLayout,
-                                                           LLVKLoader::getCurrentPerFrameDescriptorSet(),
-                                                           set_to_bind,
-                                                           dyn_count,
-                                                           LLGLSLShader::sCurPerCallVkDynamicOffsets);
-                    LLVKLoader::pushModelviewOnce(cmd,
-                                                  LLGLSLShader::sCurBoundShaderPtr->mVkPipelineLayout,
-                                                  LLVKLoader::getCurrentModelviewMatrix());
-                    if (LLGLSLShader::sCurBoundShaderPtr->mVkUsesBindlessHeap)
-                    {
-                        LLVKContract::checkDrawDataIDAtFire(LLVKLoader::getCurrentDrawDataID());
-                    }
-                    vkCmdDraw(cmd, count, 1, mVkVertexSlice.first + first, LLVKLoader::getCurrentDrawDataID());
-                    ++sVkDrawCallCount;
-                    vk_fired = true;
-                    LLVKContract::drawFired();
-                }
-            }
+            vkCmdDraw(cmd, count, 1, mVkVertexSlice.first + first, LLVKLoader::getCurrentDrawDataID());
+            ++sVkDrawCallCount;
+            vk_fired = true;
+            LLVKContract::drawFired();
         }
     }
 
