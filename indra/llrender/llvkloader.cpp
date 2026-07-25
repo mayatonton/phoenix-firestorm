@@ -470,6 +470,8 @@ namespace
         U32                                          last_used_monotonic_frame = 0;
         U32                                          pool_index = 0;
         std::atomic<U32>                             refs{0};
+        std::vector<std::pair<U64, std::list<ScenePerDrawCacheKey>::iterator>> rev_views;
+        std::vector<std::pair<U64, std::list<ScenePerDrawCacheKey>::iterator>> rev_bufs;
     };
     U64 sScenePerDrawCacheEpoch = 1;
     struct ScenePerDrawDeferredFreeEntry
@@ -487,70 +489,66 @@ namespace
         std::unordered_map<ScenePerDrawCacheKey, ScenePerDrawCacheEntry, ScenePerDrawCacheKeyHash> cache;
         std::list<ScenePerDrawCacheKey> lru;
         std::vector<ScenePerDrawDeferredFreeEntry> deferred_free;
-        std::unordered_multimap<U64, ScenePerDrawCacheKey> by_view;
-        std::unordered_multimap<U64, ScenePerDrawCacheKey> by_buf;
+        std::unordered_map<U64, std::list<ScenePerDrawCacheKey>> by_view;
+        std::unordered_map<U64, std::list<ScenePerDrawCacheKey>> by_buf;
     };
     PerDrawDescLane sPerDrawDescLanes[MAX_RECORD_LANES];
 
-    static void laneIndexKey(PerDrawDescLane& lane, const ScenePerDrawCacheKey& key)
+    static void laneIndexHandle(std::unordered_map<U64, std::list<ScenePerDrawCacheKey>>& index,
+                                U64 handle, const ScenePerDrawCacheKey& key,
+                                std::vector<std::pair<U64, std::list<ScenePerDrawCacheKey>::iterator>>& rev)
+    {
+        std::list<ScenePerDrawCacheKey>& lst = index[handle];
+        lst.push_front(key);
+        rev.emplace_back(handle, lst.begin());
+    }
+
+    static void laneIndexKey(PerDrawDescLane& lane, const ScenePerDrawCacheKey& key,
+                             ScenePerDrawCacheEntry& entry)
     {
         for (U32 i = 0; i < key.sampler_count; ++i)
         {
             if (key.sampler_views[i] != VK_NULL_HANDLE)
             {
-                lane.by_view.emplace((U64)key.sampler_views[i], key);
+                laneIndexHandle(lane.by_view, (U64)key.sampler_views[i], key, entry.rev_views);
             }
         }
         if (key.ubo != VK_NULL_HANDLE)
         {
-            lane.by_buf.emplace((U64)key.ubo, key);
+            laneIndexHandle(lane.by_buf, (U64)key.ubo, key, entry.rev_bufs);
         }
         for (U32 i = 0; i < key.ubo_count; ++i)
         {
             if (key.ubo_write_bufs[i] != VK_NULL_HANDLE)
             {
-                lane.by_buf.emplace((U64)key.ubo_write_bufs[i], key);
+                laneIndexHandle(lane.by_buf, (U64)key.ubo_write_bufs[i], key, entry.rev_bufs);
             }
         }
     }
 
-    template <typename INDEX_T>
-    static void laneUnindexHandle(INDEX_T& index, U64 handle, const ScenePerDrawCacheKey& key)
+    static void laneUnindexSide(std::unordered_map<U64, std::list<ScenePerDrawCacheKey>>& index,
+                                std::vector<std::pair<U64, std::list<ScenePerDrawCacheKey>::iterator>>& rev)
     {
-        auto range = index.equal_range(handle);
-        for (auto it = range.first; it != range.second; )
+        for (auto& p : rev)
         {
-            if (it->second == key)
+            auto mit = index.find(p.first);
+            if (mit == index.end())
             {
-                it = index.erase(it);
+                continue;
             }
-            else
+            mit->second.erase(p.second);
+            if (mit->second.empty())
             {
-                ++it;
+                index.erase(mit);
             }
         }
+        rev.clear();
     }
 
-    static void laneUnindexKey(PerDrawDescLane& lane, const ScenePerDrawCacheKey& key)
+    static void laneUnindexEntry(PerDrawDescLane& lane, ScenePerDrawCacheEntry& entry)
     {
-        for (U32 i = 0; i < key.sampler_count; ++i)
-        {
-            if (key.sampler_views[i] != VK_NULL_HANDLE)
-            {
-                laneUnindexHandle(lane.by_view, (U64)key.sampler_views[i], key);
-            }
-        }
-        if (key.ubo != VK_NULL_HANDLE)
-        {
-            laneUnindexHandle(lane.by_buf, (U64)key.ubo, key);
-        }
-        for (U32 i = 0; i < key.ubo_count; ++i)
-        {
-            if (key.ubo_write_bufs[i] != VK_NULL_HANDLE)
-            {
-                laneUnindexHandle(lane.by_buf, (U64)key.ubo_write_bufs[i], key);
-            }
-        }
+        laneUnindexSide(lane.by_view, entry.rev_views);
+        laneUnindexSide(lane.by_buf, entry.rev_bufs);
     }
 
 
@@ -6645,7 +6643,7 @@ bool ensureScenePerDrawDescriptorSet(const ScenePerDrawBindings& b,
                 deferred.enqueue_frame = sMonotonicFrameCount;
                 lane.deferred_free.push_back(deferred);
                 lane.lru.erase(cache_it->second.lru_pos);
-                laneUnindexKey(lane, cache_it->first);
+                laneUnindexEntry(lane, cache_it->second);
                 lane.cache.erase(cache_it);
                 cache_it = lane.cache.end();
             }
@@ -6705,7 +6703,7 @@ bool ensureScenePerDrawDescriptorSet(const ScenePerDrawBindings& b,
                 deferred.enqueue_frame = sMonotonicFrameCount;
                 lane.deferred_free.push_back(deferred);
 
-                laneUnindexKey(lane, cit->first);
+                laneUnindexEntry(lane, cit->second);
                 lane.cache.erase(cit);
                 lru_it = lane.lru.erase(lru_it);
                 ++evicted;
@@ -6789,7 +6787,7 @@ bool ensureScenePerDrawDescriptorSet(const ScenePerDrawBindings& b,
                 deferred.enqueue_frame = sMonotonicFrameCount;
                 lane.deferred_free.push_back(deferred);
 
-                laneUnindexKey(lane, cit->first);
+                laneUnindexEntry(lane, cit->second);
                 lane.cache.erase(cit);
                 lru_it = lane.lru.erase(lru_it);
                 evicted = true;
@@ -6925,8 +6923,8 @@ bool ensureScenePerDrawDescriptorSet(const ScenePerDrawBindings& b,
     }
 
     lane.lru.push_back(key);
-    laneIndexKey(lane, key);
     ScenePerDrawCacheEntry& entry = lane.cache.try_emplace(key).first->second;
+    laneIndexKey(lane, key, entry);
     for (U32 i = 0; i < FRAMES_IN_FLIGHT; ++i)
     {
         entry.sets[i] = new_sets[i];
@@ -8521,22 +8519,17 @@ static void purgePerDrawDeadHandles(const std::unordered_set<U64>& dead_views,
             {
                 for (U64 h : dead)
                 {
-                    auto range = index.equal_range(h);
-                    if (range.first == range.second)
+                    auto mit = index.find(h);
+                    if (mit == index.end())
                     {
                         continue;
                     }
-                    std::vector<ScenePerDrawCacheKey> keys;
-                    for (auto it = range.first; it != range.second; ++it)
-                    {
-                        keys.push_back(it->second);
-                    }
+                    std::vector<ScenePerDrawCacheKey> keys(mit->second.begin(), mit->second.end());
                     for (const ScenePerDrawCacheKey& k : keys)
                     {
                         auto cit = lane.cache.find(k);
                         if (cit == lane.cache.end())
                         {
-                            laneUnindexHandle(index, h, k);
                             continue;
                         }
                         if (cit->second.refs.load(std::memory_order_relaxed) > 0)
@@ -8553,7 +8546,7 @@ static void purgePerDrawDeadHandles(const std::unordered_set<U64>& dead_views,
                         deferred.enqueue_frame = sMonotonicFrameCount;
                         lane.deferred_free.push_back(deferred);
                         lane.lru.erase(cit->second.lru_pos);
-                        laneUnindexKey(lane, cit->first);
+                        laneUnindexEntry(lane, cit->second);
                         lane.cache.erase(cit);
                         ++gVkPerf.set1_dead_purge;
                     }
