@@ -1786,7 +1786,6 @@ namespace
             enabled_features.imageCubeArray = VK_TRUE;
             sImageCubeArrayEnabled = true;
         }
-
         if (supported_features.fillModeNonSolid)
         {
             enabled_features.fillModeNonSolid = VK_TRUE;
@@ -3035,12 +3034,31 @@ namespace
         }
 
         VkResult result = vkCreatePipelineCache(sDevice, &info, nullptr, &sPipelineCache);
-        if (result != VK_SUCCESS)
+        if (result == VK_SUCCESS)
         {
-            return false;
+            return true;
         }
 
-        return true;
+        // Pipeline-cache contents are implementation specific. In particular,
+        // a cache written by a prior MoltenVK/Metal driver must not prevent a
+        // Vulkan-only launch after either component changes.
+        if (info.initialDataSize != 0)
+        {
+            LL_WARNS("Vulkan") << "vkCreatePipelineCache rejected cached data result=" << result
+                               << "; retrying with an empty cache" << LL_ENDL;
+            pcache::sBlob.clear();
+            info.initialDataSize = 0;
+            info.pInitialData    = nullptr;
+            result = vkCreatePipelineCache(sDevice, &info, nullptr, &sPipelineCache);
+            if (result == VK_SUCCESS)
+            {
+                return true;
+            }
+        }
+
+        LL_WARNS("Vulkan") << "vkCreatePipelineCache failed result=" << result << LL_ENDL;
+        sPipelineCache = VK_NULL_HANDLE;
+        return false;
     }
 
     bool createVmaAllocator()
@@ -3998,6 +4016,10 @@ namespace
         if (sDevice == VK_NULL_HANDLE || sPhysicalDevice == VK_NULL_HANDLE ||
             sSurface == VK_NULL_HANDLE)
         {
+            LL_WARNS("Vulkan") << "swapchain prerequisites missing: device="
+                               << (sDevice != VK_NULL_HANDLE) << " physical_device="
+                               << (sPhysicalDevice != VK_NULL_HANDLE) << " surface="
+                               << (sSurface != VK_NULL_HANDLE) << LL_ENDL;
             return false;
         }
 
@@ -4006,6 +4028,7 @@ namespace
                                                                    sSurface, &caps);
         if (cres != VK_SUCCESS)
         {
+            LL_WARNS("Vulkan") << "vkGetPhysicalDeviceSurfaceCapabilitiesKHR failed result=" << cres << LL_ENDL;
             return false;
         }
 
@@ -4014,6 +4037,7 @@ namespace
                                               &format_count, nullptr);
         if (format_count == 0)
         {
+            LL_WARNS("Vulkan") << "surface reports no usable formats" << LL_ENDL;
             return false;
         }
         std::vector<VkSurfaceFormatKHR> formats(format_count);
@@ -4140,6 +4164,8 @@ namespace
         VkResult res = vkCreateSwapchainKHR(sDevice, &ci, nullptr, &sSwapchain);
         if (res != VK_SUCCESS)
         {
+            LL_WARNS("Vulkan") << "vkCreateSwapchainKHR failed result=" << res
+                               << " extent=" << extent.width << "x" << extent.height << LL_ENDL;
             sSwapchain = VK_NULL_HANDLE;
             return false;
         }
@@ -4175,6 +4201,8 @@ namespace
                                               &sSwapchainImageViews[i]);
             if (vres != VK_SUCCESS)
             {
+                LL_WARNS("Vulkan") << "vkCreateImageView for swapchain image " << i
+                                   << " failed result=" << vres << LL_ENDL;
                 for (U32 j = 0; j < i; ++j)
                 {
                     if (sSwapchainImageViews[j] != VK_NULL_HANDLE)
@@ -4378,34 +4406,83 @@ bool initVulkan()
 
     if (!createPipelineCacheStorage())
     {
+        LL_WARNS("Vulkan") << "initialization failed: pipeline cache storage" << LL_ENDL;
         shutdownVulkan();
         return false;
     }
 
-    if (!createCommandPool() || !createDefaultFallbackImage() || !createPipelineCache())
+    if (!createCommandPool())
     {
+        LL_WARNS("Vulkan") << "initialization failed: command pool" << LL_ENDL;
+        shutdownVulkan();
+        return false;
+    }
+    if (!createDefaultFallbackImage())
+    {
+        LL_WARNS("Vulkan") << "initialization failed: 2D fallback image" << LL_ENDL;
+        shutdownVulkan();
+        return false;
+    }
+    if (!createPipelineCache())
+    {
+        LL_WARNS("Vulkan") << "initialization failed: pipeline cache" << LL_ENDL;
         shutdownVulkan();
         return false;
     }
 
     if (!createVmaAllocator())
     {
+        LL_WARNS("Vulkan") << "initialization failed: VMA allocator" << LL_ENDL;
         shutdownVulkan();
         return false;
     }
 
-    if (!createDefaultFallbackCubeArrayImage() || !createDefaultFallbackCubeImage() || !createDefaultFallback3DImage()
-        || !createDefaultFallbackShadowImage())
+    if (!createDefaultFallbackCubeArrayImage())
     {
+        LL_WARNS("Vulkan") << "initialization failed: cube-array fallback image" << LL_ENDL;
+        shutdownVulkan();
+        return false;
+    }
+    if (!createDefaultFallbackCubeImage())
+    {
+        LL_WARNS("Vulkan") << "initialization failed: cube fallback image" << LL_ENDL;
+        shutdownVulkan();
+        return false;
+    }
+    if (!createDefaultFallback3DImage())
+    {
+        LL_WARNS("Vulkan") << "initialization failed: 3D fallback image" << LL_ENDL;
+        shutdownVulkan();
+        return false;
+    }
+    if (!createDefaultFallbackShadowImage())
+    {
+        LL_WARNS("Vulkan") << "initialization failed: shadow fallback image" << LL_ENDL;
         shutdownVulkan();
         return false;
     }
 
-    if (!createPerFrameDescriptorSetLayout() ||
-        !createPerFrameUbos()                ||
-        !initSharedDynamicPersistentUBOs()   ||
-        !createPerFrameDescriptorSets())
+    if (!createPerFrameDescriptorSetLayout())
     {
+        LL_WARNS("Vulkan") << "initialization failed: per-frame descriptor layout" << LL_ENDL;
+        shutdownVulkan();
+        return false;
+    }
+    if (!createPerFrameUbos())
+    {
+        LL_WARNS("Vulkan") << "initialization failed: per-frame UBOs" << LL_ENDL;
+        shutdownVulkan();
+        return false;
+    }
+    if (!initSharedDynamicPersistentUBOs())
+    {
+        LL_WARNS("Vulkan") << "initialization failed: shared persistent UBOs" << LL_ENDL;
+        shutdownVulkan();
+        return false;
+    }
+    if (!createPerFrameDescriptorSets())
+    {
+        LL_WARNS("Vulkan") << "initialization failed: per-frame descriptor sets" << LL_ENDL;
         shutdownVulkan();
         return false;
     }
@@ -4420,6 +4497,7 @@ bool initVulkan()
 
     if (!createStandardSampler())
     {
+        LL_WARNS("Vulkan") << "initialization failed: standard sampler" << LL_ENDL;
         shutdownVulkan();
         return false;
     }
@@ -4428,6 +4506,7 @@ bool initVulkan()
 
     if (!createSyncObjects())
     {
+        LL_WARNS("Vulkan") << "initialization failed: synchronization objects" << LL_ENDL;
         shutdownVulkan();
         return false;
     }
@@ -10443,6 +10522,10 @@ bool createCubeArrayImageVk(U32          resolution,
     if (sAllocator == VK_NULL_HANDLE || sDevice == VK_NULL_HANDLE ||
         sCommandPool == VK_NULL_HANDLE || sGraphicsQueue == VK_NULL_HANDLE)
     {
+        LL_WARNS("Vulkan") << "cube-array image prerequisites missing: allocator="
+                           << (sAllocator != VK_NULL_HANDLE) << " device=" << (sDevice != VK_NULL_HANDLE)
+                           << " command_pool=" << (sCommandPool != VK_NULL_HANDLE)
+                           << " graphics_queue=" << (sGraphicsQueue != VK_NULL_HANDLE) << LL_ENDL;
         return false;
     }
 
@@ -10473,6 +10556,7 @@ bool createCubeArrayImageVk(U32          resolution,
     VkResult r = vmaCreateImage(sAllocator, &ici, &aci, &image, &allocation, nullptr);
     if (r != VK_SUCCESS)
     {
+        LL_WARNS("Vulkan") << "vmaCreateImage for cube-array fallback failed result=" << r << LL_ENDL;
         return false;
     }
 
@@ -10495,6 +10579,7 @@ bool createCubeArrayImageVk(U32          resolution,
     r = vkCreateImageView(sDevice, &vci, nullptr, &view);
     if (r != VK_SUCCESS)
     {
+        LL_WARNS("Vulkan") << "vkCreateImageView for cube-array fallback failed result=" << r << LL_ENDL;
         vmaDestroyImage(sAllocator, image, allocation);
         return false;
     }
@@ -11804,6 +11889,7 @@ bool initSurface(LLWindow* window)
 {
     if (!sInitialized)
     {
+        LL_WARNS("Vulkan") << "surface initialization requested before Vulkan initialization completed" << LL_ENDL;
         return false;
     }
     if (sSurface != VK_NULL_HANDLE)
@@ -11812,6 +11898,7 @@ bool initSurface(LLWindow* window)
     }
     if (!window)
     {
+        LL_WARNS("Vulkan") << "surface initialization requested without a native window" << LL_ENDL;
         return false;
     }
 
@@ -11852,25 +11939,31 @@ bool initSurface(LLWindow* window)
         ci.pLayer = static_cast<const CAMetalLayer*>(handles.native_window);
         if (vkCreateMetalSurfaceEXT == nullptr)
         {
+            LL_WARNS("Vulkan") << "VK_EXT_metal_surface entry point is unavailable" << LL_ENDL;
             return false;
         }
         result = vkCreateMetalSurfaceEXT(sInstance, &ci, nullptr, &sSurface);
     }
     else
     {
+        LL_WARNS("Vulkan") << "macOS window did not provide a CAMetalLayer" << LL_ENDL;
         return false;
     }
 #else
+    LL_WARNS("Vulkan") << "no Vulkan window-surface platform was compiled for this target" << LL_ENDL;
     return false;
 #endif
 
     if (result != VK_SUCCESS || sSurface == VK_NULL_HANDLE)
     {
+        LL_WARNS("Vulkan") << "vkCreate*SurfaceKHR failed result=" << result << LL_ENDL;
         sSurface = VK_NULL_HANDLE;
         return false;
     }
 
     sSurfaceWindow = window;
+
+    LL_INFOS("Vulkan") << "Vulkan presentation surface initialized" << LL_ENDL;
 
     return true;
 }
@@ -11894,10 +11987,12 @@ bool initSwapchain()
 {
     if (!sInitialized)
     {
+        LL_WARNS("Vulkan") << "swapchain initialization requested before Vulkan initialization completed" << LL_ENDL;
         return false;
     }
     if (sSurface == VK_NULL_HANDLE)
     {
+        LL_WARNS("Vulkan") << "swapchain initialization requested without a presentation surface" << LL_ENDL;
         return false;
     }
     if (sSwapchain != VK_NULL_HANDLE)

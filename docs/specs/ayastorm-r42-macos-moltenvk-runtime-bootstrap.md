@@ -41,29 +41,35 @@ enumeration when discovering MoltenVK through the Vulkan Loader.
 4. Every early initialisation failure logs its stage and `VkResult`. The app
    remains Vulkan-only: a missing manifest, Loader, portability extension, or
    physical device stops Vulkan initialisation instead of selecting OpenGL.
-5. MoltenVK's surface extent cannot be assumed to use backing-pixel units. On
+5. `pipeline_cache.bin` is implementation-specific. If MoltenVK rejects a
+   cache written by an older MoltenVK or Metal driver, the same Vulkan device
+   retries `vkCreatePipelineCache` with empty initial data. The rejected blob
+   is never used for that run, and a normal cache is written after startup;
+   this is not an OpenGL fallback.
+6. MoltenVK's surface extent cannot be assumed to use backing-pixel units. On
    Darwin the swapchain therefore always uses the native window's
    backing-pixel size, not `currentExtent` or the historical `1280x720`
    placeholder. This keeps the swapchain, CAMetalLayer, rendered UI, and
    pointer coordinates aligned on Retina displays.
-6. The legacy GPU benchmark renders offscreen before the first window has
+7. The legacy GPU benchmark renders offscreen before the first window has
    established the Vulkan frame/swapchain lifecycle. On Darwin with Vulkan
    initialized, startup assigns the existing conservative GPU class 3 directly
    and does not run that benchmark. This is not a GL fallback and does not
    disable Vulkan or MoltenVK rendering.
-7. Present Engine jobs that synchronously wait on a stack-owned completion
+8. Present Engine jobs that synchronously wait on a stack-owned completion
    object notify that object while holding its mutex. This prevents the waiting
    submitter from returning and destroying the condition variable before the
    Present Engine has finished the notification.
-8. Scene-per-draw descriptor sets are populated exactly once from the shader's
+9. Scene-per-draw descriptor sets are populated exactly once from the shader's
    declared layout. A second hard-coded shared-UBO update is not permitted,
    because it duplicates that work without preserving each layout's descriptor
    type and crashes MoltenVK during deferred terrain rendering.
 
 ## Scope boundaries
 
-- `indra/llrender/volk.c`, `indra/llrender/llvkloader.cpp`, and
-  `indra/newview/llfeaturemanager.cpp` are the implementation files changed.
+- `indra/llrender/volk.c`, `indra/llrender/llvkloader.cpp`,
+  `indra/newview/llfeaturemanager.cpp`, and `indra/newview/llappviewer.cpp`
+  contain the related runtime/bootstrap changes.
 - All new behavior is under `LL_DARWIN`; Linux and Windows retain their existing
   Loader discovery and instance-extension behavior.
 - Existing manifest/CMake edits that stage Loader, MoltenVK, and the ICD are
@@ -84,6 +90,13 @@ Vulkan: macOS swapchain drawable extent=...
 RenderInit: Vulkan/MoltenVK startup: bypassing legacy GPU benchmark; using GPU class 3
 ```
 
+When the previous cache is no longer compatible, the following warning is
+expected once and startup must continue with `initialized device=...`:
+
+```
+Vulkan: vkCreatePipelineCache rejected cached data result=...; retrying with an empty cache
+```
+
 The visible acceptance condition is the normal login screen, not a black window.
 The bundle must still contain the three runtime artifacts above, and
 `codesign --verify --deep --strict` must pass.
@@ -97,3 +110,5 @@ The bundle must still contain the three runtime artifacts above, and
   usable MoltenVK portability driver.
 - `no suitable physical device`: the Loader found a driver, but it did not expose
   a Vulkan 1.3-capable device required by this renderer.
+- `vkCreatePipelineCache rejected cached data`: a stale driver-specific cache was
+  detected; the empty-cache retry is the expected recovery path.
