@@ -41,6 +41,7 @@
 #include "lldir.h"
 #include "llfindlocale.h"
 #include "llframetimer.h"
+#include <map>
 #include <set>
 
 // if there is a better methood to get at the settings from llwindow/ let me know! -Zi
@@ -85,6 +86,17 @@ static bool ATIbug = false;
 // be only one object of this class at any time.  Currently this is true.
 static LLWindowSDL *gWindowImplementation = NULL;
 static std::set<unsigned int> sAuxWindowsCloseRequested;
+static std::map<unsigned int, std::pair<int, int>> sAuxWindowsResized;
+
+struct AuxInputMapSDL
+{
+    unsigned int id      = 0;
+    int          ox      = 0;
+    int          oy      = 0;
+    int          h       = 0;
+    bool         enabled = false;
+};
+static AuxInputMapSDL sAuxInputMap;
 
 // extern "C" Bool XineramaIsActive (Display *dpy)
 // {
@@ -1000,6 +1012,18 @@ bool LLWindowSDL::getCursorPosition(LLCoordWindow *position)
     int x, y;
     SDL_GetMouseState(&x, &y);
 
+    if (sAuxInputMap.enabled && mSurface != nullptr)
+    {
+        SDL_Window* mouse_focus = SDL_GetMouseFocus();
+        if (mouse_focus != nullptr && SDL_GetWindowID(mouse_focus) == sAuxInputMap.id)
+        {
+            const int gx = sAuxInputMap.ox + x;
+            const int gy = sAuxInputMap.oy + (sAuxInputMap.h - y - 1);
+            x = gx;
+            y = mSurface->h - gy - 1;
+        }
+    }
+
     screen_pos.mX = x;
     screen_pos.mY = y;
 
@@ -1565,6 +1589,57 @@ void LLWindowSDL::gatherInput()
             if (event.type == SDL_WINDOWEVENT && event.window.event == SDL_WINDOWEVENT_CLOSE)
             {
                 sAuxWindowsCloseRequested.insert(event_window_id);
+                continue;
+            }
+            if (event.type == SDL_WINDOWEVENT && event.window.event == SDL_WINDOWEVENT_RESIZED)
+            {
+                sAuxWindowsResized[event_window_id] = { event.window.data1, event.window.data2 };
+                continue;
+            }
+            bool routed = false;
+            if (sAuxInputMap.enabled && event_window_id == sAuxInputMap.id && mSurface != nullptr)
+            {
+                switch (event.type)
+                {
+                    case SDL_KEYDOWN:
+                    case SDL_KEYUP:
+                    case SDL_TEXTINPUT:
+                    case SDL_MOUSEWHEEL:
+                        routed = true;
+                        break;
+                    case SDL_MOUSEMOTION:
+                    {
+                        const int gx = sAuxInputMap.ox + event.motion.x;
+                        const int gy = sAuxInputMap.oy + (sAuxInputMap.h - event.motion.y - 1);
+                        event.motion.x = gx;
+                        event.motion.y = mSurface->h - gy - 1;
+                        routed = true;
+                        break;
+                    }
+                    case SDL_MOUSEBUTTONDOWN:
+                    case SDL_MOUSEBUTTONUP:
+                    {
+                        const int gx = sAuxInputMap.ox + event.button.x;
+                        const int gy = sAuxInputMap.oy + (sAuxInputMap.h - event.button.y - 1);
+                        event.button.x = gx;
+                        event.button.y = mSurface->h - gy - 1;
+                        routed = true;
+                        break;
+                    }
+                    default:
+                        break;
+                }
+            }
+            if (!routed)
+            {
+                continue;
+            }
+        }
+        if (event.type == SDL_WINDOWEVENT && event.window.event == SDL_WINDOWEVENT_CLOSE)
+        {
+            if (mCallbacks->handleCloseRequest(this, true))
+            {
+                mCallbacks->handleQuit(this);
             }
             continue;
         }
@@ -1805,6 +1880,13 @@ void LLWindowSDL::gatherInput()
                 }
                 else if( event.window.event == SDL_WINDOWEVENT_FOCUS_LOST ) // <FS:ND> What about SDL_WINDOWEVENT_LEAVE (mouse focus)
                 {
+                    SDL_Window* kb_focus = SDL_GetKeyboardFocus();
+                    if (kb_focus != nullptr && sAuxInputMap.id != 0
+                        && SDL_GetWindowID(kb_focus) == sAuxInputMap.id)
+                    {
+                        break;
+                    }
+
                     // We have to do our own state massaging because SDL
                     // can send us two unfocus events in a row for example,
                     // which confuses the focus code [SL-24071].
@@ -2499,14 +2581,24 @@ void LLWindowSDL::setLanguageTextInput(const LLCoordGL& position)
         return;
     }
 
-    LLCoordWindow win_pos;
-    convertCoords( position, &win_pos );
-
     SDL_Rect r;
-    r.x = win_pos.mX;
-    r.y = win_pos.mY;
     r.w = 1;
     r.h = 16;
+
+    SDL_Window* kb_focus = SDL_GetKeyboardFocus();
+    if (kb_focus != nullptr && sAuxInputMap.enabled
+        && SDL_GetWindowID(kb_focus) == sAuxInputMap.id)
+    {
+        r.x = position.mX - sAuxInputMap.ox;
+        r.y = sAuxInputMap.h - (position.mY - sAuxInputMap.oy) - 1;
+    }
+    else
+    {
+        LLCoordWindow win_pos;
+        convertCoords( position, &win_pos );
+        r.x = win_pos.mX;
+        r.y = win_pos.mY;
+    }
 
     SDL_SetTextInputRect(&r);
 }
@@ -2546,15 +2638,25 @@ void LLWindowSDL::allowLanguageTextInput(LLPreeditor *preeditor, bool b)
     }
 }
 
-bool llCreateAuxWindowSDL(const char* title, int width, int height, LLAuxWindowHandlesSDL& out)
+bool llCreateAuxWindowSDL(const char* title, int width, int height, LLAuxWindowHandlesSDL& out,
+                          int pos_x, int pos_y, bool resizable)
 {
     out = LLAuxWindowHandlesSDL();
     if (SDL_WasInit(SDL_INIT_VIDEO) == 0)
     {
         return false;
     }
-    SDL_Window* w = SDL_CreateWindow(title, SDL_WINDOWPOS_UNDEFINED, SDL_WINDOWPOS_UNDEFINED,
-                                     width, height, 0);
+#ifdef SDL_HINT_WINDOW_NO_ACTIVATION_WHEN_SHOWN
+    SDL_SetHint(SDL_HINT_WINDOW_NO_ACTIVATION_WHEN_SHOWN, "1");
+#endif
+    const int create_x = (pos_x == -32768) ? SDL_WINDOWPOS_UNDEFINED : pos_x;
+    const int create_y = (pos_y == -32768) ? SDL_WINDOWPOS_UNDEFINED : pos_y;
+    Uint32 flags = SDL_WINDOW_ALWAYS_ON_TOP | SDL_WINDOW_HIDDEN;
+    if (resizable)
+    {
+        flags |= SDL_WINDOW_RESIZABLE;
+    }
+    SDL_Window* w = SDL_CreateWindow(title, create_x, create_y, width, height, flags);
     if (w == nullptr)
     {
         return false;
@@ -2566,6 +2668,13 @@ bool llCreateAuxWindowSDL(const char* title, int width, int height, LLAuxWindowH
     {
         out.native_display = info.info.x11.display;
         out.native_window  = reinterpret_cast<void*>(static_cast<uintptr_t>(info.info.x11.window));
+        Display* xdpy = info.info.x11.display;
+        Window   xwin = info.info.x11.window;
+        Atom user_time_atom = XInternAtom(xdpy, "_NET_WM_USER_TIME", False);
+        unsigned long zero_time = 0;
+        XChangeProperty(xdpy, xwin, user_time_atom, XA_CARDINAL, 32, PropModeReplace,
+                        reinterpret_cast<unsigned char*>(&zero_time), 1);
+        XSync(xdpy, False);
     }
     else
     {
@@ -2576,6 +2685,7 @@ bool llCreateAuxWindowSDL(const char* title, int width, int height, LLAuxWindowH
     SDL_DestroyWindow(w);
     return false;
 #endif
+    SDL_ShowWindow(w);
     out.sdl_window    = w;
     out.sdl_window_id = SDL_GetWindowID(w);
     out.width         = width;
@@ -2588,7 +2698,21 @@ void llDestroyAuxWindowSDL(LLAuxWindowHandlesSDL& handles)
     if (handles.sdl_window != nullptr)
     {
         sAuxWindowsCloseRequested.erase(handles.sdl_window_id);
-        SDL_DestroyWindow(static_cast<SDL_Window*>(handles.sdl_window));
+        if (sAuxInputMap.id == handles.sdl_window_id)
+        {
+            sAuxInputMap = AuxInputMapSDL();
+        }
+        SDL_Window* w = static_cast<SDL_Window*>(handles.sdl_window);
+        SDL_CaptureMouse(SDL_FALSE);
+        SDL_SetWindowGrab(w, SDL_FALSE);
+        SDL_HideWindow(w);
+#if LL_X11
+        if (handles.native_display != nullptr)
+        {
+            XSync(static_cast<Display*>(handles.native_display), False);
+        }
+#endif
+        SDL_DestroyWindow(w);
     }
     handles = LLAuxWindowHandlesSDL();
 }
@@ -2602,6 +2726,84 @@ bool llAuxWindowCloseRequestedSDL(unsigned int sdl_window_id)
     }
     sAuxWindowsCloseRequested.erase(it);
     return true;
+}
+
+bool llAuxWindowTakeResizeSDL(unsigned int sdl_window_id, int& out_w, int& out_h)
+{
+    auto it = sAuxWindowsResized.find(sdl_window_id);
+    if (it == sAuxWindowsResized.end())
+    {
+        return false;
+    }
+    out_w = it->second.first;
+    out_h = it->second.second;
+    sAuxWindowsResized.erase(it);
+    return true;
+}
+
+void llSetAuxWindowInputMapSDL(const LLAuxWindowHandlesSDL& handles, int origin_gl_x, int origin_gl_y,
+                               int aux_height, bool enabled)
+{
+    sAuxInputMap.id      = handles.sdl_window_id;
+    sAuxInputMap.ox      = origin_gl_x;
+    sAuxInputMap.oy      = origin_gl_y;
+    sAuxInputMap.h       = aux_height;
+    sAuxInputMap.enabled = enabled && handles.sdl_window_id != 0;
+}
+
+bool llAuxWindowHasFocusSDL(const LLAuxWindowHandlesSDL& handles)
+{
+    SDL_Window* kb_focus = SDL_GetKeyboardFocus();
+    return kb_focus != nullptr && handles.sdl_window_id != 0
+        && SDL_GetWindowID(kb_focus) == handles.sdl_window_id;
+}
+
+bool llGetAuxWindowPositionSDL(const LLAuxWindowHandlesSDL& handles, int& out_x, int& out_y)
+{
+    SDL_Window* w = static_cast<SDL_Window*>(handles.sdl_window);
+    if (w == nullptr)
+    {
+        return false;
+    }
+    SDL_GetWindowPosition(w, &out_x, &out_y);
+    return true;
+}
+
+void llSetAuxWindowTitleSDL(LLAuxWindowHandlesSDL& handles, const char* title)
+{
+    SDL_Window* w = static_cast<SDL_Window*>(handles.sdl_window);
+    if (w != nullptr && title != nullptr)
+    {
+        SDL_SetWindowTitle(w, title);
+    }
+}
+
+void llSetAuxWindowVisibleSDL(LLAuxWindowHandlesSDL& handles, bool visible)
+{
+    SDL_Window* w = static_cast<SDL_Window*>(handles.sdl_window);
+    if (w == nullptr)
+    {
+        return;
+    }
+    if (!visible)
+    {
+        SDL_HideWindow(w);
+        return;
+    }
+#if LL_X11
+    if (handles.native_display != nullptr && handles.native_window != nullptr)
+    {
+        Display* xdpy = static_cast<Display*>(handles.native_display);
+        Window   xwin = static_cast<Window>(reinterpret_cast<uintptr_t>(handles.native_window));
+        Atom user_time_atom = XInternAtom(xdpy, "_NET_WM_USER_TIME", False);
+        unsigned long zero_time = 0;
+        XChangeProperty(xdpy, xwin, user_time_atom, XA_CARDINAL, 32, PropModeReplace,
+                        reinterpret_cast<unsigned char*>(&zero_time), 1);
+        XSync(xdpy, False);
+    }
+#endif
+    SDL_ShowWindow(w);
+    SDL_SetWindowAlwaysOnTop(w, SDL_TRUE);
 }
 
 #endif // LL_SDL

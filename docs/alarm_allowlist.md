@@ -30,3 +30,4 @@ CLAUDE.md 冒頭「🔒 憲法」の default-deny gate が参照する唯一の 
 | `VUID-vkAcquireNextImageKHR-surface-07783` | ACCEPTED | swapchain acquire の forward-progress 警告(present-mode/FRAMES_IN_FLIGHT 由来)・merge 未 touch | AYA | 2026-07-24 |
 | `VUID-vkCmdDrawIndexedIndirect-renderpass` | ACCEPTED | shutdown/teardown 時の draw(saveSnapshot→pool closing 近傍)・clean 終了経路・merge 未 touch。※final snapshot render は commit `73a10e82e04` で validation 時 skip 化 | AYA | 2026-07-24 |
 | `VUID-vkDestroyDevice-device-05137` | ACCEPTED | device 破棄時の benign owner leak(memory 台帳既載・force-release 禁止で恒久受容)。clean shutdown 到達で表面化(task#13 根治後) | AYA | 2026-07-24 |
+| `VUID-VkImageMemoryBarrier-oldLayout-01212` / `VUID-vkCmdCopyImageToBuffer-srcImage-00186` | ACCEPTED | avatar bake placeholder readback の既知対(CLAUDE.md 残 alarm register A =「塞ぐな」裁定済)。bake readback 実行時のみ出現(run 状況依存・2026-07-25 gate run で file 未登録と判明し正式登録) | AYA | 2026-07-25 |

@@ -245,6 +245,7 @@
 #include "llfloatersnapshot.h"
 #include "llfloaterflickr.h"
 #include "fsfloaterprimfeed.h" // <FS:Beq/> Primfeed Floater
+#include "fsauxwindow.h"
 #include "llsidepanelinventory.h"
 
 // includes for idle() idleShutdown()
@@ -1787,6 +1788,7 @@ bool LLAppViewer::doFrame()
                                            << LL_ENDL;
                     }
                 }
+                FSAuxWindow::preDisplay();
                 {
                     LLVKLoader::VkPerfPhaseScope ph(1);
                     display();
@@ -1815,40 +1817,7 @@ bool LLAppViewer::doFrame()
 
                 LLVKLoader::endFrame();
 
-#if LL_SDL2
-                {
-                    static const bool s_aux_window = (getenv("AYASTORM_AUX_WINDOW") != nullptr);
-                    if (s_aux_window)
-                    {
-                        static LLAuxWindowHandlesSDL s_aux_handles;
-                        static bool s_aux_done = false;
-                        if (!LLVKLoader::auxWindowActiveVk() && !s_aux_done && !LLApp::isExiting()
-                            && LLVKLoader::isVulkanInitialized())
-                        {
-                            if (!(llCreateAuxWindowSDL("AYAstorm aux", 640, 480, s_aux_handles)
-                                  && LLVKLoader::auxWindowInitVk(s_aux_handles.native_display,
-                                                                 s_aux_handles.native_window)))
-                            {
-                                llDestroyAuxWindowSDL(s_aux_handles);
-                                s_aux_done = true;
-                            }
-                        }
-                        if (LLVKLoader::auxWindowActiveVk())
-                        {
-                            if (llAuxWindowCloseRequestedSDL(s_aux_handles.sdl_window_id))
-                            {
-                                LLVKLoader::auxWindowShutdownVk();
-                                llDestroyAuxWindowSDL(s_aux_handles);
-                                s_aux_done = true;
-                            }
-                            else
-                            {
-                                LLVKLoader::auxWindowPresentClearVk(0.10f, 0.15f, 0.35f);
-                            }
-                        }
-                    }
-                }
-#endif
+                FSAuxWindow::frame();
 
                 if (LLViewerStatsRecorder::instanceExists())
                 {

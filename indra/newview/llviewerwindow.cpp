@@ -217,6 +217,7 @@
 #include "llfloaternotificationsconsole.h"
 
 // <FS:Ansariel> [FS communication UI]
+#include "fsauxwindow.h"
 #include "fsfloaternearbychat.h"
 #include "fsnearbychathub.h"
 // </FS:Ansariel> [FS communication UI]
@@ -1246,6 +1247,21 @@ bool LLViewerWindow::handleAnyMouseClick(LLWindow *window, LLCoordGL pos, MASK m
                 r = true;
             }
             return r;
+        }
+
+        if (LLFloater* aux_fl = FSAuxWindow::auxRegionFloater(x, y))
+        {
+            bool aux_r = false;
+            if (LLMenuGL::sMenuContainer && LLMenuGL::sMenuContainer->hasVisibleMenu())
+            {
+                aux_r = LLMenuGL::sMenuContainer->handleAnyMouseClick(x, y, mask, clicktype, down);
+            }
+            if (!aux_r)
+            {
+                const LLRect& ar = aux_fl->getRect();
+                aux_fl->handleAnyMouseClick(x - ar.mLeft, y - ar.mBottom, mask, clicktype, down);
+            }
+            return true;
         }
 
         // Mark the click as handled and return if we aren't within the root view to avoid spurious bugs
@@ -3721,6 +3737,19 @@ void LLViewerWindow::handleScrollWheel(S32 clicks)
         if (top_ctrl->handleScrollWheel(local_x, local_y, clicks)) return;
     }
 
+    if (LLFloater* aux_fl = FSAuxWindow::auxRegionFloater(mCurrentMousePoint.mX, mCurrentMousePoint.mY))
+    {
+        if (LLMenuGL::sMenuContainer
+            && LLMenuGL::sMenuContainer->hasVisibleMenu()
+            && LLMenuGL::sMenuContainer->handleScrollWheel(mCurrentMousePoint.mX, mCurrentMousePoint.mY, clicks))
+        {
+            return;
+        }
+        const LLRect& ar = aux_fl->getRect();
+        aux_fl->handleScrollWheel(mCurrentMousePoint.mX - ar.mLeft, mCurrentMousePoint.mY - ar.mBottom, clicks);
+        return;
+    }
+
     if (mRootView->handleScrollWheel(mCurrentMousePoint.mX, mCurrentMousePoint.mY, clicks) )
     {
         if (LLView::sDebugMouseHandling)
@@ -4201,6 +4230,22 @@ void LLViewerWindow::updateUI()
 
             if ( !handled )
             {
+                if (LLFloater* aux_fl = FSAuxWindow::auxRegionFloater(x, y))
+                {
+                    if (LLMenuGL::sMenuContainer && LLMenuGL::sMenuContainer->hasVisibleMenu())
+                    {
+                        handled = LLMenuGL::sMenuContainer->handleHover(x, y, mask);
+                    }
+                    if (!handled)
+                    {
+                        const LLRect& ar = aux_fl->getRect();
+                        handled = aux_fl->handleHover(x - ar.mLeft, y - ar.mBottom, mask);
+                    }
+                }
+            }
+
+            if ( !handled )
+            {
                 // x and y are from last time mouse was in window
                 // mMouseInWindow tracks *actual* mouse location
                 if (mMouseInWindow && mRootView->handleHover(x, y, mask) )
@@ -4599,6 +4644,12 @@ void LLViewerWindow::saveLastMouse(const LLCoordGL &point)
 {
     // Store last mouse location.
     // If mouse leaves window, pretend last point was on edge of window
+
+    if (FSAuxWindow::pointInAuxRegion(point.mX, point.mY))
+    {
+        mCurrentMousePoint = point;
+        return;
+    }
 
     if (point.mX < 0)
     {

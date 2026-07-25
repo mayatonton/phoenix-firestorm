@@ -81,6 +81,7 @@ Consumer が複数 surface に present するための per-window 状態。**物
 - **Step 1(トレース・非ベンチ)**: L1 設計接地 = `getFrameRT()` double-buffer 可否(RT 寿命・fence 追跡)/ scene fence hard-wait(4904)の解体点 / Producer-Consumer 分割の CB・fence 割り / Floater Render Unit 境界の詳細確定。**Chat logic 計測は含めない。**
 - **Step 2(L1 本体)**: frame driver を Producer(async scene→N-buffer HDR RT)/ Consumer(tonemap 最新 + UI → present)に分割。**単一窓で UI present が scene と別 cadence で回ることを実証**(= 本質達成)。
 - **Step 3(Render Unit + multi-window)**: nearby chat を自 surface に抽出 = Consumer を N-surface 対応化 + windowID 入力 routing。**別窓・別ディスプレイ最大化・親最小化耐性**。
+  - ✅ 実装済(2026-07-26・slice 3a-3e)= chat を aux OS 窓に抽出・Login checkbox で classic と排他・入力/IME/menu 完動。実装は本書 §5 の Render Unit(専用 CB/UBO/context)ではなく **offscreen 転居 + aux UI frame bracket + 座標書換 routing** の軽量解(真実源 = `indra/newview/fsauxwindow.cpp` / `docs/vknative_phase3_multiwindow_design.md` 冒頭の対応表)。残 = chat resize/最大化・窓外 popup。
 - **Step 4+**: 同型で floater を 1 枚ずつ / L2(UI Thread・GPU worker 受渡)/ Snapshot-camera = 各々別 phase。
 
 ## 9. Phase 2(per-draw 記録回復)との衝突面

@@ -27,6 +27,7 @@
 #ifndef LL_LLMENUGL_H
 #define LL_LLMENUGL_H
 
+#include <functional>
 #include <list>
 
 #include "llstring.h"
@@ -552,6 +553,10 @@ public:
     bool isScrollable() const { return mScrollable; }
 
     static class LLMenuHolderGL* sMenuContainer;
+    static std::function<LLRect()> sPopupConstraintQuery;
+    static bool sAuxDrawPass;
+    static void setAuxOwned(LLView* menu, bool owned);
+    static bool isAuxOwnedTree(const LLView* v);
 
     void resetScrollPositionOnShow(bool reset_scroll_pos) { mResetScrollPositionOnShow = reset_scroll_pos; }
     bool isScrollPositionOnShowReset() { return mResetScrollPositionOnShow; }

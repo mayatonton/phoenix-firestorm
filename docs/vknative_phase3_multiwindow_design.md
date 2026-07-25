@@ -1,6 +1,13 @@
 # Phase 3 — フローター外出し(マルチウィンドウ)設計 + 実装計画
 
-> ⚠️ **framing SUPERSEDED(2026-07-24)= `docs/vknative_ui_scene_decouple_design.md`。** 本書は feature-first(「別窓機能を作る」)草案。討議の結論は defect-first(「単一直列パイプラインの UI/scene cadence 溶接を是正 → 別窓は副次生成」)へ転回した。**設計方針・段階計画は新文書が正。** 本書は **Q1-Q6 feasibility 確定 + フローター render-surface 表(§5)+ 各層 file:line 事実**の参照として残置。
+> ✅ **実装済(2026-07-26・Step3 slice 3a-3e・commit `941d784db95`〜`eba621f0709`)— ただし本書の設計とは別解で実装された。実装の真実源 = `indra/newview/fsauxwindow.cpp`(司令塔)+ 下記対応表。**
+> - §2 VkWindowContext(singleton の context 化)= **不採用**。実装 = 専用 lean 機構 `AuxWindowVk` + aux UI frame bracket(`llvkloader.cpp` auxWindow*Vk 群 = record 状態の全退避/復元)。
+> - §3 入力 routing(windowID→LLWindow registry)= **不採用**。実装 = gatherInput の非 main 窓分岐で**座標を main 系へ書き換えて既存 pipeline に素通し**(`llwindowsdl2.cpp` 入力 map)+ LLViewerWindow 3 choke(click/wheel/hover)で externalized floater へ直配送。
+> - §4 第2 UI パス(gFloaterView から論理的に外す)= **offscreen 転居方式**で実装(floater rect を画面外アンカーへ・可視 true 維持 = 可視配線が正動作・`LLFloater::mAuxExternalized`)。
+> - モード = Login 画面 checkbox(cvar `AYAMultiWindowMode`・login 時 latch)で classic/multiwindow を**排他**選択(AYA 裁定)。
+> - 未実装(phase 内 TODO)= chat resize/最大化・物理カーソル照会の aux 対応・窓外 popup(枠なし小窓)・win32/macosx 後追い。
+>
+> ⚠️ framing SUPERSEDED(2026-07-24)= `docs/vknative_ui_scene_decouple_design.md`。本書は feature-first 草案で、**§5 フローター render-surface 表と各層 file:line 事実のみ参照価値が残る**(§2-§4 は上記のとおり別解で決着)。
 >
 > 設計者起票 2026-07-24 / branch `feature/ayastorm-phase3-multiwindow`(phase2 `4c9535e9e07` 起点)。
 > feasibility spike の後続。全 claim は HEAD の file:line 根拠。Linux 先行・3 OS を意識した抽象で設計。

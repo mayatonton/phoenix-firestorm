@@ -46,6 +46,7 @@
 			<button label="ログイン" name="connect_btn"/>
 			<check_box label="ユーザネームを記憶" name="remember_username_check"/>
 			<check_box label="パスワードを記憶" name="remember_check"/>
+			<check_box label="マルチウィンドウモード" name="aya_multiwindow_check"/>
 			<button name="password_show_btn" tool_tip="パスワードテキストを表示します。"/>
 			<button name="password_hide_btn" tool_tip="パスワードテキストを隠します。"/>
 		</layout_panel>

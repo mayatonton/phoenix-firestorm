@@ -274,6 +274,16 @@
           top_pad="1"
           name="remember_check"
           width="145" />
+      <check_box
+          control_name="AYAMultiWindowMode"
+          follows="left|bottom"
+          font="SansSerifSmall"
+          left="110"
+          height="16"
+          label="Multi-window mode"
+          top_pad="1"
+          name="aya_multiwindow_check"
+          width="145" />
       <button
           name="password_show_btn"
           tool_tip="Show password text"

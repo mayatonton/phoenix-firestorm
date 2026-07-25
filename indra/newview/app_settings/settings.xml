@@ -10014,6 +10014,39 @@ Change of this parameter will affect the layout of buttons in notification toast
     </map>
 
     <!-- <FS:AYA> Phase 3: Chat window style selection (0=FS V1, 1=FS V7, 2=LL Style) -->
+    <key>AYAMultiWindowMode</key>
+    <map>
+      <key>Comment</key>
+      <string>Launch in multi-window mode (chat in its own OS window). Chosen on the login screen; takes effect at login.</string>
+      <key>Persist</key>
+      <integer>1</integer>
+      <key>Type</key>
+      <string>Boolean</string>
+      <key>Value</key>
+      <integer>0</integer>
+    </map>
+    <key>AYAAuxWindowPosX</key>
+    <map>
+      <key>Comment</key>
+      <string>Last screen X position of the aux chat window (-32768 = unset)</string>
+      <key>Persist</key>
+      <integer>1</integer>
+      <key>Type</key>
+      <string>S32</string>
+      <key>Value</key>
+      <integer>-32768</integer>
+    </map>
+    <key>AYAAuxWindowPosY</key>
+    <map>
+      <key>Comment</key>
+      <string>Last screen Y position of the aux chat window (-32768 = unset)</string>
+      <key>Persist</key>
+      <integer>1</integer>
+      <key>Type</key>
+      <string>S32</string>
+      <key>Value</key>
+      <integer>-32768</integer>
+    </map>
     <key>AYAChatWindowStyle</key>
     <map>
       <key>Comment</key>
