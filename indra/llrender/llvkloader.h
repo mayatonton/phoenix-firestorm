@@ -1404,7 +1404,6 @@ namespace LLVKLoader
     bool         auxWindowInitVk(void* native_display, void* native_window);
     void         auxWindowShutdownVk();
     bool         auxWindowActiveVk();
-    bool         auxWindowPresentClearVk(F32 r, F32 g, F32 b);
     bool         auxWindowExtentVk(U32& out_w, U32& out_h);
     bool         auxWindowBeginUIFrameVk();
     bool         auxWindowEndUIFrameVk();

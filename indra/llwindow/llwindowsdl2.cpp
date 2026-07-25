@@ -2554,7 +2554,8 @@ void LLWindowSDL::allowLanguageTextInput(LLPreeditor *preeditor, bool b)
     }
 }
 
-bool llCreateAuxWindowSDL(const char* title, int width, int height, LLAuxWindowHandlesSDL& out)
+bool llCreateAuxWindowSDL(const char* title, int width, int height, LLAuxWindowHandlesSDL& out,
+                          int pos_x, int pos_y)
 {
     out = LLAuxWindowHandlesSDL();
     if (SDL_WasInit(SDL_INIT_VIDEO) == 0)
@@ -2564,7 +2565,9 @@ bool llCreateAuxWindowSDL(const char* title, int width, int height, LLAuxWindowH
 #ifdef SDL_HINT_WINDOW_NO_ACTIVATION_WHEN_SHOWN
     SDL_SetHint(SDL_HINT_WINDOW_NO_ACTIVATION_WHEN_SHOWN, "1");
 #endif
-    SDL_Window* w = SDL_CreateWindow(title, SDL_WINDOWPOS_UNDEFINED, SDL_WINDOWPOS_UNDEFINED,
+    const int create_x = (pos_x == -32768) ? SDL_WINDOWPOS_UNDEFINED : pos_x;
+    const int create_y = (pos_y == -32768) ? SDL_WINDOWPOS_UNDEFINED : pos_y;
+    SDL_Window* w = SDL_CreateWindow(title, create_x, create_y,
                                      width, height, SDL_WINDOW_ALWAYS_ON_TOP | SDL_WINDOW_HIDDEN);
     if (w == nullptr)
     {
@@ -2621,6 +2624,54 @@ bool llAuxWindowCloseRequestedSDL(unsigned int sdl_window_id)
     }
     sAuxWindowsCloseRequested.erase(it);
     return true;
+}
+
+bool llGetAuxWindowPositionSDL(const LLAuxWindowHandlesSDL& handles, int& out_x, int& out_y)
+{
+    SDL_Window* w = static_cast<SDL_Window*>(handles.sdl_window);
+    if (w == nullptr)
+    {
+        return false;
+    }
+    SDL_GetWindowPosition(w, &out_x, &out_y);
+    return true;
+}
+
+void llSetAuxWindowTitleSDL(LLAuxWindowHandlesSDL& handles, const char* title)
+{
+    SDL_Window* w = static_cast<SDL_Window*>(handles.sdl_window);
+    if (w != nullptr && title != nullptr)
+    {
+        SDL_SetWindowTitle(w, title);
+    }
+}
+
+void llSetAuxWindowVisibleSDL(LLAuxWindowHandlesSDL& handles, bool visible)
+{
+    SDL_Window* w = static_cast<SDL_Window*>(handles.sdl_window);
+    if (w == nullptr)
+    {
+        return;
+    }
+    if (!visible)
+    {
+        SDL_HideWindow(w);
+        return;
+    }
+#if LL_X11
+    if (handles.native_display != nullptr && handles.native_window != nullptr)
+    {
+        Display* xdpy = static_cast<Display*>(handles.native_display);
+        Window   xwin = static_cast<Window>(reinterpret_cast<uintptr_t>(handles.native_window));
+        Atom user_time_atom = XInternAtom(xdpy, "_NET_WM_USER_TIME", False);
+        unsigned long zero_time = 0;
+        XChangeProperty(xdpy, xwin, user_time_atom, XA_CARDINAL, 32, PropModeReplace,
+                        reinterpret_cast<unsigned char*>(&zero_time), 1);
+        XSync(xdpy, False);
+    }
+#endif
+    SDL_ShowWindow(w);
+    SDL_SetWindowAlwaysOnTop(w, SDL_TRUE);
 }
 
 #endif // LL_SDL

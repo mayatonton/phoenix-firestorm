@@ -280,8 +280,12 @@ struct LLAuxWindowHandlesSDL
     int          height         = 0;
 };
 
-bool llCreateAuxWindowSDL(const char* title, int width, int height, LLAuxWindowHandlesSDL& out);
+bool llCreateAuxWindowSDL(const char* title, int width, int height, LLAuxWindowHandlesSDL& out,
+                          int pos_x = -32768, int pos_y = -32768);
+bool llGetAuxWindowPositionSDL(const LLAuxWindowHandlesSDL& handles, int& out_x, int& out_y);
 void llDestroyAuxWindowSDL(LLAuxWindowHandlesSDL& handles);
 bool llAuxWindowCloseRequestedSDL(unsigned int sdl_window_id);
+void llSetAuxWindowVisibleSDL(LLAuxWindowHandlesSDL& handles, bool visible);
+void llSetAuxWindowTitleSDL(LLAuxWindowHandlesSDL& handles, const char* title);
 
 #endif //LL_LLWINDOWSDL_H
