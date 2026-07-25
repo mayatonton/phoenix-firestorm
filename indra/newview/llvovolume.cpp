@@ -5779,6 +5779,7 @@ struct LLGeoStagedRebuild
     bool mInline = false;
     bool mDefer = false;
     bool mHadFailedFace = false;
+    bool mHadSkippedFace = false;
     std::vector<LLGeoFaceApply> mFaces;
     std::vector<LLGeoFaceFill> mFills;
     std::vector<std::pair<U32, LLSpatialGroup::buffer_texture_map_t> > mBufferMaps;
@@ -6237,6 +6238,10 @@ namespace
 
             if (e.mDrawable.isNull() || e.mDrawable->getSpatialGroup() != group)
             {
+                if (e.mDrawable.notNull())
+                {
+                    gPipeline.markRebuild(e.mDrawable, LLDrawable::REBUILD_VOLUME);
+                }
                 LLVKContract::watchStageEvent(watch_id(e), "apply_moved");
                 continue;
             }
@@ -6271,6 +6276,25 @@ namespace
                 }
             }
             LLVKContract::watchStageEvent(watch_id(e), "apply_reg", (U32)e.mPasses.size());
+
+            U32 live_snaps = 0;
+            for (const LLDrawInfoSnapshot& snap : e.mSnaps)
+            {
+                if (!snap.mSkip)
+                {
+                    ++live_snaps;
+                }
+            }
+            if (live_snaps == 0 && facep->getIndicesCount() > 0 && facep->getGeomCount() > 0)
+            {
+                const LLViewerObject* vo = facep->getViewerObject();
+                const bool hidden_selected = vo != nullptr && vo->isSelected() && LLSelectMgr::getInstance()->mHideSelectedObjects;
+                if (!hidden_selected)
+                {
+                    staged.mHadFailedFace = true;
+                    LLVKContract::watchStageEvent(watch_id(e), "apply_norec");
+                }
+            }
         }
 
         foldBuiltDrawInfo(group, built);
@@ -6285,6 +6309,12 @@ namespace
         }
 
         LLVKBucket::patchGroup(group);
+
+        if (staged.mHadFailedFace || staged.mHadSkippedFace)
+        {
+            group->setState(LLSpatialGroup::GEOM_DIRTY);
+            gPipeline.markRebuild(group);
+        }
         return true;
     }
 
@@ -8611,6 +8641,7 @@ U32 LLVolumeGeometryManager::genDrawInfo(LLSpatialGroup* group, U32 mask, LLFace
                                 staged->mFaces.pop_back();
                                 apply = nullptr;
                             }
+                            staged->mHadSkippedFace = true;
                             skip_face = true;
                             LLVKContract::watchStageEvent(vobj->getLocalID(), "skip");
                         }

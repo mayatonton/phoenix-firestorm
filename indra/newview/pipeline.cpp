@@ -4088,6 +4088,92 @@ void LLPipeline::markRebuild(LLDrawable *drawablep, LLDrawable::EDrawableFlags f
     }
 }
 
+static void vkcClassifyEmptyOtherGroup(LLSpatialGroup* group, U32* cls, std::vector<LLUUID>& hole_uuids)
+{
+    static LLCachedControl<bool> sa_protect(gSavedSettings, "RenderVolumeSAProtection");
+    static LLCachedControl<F32> volume_sa_thresh(gSavedSettings, "RenderVolumeSAThreshold");
+    static LLCachedControl<F32> sculpt_sa_thresh(gSavedSettings, "RenderSculptSAThreshold");
+
+    for (LLSpatialGroup::element_iter it = group->getDataBegin(); it != group->getDataEnd(); ++it)
+    {
+        LLDrawable* drawablep = (LLDrawable*)(*it)->getDrawable();
+        if (!drawablep || drawablep->isDead() || drawablep->isState(LLDrawable::FORCE_INVISIBLE))
+        {
+            ++cls[0];
+            continue;
+        }
+        if (LLPipeline::isParcelHideAlive(drawablep))
+        {
+            ++cls[1];
+            continue;
+        }
+        LLVOVolume* vobj = drawablep->getVOVolume();
+        if (!vobj || vobj->isDead())
+        {
+            ++cls[0];
+            continue;
+        }
+        if (vobj->mGLTFAsset)
+        {
+            ++cls[2];
+            continue;
+        }
+        if (vobj->isMesh())
+        {
+            if ((vobj->getVolume() && !vobj->getVolume()->isMeshAssetLoaded()) || !gMeshRepo.meshRezEnabled())
+            {
+                ++cls[3];
+                continue;
+            }
+            if (!vobj->getSkinInfo() && !vobj->isSkinInfoUnavaliable())
+            {
+                ++cls[4];
+                continue;
+            }
+        }
+        if (sa_protect && vobj->mVolumeSurfaceArea > (vobj->isSculpted() ? (F32)sculpt_sa_thresh : (F32)volume_sa_thresh))
+        {
+            ++cls[5];
+            continue;
+        }
+        bool any_geom = false;
+        bool any_visible = false;
+        for (S32 i = 0; i < drawablep->getNumFaces(); ++i)
+        {
+            LLFace* facep = drawablep->getFace(i);
+            if (!facep || facep->getIndicesCount() <= 0 || facep->getGeomCount() <= 0)
+            {
+                continue;
+            }
+            any_geom = true;
+            const LLTextureEntry* te = facep->getTextureEntry();
+            LLGLTFMaterial* gltf_mat = te ? te->getGLTFRenderMaterial() : nullptr;
+            F32 alpha = gltf_mat ? gltf_mat->mBaseColor.mV[3] : (te ? te->getColor().mV[3] : 1.f);
+            if (alpha > 0.f || (te && te->getGlow() > 0.f))
+            {
+                any_visible = true;
+                break;
+            }
+        }
+        if (any_visible)
+        {
+            ++cls[8];
+            if (hole_uuids.size() < 8)
+            {
+                hole_uuids.push_back(vobj->getID());
+            }
+        }
+        else if (any_geom)
+        {
+            ++cls[7];
+        }
+        else
+        {
+            ++cls[6];
+        }
+    }
+}
+
 void LLPipeline::stateSort(LLCamera& camera, LLCullResult &result)
 {
     LL_PROFILE_ZONE_SCOPED_CATEGORY_PIPELINE;
@@ -4180,6 +4266,8 @@ void LLPipeline::stateSort(LLCamera& camera, LLCullResult &result)
     U32 vkc_empty_inflight = 0;
     U32 vkc_empty_dirty    = 0;
     U32 vkc_empty_other    = 0;
+    static U32 s_vkc_other_class[9] = {};
+    static std::vector<LLUUID> s_vkc_hole_uuids;
     for (LLCullResult::sg_iterator iter = getFrameCull()->beginVisibleGroups(); iter != getFrameCull()->endVisibleGroups(); ++iter)
     {
         LLSpatialGroup* group = *iter;
@@ -4200,6 +4288,10 @@ void LLPipeline::stateSort(LLCamera& camera, LLCullResult &result)
             else
             {
                 ++vkc_empty_other;
+                if (LLVKContract::verboseEnabled())
+                {
+                    vkcClassifyEmptyOtherGroup(group, s_vkc_other_class, s_vkc_hole_uuids);
+                }
             }
         }
         group->checkOcclusion();
@@ -4228,10 +4320,37 @@ void LLPipeline::stateSort(LLCamera& camera, LLCullResult &result)
         s_acc_other    += vkc_empty_other;
         if ((++s_vkc_empty_frames % 60) == 1)
         {
+            std::ostringstream cls;
+            if (LLVKContract::verboseEnabled())
+            {
+                cls << " other_class{dead=" << s_vkc_other_class[0]
+                    << " parcel=" << s_vkc_other_class[1]
+                    << " gltf=" << s_vkc_other_class[2]
+                    << " meshwait=" << s_vkc_other_class[3]
+                    << " skinwait=" << s_vkc_other_class[4]
+                    << " sa=" << s_vkc_other_class[5]
+                    << " zerogeom=" << s_vkc_other_class[6]
+                    << " transp=" << s_vkc_other_class[7]
+                    << " hasgeom=" << s_vkc_other_class[8] << "}";
+                if (!s_vkc_hole_uuids.empty())
+                {
+                    cls << " hole_uuid[";
+                    for (size_t u = 0; u < s_vkc_hole_uuids.size(); ++u)
+                    {
+                        cls << (u ? " " : "") << s_vkc_hole_uuids[u];
+                    }
+                    cls << "]";
+                }
+            }
             LL_WARNS("VKGeo") << "visible empty-drawmap groups (60f acc): inflight=" << s_acc_inflight
                               << " dirty=" << s_acc_dirty
-                              << " other=" << s_acc_other << LL_ENDL;
+                              << " other=" << s_acc_other << cls.str() << LL_ENDL;
             s_acc_inflight = s_acc_dirty = s_acc_other = 0;
+            for (U32 ci = 0; ci < 9; ++ci)
+            {
+                s_vkc_other_class[ci] = 0;
+            }
+            s_vkc_hole_uuids.clear();
         }
     }}
 
