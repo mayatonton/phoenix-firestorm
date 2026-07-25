@@ -38,6 +38,8 @@
 //#include "llviewerprecompiledheaders.h"
 #include "linden_common.h"
 
+#include <set>
+
 #include "llmenugl.h"
 
 #include "llgl.h"
@@ -65,6 +67,41 @@
 #include "llclipboard.h" // <FS:ND/ To let someone copy a menus text + accelerator to clipboard
 // static
 LLMenuHolderGL *LLMenuGL::sMenuContainer = NULL;
+LLRect LLMenuGL::sPopupConstraintRect;
+bool LLMenuGL::sAuxDrawPass = false;
+static std::set<const LLView*> sAuxOwnedMenus;
+
+void LLMenuGL::setAuxOwned(LLView* menu, bool owned)
+{
+    if (owned)
+    {
+        sAuxOwnedMenus.insert(menu);
+    }
+    else
+    {
+        sAuxOwnedMenus.erase(menu);
+    }
+}
+
+bool LLMenuGL::isAuxOwnedTree(const LLView* v)
+{
+    const LLView* cur = v;
+    S32 guard = 8;
+    while (cur != nullptr && guard-- > 0)
+    {
+        if (sAuxOwnedMenus.count(cur) != 0)
+        {
+            return true;
+        }
+        const LLMenuGL* m = dynamic_cast<const LLMenuGL*>(cur);
+        if (m == nullptr || m->getParentMenuItem() == nullptr)
+        {
+            break;
+        }
+        cur = m->getParentMenuItem()->getMenu();
+    }
+    return false;
+}
 view_listener_t::listener_map_t view_listener_t::sListeners;
 
 S32 MENU_BAR_HEIGHT = 18;
@@ -3265,6 +3302,10 @@ bool LLMenuGL::handleScrollWheel( S32 x, S32 y, S32 clicks )
 
 void LLMenuGL::draw( void )
 {
+    if (!sAuxDrawPass && isAuxOwnedTree(this))
+    {
+        return;
+    }
     if (mNeedsArrange)
     {
         arrange();
@@ -3420,7 +3461,12 @@ void LLMenuGL::showPopup(LLView* spawning_view, LLMenuGL* menu, S32 x, S32 y, S3
 
     LLMenuHolderGL::sContextMenuSpawnPos.set(mouse_x,mouse_y);
 
-    const LLRect menu_region_rect = LLMenuGL::sMenuContainer->getRect();
+    LLRect menu_region_rect = LLMenuGL::sMenuContainer->getRect();
+    LLMenuGL::setAuxOwned(menu, !LLMenuGL::sPopupConstraintRect.isEmpty());
+    if (!LLMenuGL::sPopupConstraintRect.isEmpty())
+    {
+        menu_region_rect.intersectWith(LLMenuGL::sPopupConstraintRect);
+    }
 
     const S32 HPAD = 2;
     LLRect rect = menu->getRect();
@@ -3954,6 +4000,7 @@ bool LLMenuHolderGL::hideMenus()
             if (dynamic_cast<LLMenuGL*>(viewp) != NULL && viewp->getVisible())
             {
                 viewp->setVisible(false);
+                LLMenuGL::setAuxOwned(viewp, false);
             }
         }
     }
@@ -4291,7 +4338,12 @@ void LLContextMenu::show(S32 x, S32 y, LLView* spawning_view)
 
     S32 width = getRect().getWidth();
     S32 height = getRect().getHeight();
-    const LLRect menu_region_rect = LLMenuGL::sMenuContainer->getMenuRect();
+    LLRect menu_region_rect = LLMenuGL::sMenuContainer->getMenuRect();
+    LLMenuGL::setAuxOwned(this, !LLMenuGL::sPopupConstraintRect.isEmpty());
+    if (!LLMenuGL::sPopupConstraintRect.isEmpty())
+    {
+        menu_region_rect.intersectWith(LLMenuGL::sPopupConstraintRect);
+    }
     LLView* parent_view = getParent();
 
     // Open upwards if menu extends past bottom

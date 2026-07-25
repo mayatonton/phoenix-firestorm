@@ -86,6 +86,16 @@ static bool ATIbug = false;
 static LLWindowSDL *gWindowImplementation = NULL;
 static std::set<unsigned int> sAuxWindowsCloseRequested;
 
+struct AuxInputMapSDL
+{
+    unsigned int id      = 0;
+    int          ox      = 0;
+    int          oy      = 0;
+    int          h       = 0;
+    bool         enabled = false;
+};
+static AuxInputMapSDL sAuxInputMap;
+
 // extern "C" Bool XineramaIsActive (Display *dpy)
 // {
 //  return 0;
@@ -1565,8 +1575,46 @@ void LLWindowSDL::gatherInput()
             if (event.type == SDL_WINDOWEVENT && event.window.event == SDL_WINDOWEVENT_CLOSE)
             {
                 sAuxWindowsCloseRequested.insert(event_window_id);
+                continue;
             }
-            continue;
+            bool routed = false;
+            if (sAuxInputMap.enabled && event_window_id == sAuxInputMap.id && mSurface != nullptr)
+            {
+                switch (event.type)
+                {
+                    case SDL_KEYDOWN:
+                    case SDL_KEYUP:
+                    case SDL_TEXTINPUT:
+                    case SDL_MOUSEWHEEL:
+                        routed = true;
+                        break;
+                    case SDL_MOUSEMOTION:
+                    {
+                        const int gx = sAuxInputMap.ox + event.motion.x;
+                        const int gy = sAuxInputMap.oy + (sAuxInputMap.h - event.motion.y - 1);
+                        event.motion.x = gx;
+                        event.motion.y = mSurface->h - gy - 1;
+                        routed = true;
+                        break;
+                    }
+                    case SDL_MOUSEBUTTONDOWN:
+                    case SDL_MOUSEBUTTONUP:
+                    {
+                        const int gx = sAuxInputMap.ox + event.button.x;
+                        const int gy = sAuxInputMap.oy + (sAuxInputMap.h - event.button.y - 1);
+                        event.button.x = gx;
+                        event.button.y = mSurface->h - gy - 1;
+                        routed = true;
+                        break;
+                    }
+                    default:
+                        break;
+                }
+            }
+            if (!routed)
+            {
+                continue;
+            }
         }
         if (event.type == SDL_WINDOWEVENT && event.window.event == SDL_WINDOWEVENT_CLOSE)
         {
@@ -1813,6 +1861,13 @@ void LLWindowSDL::gatherInput()
                 }
                 else if( event.window.event == SDL_WINDOWEVENT_FOCUS_LOST ) // <FS:ND> What about SDL_WINDOWEVENT_LEAVE (mouse focus)
                 {
+                    SDL_Window* kb_focus = SDL_GetKeyboardFocus();
+                    if (kb_focus != nullptr && sAuxInputMap.id != 0
+                        && SDL_GetWindowID(kb_focus) == sAuxInputMap.id)
+                    {
+                        break;
+                    }
+
                     // We have to do our own state massaging because SDL
                     // can send us two unfocus events in a row for example,
                     // which confuses the focus code [SL-24071].
@@ -2507,14 +2562,24 @@ void LLWindowSDL::setLanguageTextInput(const LLCoordGL& position)
         return;
     }
 
-    LLCoordWindow win_pos;
-    convertCoords( position, &win_pos );
-
     SDL_Rect r;
-    r.x = win_pos.mX;
-    r.y = win_pos.mY;
     r.w = 1;
     r.h = 16;
+
+    SDL_Window* kb_focus = SDL_GetKeyboardFocus();
+    if (kb_focus != nullptr && sAuxInputMap.enabled
+        && SDL_GetWindowID(kb_focus) == sAuxInputMap.id)
+    {
+        r.x = position.mX - sAuxInputMap.ox;
+        r.y = sAuxInputMap.h - (position.mY - sAuxInputMap.oy) - 1;
+    }
+    else
+    {
+        LLCoordWindow win_pos;
+        convertCoords( position, &win_pos );
+        r.x = win_pos.mX;
+        r.y = win_pos.mY;
+    }
 
     SDL_SetTextInputRect(&r);
 }
@@ -2610,6 +2675,10 @@ void llDestroyAuxWindowSDL(LLAuxWindowHandlesSDL& handles)
     if (handles.sdl_window != nullptr)
     {
         sAuxWindowsCloseRequested.erase(handles.sdl_window_id);
+        if (sAuxInputMap.id == handles.sdl_window_id)
+        {
+            sAuxInputMap = AuxInputMapSDL();
+        }
         SDL_DestroyWindow(static_cast<SDL_Window*>(handles.sdl_window));
     }
     handles = LLAuxWindowHandlesSDL();
@@ -2624,6 +2693,23 @@ bool llAuxWindowCloseRequestedSDL(unsigned int sdl_window_id)
     }
     sAuxWindowsCloseRequested.erase(it);
     return true;
+}
+
+void llSetAuxWindowInputMapSDL(const LLAuxWindowHandlesSDL& handles, int origin_gl_x, int origin_gl_y,
+                               int aux_height, bool enabled)
+{
+    sAuxInputMap.id      = handles.sdl_window_id;
+    sAuxInputMap.ox      = origin_gl_x;
+    sAuxInputMap.oy      = origin_gl_y;
+    sAuxInputMap.h       = aux_height;
+    sAuxInputMap.enabled = enabled && handles.sdl_window_id != 0;
+}
+
+bool llAuxWindowHasFocusSDL(const LLAuxWindowHandlesSDL& handles)
+{
+    SDL_Window* kb_focus = SDL_GetKeyboardFocus();
+    return kb_focus != nullptr && handles.sdl_window_id != 0
+        && SDL_GetWindowID(kb_focus) == handles.sdl_window_id;
 }
 
 bool llGetAuxWindowPositionSDL(const LLAuxWindowHandlesSDL& handles, int& out_x, int& out_y)

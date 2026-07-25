@@ -37,6 +37,7 @@
 #include "fsfloaternearbychat.h"
 #include "llfloaterimnearbychat.h"
 #include "llfloaterreg.h"
+#include "llmenugl.h"
 #include "llmultifloater.h"
 #include "llviewercontrol.h"
 #include "llviewershadermgr.h"
@@ -133,6 +134,24 @@ void FSAuxWindow::frame()
         }
     }
 
+    {
+        int map_ox = 0, map_oy = 0;
+        U32 map_w = 0, map_h = 0;
+        bool map_on = false;
+        if (target_shown && gViewerWindow && LLVKLoader::auxWindowExtentVk(map_w, map_h))
+        {
+            const LLVector2& ds = gViewerWindow->getDisplayScale();
+            const LLRect sr = aux_chat->calcScreenRect();
+            map_ox = ll_round(sr.mLeft * ds.mV[VX]);
+            map_oy = ll_round(sr.mBottom * ds.mV[VY]);
+            map_on = true;
+        }
+        llSetAuxWindowInputMapSDL(s_aux_handles, map_ox, map_oy, (int)map_h, map_on);
+        LLMenuGL::sPopupConstraintRect = (map_on && llAuxWindowHasFocusSDL(s_aux_handles))
+            ? aux_chat->calcScreenRect()
+            : LLRect();
+    }
+
     if (llAuxWindowCloseRequestedSDL(s_aux_handles.sdl_window_id))
     {
         LLVKLoader::auxWindowShutdownVk();
@@ -155,7 +174,7 @@ void FSAuxWindow::frame()
             gGL.loadIdentity();
 
             const LLRect aux_saved_dirty = LLView::sDirtyRect;
-            LLView::sDirtyRect = aux_chat->calcScreenRect();
+            LLView::sDirtyRect = gViewerWindow->getWindowRectScaled();
 
             gUIProgram.bind();
             gGL.color4f(1.f, 1.f, 1.f, 1.f);
@@ -165,6 +184,26 @@ void FSAuxWindow::frame()
             const LLVector2 aux_ui_scale = LLUI::getScaleFactor();
             gGL.scaleUI(aux_ui_scale.mV[VX], aux_ui_scale.mV[VY], 1.f);
             aux_chat->draw();
+            if (LLMenuHolderGL* holder = LLMenuGL::sMenuContainer)
+            {
+                const LLRect fsr = aux_chat->calcScreenRect();
+                LLMenuGL::sAuxDrawPass = true;
+                for (LLView::child_list_const_reverse_iter_t it = holder->getChildList()->rbegin();
+                     it != holder->getChildList()->rend(); ++it)
+                {
+                    LLView* menu = *it;
+                    if (menu && menu->getVisible() && menu->getRect().isValid()
+                        && LLMenuGL::isAuxOwnedTree(menu))
+                    {
+                        LLUI::pushMatrix();
+                        LLUI::translate((F32)(menu->getRect().mLeft - fsr.mLeft),
+                                        (F32)(menu->getRect().mBottom - fsr.mBottom));
+                        menu->draw();
+                        LLUI::popMatrix();
+                    }
+                }
+                LLMenuGL::sAuxDrawPass = false;
+            }
             gGL.flush();
             LLUI::popMatrix();
             gGL.popMatrix();

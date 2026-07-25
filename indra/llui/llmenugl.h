@@ -552,6 +552,10 @@ public:
     bool isScrollable() const { return mScrollable; }
 
     static class LLMenuHolderGL* sMenuContainer;
+    static LLRect sPopupConstraintRect;
+    static bool sAuxDrawPass;
+    static void setAuxOwned(LLView* menu, bool owned);
+    static bool isAuxOwnedTree(const LLView* v);
 
     void resetScrollPositionOnShow(bool reset_scroll_pos) { mResetScrollPositionOnShow = reset_scroll_pos; }
     bool isScrollPositionOnShowReset() { return mResetScrollPositionOnShow; }

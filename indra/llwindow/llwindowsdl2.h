@@ -287,5 +287,8 @@ void llDestroyAuxWindowSDL(LLAuxWindowHandlesSDL& handles);
 bool llAuxWindowCloseRequestedSDL(unsigned int sdl_window_id);
 void llSetAuxWindowVisibleSDL(LLAuxWindowHandlesSDL& handles, bool visible);
 void llSetAuxWindowTitleSDL(LLAuxWindowHandlesSDL& handles, const char* title);
+void llSetAuxWindowInputMapSDL(const LLAuxWindowHandlesSDL& handles, int origin_gl_x, int origin_gl_y,
+                               int aux_height, bool enabled);
+bool llAuxWindowHasFocusSDL(const LLAuxWindowHandlesSDL& handles);
 
 #endif //LL_LLWINDOWSDL_H
