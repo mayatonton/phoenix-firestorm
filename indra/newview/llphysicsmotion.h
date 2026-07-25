@@ -32,6 +32,7 @@
 //-----------------------------------------------------------------------------
 #include "llmotion.h"
 #include "llframetimer.h"
+#include "llcontrol.h"
 
 #define PHYSICS_MOTION_FADEIN_TIME 1.0f
 #define PHYSICS_MOTION_FADEOUT_TIME 1.0f
@@ -109,6 +110,7 @@ protected:
     void addMotion(LLPhysicsMotion *motion);
 private:
     LLCharacter*        mCharacter;
+    LLCachedControl<bool> mAvatarPhysicsEnabled;
 
     typedef std::vector<LLPhysicsMotion *> motion_vec_t;
     motion_vec_t mMotions;

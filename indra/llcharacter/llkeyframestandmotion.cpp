@@ -346,6 +346,8 @@ bool LLKeyframeStandMotion::onUpdate(F32 time, U8* joint_mask)
 
 void LLKeyframeStandMotion::preComputeGroundMain()
 {
+    LLKeyframeMotion::preComputeGroundMain();
+
     if ( mTrackAnkles && mFrameNum >= 2 )
     {
         mCharacter->getGround( mAnkleLeftJoint.getWorldPosition(), mPositionLeft, mNormalLeft);

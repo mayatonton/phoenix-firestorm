@@ -235,7 +235,8 @@ bool LLPhysicsMotion::initialize()
 
 LLPhysicsMotionController::LLPhysicsMotionController(const LLUUID &id) :
         LLMotion(id),
-        mCharacter(NULL)
+        mCharacter(NULL),
+        mAvatarPhysicsEnabled(gSavedSettings, "AvatarPhysics")
 {
         mName = "breast_motion";
 }
@@ -455,8 +456,7 @@ bool LLPhysicsMotionController::onUpdate(F32 time, U8* joint_mask)
 {
     LL_PROFILE_ZONE_SCOPED_CATEGORY_AVATAR;
     // Skip if disabled globally.
-    static LLCachedControl<bool> av_physics(gSavedSettings, "AvatarPhysics");
-    if (!av_physics)
+    if (!mAvatarPhysicsEnabled)
     {
             return true;
     }
