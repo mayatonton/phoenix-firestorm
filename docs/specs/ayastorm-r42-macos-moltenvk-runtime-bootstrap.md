@@ -12,6 +12,16 @@ app bundle 内の成果物だけで起動するための実装・検証仕様で
 通常のローカル app ビルド手順は
 [`docs/build/building_ayastorm_macos.md`](../build/building_ayastorm_macos.md) を参照する。
 
+## 既知の別件（このブランチでは修正しない）
+
+次の不具合は確認済みだが、MoltenVK runtime bootstrap の修正対象ではない。
+このブランチでコード変更・原因調査・回帰修正を行わず、それぞれ専用の別ブランチで扱う。
+
+| 事象 | 状態 | 対応方針 |
+| --- | --- | --- |
+| `r32-bugfix-2` で実装した上部ステータスバーの 3D Stream ボタンなどの UI が表示されない | 確認済み | UI 回帰として別ブランチで再現・修正する |
+| SIM を複数越えると crash する | 確認済み、原因未検証 | 別ブランチで log・process 状態・crash trace を採取してから原因を特定し、修正する |
+
 ## 実行時の成立条件
 
 app bundle には次の 3 点がそろっていなければならない。
