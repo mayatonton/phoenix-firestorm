@@ -30,6 +30,7 @@
 #include "llsdutil.h"
 
 #include "llagent.h"
+#include "llassetretry.h"
 #include "llcallbacklist.h"
 #include "llmaterialmgr.h"
 #include "llviewerobject.h"
@@ -419,8 +420,59 @@ void LLMaterialMgr::onGetResponse(bool success, const LLSD& content, const LLUUI
 {
     if (!success)
     {
-        // *TODO: is there any kind of error handling we can do here?
         LL_WARNS("Materials")<< "failed"<<LL_ENDL;
+        std::vector<LLMaterialID> inflight_ids;
+        for (get_pending_map_t::iterator itPending = mGetPending.begin(); itPending != mGetPending.end();)
+        {
+            if (itPending->first.first == region_id)
+            {
+                inflight_ids.push_back(itPending->first.second);
+                itPending = mGetPending.erase(itPending);
+            }
+            else
+            {
+                ++itPending;
+            }
+        }
+        for (const LLMaterialID& material_id : inflight_ids)
+        {
+            if (mMaterials.find(material_id) != mMaterials.end()
+                || mGetCallbacks.find(material_id) == mGetCallbacks.end())
+            {
+                mGetRetryCount.erase(material_id);
+                continue;
+            }
+            U8& fail_count = mGetRetryCount[material_id];
+            if (fail_count >= ASSET_RETRY_LIMIT)
+            {
+                LL_WARNS("Materials") << "material terminally unavailable: "
+                                      << material_id.asString() << LL_ENDL;
+                get_callback_map_t::iterator itCallback = mGetCallbacks.find(material_id);
+                if (itCallback != mGetCallbacks.end())
+                {
+                    delete itCallback->second;
+                    mGetCallbacks.erase(itCallback);
+                }
+                mGetRetryCount.erase(material_id);
+                continue;
+            }
+            ++fail_count;
+            const F32 delay = assetRetryDelaySec(fail_count);
+            LL_INFOS("AssetRetry") << "material retry scheduled: " << material_id.asString()
+                                   << " attempt=" << (U32)fail_count
+                                   << " delay_s=" << delay << LL_ENDL;
+            const LLUUID retry_region = region_id;
+            doAfterInterval([retry_region, material_id]()
+            {
+                LLMaterialMgr& self = LLMaterialMgr::instance();
+                if (self.mMaterials.find(material_id) != self.mMaterials.end()
+                    || self.mGetCallbacks.find(material_id) == self.mGetCallbacks.end())
+                {
+                    return;
+                }
+                self.mGetQueue[retry_region].insert(material_id);
+            }, delay);
+        }
         return;
     }
 
@@ -453,6 +505,16 @@ void LLMaterialMgr::onGetResponse(bool success, const LLSD& content, const LLUUI
         llassert(material_data[MATERIALS_CAP_MATERIAL_FIELD].isMap());
 
         setMaterial(region_id, material_id, material_data[MATERIALS_CAP_MATERIAL_FIELD]);
+
+        std::map<LLMaterialID, U8>::iterator itRetry = mGetRetryCount.find(material_id);
+        if (itRetry != mGetRetryCount.end())
+        {
+            if (itRetry->second > 0)
+            {
+                ++gAssetOracleMatRecovered;
+            }
+            mGetRetryCount.erase(itRetry);
+        }
     }
 }
 

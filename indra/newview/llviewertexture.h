@@ -392,6 +392,13 @@ public:
 
     void setIsMissingAsset(bool is_missing = true);
     /*virtual*/ bool isMissingAsset() const override { return mIsMissingAsset; }
+    bool isFetchRetryStuck() const
+    {
+        return mFetchFailCount > 0 && !mIsMissingAsset && !mIsFetching
+               && mFetchFailTimer.getTimeToExpireF32() < -60.f
+               && mLastReferencedTimer.getElapsedTimeF32() < 60.f;
+    }
+    std::string fetchRetryStuckInfo() const;
 
     // returns dimensions of original image for local files (before power of two scaling)
     // and returns 0 for all asset system images
@@ -449,6 +456,8 @@ public:
     virtual bool scaleDown() { return false; };
 
     bool mCreatePending = false;    // if true, this is in gTextureList.mCreateTextureList
+    U8 mCreateFailCount = 0;
+    LLFrameTimer mCreateFailTimer;
     mutable bool mDownScalePending = false; // if true, this is in gTextureList.mDownScaleQueue
 
     // <FS:Techwolf Lupindo> texture comment decoder
@@ -508,6 +517,11 @@ protected:
 
     FTType mFTType; // What category of image is this - map tile, server bake, etc?
     mutable bool mIsMissingAsset;       // True if we know that there is no image asset with this image id in the database.
+    bool mMissingTransient;
+    bool mHadFetchFailures;
+    U8 mFetchFailCount;
+    LLFrameTimer mFetchFailTimer;
+    LLUUID mFetchFailRegion;
 
     typedef std::list<LLLoadedCallbackEntry*> callback_list_t;
     S8              mLoadedCallbackDesiredDiscardLevel;

@@ -439,9 +439,18 @@ protected:
     F32                             mLastUpdateTime;
     F32                             mLastLoopedTime;
     AssetStatus                     mAssetStatus;
+    bool                            mFetchFailTransient = false;
 
 public:
     void setCharacter(LLCharacter* character) { mCharacter = character; }
+    bool isFetchFailureTransient() const override { return mFetchFailTransient; }
+    void resetFetchForRetry() override
+    {
+        if (mAssetStatus == ASSET_FETCH_FAILED)
+        {
+            mAssetStatus = ASSET_NEEDS_FETCH;
+        }
+    }
 };
 
 class LLKeyframeDataCache

@@ -522,10 +522,41 @@ void watchPickCandidate(U32 localid)
     }
 }
 
+namespace
+{
+std::unordered_map<U32, U32> sWatchFires;
+}
+
 void drawScopeBegin(const void* draw_info, const char* tag)
 {
     tCurDrawInfo = draw_info;
     tCurTag      = tag;
+    if (draw_info != nullptr && sObjIdFn != nullptr
+        && sWatchLocalsAny.load(std::memory_order_relaxed))
+    {
+        const U32 id = sObjIdFn(draw_info);
+        if (id != 0)
+        {
+            std::lock_guard<std::mutex> lock(sWatchLocalsMutex);
+            if (watchContainsLocked(id))
+            {
+                ++sWatchFires[id];
+            }
+        }
+    }
+}
+
+U32 watchTakeFires(U32 localid)
+{
+    std::lock_guard<std::mutex> lock(sWatchLocalsMutex);
+    auto it = sWatchFires.find(localid);
+    if (it == sWatchFires.end())
+    {
+        return 0;
+    }
+    const U32 n = it->second;
+    it->second = 0;
+    return n;
 }
 
 void drawScopeEnd()

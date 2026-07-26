@@ -174,8 +174,30 @@ void LLSpatialGroup::clearDrawMap(U32 evict_site)
 
 void LLSpatialGroup::clearDrawMapStaged(const std::unordered_set<LLDrawable*>& preserve,
                                         const std::unordered_set<LLDrawable*>& staged,
-                                        U32 evict_site)
+                                        U32 evict_site,
+                                        std::vector<LLDrawable*>* orphans)
 {
+    if (orphans != nullptr && !mDrawMap.empty())
+    {
+        std::unordered_set<LLDrawable*> seen;
+        for (draw_map_t::iterator it = mDrawMap.begin(); it != mDrawMap.end(); ++it)
+        {
+            drawmap_elem_t& vec = it->second;
+            for (size_t r = 0; r < vec.size(); ++r)
+            {
+                LLDrawable* d = vec[r].notNull() ? vec[r]->mSrcDrawable.get() : nullptr;
+                if (d == nullptr || d->isDead()
+                    || staged.find(d) != staged.end()
+                    || preserve.find(d) != preserve.end()
+                    || !seen.insert(d).second)
+                {
+                    continue;
+                }
+                orphans->push_back(d);
+            }
+        }
+    }
+
     if (preserve.empty())
     {
         clearDrawMap(evict_site);

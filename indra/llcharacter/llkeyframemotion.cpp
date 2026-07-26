@@ -600,6 +600,7 @@ LLMotion::LLMotionInitStatus LLKeyframeMotion::onInitialize(LLCharacter *charact
     if (!success)
     {
         LL_WARNS() << "Can't open animation file " << mID << LL_ENDL;
+        mFetchFailTransient = false;
         mAssetStatus = ASSET_FETCH_FAILED;
         return STATUS_FAILURE;
     }
@@ -611,6 +612,7 @@ LLMotion::LLMotionInitStatus LLKeyframeMotion::onInitialize(LLCharacter *charact
     if (!deserialize(dp, getID()))
     {
         LL_WARNS() << "Failed to decode asset for animation " << getName() << ":" << getID() << LL_ENDL;
+        mFetchFailTransient = false;
         mAssetStatus = ASSET_FETCH_FAILED;
         return STATUS_FAILURE;
     }
@@ -2462,6 +2464,21 @@ void LLKeyframeMotion::onLoadComplete(const LLUUID& asset_uuid,
             return;
         }
 
+        static const S32 s_asset_fail_inject = []() -> S32 {
+            const char* e = getenv("AYASTORM_ASSET_FAIL_INJECT");
+            return (e != nullptr) ? atoi(e) : 0;
+        }();
+        if (s_asset_fail_inject > 0 && 0 == status)
+        {
+            static std::map<LLUUID, U8> s_inject_counts;
+            U8& inject_count = s_inject_counts[asset_uuid];
+            if ((S32)inject_count < s_asset_fail_inject)
+            {
+                ++inject_count;
+                status = LL_ERR_ASSET_REQUEST_FAILED;
+            }
+        }
+
         if (0 == status)
         {
             if (motionp->mAssetStatus == ASSET_LOADED)
@@ -2495,6 +2512,7 @@ void LLKeyframeMotion::onLoadComplete(const LLUUID& asset_uuid,
             else
             {
                 LL_WARNS() << "Failed to decode asset for animation " << motionp->getName() << ":" << motionp->getID() << LL_ENDL;
+                motionp->mFetchFailTransient = false;
                 motionp->mAssetStatus = ASSET_FETCH_FAILED;
             }
 
@@ -2505,6 +2523,7 @@ void LLKeyframeMotion::onLoadComplete(const LLUUID& asset_uuid,
                 // Maybe delete the file from the VFS here? It's corrupt, deleting it should be harmless?
 
                 LL_WARNS() << "Failed to decode asset for animation " << motionp->getName() << ":" << motionp->getID() << " error: " << ex.what() << LL_ENDL;
+                motionp->mFetchFailTransient = false;
                 motionp->mAssetStatus = ASSET_FETCH_FAILED;
             }
             // </FS:ND>
@@ -2514,6 +2533,7 @@ void LLKeyframeMotion::onLoadComplete(const LLUUID& asset_uuid,
         else
         {
             LL_WARNS() << "Failed to load asset for animation " << motionp->getName() << ":" << motionp->getID() << LL_ENDL;
+            motionp->mFetchFailTransient = (status != LL_ERR_ASSET_REQUEST_NOT_IN_DATABASE);
             motionp->mAssetStatus = ASSET_FETCH_FAILED;
         }
     }

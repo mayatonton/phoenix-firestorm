@@ -137,6 +137,8 @@
 #include "lllocalbitmaps.h"
 #include "llperfstats.h"
 #include "llgltfmateriallist.h"
+#include "llassetretry.h"
+#include "llmotioncontroller.h"
 
 // Linden library includes
 #include "llavatarnamecache.h"
@@ -1948,6 +1950,217 @@ bool LLAppViewer::doFrame()
                 {
                     LL_PROFILE_ZONE_NAMED_CATEGORY_APP("sleep2");
                     ms_sleep(milliseconds_to_sleep);
+                }
+            }
+            {
+                S32 refresh = 0;
+                if (gViewerWindow && gViewerWindow->getWindow())
+                {
+                    refresh = gViewerWindow->getWindow()->getRefreshRate();
+                }
+                const F32 backstop_fps = (refresh > 0) ? (F32)(refresh * 2) : 120.f;
+                const F32 backstop_min_frame_time = 1.f / backstop_fps;
+                S32 backstop_sleep_ms = llclamp(
+                    (S32)((backstop_min_frame_time - frameTimer.getElapsedTimeF64()) * 1000.0), 0, 1000);
+                static U64     s_backstop_sleep_us    = 0;
+                static U32     s_backstop_frames      = 0;
+                static U32     s_backstop_win_frames  = 0;
+                static bool    s_backstop_warned      = false;
+                static LLTimer s_backstop_window;
+                if (backstop_sleep_ms > 0)
+                {
+                    ms_sleep(backstop_sleep_ms);
+                    s_backstop_sleep_us += (U64)backstop_sleep_ms * 1000;
+                    ++s_backstop_frames;
+                }
+                ++s_backstop_win_frames;
+                if (s_backstop_window.getElapsedTimeF32() >= 5.f)
+                {
+                    if (s_backstop_frames * 2 > s_backstop_win_frames)
+                    {
+                        if (!s_backstop_warned)
+                        {
+                            s_backstop_warned = true;
+                            LL_WARNS("FramePace") << "frame pace backstop engaged: pacing lost upstream"
+                                                  << " (engaged " << s_backstop_frames << "/" << s_backstop_win_frames
+                                                  << " frames, slept " << (s_backstop_sleep_us / 1000) << "ms/5s"
+                                                  << ", cap=" << backstop_fps << "fps)" << LL_ENDL;
+                        }
+                        else
+                        {
+                            LL_INFOS("FramePace") << "bkstp engaged=" << s_backstop_frames << "/" << s_backstop_win_frames
+                                                  << " slept_ms=" << (s_backstop_sleep_us / 1000)
+                                                  << " cap=" << backstop_fps << LL_ENDL;
+                        }
+                    }
+                    else if (s_backstop_frames > 0 && LLVKLoader::perfLogEnabled())
+                    {
+                        LL_INFOS("FramePace") << "bkstp engaged=" << s_backstop_frames << "/" << s_backstop_win_frames
+                                              << " slept_ms=" << (s_backstop_sleep_us / 1000)
+                                              << " cap=" << backstop_fps << LL_ENDL;
+                    }
+                    s_backstop_sleep_us   = 0;
+                    s_backstop_frames     = 0;
+                    s_backstop_win_frames = 0;
+                    s_backstop_window.reset();
+                }
+            }
+            {
+                static LLTimer s_asset_oracle_timer;
+                static F64     s_wear_nonzero_since = 0.0;
+                if (s_asset_oracle_timer.getElapsedTimeF32() >= 30.f)
+                {
+                    s_asset_oracle_timer.reset();
+                    const U32 tex_stuck    = gAssetOracleTexStuck.load();
+                    const U32 gltf_stuck   = gGLTFMaterialList.countStalledFetches();
+                    const U32 motion_stuck = LLMotionController::countStalledAssetRetries();
+                    const U32 wear_pending = gAssetOracleWearPending.load();
+                    const U32 mesh_stuck   = gMeshRepo.mThread ? gMeshRepo.mThread->countStalledHeaderRetries() : 0;
+                    const U32 sound_backoff = gAudiop ? gAudiop->countStalledSoundFetches() : 0;
+                    static U32 s_last_georepair = 0;
+                    const U32 georepair_total = gAssetOracleGeoRepair.load();
+                    const U32 georepair_delta = georepair_total - s_last_georepair;
+                    s_last_georepair = georepair_total;
+                    const F64 oracle_now   = LLFrameTimer::getTotalSeconds();
+                    if (wear_pending == 0)
+                    {
+                        s_wear_nonzero_since = 0.0;
+                    }
+                    else if (s_wear_nonzero_since == 0.0)
+                    {
+                        s_wear_nonzero_since = oracle_now;
+                    }
+                    const bool wear_stuck = (wear_pending > 0 && s_wear_nonzero_since > 0.0
+                                             && oracle_now - s_wear_nonzero_since > 600.0);
+                    {
+                        LLViewerRegion* regionp = gAgent.getRegion();
+                        if (regionp != nullptr && gMessageSystem != nullptr)
+                        {
+                            static LLUUID s_loss_region;
+                            static U32    s_loss_base     = 0;
+                            static F64    s_last_il_reset = 0.0;
+                            LLCircuitData* cdp = gMessageSystem->mCircuitInfo.findCircuit(regionp->getHost());
+                            const U32 lost = (cdp != nullptr) ? cdp->getPacketsLost() : 0;
+                            if (s_loss_region != regionp->getRegionID())
+                            {
+                                s_loss_region = regionp->getRegionID();
+                                s_loss_base   = lost;
+                            }
+                            const U32 loss_delta = lost - s_loss_base;
+                            s_loss_base = lost;
+                            if (loss_delta >= 10 && oracle_now - s_last_il_reset > 120.0)
+                            {
+                                s_last_il_reset = oracle_now;
+                                std::set<U32> present_ids;
+                                U32 max_lid = 0;
+                                const S32 nobj = gObjectList.getNumObjects();
+                                for (S32 oi = 0; oi < nobj; ++oi)
+                                {
+                                    LLViewerObject* op = gObjectList.getObject(oi);
+                                    if (op != nullptr && !op->isDead() && op->getRegion() == regionp)
+                                    {
+                                        const U32 lid = op->getLocalID();
+                                        present_ids.insert(lid);
+                                        max_lid = llmax(max_lid, lid);
+                                    }
+                                }
+                                U32 probed = 0;
+                                if (max_lid > 0)
+                                {
+                                    LLMessageSystem* msg = gMessageSystem;
+                                    bool start_new_message = true;
+                                    S32 blocks = 0;
+                                    const U32 lo = (max_lid > 255u) ? (max_lid - 255u) : 1u;
+                                    for (U32 pid = lo; pid <= max_lid; ++pid)
+                                    {
+                                        if (present_ids.count(pid) > 0)
+                                        {
+                                            continue;
+                                        }
+                                        if (start_new_message)
+                                        {
+                                            msg->newMessageFast(_PREHASH_RequestMultipleObjects);
+                                            msg->nextBlockFast(_PREHASH_AgentData);
+                                            msg->addUUIDFast(_PREHASH_AgentID, gAgent.getID());
+                                            msg->addUUIDFast(_PREHASH_SessionID, gAgent.getSessionID());
+                                            start_new_message = false;
+                                        }
+                                        msg->nextBlockFast(_PREHASH_ObjectData);
+                                        msg->addU8Fast(_PREHASH_CacheMissType, (U8)LLViewerRegion::CACHE_MISS_TYPE_TOTAL);
+                                        msg->addU32Fast(_PREHASH_ID, pid);
+                                        ++probed;
+                                        if (++blocks >= 255)
+                                        {
+                                            msg->sendReliable(regionp->getHost());
+                                            start_new_message = true;
+                                            blocks = 0;
+                                        }
+                                    }
+                                    if (!start_new_message)
+                                    {
+                                        msg->sendReliable(regionp->getHost());
+                                    }
+                                }
+                                LL_WARNS("AssetRetry") << "scene resync probe: lost=" << loss_delta
+                                                       << " probed=" << probed
+                                                       << " max_lid=" << max_lid
+                                                       << " region=" << regionp->getRegionID() << LL_ENDL;
+                                if (loss_delta >= 100)
+                                {
+                                    const F32 cur_far = gSavedSettings.getF32("RenderFarClip");
+                                    if (cur_far > 48.f)
+                                    {
+                                        LL_WARNS("AssetRetry") << "scene resync: heavy loss, cycling interest radius" << LL_ENDL;
+                                        gSavedSettings.setF32("RenderFarClip", 32.f);
+                                        doAfterInterval([cur_far]()
+                                        {
+                                            gSavedSettings.setF32("RenderFarClip", cur_far);
+                                        }, 2.f);
+                                    }
+                                }
+                            }
+                        }
+                    }
+                    if (tex_stuck + gltf_stuck + motion_stuck + mesh_stuck + georepair_delta > 0 || wear_stuck)
+                    {
+                        LL_WARNS("AssetStuck") << "asset recovery oracle: stuck tex=" << tex_stuck
+                                               << " gltf=" << gltf_stuck
+                                               << " motion=" << motion_stuck
+                                               << " mesh=" << mesh_stuck
+                                               << " wear_pending=" << wear_pending
+                                               << " snd_backoff=" << sound_backoff
+                                               << " georepair=" << georepair_total
+                                               << " meshkick=" << gAssetOracleMeshKick.load()
+                                               << " lodkick=" << gAssetOracleLodPromote.load()
+                                               << " orph=" << LLVKLoader::gVkPerf.geo_orphan.load()
+                                               << " recovered tex=" << gAssetOracleTexRecovered.load()
+                                               << " gltf=" << gAssetOracleGltfRecovered.load()
+                                               << " wear=" << gAssetOracleWearRecovered.load()
+                                               << " motion=" << gAssetOracleMotionRecovered.load()
+                                               << " mesh=" << gAssetOracleMeshRecovered.load()
+                                               << " snd=" << gAssetOracleSoundRecovered.load()
+                                               << " bake=" << gAssetOracleBakeRearmApplied.load()
+                                               << " env=" << gAssetOracleEnvRecovered.load()
+                                               << " mat=" << gAssetOracleMatRecovered.load() << LL_ENDL;
+                    }
+                    else if (LLVKLoader::perfLogEnabled())
+                    {
+                        LL_INFOS("AssetStuck") << "asset recovery oracle: ok wear_pending=" << wear_pending
+                                               << " snd_backoff=" << sound_backoff
+                                               << " georepair=" << georepair_total
+                                               << " meshkick=" << gAssetOracleMeshKick.load()
+                                               << " lodkick=" << gAssetOracleLodPromote.load()
+                                               << " orph=" << LLVKLoader::gVkPerf.geo_orphan.load()
+                                               << " recovered tex=" << gAssetOracleTexRecovered.load()
+                                               << " gltf=" << gAssetOracleGltfRecovered.load()
+                                               << " wear=" << gAssetOracleWearRecovered.load()
+                                               << " motion=" << gAssetOracleMotionRecovered.load()
+                                               << " mesh=" << gAssetOracleMeshRecovered.load()
+                                               << " snd=" << gAssetOracleSoundRecovered.load()
+                                               << " bake=" << gAssetOracleBakeRearmApplied.load()
+                                               << " env=" << gAssetOracleEnvRecovered.load()
+                                               << " mat=" << gAssetOracleMatRecovered.load() << LL_ENDL;
+                    }
                 }
             }
             frameTimer.reset();

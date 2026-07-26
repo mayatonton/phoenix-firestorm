@@ -551,15 +551,6 @@ void LLFace::renderSelected(LLViewerTexture *imagep, const LLColor4& color)
         else
         {
             LLVertexBuffer* vertex_buffer = mVertexBuffer.get();
-            // To display selection markers (white squares with the rounded cross at the center)
-            // on faces with GLTF textures we use a spectal vertex buffer with other transforms
-            if (const LLTextureEntry* te = getTextureEntry())
-            {
-                if (te->getGLTFRenderMaterial())
-                {
-                    vertex_buffer = mVertexBufferGLTF.get();
-                }
-            }
             if (vertex_buffer)
             {
                 vertex_buffer->setBuffer();
@@ -1297,30 +1288,8 @@ bool LLFace::getGeometryVolume(const LLVolume& volume,
         return false;
 
     LLGLTFMaterial* gltf_mat = tep->getGLTFRenderMaterial();
-    // To display selection markers (white squares with the rounded cross at the center)
-    // on faces with GLTF textures we use a special vertex buffer with other transforms
-    if (gltf_mat && !rebuild_for_gltf && tep->isSelected() && mVertexBuffer.notNull())
+    if (mVertexBufferGLTF.notNull())
     {
-        // Create a temporary vertex buffer to provide transforms for GLTF textures
-        if (mVertexBufferGLTF.isNull())
-        {
-            mVertexBufferGLTF = new LLVertexBuffer(mVertexBuffer->getTypeMask());
-        }
-
-        // Clone the existing vertex buffer into the temporary   one
-        // TODO: factor out the need for mVertexBufferGLTF and make selection highlight shader work with the existing vertex buffer
-        mVertexBuffer->clone(*mVertexBufferGLTF);
-
-        // Recursive call the same function with the argument rebuild_for_gltf set to true
-        // This call will make geometry in mVertexBuffer but in fact for mVertexBufferGLTF
-        mVertexBufferGLTF.swap(mVertexBufferGLTF, mVertexBuffer);
-        getGeometryVolume(volume, face_index, mat_vert_in, mat_norm_in, index_offset, force_rebuild, no_debug_assert, true);
-        mVertexBufferGLTF.swap(mVertexBufferGLTF, mVertexBuffer);
-        mVertexBufferGLTF->unmapBuffer();
-    }
-    else if (!tep->isSelected() && mVertexBufferGLTF.notNull())
-    {
-        // Free the temporary vertex buffer when it is not needed anymore
         mVertexBufferGLTF = nullptr;
     }
 
@@ -2470,7 +2439,7 @@ LLFace::EGeoFillBuild LLFace::buildVkGeoFill(LLGeoFaceFill& out,
     }
 
     LLGLTFMaterial* gltf_mat = tep->getGLTFRenderMaterial();
-    if (!tep->isSelected() && mVertexBufferGLTF.notNull())
+    if (mVertexBufferGLTF.notNull())
     {
         mVertexBufferGLTF = nullptr;
     }

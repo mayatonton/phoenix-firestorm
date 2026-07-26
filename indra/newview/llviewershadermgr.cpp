@@ -507,7 +507,8 @@ bool writeMaterialFAllUBO(LLGLSLShader& shader, U32 i,
     return true;
 }
 
-bool writeObjectSkinUBO(LLGLSLShader& /*shader*/, const F32* matrix_palette_data, U32 joint_count)
+bool writeObjectSkinUBO(LLGLSLShader& /*shader*/, const F32* matrix_palette_data, U32 joint_count,
+                        const LLUUID& av_id)
 {
     constexpr U32 MAX_JOINTS         = 110;
     constexpr U32 MAT3X4_STRIDE_BYTES = 48;
@@ -535,6 +536,8 @@ bool writeObjectSkinUBO(LLGLSLShader& /*shader*/, const F32* matrix_palette_data
     static const F32 s_identity3x4[12] = { 1.f,0.f,0.f,0.f, 0.f,1.f,0.f,0.f, 0.f,0.f,1.f,0.f };
     F32 sanitized[MAX_JOINTS * 12];
     bool any_bad = false;
+    S32 first_bad_joint = -1;
+    U32 bad_joints = 0;
     for (U32 j = 0; j < copy_joints; ++j)
     {
         const F32* src = matrix_palette_data + (size_t)j * 12u;
@@ -543,6 +546,11 @@ bool writeObjectSkinUBO(LLGLSLShader& /*shader*/, const F32* matrix_palette_data
         if (bad)
         {
             any_bad = true;
+            ++bad_joints;
+            if (first_bad_joint < 0)
+            {
+                first_bad_joint = (S32)j;
+            }
             memcpy(sanitized + (size_t)j * 12u, s_identity3x4, sizeof(s_identity3x4));
         }
         else
@@ -552,11 +560,20 @@ bool writeObjectSkinUBO(LLGLSLShader& /*shader*/, const F32* matrix_palette_data
     }
     if (any_bad)
     {
-        static U32 s_skin_nan = 0;
-        if (s_skin_nan < 200u)
+        static U64     s_skin_nan_total = 0;
+        static LLTimer s_skin_nan_log;
+        static bool    s_skin_nan_first = true;
+        ++s_skin_nan_total;
+        if (s_skin_nan_first || s_skin_nan_log.getElapsedTimeF32() >= 1.f)
         {
-            ++s_skin_nan;
-            LL_WARNS("VKNaN") << "non-finite skin palette -> sanitized to identity (joints=" << copy_joints << ")" << LL_ENDL;
+            s_skin_nan_first = false;
+            s_skin_nan_log.reset();
+            LL_WARNS("VKNaN") << "non-finite skin palette -> sanitized to identity"
+                              << " av=" << av_id
+                              << " first_bad_joint=" << first_bad_joint
+                              << " bad_joints=" << bad_joints
+                              << " joints=" << copy_joints
+                              << " total=" << s_skin_nan_total << LL_ENDL;
         }
     }
 

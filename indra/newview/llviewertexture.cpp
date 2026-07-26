@@ -31,6 +31,7 @@
 
 #include "llviewertexture.h"
 
+#include "llassetretry.h"
 #include "llmath.h"
 #include "llerror.h"
 #include "llgl.h"
@@ -54,6 +55,8 @@
 #include "pipeline.h"
 #include "llpipelineframecontext.h"
 #include "llappviewer.h"
+#include "llagent.h"
+#include "llviewerregion.h"
 #include "llface.h"
 #include "llviewercamera.h"
 #include "lltextureentry.h"
@@ -1174,6 +1177,10 @@ void LLViewerFetchedTexture::init(bool firstinit)
     // Only set mIsMissingAsset true when we know for certain that the database
     // does not contain this image.
     mIsMissingAsset = false;
+    mMissingTransient = false;
+    mHadFetchFailures = false;
+    mFetchFailCount = 0;
+    mFetchFailRegion.setNull();
 
     mLoadedCallbackDesiredDiscardLevel = S8_MAX;
     mPauseLoadedCallBacks = false;
@@ -1598,6 +1605,15 @@ bool LLViewerFetchedTexture::preCreateTexture(S32 usename/*= 0*/)
     return res;
 }
 
+std::string LLViewerFetchedTexture::fetchRetryStuckInfo() const
+{
+    return llformat("fail=%u overdue_s=%.0f discard=%d min_discard=%d boost=%d fetcher=%d",
+                    (U32)mFetchFailCount,
+                    -mFetchFailTimer.getTimeToExpireF32(),
+                    getDiscardLevel(), (S32)mMinDiscardLevel,
+                    (S32)mBoostLevel, (S32)mHasFetcher);
+}
+
 bool LLViewerFetchedTexture::createTexture()
 {
     if (!mNeedsCreateTexture)
@@ -1616,6 +1632,11 @@ void LLViewerFetchedTexture::postCreateTexture()
     if (!mNeedsCreateTexture)
     {
         return;
+    }
+    if (mHadFetchFailures)
+    {
+        mHadFetchFailures = false;
+        ++gAssetOracleTexRecovered;
     }
 #if LL_IMAGEGL_THREAD_CHECK
     mGLTexturep->checkActiveThread();
@@ -1998,7 +2019,30 @@ bool LLViewerFetchedTexture::processFetchResults(S32& desired_discard, S32 curre
             && mFetchState > 1) // 1 - initial, make sure fetcher did at least something
         {
             // We finished but received no data
-            if (getDiscardLevel() < 0)
+            const S32 http_code = mLastHttpGetStatus.isHttpStatus() ? (S32)mLastHttpGetStatus.getType() : 0;
+            const bool transient = (getFTType() != FTT_MAP_TILE)
+                                   && (getFTType() == FTT_SERVER_BAKE
+                                       || (http_code != 404 && http_code != 410));
+            static U32     s_retry_sched_events = 0;
+            static LLTimer s_retry_log_timer;
+            if (transient && mFetchFailCount < ASSET_RETRY_LIMIT)
+            {
+                ++mFetchFailCount;
+                mHadFetchFailures = true;
+                mFetchFailTimer.reset();
+                mFetchFailTimer.setTimerExpirySec(assetRetryDelaySec(mFetchFailCount));
+                ++s_retry_sched_events;
+                if (s_retry_log_timer.getElapsedTimeF32() >= 30.f)
+                {
+                    s_retry_log_timer.reset();
+                    LL_INFOS("TexRetry") << "fetch fail -> retry scheduled: " << mID
+                                         << " attempt=" << (U32)mFetchFailCount
+                                         << " delay_s=" << assetRetryDelaySec(mFetchFailCount)
+                                         << " http=" << http_code
+                                         << " sched_events=" << s_retry_sched_events << LL_ENDL;
+                }
+            }
+            else if (getDiscardLevel() < 0)
             {
                 if (getFTType() != FTT_MAP_TILE)
                 {
@@ -2011,6 +2055,9 @@ bool LLViewerFetchedTexture::processFetchResults(S32& desired_discard, S32 curre
                         << LL_ENDL;
                 }
                 setIsMissingAsset();
+                mMissingTransient = transient;
+                LLViewerRegion* fail_region = gAgent.getRegion();
+                mFetchFailRegion = fail_region ? fail_region->getRegionID() : LLUUID::null;
                 desired_discard = -1;
             }
             else
@@ -2110,6 +2157,17 @@ bool LLViewerFetchedTexture::updateFetch()
         // keep in mind that fetcher still might need raw image, don't modify original
         bool finished = LLAppViewer::getTextureFetch()->getRequestFinished(getID(), fetch_discard, mFetchState, mRawImage, mAuxRawImage,
                                                                            mLastHttpGetStatus);
+        static const S32 s_asset_fail_inject = []() -> S32 {
+            const char* e = getenv("AYASTORM_ASSET_FAIL_INJECT");
+            return (e != nullptr) ? atoi(e) : 0;
+        }();
+        if (s_asset_fail_inject > 0 && finished && mRawImage.notNull()
+            && (S32)mFetchFailCount < s_asset_fail_inject)
+        {
+            mRawImage = nullptr;
+            mAuxRawImage = nullptr;
+            mRawDiscardLevel = INVALID_DISCARD_LEVEL;
+        }
         if (mRawImage.notNull()) sRawCount++;
         if (mAuxRawImage.notNull())
         {
@@ -2121,6 +2179,10 @@ bool LLViewerFetchedTexture::updateFetch()
             mIsFetching = false;
             mLastFetchState = -1;
             mLastPacketTimer.reset();
+            if (mRawImage.notNull())
+            {
+                mFetchFailCount = 0;
+            }
         }
         else
         {
@@ -2147,6 +2209,18 @@ bool LLViewerFetchedTexture::updateFetch()
 
     desired_discard = llmin(desired_discard, getMaxDiscardLevel());
 
+    if (mIsMissingAsset && mMissingTransient)
+    {
+        LLViewerRegion* cur_region = gAgent.getRegion();
+        if (cur_region && cur_region->getRegionID().notNull()
+            && cur_region->getRegionID() != mFetchFailRegion)
+        {
+            setIsMissingAsset(false);
+            mMissingTransient = false;
+            mFetchFailCount = 0;
+        }
+    }
+
     bool make_request = true;
     if (decode_priority <= 0)
     {
@@ -2161,6 +2235,11 @@ bool LLViewerFetchedTexture::updateFetch()
     else  if (mNeedsCreateTexture || mIsMissingAsset)
     {
         LL_PROFILE_ZONE_NAMED_CATEGORY_TEXTURE("vftuf - create or missing");
+        make_request = false;
+    }
+    else if (mFetchFailCount > 0 && !mFetchFailTimer.hasExpired())
+    {
+        LL_PROFILE_ZONE_NAMED_CATEGORY_TEXTURE("vftuf - retry backoff");
         make_request = false;
     }
     else if (current_discard >= 0 && current_discard <= mMinDiscardLevel)

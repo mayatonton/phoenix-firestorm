@@ -1843,6 +1843,33 @@ bool LLVOVolume::updateLOD()
 
     LL_PROFILE_ZONE_SCOPED_CATEGORY_VOLUME;
 
+    const U32 rearm_gen = LLMeshRepository::sRearmGeneration.load(std::memory_order_relaxed);
+    if (rearm_gen != mMeshRearmGen)
+    {
+        mMeshRearmGen = rearm_gen;
+        if (isSculpted() && getVolume()
+            && (getVolume()->getParams().getSculptType() & LL_SCULPT_TYPE_MASK) == LL_SCULPT_TYPE_MESH)
+        {
+            if (!getVolume()->isMeshAssetLoaded())
+            {
+                LL_DEBUGS("AssetRetry") << "mesh rearm re-request: "
+                                        << getVolume()->getParams().getSculptID() << LL_ENDL;
+                gMeshRepo.loadMesh(this, getVolume()->getParams(),
+                                   llclamp(mLOD, 0, (S32)LLVolumeLODGroup::NUM_LODS - 1));
+            }
+            if (mSkinInfoUnavaliable)
+            {
+                mSkinInfoUnavaliable = false;
+                const LLUUID& mesh_id = getVolume()->getParams().getSculptID();
+                const LLMeshSkinInfo* skin_info = gMeshRepo.getSkinInfo(mesh_id, this);
+                if (skin_info)
+                {
+                    notifySkinInfoLoaded(skin_info);
+                }
+            }
+        }
+    }
+
     bool lod_changed = false;
 
     if (!LLSculptIDSize::instance().isUnloaded(getVolume()->getParams().getSculptID()))
@@ -2310,7 +2337,14 @@ bool LLVOVolume::updateGeometry(LLDrawable *drawable)
         LLSpatialGroup* geo_group = drawable ? drawable->getSpatialGroup() : nullptr;
         if (geo_group && geo_group->mVkGeoInflight)
         {
-            return false;
+            if (++geo_group->mVkGeoUpdateBlocked < 120)
+            {
+                return false;
+            }
+        }
+        if (geo_group)
+        {
+            geo_group->mVkGeoUpdateBlocked = 0;
         }
     }
 
@@ -5843,7 +5877,13 @@ namespace
     std::vector<LLGeoRebuildJob*> sGeoInflight;
     std::unordered_map<LLVolume*, U32> sGeoVolumePins;
 
-    constexpr U64 GEO_INFLIGHT_BYTE_CAP = 512ull << 20;
+    const U64 GEO_INFLIGHT_BYTE_CAP = []() -> U64 {
+        const char* e = getenv("AYASTORM_GEO_INFLIGHT_CAP_MB");
+        const long v  = (e != nullptr) ? atol(e) : 0;
+        return (v > 0) ? ((U64)v << 20) : (128ull << 20);
+    }();
+
+    F32 sGeoInlineApplyMsAccum = 0.f;
 
     std::mutex sAvatarJobMutex;
     std::condition_variable sAvatarJobCv;
@@ -6227,7 +6267,19 @@ namespace
             }
         }
 
-        group->clearDrawMapStaged(preserve, staged_drawables, LLVKContract::SITE_CLEAR_APPLY);
+        std::vector<LLDrawable*> evict_orphans;
+        group->clearDrawMapStaged(preserve, staged_drawables, LLVKContract::SITE_CLEAR_APPLY,
+                                  &evict_orphans);
+        for (LLDrawable* orphan : evict_orphans)
+        {
+            gPipeline.markRebuild(orphan, LLDrawable::REBUILD_GEOMETRY);
+            LLSpatialGroup* orphan_group = orphan->getSpatialGroup();
+            if (orphan_group != nullptr && !orphan_group->isDead())
+            {
+                orphan_group->setState(LLSpatialGroup::GEOM_DIRTY);
+            }
+            ++LLVKLoader::gVkPerf.geo_orphan;
+        }
 
         built_map_t local_built;
         built_map_t& built = (prebuilt != nullptr) ? *prebuilt : local_built;
@@ -6887,12 +6939,43 @@ void LLVolumeGeometryManager::drainGeoPublishQueue()
         return (e != nullptr) ? (F32)atof(e) : 8.0f;
     }();
 
+    const F32 inline_carry_ms = sGeoInlineApplyMsAccum;
+    sGeoInlineApplyMsAccum    = 0.f;
+    const F32 effective_budget_ms = llmax(0.f, s_apply_budget_ms - inline_carry_ms);
+
+    if (LLVKLoader::perfLogEnabled())
+    {
+        static F32     s_inl_win_ms  = 0.f;
+        static F32     s_bud_min_ms  = 1e9f;
+        static U32     s_bud_zero    = 0;
+        static LLTimer s_geoinl_timer;
+        s_inl_win_ms += inline_carry_ms;
+        s_bud_min_ms = llmin(s_bud_min_ms, effective_budget_ms);
+        if (effective_budget_ms <= 0.f)
+        {
+            ++s_bud_zero;
+        }
+        if (s_geoinl_timer.getElapsedTimeF32() >= 5.f)
+        {
+            if (s_inl_win_ms > 0.f || s_bud_zero > 0)
+            {
+                LL_INFOS("VkPerf") << "geoinl inl_ms=" << s_inl_win_ms
+                                   << " bud_min=" << ((s_bud_min_ms >= 1e9f) ? -1.f : s_bud_min_ms)
+                                   << " bud_zero=" << s_bud_zero << LL_ENDL;
+            }
+            s_inl_win_ms = 0.f;
+            s_bud_min_ms = 1e9f;
+            s_bud_zero   = 0;
+            s_geoinl_timer.reset();
+        }
+    }
+
     LLTimer pub_timer;
     bool any = false;
     for (;;)
     {
         if (any && s_apply_budget_ms > 0.f
-            && pub_timer.getElapsedTimeF32() * 1000.f > s_apply_budget_ms)
+            && pub_timer.getElapsedTimeF32() * 1000.f > effective_budget_ms)
         {
             break;
         }
@@ -7456,8 +7539,10 @@ void LLVolumeGeometryManager::rebuildGeom(LLSpatialGroup* group)
         return;
     }
 
+    group->mVkRebuildVisitFrame = (U32)gFrameCount;
     if (group->mVkGeoInflight && !group->mVkForceInlineRebuild)
     {
+        group->mVkRebuildRet = 1;
         return;
     }
 
@@ -7469,6 +7554,7 @@ void LLVolumeGeometryManager::rebuildGeom(LLSpatialGroup* group)
         && LLVKLoader::gVkGeoInflightBytes.load() > GEO_INFLIGHT_BYTE_CAP)
     {
         ++LLVKLoader::gVkPerf.geo_defer;
+        group->mVkRebuildRet = 2;
         return;
     }
 
@@ -7485,8 +7571,10 @@ void LLVolumeGeometryManager::rebuildGeom(LLSpatialGroup* group)
         {
             rebuildMesh(group);
         }
+        group->mVkRebuildRet = 3;
         return;
     }
+    group->mVkRebuildRet = 4;
 
     const bool rsn_geom = group->hasState(LLSpatialGroup::GEOM_DIRTY);
     const bool rsn_alpha_only = !rsn_geom && group->hasState(LLSpatialGroup::ALPHA_DIRTY);
@@ -8071,7 +8159,9 @@ void LLVolumeGeometryManager::rebuildGeom(LLSpatialGroup* group)
     if (staged.mInline || staged.mFills.empty())
     {
         ++group->mVkGeoGen;
+        LLTimer inl_timer;
         applyGeoStaged(group, staged);
+        sGeoInlineApplyMsAccum += inl_timer.getElapsedTimeF32() * 1000.f;
         group->mVkForceInlineRebuild = false;
         ++LLVKLoader::gVkPerf.geo_inl;
         return;
@@ -8081,7 +8171,9 @@ void LLVolumeGeometryManager::rebuildGeom(LLSpatialGroup* group)
     if (!sGeoWorkerRunning)
     {
         ++group->mVkGeoGen;
+        LLTimer inl_timer;
         applyGeoStaged(group, staged);
+        sGeoInlineApplyMsAccum += inl_timer.getElapsedTimeF32() * 1000.f;
         ++LLVKLoader::gVkPerf.geo_inl;
         return;
     }

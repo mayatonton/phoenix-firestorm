@@ -158,6 +158,10 @@ public:
     // requires this
     virtual bool canDeprecate();
 
+    virtual bool isFetchFailureTransient() const { return false; }
+
+    virtual void resetFetchForRetry() {}
+
     // optional callback routine called when animation deactivated.
     void    setDeactivateCallback( void (*cb)(void *), void* userdata );
 

@@ -1524,6 +1524,7 @@ namespace LLVKLoader
         std::atomic<U64> geo_enq{0};
         std::atomic<U64> geo_pub{0};
         std::atomic<U64> geo_pub_us{0};
+        std::atomic<U64> geo_orphan{0};
         std::atomic<U64> geo_dis{0};
         std::atomic<U64> geo_inl{0};
         std::atomic<U64> geo_defer{0};

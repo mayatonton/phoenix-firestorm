@@ -29,7 +29,9 @@
 #include "llwearablelist.h"
 
 #include "message.h"
+#include "llassetretry.h"
 #include "llassetstorage.h"
+#include "llcallbacklist.h"
 #include "llagent.h"
 #include "llvoavatar.h"
 #include "llviewerstats.h"
@@ -135,6 +137,15 @@ void LLWearableList::processGetAssetReply( const char* filename, const LLAssetID
 // [/SL:KB]
     LLAvatarAppearance *avatarp = data->mAvatarp;
 
+    static const S32 s_asset_fail_inject = []() -> S32 {
+        const char* e = getenv("AYASTORM_ASSET_FAIL_INJECT");
+        return (e != nullptr) ? atoi(e) : 0;
+    }();
+    if (s_asset_fail_inject > 0 && status >= 0 && data->mRetries < s_asset_fail_inject)
+    {
+        status = LL_ERR_ASSET_REQUEST_FAILED;
+    }
+
     if( !filename )
     {
         LL_WARNS("Wearable") << "Bad Wearable Asset: missing file." << LL_ENDL;
@@ -193,15 +204,30 @@ void LLWearableList::processGetAssetReply( const char* filename, const LLAssetID
         }
           default:
         {
-              static const S32 MAX_RETRIES = 3;
-              if (data->mRetries < MAX_RETRIES)
+              if (data->mRetries < (S32)ASSET_RETRY_LIMIT)
               {
               // Try again
                   data->mRetries++;
-              gAssetStorage->getAssetData(uuid,
-                                          data->mAssetType,
-                                          LLWearableList::processGetAssetReply,
-                                          userdata);  // re-use instead of deleting.
+                  const F32 retry_delay = assetRetryDelaySec((U8)data->mRetries);
+                  LL_INFOS("AssetRetry") << "wearable retry scheduled: " << uuid
+                                         << " attempt=" << data->mRetries
+                                         << " delay_s=" << retry_delay << LL_ENDL;
+                  ++gAssetOracleWearPending;
+                  const LLUUID retry_uuid = uuid;
+                  const LLAssetType::EType retry_type = data->mAssetType;
+                  doAfterInterval([retry_uuid, retry_type, userdata]()
+                  {
+                      --gAssetOracleWearPending;
+                      if (gAssetStorage == nullptr)
+                      {
+                          delete (LLWearableArrivedData*)userdata;
+                          return;
+                      }
+                      gAssetStorage->getAssetData(retry_uuid,
+                                                  retry_type,
+                                                  LLWearableList::processGetAssetReply,
+                                                  userdata);  // re-use instead of deleting.
+                  }, retry_delay);
               return;
         }
               else
@@ -215,6 +241,10 @@ void LLWearableList::processGetAssetReply( const char* filename, const LLAssetID
 
     if (wearable) // success
     {
+        if (data->mRetries > 0)
+        {
+            ++gAssetOracleWearRecovered;
+        }
         LLWearableList::instance().mList[ uuid ] = wearable;
         LL_DEBUGS("Wearable") << "processGetAssetReply()" << LL_ENDL;
         LL_DEBUGS("Wearable") << wearable << LL_ENDL;

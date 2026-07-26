@@ -90,6 +90,8 @@ public:
     bool mIsSelf;
 
 public:
+    static U32 countStalledAssetRetries();
+
     // Constructor
     LLMotionController();
 

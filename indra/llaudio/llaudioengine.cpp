@@ -38,7 +38,9 @@
 #include "llfilesystem.h"
 #include "lldir.h"
 #include "llaudiodecodemgr.h"
+#include "llassetretry.h"
 #include "llassetstorage.h"
+#include "llframetimer.h"
 
 
 // necessary for grabbing sounds from sim (implemented in viewer)
@@ -1087,7 +1089,7 @@ void LLAudioEngine::startNextTransfer()
             continue;
         }
 
-        if (!adp->hasLocalData() && !adp->hasDecodeFailed())
+        if (!adp->hasLocalData() && !adp->hasDecodeFailed() && !adp->isFetchRetryBackoff())
         {
             asset_id = adp->getID();
             max_pri = asp->getPriority();
@@ -1123,7 +1125,7 @@ void LLAudioEngine::startNextTransfer()
                 continue;
             }
 
-            if (!adp->hasLocalData() && !adp->hasDecodeFailed())
+            if (!adp->hasLocalData() && !adp->hasDecodeFailed() && !adp->isFetchRetryBackoff())
             {
                 asset_id = adp->getID();
                 max_pri = asp->getPriority();
@@ -1163,7 +1165,7 @@ void LLAudioEngine::startNextTransfer()
                     continue;
                 }
 
-                if (!adp->hasLocalData() && !adp->hasDecodeFailed())
+                if (!adp->hasLocalData() && !adp->hasDecodeFailed() && !adp->isFetchRetryBackoff())
                 {
                     asset_id = adp->getID();
                     max_pri = asp->getPriority();
@@ -1191,7 +1193,7 @@ void LLAudioEngine::startNextTransfer()
             }
 
             adp = asp->getCurrentData();
-            if (adp && !adp->hasLocalData() && !adp->hasDecodeFailed())
+            if (adp && !adp->hasLocalData() && !adp->hasDecodeFailed() && !adp->isFetchRetryBackoff())
             {
                 asset_id = adp->getID();
                 max_pri = asp->getPriority();
@@ -1199,7 +1201,7 @@ void LLAudioEngine::startNextTransfer()
             }
 
             adp = asp->getQueuedData();
-            if (adp && !adp->hasLocalData() && !adp->hasDecodeFailed())
+            if (adp && !adp->hasLocalData() && !adp->hasDecodeFailed() && !adp->isFetchRetryBackoff())
             {
                 asset_id = adp->getID();
                 max_pri = asp->getPriority();
@@ -1214,7 +1216,7 @@ void LLAudioEngine::startNextTransfer()
                     continue;
                 }
 
-                if (!adp->hasLocalData() && !adp->hasDecodeFailed())
+                if (!adp->hasLocalData() && !adp->hasDecodeFailed() && !adp->isFetchRetryBackoff())
                 {
                     asset_id = adp->getID();
                     max_pri = asp->getPriority();
@@ -1248,17 +1250,40 @@ void LLAudioEngine::assetCallback(const LLUUID &uuid, LLAssetType::EType type, v
         return;
     }
 
+    static const S32 s_asset_fail_inject = []() -> S32 {
+        const char* e = getenv("AYASTORM_ASSET_FAIL_INJECT");
+        return (e != nullptr) ? atoi(e) : 0;
+    }();
+    if (s_asset_fail_inject > 0 && result_code == 0)
+    {
+        LLAudioData *adp = gAudiop->getAudioData(uuid);
+        if (adp && (S32)adp->getFetchFailCount() < s_asset_fail_inject)
+        {
+            result_code = LL_ERR_ASSET_REQUEST_FAILED;
+        }
+    }
+
     if (result_code)
     {
         LL_INFOS() << "Boom, error in audio file transfer: " << LLAssetStorage::getErrorString( result_code ) << " (" << result_code << ")" << LL_ENDL;
-        // Need to mark data as bad to avoid constant rerequests.
         LLAudioData *adp = gAudiop->getAudioData(uuid);
         if (adp)
-        {   // Make sure everything is cleared
-            adp->setHasDecodeFailed(true);
-            adp->setHasLocalData(false);
-            adp->setHasDecodedData(false);
-            adp->setHasCompletedDecode(true);
+        {
+            const bool transient = (result_code != LL_ERR_ASSET_REQUEST_NOT_IN_DATABASE)
+                                   && (result_code != LL_ERR_FILE_EMPTY);
+            if (transient && adp->getFetchFailCount() < ASSET_RETRY_LIMIT)
+            {
+                adp->scheduleFetchRetry();
+                LL_INFOS("AssetRetry") << "sound retry scheduled: " << uuid
+                                       << " attempt=" << (U32)adp->getFetchFailCount() << LL_ENDL;
+            }
+            else
+            {   // Make sure everything is cleared
+                adp->setHasDecodeFailed(true);
+                adp->setHasLocalData(false);
+                adp->setHasDecodedData(false);
+                adp->setHasCompletedDecode(true);
+            }
         }
     }
     else
@@ -1273,6 +1298,11 @@ void LLAudioEngine::assetCallback(const LLUUID &uuid, LLAssetType::EType type, v
         else
         {
             // LL_INFOS() << "Got asset callback with good audio data for " << uuid << ", making decode request" << LL_ENDL;
+            if (adp->getFetchFailCount() > 0)
+            {
+                ++gAssetOracleSoundRecovered;
+            }
+            adp->resetFetchRetry();
             adp->setHasDecodeFailed(false);
             adp->setHasLocalData(true);
             LLAudioDecodeMgr::getInstance()->addDecodeRequest(uuid);
@@ -1941,6 +1971,37 @@ LLAudioData::LLAudioData(const LLUUID &uuid) :
     {
         setHasLocalData(true);
     }
+}
+
+U32 LLAudioEngine::countStalledSoundFetches()
+{
+    U32 stalled = 0;
+    for (data_map::value_type& data_pair : mAllData)
+    {
+        LLAudioData* adp = data_pair.second;
+        if (adp && adp->isFetchRetryOverdue())
+        {
+            ++stalled;
+        }
+    }
+    return stalled;
+}
+
+bool LLAudioData::isFetchRetryBackoff() const
+{
+    return mFetchFailCount > 0 && LLFrameTimer::getTotalSeconds() < mFetchRetryDue;
+}
+
+bool LLAudioData::isFetchRetryOverdue() const
+{
+    return mFetchFailCount > 0 && !mHasDecodeFailed && !mHasLocalData
+           && LLFrameTimer::getTotalSeconds() > mFetchRetryDue + 120.0;
+}
+
+void LLAudioData::scheduleFetchRetry()
+{
+    ++mFetchFailCount;
+    mFetchRetryDue = LLFrameTimer::getTotalSeconds() + (F64)assetRetryDelaySec(mFetchFailCount);
 }
 
 //return false when the audio file is corrupted.

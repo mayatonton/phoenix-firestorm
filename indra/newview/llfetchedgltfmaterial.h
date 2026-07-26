@@ -83,6 +83,8 @@ protected:
     bool mActive = true;
     bool mFetching = false;
     bool mFetchSuccess = false;
+    U8 mFetchFailCount = 0;
+    F64 mNextRetryDue = 0.0;
     std::vector<std::function<void()>> materialCompleteCallbacks;
 };
 

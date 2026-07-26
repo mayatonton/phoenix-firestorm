@@ -28,7 +28,10 @@
 #include "llgltfmateriallist.h"
 
 #include "llagent.h"
+#include "llassetretry.h"
 #include "llassetstorage.h"
+#include "llcallbacklist.h"
+#include "llframetimer.h"
 #include "lldispatcher.h"
 #include "llfetchedgltfmaterial.h"
 #include "llfilesystem.h"
@@ -523,11 +526,46 @@ void LLGLTFMaterialList::onAssetLoadComplete(const LLUUID& id, LLAssetType::ETyp
     LL_PROFILE_ZONE_NAMED("gltf asset callback");
     AssetLoadUserData* asset_data = (AssetLoadUserData*)user_data;
 
+    static const S32 s_asset_fail_inject = []() -> S32 {
+        const char* e = getenv("AYASTORM_ASSET_FAIL_INJECT");
+        return (e != nullptr) ? atoi(e) : 0;
+    }();
+    if (s_asset_fail_inject > 0 && status == LL_ERR_NOERR
+        && asset_data->mMaterial.notNull()
+        && (S32)asset_data->mMaterial->mFetchFailCount < s_asset_fail_inject)
+    {
+        status = LL_ERR_ASSET_REQUEST_FAILED;
+    }
+
     if (status != LL_ERR_NOERR)
     {
         LL_WARNS("GLTF") << "Error getting material asset data: " << LLAssetStorage::getErrorString(status) << " (" << status << ")" << LL_ENDL;
-        asset_data->mMaterial->materialComplete(false);
+        LLPointer<LLFetchedGLTFMaterial> mat = asset_data->mMaterial;
         delete asset_data;
+        const bool transient = (status != LL_ERR_ASSET_REQUEST_NOT_IN_DATABASE);
+        if (transient && mat->mFetchFailCount < ASSET_RETRY_LIMIT)
+        {
+            ++mat->mFetchFailCount;
+            const F32 delay = assetRetryDelaySec(mat->mFetchFailCount);
+            mat->mNextRetryDue = LLFrameTimer::getTotalSeconds() + (F64)delay + 60.0;
+            LL_INFOS("AssetRetry") << "gltf material retry scheduled: " << id
+                                   << " attempt=" << (U32)mat->mFetchFailCount
+                                   << " delay_s=" << delay << LL_ENDL;
+            doAfterInterval([id, mat]()
+            {
+                if (gAssetStorage == nullptr || mat.isNull() || mat->isLoaded() || !mat->isFetching())
+                {
+                    return;
+                }
+                AssetLoadUserData* retry_data = new AssetLoadUserData();
+                retry_data->mMaterial = mat;
+                gAssetStorage->getAssetData(id, LLAssetType::AT_MATERIAL, onAssetLoadComplete, (void*)retry_data);
+            }, delay);
+        }
+        else
+        {
+            mat->materialComplete(false);
+        }
     }
     else
     {
@@ -615,6 +653,22 @@ void LLGLTFMaterialList::onAssetLoadComplete(const LLUUID& id, LLAssetType::ETyp
             delete asset_data;
         });
     }
+}
+
+U32 LLGLTFMaterialList::countStalledFetches() const
+{
+    const F64 now = LLFrameTimer::getTotalSeconds();
+    U32 stalled = 0;
+    for (uuid_mat_map_t::const_iterator it = mList.begin(); it != mList.end(); ++it)
+    {
+        const LLFetchedGLTFMaterial* mat = it->second;
+        if (mat && mat->isFetching() && mat->mFetchFailCount > 0
+            && mat->mNextRetryDue > 0.0 && now > mat->mNextRetryDue)
+        {
+            ++stalled;
+        }
+    }
+    return stalled;
 }
 
 LLFetchedGLTFMaterial* LLGLTFMaterialList::getMaterial(const LLUUID& id)

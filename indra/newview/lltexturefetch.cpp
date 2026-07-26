@@ -33,6 +33,7 @@
 
 #include "lltexturefetch.h"
 
+#include "llassetretry.h"
 #include "lldir.h"
 #include "llhttpconstants.h"
 #include "llimage.h"
@@ -1144,6 +1145,7 @@ bool LLTextureFetchWorker::doWork(S32 param)
     static const LLCore::HttpStatus http_not_found(HTTP_NOT_FOUND);                     // 404
     static const LLCore::HttpStatus http_service_unavail(HTTP_SERVICE_UNAVAILABLE);     // 503
     static const LLCore::HttpStatus http_not_sat(HTTP_REQUESTED_RANGE_NOT_SATISFIABLE); // 416;
+    static const LLCore::HttpStatus http_forbidden(HTTP_FORBIDDEN);                     // 403
 
     LLMutexLock lock(&mWorkMutex);                                      // +Mw
 
@@ -1208,6 +1210,7 @@ bool LLTextureFetchWorker::doWork(S32 param)
     if (mState == INIT)
     {
         LL_PROFILE_ZONE_NAMED_CATEGORY_TEXTURE("tfwdw - INIT"); //<FS:Beq/> fix incorrect category
+
 
         // <FS> Asset Blacklist
         if (FSAssetBlacklist::getInstance()->isBlacklisted(mID, LLAssetType::AT_TEXTURE))
@@ -2224,6 +2227,49 @@ void LLTextureFetchWorker::onCompleted(LLCore::HttpHandle handle, LLCore::HttpRe
         {
             LL_WARNS(LOG_TXT) << "CURL GET FAILED, status: " << status.toTerseString()
                               << " reason: " << reason << LL_ENDL;
+        }
+        {
+            static LLMutex     s_fail_mutex;
+            static U32         s_fail_403 = 0;
+            static U32         s_fail_404 = 0;
+            static U32         s_fail_5xx = 0;
+            static U32         s_fail_other = 0;
+            static std::string s_first_403_url;
+            static std::string s_last_403_url;
+            static LLTimer     s_fail_timer;
+            LLMutexLock lock(&s_fail_mutex);
+            const S32 code = status.isHttpStatus() ? (S32)status.getType() : 0;
+            if (code == 403)
+            {
+                ++s_fail_403;
+                if (s_first_403_url.empty())
+                {
+                    s_first_403_url = mUrl;
+                }
+                s_last_403_url = mUrl;
+            }
+            else if (code == 404)
+            {
+                ++s_fail_404;
+            }
+            else if (code >= 500 && code < 600)
+            {
+                ++s_fail_5xx;
+            }
+            else
+            {
+                ++s_fail_other;
+            }
+            if (s_fail_timer.getElapsedTimeF32() >= 10.f)
+            {
+                s_fail_timer.reset();
+                LL_WARNS("TexFetchHTTP") << "http fail acc: 403=" << s_fail_403
+                                         << " 404=" << s_fail_404
+                                         << " 5xx=" << s_fail_5xx
+                                         << " other=" << s_fail_other
+                                         << " first403=" << s_first_403_url
+                                         << " last403=" << s_last_403_url << LL_ENDL;
+            }
         }
     }
     else

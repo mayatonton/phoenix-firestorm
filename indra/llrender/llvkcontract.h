@@ -87,6 +87,7 @@ void setPassBucketResolver(U32 (*fn)());
 void watchPickCandidate(U32 localid);
 bool watchPickModeEnabled();
 void watchAddLocal(U32 localid);
+U32 watchTakeFires(U32 localid);
 void watchFbProbe(bool diffuse, const char* reason);
 void watchStageEvent(U32 localid, const char* what, U32 n = 0);
 bool watchLastStage(U32 localid, const char*& what, U32& n, U64& age);

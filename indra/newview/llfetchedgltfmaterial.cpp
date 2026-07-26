@@ -27,6 +27,8 @@
 
 #include "llfetchedgltfmaterial.h"
 
+#include "llassetretry.h"
+
 #include "llviewertexturelist.h"
 #include "llavatarappearancedefines.h"
 #include "llviewerobject.h"
@@ -264,6 +266,14 @@ void LLFetchedGLTFMaterial::materialComplete(bool success)
     llassert(mFetching);
     mFetching = false;
     mFetchSuccess = success;
+    if (success)
+    {
+        if (mFetchFailCount > 0)
+        {
+            ++gAssetOracleGltfRecovered;
+        }
+        mFetchFailCount = 0;
+    }
 
     for (std::function<void()> material_complete : materialCompleteCallbacks)
     {

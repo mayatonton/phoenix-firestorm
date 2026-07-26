@@ -50,6 +50,8 @@ public:
 
     void flushMaterials();
 
+    U32 countStalledFetches() const;
+
     // Queue an modification of a material that we want to send to the simulator.  Call "flushUpdates" to flush pending updates.
     //  id - ID of object to modify
     //  side - TexureEntry index to modify, or -1 for all sides

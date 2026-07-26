@@ -352,7 +352,8 @@ public:
     void clearDrawMap(U32 evict_site);
     void clearDrawMapStaged(const std::unordered_set<LLDrawable*>& preserve,
                             const std::unordered_set<LLDrawable*>& staged,
-                            U32 evict_site);
+                            U32 evict_site,
+                            std::vector<LLDrawable*>* orphans = nullptr);
     void stripDrawRecords(LLDrawable* drawablep, U32 evict_site);
     void validate();
     void validateDrawMap();
@@ -447,6 +448,9 @@ public:
     bool mVkGeoInflight = false;
     bool mVkForceInlineRebuild = false;
     U32 mVkGeoGen = 0;
+    U32 mVkRebuildVisitFrame = 0;
+    U8  mVkRebuildRet = 0;
+    U16 mVkGeoUpdateBlocked = 0;
     U32 mVkLastFireFrame = 0;
 } LL_ALIGN_POSTFIX(16);
 

@@ -199,6 +199,8 @@ public:
     void startNextTransfer();
     static void assetCallback(const LLUUID &uuid, LLAssetType::EType type, void *user_data, S32 result_code, LLExtStat ext_status);
 
+    U32 countStalledSoundFetches();
+
     // <FS:Ansariel> Output device selection
     typedef std::map<LLUUID, std::string> output_device_map_t;
     virtual output_device_map_t getDevices();
@@ -447,6 +449,12 @@ class LLAudioData
     void setHasDecodeFailed(const bool hdf) { mHasDecodeFailed = hdf; }
     void setHasWAVLoadFailed(const bool hwlf) { mHasWAVLoadFailed = hwlf; }
 
+    bool isFetchRetryBackoff() const;
+    bool isFetchRetryOverdue() const;
+    void scheduleFetchRetry();
+    void resetFetchRetry() { mFetchFailCount = 0; mFetchRetryDue = 0.0; }
+    U8 getFetchFailCount() const { return mFetchFailCount; }
+
     friend class LLAudioEngine;  // Severe laziness, bad.
 
   protected:
@@ -456,6 +464,8 @@ class LLAudioData
     bool           mHasDecodedData;      // Set true if the decoded sound file is available on disk
     bool           mHasCompletedDecode;  // Set true when the sound is decoded
     bool           mHasDecodeFailed;     // Set true if decoding failed, meaning the sound asset is bad
+    U8             mFetchFailCount = 0;
+    F64            mFetchRetryDue = 0.0;
     bool mHasWAVLoadFailed;  // Set true if loading the decoded WAV file failed, meaning the sound asset should be decoded instead if
                              // possible
 };

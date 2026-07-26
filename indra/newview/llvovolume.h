@@ -500,6 +500,7 @@ private:
 
     bool mSkinInfoUnavaliable;
     LLConstPointer<LLMeshSkinInfo> mSkinInfo;
+    U32 mMeshRearmGen = 0;
     // statics
 public:
     static F32 sLODSlopDistanceFactor;// Changing this to zero, effectively disables the LOD transition slop

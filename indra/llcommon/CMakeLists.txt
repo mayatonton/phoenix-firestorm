@@ -130,6 +130,7 @@ set(llcommon_HEADER_FILES
     llalignedarray.h
     llapp.h
     llapr.h
+    llassetretry.h
     llassettype.h
     llatomic.h
     llbase32.h

@@ -46,6 +46,24 @@ namespace LLVKBucket
     struct Bucket;
 }
 
+namespace LLVKMdiWatch
+{
+    struct Counters
+    {
+        U32 emit = 0;
+        U32 zvis = 0;
+        U32 zrad = 0;
+        U32 nospan = 0;
+        U32 semit = 0;
+        U32 szvis = 0;
+        U32 szrad = 0;
+    };
+    void setIds(const std::vector<U32>& ids);
+    bool active();
+    void note(U32 id, U32 kind, bool shadow);
+    Counters take(U32 id);
+}
+
 class LLDrawPool
 {
 public:

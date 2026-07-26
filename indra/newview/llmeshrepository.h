@@ -27,6 +27,7 @@
 #ifndef LL_MESH_REPOSITORY_H
 #define LL_MESH_REPOSITORY_H
 
+#include <map>
 #include <unordered_map>
 #include <unordered_set>
 #include "llassettype.h"
@@ -199,6 +200,7 @@ public:
     bool canRetry() const;
     bool isDelayed() const;
     U32 getRetries() { return mRetries; }
+    void setRetries(U32 retries) { mRetries = retries; }
 
 private:
     U32 mRetries;
@@ -312,6 +314,7 @@ public:
             request->setScoreDirty();
         }
     }
+    bool hasLiveRequest() const { return !mRequest.expired(); }
     std::unordered_set<LLVOVolume*> mVolumes;
 private:
     std::weak_ptr<PendingRequestBase> mRequest;
@@ -550,6 +553,18 @@ public:
     typedef std::unordered_map<LLUUID, std::array<S32, LLModel::NUM_LODS> > pending_lod_map;
     pending_lod_map mPendingLOD;
 
+    struct MeshRetryState
+    {
+        U32 mCount = 0;
+        F64 mFirstFail = 0.0;
+    };
+    std::map<LLUUID, MeshRetryState> mHeaderFailCount;
+    std::map<LLUUID, F64> mHeaderRetryDue;
+    std::map<std::pair<LLUUID, S32>, MeshRetryState> mLODFailCount;
+    std::map<LLUUID, MeshRetryState> mSkinFailCount;
+    std::deque<LLUUID> mDecompFailQ;
+    std::deque<LLUUID> mPhysicsFailQ;
+
     // map of mesh ID to skin info (mirrors LLMeshRepository::mSkinMap)
     /// NOTE: LLMeshRepository::mSkinMap is accessed very frequently, so maintain a copy here to avoid mutex overhead
     typedef std::unordered_map<LLUUID, LLPointer<LLMeshSkinInfo>> skin_map;
@@ -592,6 +607,12 @@ public:
 
     bool fetchMeshHeader(const LLVolumeParams& mesh_params);
     bool fetchMeshLOD(const LLVolumeParams& mesh_params, S32 lod);
+    void headerRequestTerminal(const LLVolumeParams& mesh_params);
+    bool scheduleHeaderRetry(const LLVolumeParams& mesh_params);
+    bool scheduleLODRetry(const LLVolumeParams& mesh_params, S32 lod);
+    bool scheduleSkinRetry(const LLUUID& mesh_id);
+    void purgeTerminalHeaders();
+    U32 countStalledHeaderRetries();
     EMeshProcessingResult headerReceived(const LLVolumeParams& mesh_params, U8* data, S32 data_size, U32 flags = 0);
     EMeshProcessingResult lodReceived(const LLVolumeParams& mesh_params, S32 lod, U8* data, S32 data_size);
     bool skinInfoReceived(const LLUUID& mesh_id, U8* data, S32 data_size);
@@ -879,6 +900,8 @@ public:
 
     static LLDeadmanTimer sQuiescentTimer;      // Time-to-complete-mesh-downloads after significant events
 
+    static std::atomic<U32> sRearmGeneration;
+
     // Estimated triangle count of the largest LOD
     F32 getEstTrianglesMax(LLUUID mesh_id);
     F32 getEstTrianglesStreamingCost(LLUUID mesh_id);
@@ -903,6 +926,8 @@ public:
     S32 loadMesh(LLVOVolume* volume, const LLVolumeParams& mesh_params, S32 new_lod = 0, S32 last_lod = -1);
 
     void notifyLoadedMeshes();
+    void logStuckLoadingMeshes();
+    U32 debugLoadingState(const LLUUID& mesh_id, LLVOVolume* vobj);
     bool notifyMeshLoaded(const LLVolumeParams& mesh_params, LLVolume* volume, S32 lod);
     void notifyMeshUnavailable(const LLVolumeParams& mesh_params, S32 request_lod, S32 volume_lod);
     void notifySkinInfoReceived(LLMeshSkinInfo* info);

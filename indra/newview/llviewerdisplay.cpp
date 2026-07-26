@@ -270,6 +270,56 @@ void display_stats()
     {
         s_frame_times_ms.push_back(frame_ms);
     }
+
+    if (LLVKLoader::perfLogEnabled())
+    {
+        static U64 s_prev_ph[16]  = {};
+        static U64 s_prev_mlp[16] = {};
+        U64 d_ph[16];
+        U64 d_mlp[16];
+        for (U32 i = 0; i < 16; ++i)
+        {
+            const U64 ph  = LLVKLoader::gVkPerf.phase_us[i].load();
+            const U64 ml  = LLVKLoader::gVkPerf.mlp_us[i].load();
+            d_ph[i]       = ph - s_prev_ph[i];
+            d_mlp[i]      = ml - s_prev_mlp[i];
+            s_prev_ph[i]  = ph;
+            s_prev_mlp[i] = ml;
+        }
+        static LLTimer s_slow_log_limiter;
+        static U32     s_slow_logged = 0;
+        if (s_slow_log_limiter.getElapsedTimeF32() >= 1.f)
+        {
+            s_slow_log_limiter.reset();
+            s_slow_logged = 0;
+        }
+        if (frame_ms > 100.f && s_slow_logged < 5)
+        {
+            ++s_slow_logged;
+            static const char* ph_names[16] = {
+                "idle","disp","probe","hero","gupd","cull","shad","imp",
+                "img","sort","geom","light","ui","swap","x14","x15" };
+            static const char* mlp_names[16] = {
+                "slot","fence","acq","beg","end","coro","pump","rld",
+                "snap","tio","mesh","trc","x12","x13","x14","x15" };
+            std::string s;
+            for (U32 i = 0; i < 16; ++i)
+            {
+                if (d_ph[i] >= 5000)
+                {
+                    s += llformat(" %s=%.1f", ph_names[i], d_ph[i] / 1000.0);
+                }
+            }
+            for (U32 i = 0; i < 16; ++i)
+            {
+                if (d_mlp[i] >= 5000)
+                {
+                    s += llformat(" M:%s=%.1f", mlp_names[i], d_mlp[i] / 1000.0);
+                }
+            }
+            LL_INFOS() << llformat("SLOWFRAME %.1fms:", frame_ms) << s << LL_ENDL;
+        }
+    }
     constexpr F32 FPS_LOG_FREQUENCY = 10.f;
     if (gRecentFPSTime.getElapsedTimeF32() >= FPS_LOG_FREQUENCY)
     {

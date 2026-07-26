@@ -32,6 +32,7 @@
 #include <ctype.h>
 #include <sstream>
 
+#include "llassetretry.h"
 #include "llaudioengine.h"
 #include "noise.h"
 #include "sound_ids.h"
@@ -6246,6 +6247,28 @@ void LLVOAvatar::updateTextures()
         }
 
         render_avatar = !mCulled; //visible and not culled.
+    }
+
+    if (!isUsingLocalAppearance() && mBakedRearmTimer.getElapsedTimeF32() > 2.f)
+    {
+        mBakedRearmTimer.reset();
+        for (U32 i = 0; i < mBakedTextureDatas.size(); i++)
+        {
+            if (mBakedTextureDatas[i].mIsLoaded
+                || !isTextureDefined(mBakedTextureDatas[i].mTextureIndex))
+            {
+                continue;
+            }
+            LLViewerFetchedTexture* baked_img = LLViewerTextureManager::staticCastToFetchedTexture(
+                getImage(mBakedTextureDatas[i].mTextureIndex, 0), true);
+            if (baked_img && baked_img->getDiscardLevel() >= 0)
+            {
+                LL_INFOS("AssetRetry") << "baked texture rearm apply: " << baked_img->getID()
+                                       << " slot=" << i << LL_ENDL;
+                ++gAssetOracleBakeRearmApplied;
+                useBakedTexture(baked_img->getID());
+            }
+        }
     }
 
     std::vector<bool> layer_baked;

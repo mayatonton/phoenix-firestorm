@@ -34,7 +34,9 @@
 #include "llwindow.h"       // decBusyCount()
 
 #include "llviewercontrol.h"
+#include "llassetretry.h"
 #include "llface.h"
+#include "llvolumemgr.h"
 #include "llvoavatar.h"
 #include "llvkloader.h"
 #include "llviewerobject.h"
@@ -919,6 +921,217 @@ void LLViewerObjectList::updateApparentAngles(LLAgent &agent)
     LLVOAvatar::cullAvatarsByPixelArea();
 }
 
+namespace
+{
+    std::map<LLUUID, F64> sMeshKickNext;
+
+    bool meshKickAllowed(const LLUUID& mesh_id)
+    {
+        const F64 now = LLFrameTimer::getTotalSeconds();
+        if (sMeshKickNext.size() > 8192)
+        {
+            sMeshKickNext.clear();
+        }
+        F64& next = sMeshKickNext[mesh_id];
+        if (now < next)
+        {
+            return false;
+        }
+        next = now + 30.0;
+        return true;
+    }
+}
+
+static void asyncReconcileObject(LLViewerObject* obj)
+{
+    if (obj == nullptr || obj->isDead() || obj->getPCode() != LL_PCODE_VOLUME)
+    {
+        return;
+    }
+    LLVOVolume* vobj = (LLVOVolume*)obj;
+    LLDrawable* drawablep = vobj->mDrawable.get();
+    if (drawablep == nullptr || drawablep->isDead())
+    {
+        return;
+    }
+    LLVolume* volume = vobj->getVolume();
+    if (volume == nullptr)
+    {
+        return;
+    }
+    if (drawablep->isState(LLDrawable::RIGGED | LLDrawable::RIGGED_CHILD))
+    {
+        if (vobj->isMesh() && !volume->isMeshAssetLoaded()
+            && !volume->isMeshAssetUnavaliable()
+            && meshKickAllowed(volume->getParams().getSculptID()))
+        {
+            gMeshRepo.loadMesh(vobj, volume->getParams(),
+                               llclamp(vobj->getLOD(), 0, (S32)LLVolumeLODGroup::NUM_LODS - 1));
+            ++gAssetOracleMeshKick;
+        }
+        return;
+    }
+
+    if (vobj->isMesh() && !volume->isMeshAssetLoaded())
+    {
+        if (volume->isMeshAssetUnavaliable())
+        {
+            return;
+        }
+        if (!meshKickAllowed(volume->getParams().getSculptID()))
+        {
+            return;
+        }
+        gMeshRepo.loadMesh(vobj, volume->getParams(),
+                           llclamp(vobj->getLOD(), 0, (S32)LLVolumeLODGroup::NUM_LODS - 1));
+        ++gAssetOracleMeshKick;
+        {
+            static F64 s_probe_window = 0.0;
+            static U32 s_probe_count  = 0;
+            const F64 now = LLFrameTimer::getTotalSeconds();
+            if (now - s_probe_window >= 10.0)
+            {
+                s_probe_window = now;
+                s_probe_count  = 0;
+            }
+            if (s_probe_count < 8)
+            {
+                ++s_probe_count;
+                const LLVolumeParams& p = volume->getParams();
+                std::ostringstream st;
+                for (S32 i2 = 0; i2 < (S32)LLVolumeLODGroup::NUM_LODS; ++i2)
+                {
+                    LLVolume* sv = LLPrimitive::getVolumeManager()->refVolume(p, i2);
+                    st << (i2 ? "," : "")
+                       << (sv == nullptr ? "n"
+                           : sv->isMeshAssetLoaded() ? "L"
+                           : sv->isMeshAssetUnavaliable() ? "U" : "-");
+                    if (sv != nullptr)
+                    {
+                        LLPrimitive::getVolumeManager()->unrefVolume(sv);
+                    }
+                }
+                LLSpatialGroup* kg = drawablep->getSpatialGroup();
+                LL_WARNS("AssetStuck") << "VKC-KICKPROBE mesh=" << p.getSculptID()
+                                       << " obj=" << vobj->getID()
+                                       << " mlod=" << vobj->getLOD()
+                                       << " vdet=" << LLVolumeLODGroup::getVolumeDetailFromScale(volume->getDetail())
+                                       << " nf=" << volume->getNumVolumeFaces()
+                                       << " act=" << gMeshRepo.getActualMeshLOD(p, vobj->getLOD())
+                                       << " hdr=" << (gMeshRepo.hasHeader(p.getSculptID()) ? 1 : 0)
+                                       << " lods=[" << st.str() << "]"
+                                       << " ent=0x" << std::hex << gMeshRepo.debugLoadingState(p.getSculptID(), vobj) << std::dec
+                                       << " rq=" << (drawablep->isState(LLDrawable::IN_REBUILD_Q) ? 1 : 0)
+                                       << " rv=" << (drawablep->isState(LLDrawable::REBUILD_VOLUME) ? 1 : 0)
+                                       << " gd=" << ((kg != nullptr && kg->hasState(LLSpatialGroup::GEOM_DIRTY | LLSpatialGroup::ALPHA_DIRTY)) ? 1 : 0)
+                                       << " gi=" << ((kg != nullptr && kg->mVkGeoInflight) ? 1 : 0)
+                                       << " rbret=" << (kg != nullptr ? (S32)kg->mVkRebuildRet : -1)
+                                       << " rbage=" << (kg != nullptr ? (S32)((U32)gFrameCount - kg->mVkRebuildVisitFrame) : -1)
+                                       << LL_ENDL;
+            }
+        }
+        return;
+    }
+
+    if (vobj->isMesh())
+    {
+        LLSpatialGroup* lod_group = drawablep->getSpatialGroup();
+        const bool pipeline_maintained = lod_group != nullptr
+            && lod_group->mVkLastFireFrame + 60 >= (U32)gFrameCount;
+        if (!pipeline_maintained)
+        {
+            LLVector3 cam_offset = vobj->getPositionAgent()
+                                   - LLViewerCamera::getInstance()->getOrigin();
+            drawablep->mDistanceWRTCamera = llmax(0.01f, cam_offset.magVec());
+            if (vobj->updateLOD())
+            {
+                ++gAssetOracleLodPromote;
+                return;
+            }
+        }
+    }
+
+    if (drawablep->isState(LLDrawable::IN_REBUILD_Q | LLDrawable::REBUILD_ALL)
+        || drawablep->getNumFaces() <= 0)
+    {
+        return;
+    }
+    LLSpatialGroup* group = drawablep->getSpatialGroup();
+    if (group == nullptr || group->isDead() || group->mVkGeoInflight
+        || group->hasState(LLSpatialGroup::GEOM_DIRTY | LLSpatialGroup::ALPHA_DIRTY))
+    {
+        return;
+    }
+
+    bool any_geom = false;
+    bool any_visible_te = false;
+    for (S32 i = 0; i < drawablep->getNumFaces(); ++i)
+    {
+        LLFace* facep = drawablep->getFace(i);
+        if (facep == nullptr)
+        {
+            continue;
+        }
+        const LLTextureEntry* te = facep->getTextureEntry();
+        if (te != nullptr && (te->getColor().mV[3] > 0.f || te->getGlow() > 0.f))
+        {
+            any_visible_te = true;
+        }
+        if (facep->getGeomCount() > 0 && facep->getIndicesCount() > 0)
+        {
+            any_geom = true;
+            break;
+        }
+    }
+    if (!any_geom && any_visible_te)
+    {
+        gPipeline.markRebuild(drawablep, LLDrawable::REBUILD_GEOMETRY);
+        group->setState(LLSpatialGroup::GEOM_DIRTY);
+        gPipeline.markRebuild(group);
+        ++gAssetOracleGeoRepair;
+        {
+            static F64 s_ef_window = 0.0;
+            static U32 s_ef_count  = 0;
+            const F64 now = LLFrameTimer::getTotalSeconds();
+            if (now - s_ef_window >= 10.0)
+            {
+                s_ef_window = now;
+                s_ef_count  = 0;
+            }
+            if (s_ef_count < 4)
+            {
+                ++s_ef_count;
+                LL_WARNS("AssetStuck") << "VKC-EMPTYFACE obj=" << vobj->getID()
+                                       << " mesh=" << (vobj->isMesh() ? 1 : 0)
+                                       << " loaded=" << (volume->isMeshAssetLoaded() ? 1 : 0)
+                                       << " nf=" << volume->getNumVolumeFaces()
+                                       << " dfaces=" << drawablep->getNumFaces()
+                                       << " gd=" << (group->hasState(LLSpatialGroup::GEOM_DIRTY | LLSpatialGroup::ALPHA_DIRTY) ? 1 : 0)
+                                       << " gi=" << (group->mVkGeoInflight ? 1 : 0)
+                                       << " rbret=" << (S32)group->mVkRebuildRet
+                                       << " rbage=" << (S32)((U32)gFrameCount - group->mVkRebuildVisitFrame)
+                                       << LL_ENDL;
+            }
+        }
+    }
+}
+
+void LLViewerObjectList::asyncReconcileTick()
+{
+    const S32 total = (S32)mObjects.size();
+    if (total <= 0)
+    {
+        return;
+    }
+    static U32 s_cursor = 0;
+    U32 budget = (U32)llmin(500, total);
+    while (budget-- > 0)
+    {
+        s_cursor = (s_cursor + 1) % (U32)total;
+        asyncReconcileObject(mObjects[s_cursor].get());
+    }
+}
+
 void LLViewerObjectList::update(LLAgent &agent)
 {
     LL_PROFILE_ZONE_SCOPED_CATEGORY_NETWORK;
@@ -1140,6 +1353,8 @@ void LLViewerObjectList::update(LLAgent &agent)
         i++;
     }
     */
+
+    asyncReconcileTick();
 
     sample(LLStatViewer::NUM_OBJECTS, mObjects.size());
     sample(LLStatViewer::NUM_ACTIVE_OBJECTS, idle_count);

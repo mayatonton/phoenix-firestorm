@@ -31,11 +31,26 @@
 
 #include "llmotioncontroller.h"
 #include "llfasttimer.h"
+#include "llassetretry.h"
+#include "llframetimer.h"
 #include "llkeyframemotion.h"
 #include "llmath.h"
 #include "lltimer.h"
 #include "llanimationstates.h"
 #include "llstl.h"
+#include <map>
+
+namespace
+{
+    struct MotionAssetRetryEntry
+    {
+        U8   count     = 0;
+        F64  next_time = 0.0;
+        bool terminal  = false;
+        bool armed     = false;
+    };
+    std::map<LLUUID, MotionAssetRetryEntry> sMotionAssetRetry;
+}
 
 // This is why LL_CHARACTER_MAX_ANIMATED_JOINTS needs to be a multiple of 4.
 const S32 NUM_JOINT_SIGNATURE_STRIDES = LL_CHARACTER_MAX_ANIMATED_JOINTS / 4;
@@ -123,6 +138,31 @@ LLMotion *LLMotionRegistry::createMotion( const LLUUID &id )
 // LLMotionController class
 //-----------------------------------------------------------------------------
 //-----------------------------------------------------------------------------
+
+U32 LLMotionController::countStalledAssetRetries()
+{
+    const F64 now = LLFrameTimer::getTotalSeconds();
+    U32 stalled = 0;
+    for (std::map<LLUUID, MotionAssetRetryEntry>::iterator it = sMotionAssetRetry.begin();
+         it != sMotionAssetRetry.end(); )
+    {
+        std::map<LLUUID, MotionAssetRetryEntry>::iterator cur = it++;
+        if (cur->second.terminal || cur->second.count == 0)
+        {
+            continue;
+        }
+        const F64 overdue = now - cur->second.next_time;
+        if (overdue > 600.0)
+        {
+            sMotionAssetRetry.erase(cur);
+        }
+        else if (overdue > 120.0)
+        {
+            ++stalled;
+        }
+    }
+    return stalled;
+}
 
 //-----------------------------------------------------------------------------
 // LLMotionController()
@@ -358,6 +398,14 @@ LLMotion* LLMotionController::createMotion( const LLUUID &id )
     // if not, we need to create one
     if (!motion)
     {
+        std::map<LLUUID, MotionAssetRetryEntry>::iterator retry_it = sMotionAssetRetry.find(id);
+        if (retry_it != sMotionAssetRetry.end()
+            && (retry_it->second.terminal
+                || LLFrameTimer::getTotalSeconds() < retry_it->second.next_time))
+        {
+            return NULL;
+        }
+
         // look up constructor and create it
         motion = sRegistry.createMotion(id);
         if (!motion)
@@ -377,16 +425,34 @@ LLMotion* LLMotionController::createMotion( const LLUUID &id )
         switch(stat)
         {
         case LLMotion::STATUS_FAILURE:
+        {
             LL_INFOS() << "Motion " << id << " init failed." << LL_ENDL;
+            MotionAssetRetryEntry& retry = sMotionAssetRetry[id];
+            if (motion->isFetchFailureTransient() && retry.count < ASSET_RETRY_LIMIT)
+            {
+                ++retry.count;
+                retry.next_time = LLFrameTimer::getTotalSeconds() + (F64)assetRetryDelaySec(retry.count);
+                retry.armed     = true;
+                LL_INFOS("AssetRetry") << "motion retry scheduled: " << id
+                                       << " attempt=" << (U32)retry.count << LL_ENDL;
+                mLoadingMotions.insert(motion);
+                break;
+            }
+            retry.terminal = true;
             sRegistry.markBad(id);
             delete motion;
             return NULL;
+        }
         case LLMotion::STATUS_HOLD:
             mLoadingMotions.insert(motion);
             break;
         case LLMotion::STATUS_SUCCESS:
             // add motion to our list
             mLoadedMotions.insert(motion);
+            if (sMotionAssetRetry.erase(id) > 0)
+            {
+                ++gAssetOracleMotionRecovered;
+            }
             break;
         default:
             LL_ERRS() << "Invalid initialization status" << LL_ENDL;
@@ -797,12 +863,31 @@ void LLMotionController::updateLoadingMotions()
         {
             continue; // maybe shouldn't happen but i've seen it -MG
         }
+        {
+            std::map<LLUUID, MotionAssetRetryEntry>::iterator wait_it = sMotionAssetRetry.find(motionp->getID());
+            if (wait_it != sMotionAssetRetry.end() && !wait_it->second.terminal && wait_it->second.count > 0)
+            {
+                if (LLFrameTimer::getTotalSeconds() < wait_it->second.next_time)
+                {
+                    continue;
+                }
+                if (wait_it->second.armed)
+                {
+                    wait_it->second.armed = false;
+                    motionp->resetFetchForRetry();
+                }
+            }
+        }
         LLMotion::LLMotionInitStatus status = motionp->onInitialize(mCharacter);
         if (status == LLMotion::STATUS_SUCCESS)
         {
             mLoadingMotions.erase(curiter);
             // add motion to our loaded motion list
             mLoadedMotions.insert(motionp);
+            if (sMotionAssetRetry.erase(motionp->getID()) > 0)
+            {
+                ++gAssetOracleMotionRecovered;
+            }
             // this motion should be playing
             if (!motionp->isStopped())
             {
@@ -812,15 +897,28 @@ void LLMotionController::updateLoadingMotions()
         else if (status == LLMotion::STATUS_FAILURE)
         {
             LL_INFOS() << "Motion " << motionp->getID() << " init failed." << LL_ENDL;
-            sRegistry.markBad(motionp->getID());
-            mLoadingMotions.erase(curiter);
-            motion_set_t::iterator found_it = mDeprecatedMotions.find(motionp);
-            if (found_it != mDeprecatedMotions.end())
+            MotionAssetRetryEntry& retry = sMotionAssetRetry[motionp->getID()];
+            if (motionp->isFetchFailureTransient() && retry.count < ASSET_RETRY_LIMIT)
             {
-                mDeprecatedMotions.erase(found_it);
+                ++retry.count;
+                retry.next_time = LLFrameTimer::getTotalSeconds() + (F64)assetRetryDelaySec(retry.count);
+                retry.armed     = true;
+                LL_INFOS("AssetRetry") << "motion retry scheduled: " << motionp->getID()
+                                       << " attempt=" << (U32)retry.count << LL_ENDL;
             }
-            mAllMotions.erase(motionp->getID());
-            delete motionp;
+            else
+            {
+                retry.terminal = true;
+                sRegistry.markBad(motionp->getID());
+                mLoadingMotions.erase(curiter);
+                motion_set_t::iterator found_it = mDeprecatedMotions.find(motionp);
+                if (found_it != mDeprecatedMotions.end())
+                {
+                    mDeprecatedMotions.erase(found_it);
+                }
+                mAllMotions.erase(motionp->getID());
+                delete motionp;
+            }
         }
     }
 }

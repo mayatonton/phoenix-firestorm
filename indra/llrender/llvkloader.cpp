@@ -923,6 +923,25 @@ namespace
 
     std::atomic<U64>        sPESubmitUs{0};
     std::atomic<U64>        sPEPresentUs{0};
+    std::atomic<U64>        sPEPrsMainUs{0};
+    std::atomic<U64>        sPEPrsAuxUs{0};
+    std::atomic<U64>        sPEPrsLockUs{0};
+    std::atomic<U64>        sPEPwMainUs{0};
+    std::atomic<U64>        sPEPwAuxUs{0};
+    std::atomic<U64>        sAuxBeginFenceUs{0};
+    std::atomic<U64>        sAuxBeginAcqUs{0};
+    std::atomic<U64>        sProdEnqToSubUs{0};
+    std::atomic<U32>        sProdSubCount{0};
+    std::atomic<U64>        sProdEnqMonoUs{0};
+    std::atomic<U32>        sProdCheckFirstReady{0};
+    std::atomic<U32>        sProdCheckTotalReady{0};
+    std::atomic<U32>        sProdChecksSinceSubmit{0};
+
+    inline U64 vkMonoUs()
+    {
+        return (U64)std::chrono::duration_cast<std::chrono::microseconds>(
+            std::chrono::steady_clock::now().time_since_epoch()).count();
+    }
     bool                    sPresentWaitEnabled = false;
     std::atomic<U64>        sPresentIdCounter{0};
     VkPresentModeKHR        sActivePresentMode = VK_PRESENT_MODE_FIFO_KHR;
@@ -986,6 +1005,11 @@ namespace
             si.pSignalSemaphores    = &job.signal_semaphore;
         }
 
+        if (!job.is_frame && job.fence != VK_NULL_HANDLE && job.fence == sAsyncProducerFence)
+        {
+            sProdEnqToSubUs += vkMonoUs() - sProdEnqMonoUs.load();
+            ++sProdSubCount;
+        }
         const auto t0 = std::chrono::steady_clock::now();
         VkResult sr = vkQueueSubmit(sGraphicsQueue, 1, &si, job.fence);
         if (sr == VK_SUCCESS && job.wait_idle)
@@ -1071,11 +1095,17 @@ namespace
                     present_id_info.pNext          = present_info.pNext;
                     present_info.pNext             = &present_id_info;
                 }
+                const bool prs_aux = (t.swapchain != sSwapchain);
                 const auto p0 = std::chrono::steady_clock::now();
                 VkResult pr;
                 {
                     std::lock_guard<std::mutex> lk(sSwapchainAccessMutex);
+                    const auto p1 = std::chrono::steady_clock::now();
+                    sPEPrsLockUs += (U64)std::chrono::duration_cast<std::chrono::microseconds>(p1 - p0).count();
                     pr = vkQueuePresentKHR(sGraphicsQueue, &present_info);
+                    (prs_aux ? sPEPrsAuxUs : sPEPrsMainUs) +=
+                        (U64)std::chrono::duration_cast<std::chrono::microseconds>(
+                            std::chrono::steady_clock::now() - p1).count();
                 }
                 sPEPresentUs += (U64)std::chrono::duration_cast<std::chrono::microseconds>(
                     std::chrono::steady_clock::now() - p0).count();
@@ -1092,7 +1122,11 @@ namespace
                 }
                 else if (sPresentWaitEnabled && pr == VK_SUCCESS && this_present_id != 0)
                 {
+                    const auto w0 = std::chrono::steady_clock::now();
                     VkResult wr = vkWaitForPresentKHR(sDevice, t.swapchain, this_present_id, 100000000ull);
+                    (prs_aux ? sPEPwAuxUs : sPEPwMainUs) +=
+                        (U64)std::chrono::duration_cast<std::chrono::microseconds>(
+                            std::chrono::steady_clock::now() - w0).count();
                     if (wr == VK_ERROR_DEVICE_LOST)
                     {
                         sVkDeviceLost.store(true, std::memory_order_release);
@@ -5309,8 +5343,14 @@ bool asyncProducerTryComplete()
     {
         return false;
     }
+    const U32 checks = sProdChecksSinceSubmit.fetch_add(1) + 1;
     if (vkGetFenceStatus(sDevice, sAsyncProducerFence) == VK_SUCCESS)
     {
+        ++sProdCheckTotalReady;
+        if (checks == 1)
+        {
+            ++sProdCheckFirstReady;
+        }
         vkResetFences(sDevice, 1, &sAsyncProducerFence);
         sAsyncProducerInFlight = false;
         return true;
@@ -5717,7 +5757,19 @@ bool endFrame()
                     const U32 prod = sAsyncProducerSubmitCount - s_last_prod;
                     s_last_prod = sAsyncProducerSubmitCount;
                     LL_INFOS("VkPerf") << "uiscene consumer_fps=" << ((F64)frames / elapsed)
-                                       << " producer_fps=" << ((F64)prod / elapsed) << LL_ENDL;
+                                       << " producer_fps=" << ((F64)prod / elapsed)
+                                       << " ready1st=" << sProdCheckFirstReady.exchange(0)
+                                       << "/" << sProdCheckTotalReady.exchange(0)
+                                       << " enq2sub_ms=" << ((F64)sProdEnqToSubUs.exchange(0) / 1000.0)
+                                       << "/" << sProdSubCount.exchange(0)
+                                       << " prs_main=" << ((F64)sPEPrsMainUs.exchange(0) / 1000.0)
+                                       << " prs_aux=" << ((F64)sPEPrsAuxUs.exchange(0) / 1000.0)
+                                       << " prs_lock=" << ((F64)sPEPrsLockUs.exchange(0) / 1000.0)
+                                       << " pw_main=" << ((F64)sPEPwMainUs.exchange(0) / 1000.0)
+                                       << " pw_aux=" << ((F64)sPEPwAuxUs.exchange(0) / 1000.0)
+                                       << " auxfw=" << ((F64)sAuxBeginFenceUs.exchange(0) / 1000.0)
+                                       << " auxacq=" << ((F64)sAuxBeginAcqUs.exchange(0) / 1000.0)
+                                       << LL_ENDL;
                 }
                 const U64 draws = gVkPerf.desc_bind.load() + gVkPerf.desc_skip.load();
                 LL_INFOS("VkPerf") << "frames=" << frames
@@ -5875,6 +5927,7 @@ bool endFrame()
                                    << " stg_mb=" << (sOneShotStagingBytes.load() >> 20)
                                    << " | geo enq=" << gVkPerf.geo_enq.load()
                                    << " pub=" << gVkPerf.geo_pub.load()
+                                   << " orph=" << gVkPerf.geo_orphan.load()
                                    << " pub_ms=" << (gVkPerf.geo_pub_us.load() / 1000.0)
                                    << " dis=" << gVkPerf.geo_dis.load()
                                    << " inl=" << gVkPerf.geo_inl.load()
@@ -6125,6 +6178,8 @@ bool endFrame()
             apjob.is_frame = false;
             apjob.cmd      = sAsyncProducerCommandBuffer;
             apjob.fence    = sAsyncProducerFence;
+            sProdEnqMonoUs.store(vkMonoUs());
+            sProdChecksSinceSubmit.store(0);
             peEnqueue(std::move(apjob));
             sAsyncProducerInFlight        = true;
             sAsyncProducerSubmitMonotonic = sMonotonicFrameCount;
@@ -8634,7 +8689,7 @@ bool submitOneShotVkFromPool(VkCommandBuffer cmd, VkCommandPool pool, VkBuffer s
                              VmaAllocation staging_allocation, U32 staging_bytes)
 {
     tickOneShotFreeQueue();
-    const U64 byte_cap = tTexWorkerThread ? (256ull << 20) : ~0ull;
+    const U64 byte_cap = 256ull << 20;
     for (U32 i = 0; i < 20; ++i)
     {
         bool over = false;
@@ -12860,7 +12915,9 @@ bool auxWindowBeginUIFrameVk()
     const U32 slot = sFrameIndex % FRAMES_IN_FLIGHT;
     if (aw.fenceInFlight[slot])
     {
+        const U64 f0 = vkMonoUs();
         vkWaitForFences(sDevice, 1, &aw.fences[slot], VK_TRUE, UINT64_MAX);
+        sAuxBeginFenceUs += vkMonoUs() - f0;
         vkResetFences(sDevice, 1, &aw.fences[slot]);
         aw.fenceInFlight[slot] = false;
     }
@@ -12868,9 +12925,11 @@ bool auxWindowBeginUIFrameVk()
     U32 image_index = 0;
     VkResult ar;
     {
+        const U64 a0 = vkMonoUs();
         std::lock_guard<std::mutex> lk(sSwapchainAccessMutex);
         ar = vkAcquireNextImageKHR(sDevice, aw.swapchain, UINT64_MAX,
                                    aw.imageAvailable[slot], VK_NULL_HANDLE, &image_index);
+        sAuxBeginAcqUs += vkMonoUs() - a0;
     }
     if (ar == VK_ERROR_OUT_OF_DATE_KHR)
     {

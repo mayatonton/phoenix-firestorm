@@ -34,6 +34,7 @@
 #include "llmeshrepository.h"
 
 #include "llagent.h"
+#include "llassetretry.h"
 #include "llappviewer.h"
 #include "llbufferstream.h"
 #include "llcallbacklist.h"
@@ -372,6 +373,8 @@ constexpr long LARGE_MESH_XFER_TIMEOUT = 600L;              // Seconds to comple
 
 constexpr U32 DOWNLOAD_RETRY_LIMIT = 8;
 constexpr F32 DOWNLOAD_RETRY_DELAY = 0.5f; // seconds
+constexpr F64 MESH_RETRY_WINDOW_SEC = 600.0;
+constexpr U32 MESH_RETRY_MAX_SHIFT = 7;
 
 // Would normally like to retry on uploads as some
 // retryable failures would be recoverable.  Unfortunately,
@@ -415,6 +418,17 @@ std::atomic<U32> LLMeshRepository::sCacheWrites = 0;
 U32 LLMeshRepository::sMaxLockHoldoffs = 0;
 
 LLDeadmanTimer LLMeshRepository::sQuiescentTimer(15.0, false);  // true -> gather cpu metrics
+
+std::atomic<U32> LLMeshRepository::sRearmGeneration(0);
+
+static S32 meshAssetFailInject()
+{
+    static const S32 inject = []() -> S32 {
+        const char* e = getenv("AYASTORM_ASSET_FAIL_INJECT");
+        return (e != nullptr) ? atoi(e) : 0;
+    }();
+    return inject;
+}
 
 namespace {
     // The NoOpDeletor is used when passing certain objects (generally the LLMeshUploadThread)
@@ -680,6 +694,7 @@ public:
     virtual void onCompleted(LLCore::HttpHandle handle, LLCore::HttpResponse * response);
     virtual void processData(LLCore::BufferArray * body, S32 body_offset, U8 * data, S32 data_size) = 0;
     virtual void processFailure(LLCore::HttpStatus status) = 0;
+    virtual bool wantInjectFailure() const { return false; }
 
 public:
     LLVolumeParams mMeshParams;
@@ -714,6 +729,7 @@ public:
 public:
     virtual void processData(LLCore::BufferArray * body, S32 body_offset, U8 * data, S32 data_size);
     virtual void processFailure(LLCore::HttpStatus status);
+    virtual bool wantInjectFailure() const;
 };
 
 
@@ -1202,7 +1218,8 @@ void LLMeshRepoThread::run()
                     }
                     else
                     {
-                        LL_DEBUGS() << "mHeaderReqQ failed: " << req.mMeshParams << LL_ENDL;
+                        LL_WARNS(LOG_MESH) << "mHeaderReqQ failed: " << req.mMeshParams << LL_ENDL;
+                        headerRequestTerminal(req.mMeshParams);
                     }
                 }
             }
@@ -1514,6 +1531,149 @@ void LLMeshRepoThread::constructUrl(LLUUID mesh_id, std::string * url, int * leg
 
     *url = res_url;
     *legacy_version = res_version; // <FS:Ansariel> [UDP Assets]
+}
+
+void LLMeshRepoThread::headerRequestTerminal(const LLVolumeParams& mesh_params)
+{
+    const LLUUID& mesh_id = mesh_params.getSculptID();
+    {
+        LLMutexLock lock(mPendingMutex);
+        mPendingLOD.erase(mesh_id);
+    }
+    {
+        LLMutexLock lock(mMutex);
+        mHeaderFailCount.erase(mesh_id);
+        mHeaderRetryDue.erase(mesh_id);
+    }
+    LL_WARNS(LOG_MESH) << "Mesh header terminally unavailable.  ID:  " << mesh_id << LL_ENDL;
+    LLMutexLock lock(mLoadedMutex);
+    for (S32 i = 0; i < LLVolumeLODGroup::NUM_LODS; ++i)
+    {
+        mUnavailableQ.push_back(LODRequest(mesh_params, i));
+    }
+}
+
+bool LLMeshRepoThread::scheduleHeaderRetry(const LLVolumeParams& mesh_params)
+{
+    const LLUUID& mesh_id = mesh_params.getSculptID();
+    const F64 now = LLFrameTimer::getTotalSeconds();
+    LLMutexLock lock(mMutex);
+    MeshRetryState& state = mHeaderFailCount[mesh_id];
+    if (state.mFirstFail == 0.0)
+    {
+        state.mFirstFail = now;
+    }
+    else if (now - state.mFirstFail >= MESH_RETRY_WINDOW_SEC)
+    {
+        return false;
+    }
+    const U32 shift = llmin(state.mCount, MESH_RETRY_MAX_SHIFT);
+    HeaderRequest req(mesh_params);
+    req.setRetries(shift);
+    req.updateTime();
+    ++state.mCount;
+    mHeaderRetryDue[mesh_id] = now + (F64)(DOWNLOAD_RETRY_DELAY * (F32)(1 << shift)) + 60.0;
+    mHeaderReqQ.push(req);
+    LL_INFOS("AssetRetry") << "mesh header retry scheduled: " << mesh_id
+                           << " attempt=" << state.mCount << LL_ENDL;
+    return true;
+}
+
+bool LLMeshRepoThread::scheduleLODRetry(const LLVolumeParams& mesh_params, S32 lod)
+{
+    const LLUUID& mesh_id = mesh_params.getSculptID();
+    const F64 now = LLFrameTimer::getTotalSeconds();
+    LLMutexLock lock(mMutex);
+    MeshRetryState& state = mLODFailCount[std::make_pair(mesh_id, lod)];
+    if (state.mFirstFail == 0.0)
+    {
+        state.mFirstFail = now;
+    }
+    else if (now - state.mFirstFail >= MESH_RETRY_WINDOW_SEC)
+    {
+        return false;
+    }
+    const U32 shift = llmin(state.mCount, MESH_RETRY_MAX_SHIFT);
+    LODRequest req(mesh_params, lod);
+    req.setRetries(shift);
+    req.updateTime();
+    ++state.mCount;
+    mLODReqQ.push(req);
+    ++LLMeshRepository::sLODProcessing;
+    LL_INFOS("AssetRetry") << "mesh lod retry scheduled: " << mesh_id
+                           << " lod=" << lod << " attempt=" << state.mCount << LL_ENDL;
+    return true;
+}
+
+bool LLMeshRepoThread::scheduleSkinRetry(const LLUUID& mesh_id)
+{
+    const F64 now = LLFrameTimer::getTotalSeconds();
+    LLMutexLock lock(mMutex);
+    MeshRetryState& state = mSkinFailCount[mesh_id];
+    if (state.mFirstFail == 0.0)
+    {
+        state.mFirstFail = now;
+    }
+    else if (now - state.mFirstFail >= MESH_RETRY_WINDOW_SEC)
+    {
+        return false;
+    }
+    const U32 shift = llmin(state.mCount, MESH_RETRY_MAX_SHIFT);
+    UUIDBasedRequest req(mesh_id);
+    req.setRetries(shift);
+    req.updateTime();
+    ++state.mCount;
+    mSkinRequests.push_back(req);
+    LL_INFOS("AssetRetry") << "mesh skin retry scheduled: " << mesh_id
+                           << " attempt=" << state.mCount << LL_ENDL;
+    return true;
+}
+
+void LLMeshRepoThread::purgeTerminalHeaders()
+{
+    U32 purged = 0;
+    {
+        LLMutexLock lock(mHeaderMutex);
+        for (mesh_header_map::iterator it = mMeshHeader.begin(); it != mMeshHeader.end();)
+        {
+            if (it->second.m404)
+            {
+                it = mMeshHeader.erase(it);
+                ++purged;
+            }
+            else
+            {
+                ++it;
+            }
+        }
+    }
+    {
+        LLMutexLock lock(mMutex);
+        mHeaderFailCount.clear();
+        mHeaderRetryDue.clear();
+        mLODFailCount.clear();
+        mSkinFailCount.clear();
+    }
+    if (purged > 0)
+    {
+        LL_INFOS("AssetRetry") << "mesh terminal headers purged on region change: " << purged << LL_ENDL;
+    }
+}
+
+U32 LLMeshRepoThread::countStalledHeaderRetries()
+{
+    const F64 now = LLFrameTimer::getTotalSeconds();
+    U32 stalled = 0;
+    LLMutexLock lock(mMutex);
+    for (std::map<LLUUID, F64>::const_iterator it = mHeaderRetryDue.begin();
+         it != mHeaderRetryDue.end(); ++it)
+    {
+        if (now > it->second + 60.0)
+        {
+            ++stalled;
+        }
+    }
+    return stalled;
 }
 
 // Issue an HTTP GET request with byte range using the right
@@ -2098,6 +2258,10 @@ bool LLMeshRepoThread::fetchMeshHeader(const LLVolumeParams& mesh_params)
             mHttpRequestSet.insert(handler);
         }
     }
+    else
+    {
+        retval = false;
+    }
 
     return retval;
 }
@@ -2396,6 +2560,20 @@ EMeshProcessingResult LLMeshRepoThread::headerReceived(const LLVolumeParams& mes
             LLMutexLock lock(mHeaderMutex);
             mMeshHeader[mesh_id] = header;
             LLMeshRepository::sCacheBytesHeaders += (U32)header_size;
+        }
+
+        {
+            LLMutexLock lock(mMutex);
+            std::map<LLUUID, MeshRetryState>::iterator fail_it = mHeaderFailCount.find(mesh_id);
+            if (fail_it != mHeaderFailCount.end())
+            {
+                if (fail_it->second.mCount > 0)
+                {
+                    ++gAssetOracleMeshRecovered;
+                }
+                mHeaderFailCount.erase(fail_it);
+            }
+            mHeaderRetryDue.erase(mesh_id);
         }
 
         // immediately request SkinInfo since we'll need it before we can render any LoD if it is present
@@ -3529,7 +3707,8 @@ void LLMeshRepoThread::notifyLoadedMeshes()
         }
     }
 
-    if (!mSkinInfoQ.empty() || !mSkinUnavailableQ.empty() || !mDecompositionQ.empty() || !mPhysicsQ.empty())
+    if (!mSkinInfoQ.empty() || !mSkinUnavailableQ.empty() || !mDecompositionQ.empty() || !mPhysicsQ.empty()
+        || !mDecompFailQ.empty() || !mPhysicsFailQ.empty())
     {
         if (mLoadedMutex->trylock())
         {
@@ -3538,6 +3717,8 @@ void LLMeshRepoThread::notifyLoadedMeshes()
             std::deque<UUIDBasedRequest> skin_info_unavail_q;
             std::list<LLModel::Decomposition*> decomp_q;
             std::list<LLModel::Decomposition*> physics_q;
+            std::deque<LLUUID> decomp_fail_q;
+            std::deque<LLUUID> physics_fail_q;
 
             if (! mSkinInfoQ.empty())
             {
@@ -3557,6 +3738,16 @@ void LLMeshRepoThread::notifyLoadedMeshes()
             if (!mPhysicsQ.empty())
             {
                 physics_q.swap(mPhysicsQ);
+            }
+
+            if (!mDecompFailQ.empty())
+            {
+                decomp_fail_q.swap(mDecompFailQ);
+            }
+
+            if (!mPhysicsFailQ.empty())
+            {
+                physics_fail_q.swap(mPhysicsFailQ);
             }
 
             mLoadedMutex->unlock();
@@ -3583,6 +3774,18 @@ void LLMeshRepoThread::notifyLoadedMeshes()
             {
                 gMeshRepo.notifyDecompositionReceived(physics_q.front(), true);
                 physics_q.pop_front();
+            }
+
+            while (!decomp_fail_q.empty())
+            {
+                gMeshRepo.mLoadingDecompositions.erase(decomp_fail_q.front());
+                decomp_fail_q.pop_front();
+            }
+
+            while (!physics_fail_q.empty())
+            {
+                gMeshRepo.mLoadingPhysicsShapes.erase(physics_fail_q.front());
+                physics_fail_q.pop_front();
             }
         }
     }
@@ -3682,6 +3885,11 @@ void LLMeshHandlerBase::onCompleted(LLCore::HttpHandle handle, LLCore::HttpRespo
     if (! status || MESH_HTTP_RESPONSE_FAILED)
     {
         processFailure(status);
+        ++LLMeshRepository::sHTTPErrorCount;
+    }
+    else if (wantInjectFailure())
+    {
+        processFailure(LLCore::HttpStatus(HTTP_INTERNAL_ERROR));
         ++LLMeshRepository::sHTTPErrorCount;
     }
     else
@@ -3801,19 +4009,39 @@ LLMeshHeaderHandler::~LLMeshHeaderHandler()
     }
 }
 
+bool LLMeshHeaderHandler::wantInjectFailure() const
+{
+    const S32 inject = meshAssetFailInject();
+    if (inject <= 0)
+    {
+        return false;
+    }
+    LLMutexLock lock(gMeshRepo.mThread->mMutex);
+    std::map<LLUUID, LLMeshRepoThread::MeshRetryState>::const_iterator it = gMeshRepo.mThread->mHeaderFailCount.find(mMeshParams.getSculptID());
+    const U32 count = (it != gMeshRepo.mThread->mHeaderFailCount.end()) ? it->second.mCount : 0;
+    return (S32)count < inject;
+}
+
 void LLMeshHeaderHandler::processFailure(LLCore::HttpStatus status)
 {
+    static const LLCore::HttpStatus not_found(HTTP_NOT_FOUND);
+    static const LLCore::HttpStatus gone(HTTP_GONE);
+    const bool transient = (status != not_found) && (status != gone);
+    if (transient && gMeshRepo.mThread->scheduleHeaderRetry(mMeshParams))
+    {
+        LL_INFOS(LOG_MESH) << "Error during mesh header handling.  ID:  " << mMeshParams.getSculptID()
+                           << ", Reason:  " << status.toString()
+                           << " (" << status.toTerseString() << ").  Retry scheduled."
+                           << LL_ENDL;
+        return;
+    }
+
     LL_WARNS(LOG_MESH) << "Error during mesh header handling.  ID:  " << mMeshParams.getSculptID()
                        << ", Reason:  " << status.toString()
                        << " (" << status.toTerseString() << ").  Not retrying."
                        << LL_ENDL;
 
-    // Can't get the header so none of the LODs will be available
-    LLMutexLock lock(gMeshRepo.mThread->mLoadedMutex);
-    for (int i(0); i < LLVolumeLODGroup::NUM_LODS; ++i)
-    {
-        gMeshRepo.mThread->mUnavailableQ.push_back(LLMeshRepoThread::LODRequest(mMeshParams, i));
-    }
+    gMeshRepo.mThread->headerRequestTerminal(mMeshParams);
 }
 
 void LLMeshHeaderHandler::processData(LLCore::BufferArray * /* body */, S32 /* body_offset */,
@@ -3838,12 +4066,7 @@ void LLMeshHeaderHandler::processData(LLCore::BufferArray * /* body */, S32 /* b
                            << ", Reason: " << res << " Not retrying."
                            << LL_ENDL;
 
-        // Can't get the header so none of the LODs will be available
-        LLMutexLock lock(gMeshRepo.mThread->mLoadedMutex);
-        for (int i(0); i < LLVolumeLODGroup::NUM_LODS; ++i)
-        {
-            gMeshRepo.mThread->mUnavailableQ.push_back(LLMeshRepoThread::LODRequest(mMeshParams, i));
-        }
+        gMeshRepo.mThread->headerRequestTerminal(mMeshParams);
     }
     else if (data && data_size > 0)
     {
@@ -3945,6 +4168,18 @@ LLMeshLODHandler::~LLMeshLODHandler()
 
 void LLMeshLODHandler::processFailure(LLCore::HttpStatus status)
 {
+    static const LLCore::HttpStatus not_found(HTTP_NOT_FOUND);
+    static const LLCore::HttpStatus gone(HTTP_GONE);
+    const bool transient = (status != not_found) && (status != gone);
+    if (transient && gMeshRepo.mThread->scheduleLODRetry(mMeshParams, mLOD))
+    {
+        LL_INFOS(LOG_MESH) << "Error during mesh LOD handling.  ID:  " << mMeshParams.getSculptID()
+                           << ", Reason:  " << status.toString()
+                           << " (" << status.toTerseString() << ").  Retry scheduled."
+                           << LL_ENDL;
+        return;
+    }
+
     LL_WARNS(LOG_MESH) << "Error during mesh LOD handling.  ID:  " << mMeshParams.getSculptID()
                        << ", Reason:  " << status.toString()
                        << " (" << status.toTerseString() << ").  Not retrying."
@@ -4066,6 +4301,18 @@ LLMeshSkinInfoHandler::~LLMeshSkinInfoHandler()
 
 void LLMeshSkinInfoHandler::processFailure(LLCore::HttpStatus status)
 {
+    static const LLCore::HttpStatus not_found(HTTP_NOT_FOUND);
+    static const LLCore::HttpStatus gone(HTTP_GONE);
+    const bool transient = (status != not_found) && (status != gone);
+    if (transient && gMeshRepo.mThread->scheduleSkinRetry(mMeshID))
+    {
+        LL_INFOS(LOG_MESH) << "Error during mesh skin info handling.  ID:  " << mMeshID
+                           << ", Reason:  " << status.toString()
+                           << " (" << status.toTerseString() << ").  Retry scheduled."
+                           << LL_ENDL;
+        return;
+    }
+
     LL_WARNS(LOG_MESH) << "Error during mesh skin info handling.  ID:  " << mMeshID
                        << ", Reason:  " << status.toString()
                        << " (" << status.toTerseString() << ").  Not retrying."
@@ -4185,8 +4432,8 @@ void LLMeshDecompositionHandler::processFailure(LLCore::HttpStatus status)
                        << ", Reason:  " << status.toString()
                        << " (" << status.toTerseString() << ").  Not retrying."
                        << LL_ENDL;
-    // *TODO:  Mark mesh unavailable on error.  For now, simply leave
-    // request unfulfilled rather than retry forever.
+    LLMutexLock lock(gMeshRepo.mThread->mLoadedMutex);
+    gMeshRepo.mThread->mDecompFailQ.push_back(mMeshID);
 }
 
 void LLMeshDecompositionHandler::processData(LLCore::BufferArray * /* body */, S32 /* body_offset */,
@@ -4241,7 +4488,8 @@ void LLMeshDecompositionHandler::processData(LLCore::BufferArray * /* body */, S
         LL_WARNS(LOG_MESH) << "Error during mesh decomposition processing.  ID:  " << mMeshID
                            << ", Unknown reason.  Not retrying."
                            << LL_ENDL;
-        // *TODO:  Mark mesh unavailable on error
+        LLMutexLock lock(gMeshRepo.mThread->mLoadedMutex);
+        gMeshRepo.mThread->mDecompFailQ.push_back(mMeshID);
     }
 }
 
@@ -4259,7 +4507,8 @@ void LLMeshPhysicsShapeHandler::processFailure(LLCore::HttpStatus status)
                        << ", Reason:  " << status.toString()
                        << " (" << status.toTerseString() << ").  Not retrying."
                        << LL_ENDL;
-    // *TODO:  Mark mesh unavailable on error
+    LLMutexLock lock(gMeshRepo.mThread->mLoadedMutex);
+    gMeshRepo.mThread->mPhysicsFailQ.push_back(mMeshID);
 }
 
 void LLMeshPhysicsShapeHandler::processData(LLCore::BufferArray * /* body */, S32 /* body_offset */,
@@ -4314,7 +4563,8 @@ void LLMeshPhysicsShapeHandler::processData(LLCore::BufferArray * /* body */, S3
         LL_WARNS(LOG_MESH) << "Error during mesh physics shape processing.  ID:  " << mMeshID
                            << ", Unknown reason.  Not retrying."
                            << LL_ENDL;
-        // *TODO:  Mark mesh unavailable on error
+        LLMutexLock lock(gMeshRepo.mThread->mLoadedMutex);
+        gMeshRepo.mThread->mPhysicsFailQ.push_back(mMeshID);
     }
 }
 
@@ -4573,9 +4823,120 @@ S32 LLMeshRepository::loadMesh(LLVOVolume* vobj, const LLVolumeParams& mesh_para
     return new_lod;
 }
 
+void LLMeshRepository::logStuckLoadingMeshes()
+{
+    static F64 s_last = 0.0;
+    const F64 now = LLFrameTimer::getTotalSeconds();
+    if (now - s_last < 10.0 || mThread == nullptr)
+    {
+        return;
+    }
+    s_last = now;
+
+    std::unordered_set<LLUUID> pending_lod_ids;
+    {
+        LLMutexLock lock(mThread->mPendingMutex);
+        for (const auto& kv : mThread->mPendingLOD)
+        {
+            pending_lod_ids.insert(kv.first);
+        }
+    }
+    std::unordered_set<LLUUID> retry_ids;
+    {
+        LLMutexLock lock(mThread->mMutex);
+        for (const auto& kv : mThread->mHeaderFailCount)
+        {
+            retry_ids.insert(kv.first);
+        }
+        for (const auto& kv : mThread->mHeaderRetryDue)
+        {
+            retry_ids.insert(kv.first);
+        }
+        for (const auto& kv : mThread->mLODFailCount)
+        {
+            retry_ids.insert(kv.first.first);
+        }
+    }
+    std::unordered_set<LLUUID> header_ids;
+    {
+        LLMutexLock lock(mThread->mHeaderMutex);
+        for (const auto& kv : mThread->mMeshHeader)
+        {
+            header_ids.insert(kv.first);
+        }
+    }
+
+    U32 na = 0, nb = 0, nc = 0, nd = 0;
+    std::ostringstream dsamp, csamp;
+    U32 dn = 0, cn = 0;
+    {
+        LLMutexLock lock(mMeshMutex);
+        for (S32 lod = 0; lod < 4; ++lod)
+        {
+            for (const auto& kv : mLoadingMeshes[lod])
+            {
+                if (kv.second.hasLiveRequest())
+                {
+                    ++na;
+                }
+                else if (pending_lod_ids.count(kv.first) > 0 || retry_ids.count(kv.first) > 0)
+                {
+                    ++nb;
+                }
+                else if (header_ids.count(kv.first) > 0)
+                {
+                    ++nc;
+                    if (cn < 4)
+                    {
+                        csamp << (cn++ ? "," : "") << kv.first << "/l" << lod;
+                    }
+                }
+                else
+                {
+                    ++nd;
+                    if (dn < 6)
+                    {
+                        dsamp << (dn++ ? "," : "") << kv.first << "/l" << lod;
+                    }
+                }
+            }
+        }
+    }
+    if (na + nb + nc + nd > 0)
+    {
+        LL_WARNS("AssetStuck") << "VKC-MESHSTUCK a=" << na << " b=" << nb
+                               << " c=" << nc << " d=" << nd
+                               << " lodq=" << (U32)mThread->mLODReqQ.size()
+                               << " hdrq=" << (U32)mThread->mHeaderReqQ.size()
+                               << " lodproc=" << LLMeshRepository::sLODProcessing
+                               << " csample=[" << csamp.str() << "]"
+                               << " dsample=[" << dsamp.str() << "]" << LL_ENDL;
+    }
+}
+
+U32 LLMeshRepository::debugLoadingState(const LLUUID& mesh_id, LLVOVolume* vobj)
+{
+    U32 bits = 0;
+    LLMutexLock lock(mMeshMutex);
+    for (S32 lod = 0; lod < 4; ++lod)
+    {
+        mesh_load_map::iterator it = mLoadingMeshes[lod].find(mesh_id);
+        if (it != mLoadingMeshes[lod].end())
+        {
+            bits |= (1u << lod);
+            if (it->second.mVolumes.count(vobj) > 0)
+            {
+                bits |= (0x10u << lod);
+            }
+        }
+    }
+    return bits;
+}
+
 void LLMeshRepository::notifyLoadedMeshes()
 { //called from main thread
     LL_PROFILE_ZONE_SCOPED_CATEGORY_NETWORK; //LL_RECORD_BLOCK_TIME(FTM_MESH_FETCH);
+    logStuckLoadingMeshes();
 
     // <FS:Ansariel> [UDP Assets]
     //// GetMesh2 operation with keepalives, etc.  With pipelining,
@@ -4803,6 +5164,8 @@ void LLMeshRepository::notifyLoadedMeshes()
                 const std::string legacy_mesh2_cap(gAgent.getRegion()->getCapability("GetMesh2"));
                 mLegacyGetMeshVersion = ((mesh_cap.empty() && legacy_mesh2_cap.empty()) || use_v1) ? 1 : (!mesh_cap.empty() ? 0 : 2);
                 mThread->setGetMeshCap(mesh_cap, legacy_mesh1_cap, legacy_mesh2_cap, mLegacyGetMeshVersion);
+                sRearmGeneration.fetch_add(1, std::memory_order_relaxed);
+                mThread->mWorkQueue.post([this]() { mThread->purgeTerminalHeaders(); });
                 LL_DEBUGS(LOG_MESH) << "Retrieving caps for region '" << region_name
                                     << "', ViewerAsset cap:  " << mesh_cap
                                     << ", GetMesh2 cap:  " << legacy_mesh2_cap
@@ -5023,8 +5386,6 @@ void LLMeshRepository::notifyMeshUnavailable(const LLVolumeParams& mesh_params, 
     mesh_load_map::iterator obj_iter = mLoadingMeshes[request_lod].find(mesh_id);
     if (obj_iter != mLoadingMeshes[request_lod].end())
     {
-        F32 detail = LLVolumeLODGroup::getVolumeScaleFromDetail(volume_lod);
-
         LLVolume* sys_volume = LLPrimitive::getVolumeManager()->refVolume(mesh_params, volume_lod);
         if (sys_volume)
         {
@@ -5039,10 +5400,14 @@ void LLMeshRepository::notifyMeshUnavailable(const LLVolumeParams& mesh_params, 
                 LLVolume* obj_volume = vobj->getVolume();
 
                 if (obj_volume &&
-                    obj_volume->getDetail() == detail &&
-                    obj_volume->getParams() == mesh_params)
-                { //should force volume to find most appropriate LOD
-                    vobj->setVolume(obj_volume->getParams(), volume_lod);
+                    obj_volume->getParams() == mesh_params &&
+                    !obj_volume->isMeshAssetLoaded())
+                {
+                    const S32 target = getActualMeshLOD(mesh_params, request_lod);
+                    if (target >= 0)
+                    {
+                        vobj->forceLOD(target);
+                    }
                 }
             }
         }

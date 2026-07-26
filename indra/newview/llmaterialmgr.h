@@ -135,6 +135,7 @@ private:
     uuid_set_t              mRegionGets;
     get_pending_map_t       mGetPending;
     get_callback_map_t      mGetCallbacks;
+    std::map<LLMaterialID, U8> mGetRetryCount;
 
     get_callback_te_map_t   mGetTECallbacks;
     getall_queue_t          mGetAllQueue;

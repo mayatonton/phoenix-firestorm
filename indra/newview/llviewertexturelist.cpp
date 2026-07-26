@@ -34,6 +34,8 @@
 
 #include "llviewertexturelist.h"
 
+#include "llassetretry.h"
+
 #include "llagent.h"
 #include "llgl.h" // fot gathering stats from GL
 #include "llimagegl.h"
@@ -866,6 +868,29 @@ void LLViewerTextureList::updateImages(F32 max_time)
         cleared = false;
     }
 
+    {
+        static LLTimer s_stuck_sweep_timer;
+        if (s_stuck_sweep_timer.getElapsedTimeF32() >= 30.f)
+        {
+            s_stuck_sweep_timer.reset();
+            U32 stuck = 0;
+            for (image_list_t::iterator sit = mImageList.begin(); sit != mImageList.end(); ++sit)
+            {
+                LLViewerFetchedTexture* stuck_imagep = *sit;
+                if (stuck_imagep && stuck_imagep->isFetchRetryStuck())
+                {
+                    ++stuck;
+                    if (stuck <= 3)
+                    {
+                        LL_WARNS("AssetStuck") << "stuck texture " << stuck_imagep->getID()
+                                               << " " << stuck_imagep->fetchRetryStuckInfo() << LL_ENDL;
+                    }
+                }
+            }
+            gAssetOracleTexStuck.store(stuck);
+        }
+    }
+
     LLAppViewer::getTextureFetch()->setTextureBandwidth((F32)LLTrace::get_frame_recording().getPeriodMeanPerSec(LLStatViewer::TEXTURE_NETWORK_DATA_RECEIVED).value());
 
     {
@@ -1395,11 +1420,18 @@ void LLViewerTextureList::texWorkerMain()
 void LLViewerTextureList::enqueueTexCreateJobs()
 {
     bool queued = false;
-    while (!mCreateTextureList.empty())
+    size_t pending = mCreateTextureList.size();
+    while (pending-- > 0 && !mCreateTextureList.empty())
     {
         LLPointer<LLViewerFetchedTexture> imagep = mCreateTextureList.front();
         mCreateTextureList.pop();
         llassert(imagep->mCreatePending);
+
+        if (imagep->mCreateFailCount > 0 && !imagep->mCreateFailTimer.hasExpired())
+        {
+            mCreateTextureList.push(imagep);
+            continue;
+        }
 
         bool redundant_load = imagep->hasGLTexture() && imagep->getDiscardLevel() <= imagep->getDesiredDiscardLevel();
         if (redundant_load)
@@ -1478,9 +1510,22 @@ void LLViewerTextureList::drainTexPublishQueue()
 
         if (!entry.mJob.mOk)
         {
-            imagep->postCreateTexture();
-            imagep->mCreatePending = false;
             ++LLVKLoader::gVkPerf.tex_fail;
+            if (imagep->mCreateFailCount < ASSET_RETRY_LIMIT)
+            {
+                ++imagep->mCreateFailCount;
+                imagep->mCreateFailTimer.reset();
+                imagep->mCreateFailTimer.setTimerExpirySec(assetRetryDelaySec(imagep->mCreateFailCount));
+                LL_INFOS("AssetRetry") << "texture vk-create retry scheduled: " << imagep->getID()
+                                       << " attempt=" << (U32)imagep->mCreateFailCount << LL_ENDL;
+                imagep->mCreatePending = true;
+                mCreateTextureList.push(imagep);
+            }
+            else
+            {
+                imagep->postCreateTexture();
+                imagep->mCreatePending = false;
+            }
             continue;
         }
 
@@ -1497,6 +1542,11 @@ void LLViewerTextureList::drainTexPublishQueue()
         }
 
         gl->applyVkUploadJob(entry.mJob);
+        if (imagep->mCreateFailCount > 0)
+        {
+            imagep->mCreateFailCount = 0;
+            ++gAssetOracleTexRecovered;
+        }
         imagep->postCreateTexture();
         imagep->mCreatePending = false;
         ++LLVKLoader::gVkPerf.tex_pub;

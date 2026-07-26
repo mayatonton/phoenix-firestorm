@@ -91,6 +91,7 @@ public:
     void processCachedObjectUpdate(LLMessageSystem *mesgsys, void **user_data, EObjectUpdateType update_type);
     void updateApparentAngles(LLAgent &agent);
     void update(LLAgent &agent);
+    void asyncReconcileTick();
 
     void fetchObjectCosts();
     void fetchPhysicsFlags();

@@ -56,7 +56,9 @@
 #include "llpermissions.h"
 
 #include "llinventorymodel.h"
+#include "llassetretry.h"
 #include "llassetstorage.h"
+#include "llcallbacklist.h"
 #include "llfilesystem.h"
 #include "lldrawpoolwater.h"
 
@@ -315,11 +317,25 @@ void LLSettingsVOBase::getSettingsAsset(const LLUUID &assetId, LLSettingsVOBase:
 
 }
 
+namespace
+{
+    std::map<LLUUID, U8> sSettingsFetchFail;
+}
+
 void LLSettingsVOBase::onAssetDownloadComplete(const LLUUID &asset_id, S32 status, LLExtStat ext_status, LLSettingsVOBase::asset_download_fn callback)
 {
     LLSettingsBase::ptr_t settings;
     if (!status)
     {
+        std::map<LLUUID, U8>::iterator fail_it = sSettingsFetchFail.find(asset_id);
+        if (fail_it != sSettingsFetchFail.end())
+        {
+            if (fail_it->second > 0)
+            {
+                ++gAssetOracleEnvRecovered;
+            }
+            sSettingsFetchFail.erase(fail_it);
+        }
         LLFileSystem file(asset_id, LLAssetType::AT_SETTINGS, LLFileSystem::READ);
         S32 size = file.getSize();
 
@@ -346,6 +362,27 @@ void LLSettingsVOBase::onAssetDownloadComplete(const LLUUID &asset_id, S32 statu
     }
     else
     {
+        const bool transient = (status != LL_ERR_ASSET_REQUEST_NOT_IN_DATABASE)
+                               && (status != LL_ERR_FILE_EMPTY);
+        U8& fail_count = sSettingsFetchFail[asset_id];
+        if (transient && fail_count < ASSET_RETRY_LIMIT)
+        {
+            ++fail_count;
+            const F32 delay = assetRetryDelaySec(fail_count);
+            LL_INFOS("AssetRetry") << "settings retry scheduled: " << asset_id
+                                   << " attempt=" << (U32)fail_count
+                                   << " delay_s=" << delay << LL_ENDL;
+            doAfterInterval([asset_id, callback]()
+            {
+                if (gAssetStorage == nullptr)
+                {
+                    return;
+                }
+                getSettingsAsset(asset_id, callback);
+            }, delay);
+            return;
+        }
+        sSettingsFetchFail.erase(asset_id);
         LL_WARNS("SETTINGS") << "Error retrieving asset " << asset_id << ". Status code=" << status << "(" << LLAssetStorage::getErrorString(status) << ") ext_status=" << (U32)ext_status << LL_ENDL;
     }
     if (callback)
