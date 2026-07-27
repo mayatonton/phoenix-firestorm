@@ -30,6 +30,7 @@
 
 #include <stdio.h>
 #include <ctype.h>
+#include <atomic>
 #include <sstream>
 
 #include "llassetretry.h"
@@ -10782,6 +10783,21 @@ const LLVOAvatar::MatrixPaletteCache& LLVOAvatar::updateSkinInfoMatrixPalette(co
     if (entry.mFrame != gFrameCount)
     {
         LL_PROFILE_ZONE_SCOPED_CATEGORY_AVATAR;
+
+        if (LLVKLoader::isRecordJobActive())
+        {
+            static std::atomic<U32> s_prewarm_miss{0};
+            const U32 n = ++s_prewarm_miss;
+            if ((n & (n - 1)) == 0)
+            {
+                LL_WARNS("VKContract") << "VKC skin_prewarm_miss n=" << n
+                                       << " av=" << getID()
+                                       << " hash=" << hash
+                                       << " frame=" << gFrameCount
+                                       << " entryframe=" << entry.mFrame
+                                       << LL_ENDL;
+            }
+        }
 
         // <AYAstorm r30 P2> Snapshot last frame's mGLMp for velocity buffer
         // before rebuilding this frame. First-call (mFrame == 0) is skipped

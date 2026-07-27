@@ -13878,6 +13878,15 @@ namespace
 
     std::vector<LLPointer<LLDrawInfo>> sShadowRecordPins;
 
+    void pinShadowWorkerDrawInfo(LLDrawInfo* info)
+    {
+        sShadowRecordPins.emplace_back(info);
+        if (info->mAvatar.notNull() && info->mSkinInfo != nullptr)
+        {
+            info->mAvatar->updateSkinInfoMatrixPalette(info->mSkinInfo);
+        }
+    }
+
     void pinShadowWorkerDrawInfos(LLCullResult& result)
     {
         for (U32 ti = 0; ti < LLVKBucket::kBucketizedPassCount; ++ti)
@@ -13887,7 +13896,7 @@ namespace
             auto* pe = result.endRenderMap(type);
             for (auto* pi = pb; pi != pe; ++pi)
             {
-                sShadowRecordPins.emplace_back(*pi);
+                pinShadowWorkerDrawInfo(*pi);
             }
         }
         const U32 extra_types[] = {
@@ -13904,7 +13913,7 @@ namespace
             auto* pe = result.endRenderMap(type);
             for (auto* pi = pb; pi != pe; ++pi)
             {
-                sShadowRecordPins.emplace_back(*pi);
+                pinShadowWorkerDrawInfo(*pi);
             }
         }
     }

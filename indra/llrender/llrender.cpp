@@ -182,7 +182,9 @@ void LLTexUnit::bindFast(LLTexture* texture)
         setTextureFilteringOptionFast(gl_tex->mFilterOption, gl_tex->getTarget());
     }
     mCurrImageGL = gl_tex;
-    mCurrVkHeapSlot = LLImageGL::vkHeapSlotOrDefault(gl_tex);
+    mCurrVkHeapSlot = (gl_tex->getTarget() == GL_TEXTURE_2D)
+                          ? LLImageGL::vkHeapSlotOrDefault(gl_tex)
+                          : 0xFFFFFFFFu;
     mCurrRenderTarget = nullptr;
     mCurrCubeMap      = nullptr;
     mCurrCompareMode  = false;
@@ -233,7 +235,9 @@ bool LLTexUnit::bind(LLTexture* texture, bool for_rendering, bool forceBind)
                     }
                 }
                 mCurrImageGL = gl_tex;
-                mCurrVkHeapSlot = LLImageGL::vkHeapSlotOrDefault(gl_tex);
+                mCurrVkHeapSlot = (gl_tex->getTarget() == GL_TEXTURE_2D)
+                                      ? LLImageGL::vkHeapSlotOrDefault(gl_tex)
+                                      : 0xFFFFFFFFu;
                 mCurrRenderTarget = nullptr;
                 mCurrCubeMap      = nullptr;
                 mCurrCompareMode  = false;
@@ -307,7 +311,9 @@ bool LLTexUnit::bind(LLImageGL* texture, bool for_rendering, bool forceBind)
     }
 
     mCurrImageGL = texture;
-    mCurrVkHeapSlot = LLImageGL::vkHeapSlotOrDefault(texture);
+    mCurrVkHeapSlot = (texture->getTarget() == GL_TEXTURE_2D)
+                          ? LLImageGL::vkHeapSlotOrDefault(texture)
+                          : 0xFFFFFFFFu;
     mCurrRenderTarget = nullptr;
     mCurrCubeMap      = nullptr;
     mCurrCompareMode  = false;
