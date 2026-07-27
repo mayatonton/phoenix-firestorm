@@ -56,7 +56,7 @@ mesh repo の実証済みパターン(`RequestStats`: 2^n × base 遅延・上�
 
 ## 4. gate(正のオラクル必須 = 「エラーが出なかった」では PASS しない)
 
-- **失敗注入足場(AYA 裁定 2026-07-26 = 必須・全 4 クラス実装済)**: 統一 env `AYASTORM_ASSET_FAIL_INJECT=<N>` = **各資産の最初の N 回の取得完了を人工失敗化**(texture/material/animation/wearable の 4 注入点)。UUID%率方式は「同じ資産が永遠に失敗 = 回復を証明できない」欠陥があるため不採用。**N=2 run = 失敗→backoff→実成功の回復連鎖を全資産で証明(正のオラクル)/ N=9 run = 上限→terminal→fallback 表現を証明**。
+- **失敗注入足場 = 検証完了につき撤去済み(2026-07-27・commit `d5496448a6b`)**: `AYASTORM_ASSET_FAIL_INJECT` は注入オラクル gate 通過後、kill-switch 即削除 doctrine に従い全注入点を撤去した。再検証が必要になったら本節の旧仕様(N 回人工失敗化・N=2/N=9 run)を参照して再実装する。
 - 嵐なし証明: 注入下で再要求レートが backoff 曲線に一致(無限ループ不在)。
 - stuck オラクル = 0(注入下でも全資産が 3 状態のどれかにいる)。
 - 回帰なし: 注入なし通常 run で従来挙動不変 + validation 0。
@@ -88,7 +88,7 @@ mesh repo の実証済みパターン(`RequestStats`: 2^n × base 遅延・上�
 
 **F. 削除される挙動(申告)**: ①失敗を覚えない即再要求(嵐)②一時失敗での即 missing 化(≤8 回は再試行が挟まる)③一時失敗での即 clamp。
 
-**G. 注入足場**: 統一 env `AYASTORM_ASSET_FAIL_INJECT=<N>`(mFetchFailCount < N の間 失敗化 = 最初の N 回失敗 → 実成功で回復連鎖を証明。worker 不変・env 無しコストゼロ)。旧 UUID%率方式は回復を証明できないため置換済み。
+**G. 注入足場**: gate 通過後に撤去済み(2026-07-27 `d5496448a6b`・§4 参照)。
 
 **H. texture 分 stuck カウンタ**: 遷移時 inc/dec の static(scheduled/terminal_transient)+ PERF_LOG 時 10 秒毎 1 行。
 
@@ -220,7 +220,7 @@ map tile = FSM 適用外(即 terminal・現行維持)/ server bake = FSM に乗�
 
 ## A-gate(正のオラクル・幸運ログ禁止)
 
-1. **注入拡張** `AYASTORM_ASSET_FAIL_INJECT=N`(既存 env に相乗り・新規 3 注入点):
+1. **注入拡張**(gate 通過後に撤去済み 2026-07-27 `d5496448a6b`)`AYASTORM_ASSET_FAIL_INJECT=N`(既存 env に相乗り・新規 3 注入点):
    - mesh header: LLMeshHandlerBase::onCompleted で per-mesh 最初の N 回を強制 processFailure 化 → N=2 で「失敗 → ladder → 実成功 → notifyMeshLoaded → 描画復帰」を機械証明(B1 が治っていなければ 2 回目の fetch 自体が出ない = fail-closed に検出される)。
    - sound: assetCallback で同型(最初の N 回失敗化)→ 回復 = 再生到達。
    - EEP/material: 母集団小のため注入なし・実 403/フィールドで gate(申告)。

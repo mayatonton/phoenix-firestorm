@@ -62,7 +62,7 @@
 | 1 | P1-a 原子対 | VKC-SUM `cause{map_evict_unpaired=}` | **0**(改修前 49/10s) |
 | 2 | P1-a 傍証 | VKC-SUM `cause{list_drop_infrustum=}` | 0 近傍へ激減(改修前 79/10s・数件の過渡は orph ペアの 1-frame 遅延として許容 = 残れば個別裁定) |
 | 3 | P1-a 稼働 | VkPerf geo `orph=` | 非ゼロ = ペアリングが実際に発火(churn を治している証拠)・単調増加が定常率に収束 |
-| 4 | P2 稼働/破れ検出 | AssetStuck `georepair=` | **定常 0**(非ゼロ = P1 で拾えない push 破れが残存 → WARNS で名指しされる) |
+| 4 | P2 稼働/破れ検出 | AssetStuck `georepair=` | ログイン過渡後に**増分 0 へ収束**(2026-07-27 改定: kick は撤去され検出専用 counter 化。ログイン中は mesh/skin 未着 object が正常にヒットする。収束しない = 資格完成後に rebuild が来ない通知欠落の再発 → skin 断念系 fix `706d4d3860e` 参照) |
 | 5 | P2 mesh 駆動 | AssetStuck `meshkick=` | ロード中は増加 → シーン安定後に増分ゼロへ収束(収束しない = mesh パイプ詰まり残存) |
 | 6 | P1-b | VkPerf `tex fail=` + AssetRetry `texture vk-create retry` | fail 発生時も最終的に tex_pub 増(注入なし run では fail=0 が既定) |
 | 7 | 非退行 | FRAMETIME / validation | 従来水準・validation 0 |
