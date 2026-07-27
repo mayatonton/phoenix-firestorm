@@ -27,6 +27,8 @@
 
 #include "linden_common.h"
 
+#include <atomic>
+
 #include "llimagegl.h"
 
 #include "llerror.h"
@@ -1402,6 +1404,21 @@ U32 LLImageGL::vkHeapSlotOrDefault(LLImageGL* gl)
                            LLGLSLShader::sCurBoundShaderPtr != nullptr
                                ? LLGLSLShader::sCurBoundShaderPtr->mName
                                : std::string("(no-shader)"));
+        if (LLVKContract::verboseEnabled())
+        {
+            static std::atomic<U32> s_fbheap_detail{0};
+            const U32 n = ++s_fbheap_detail;
+            if ((n & (n - 1)) == 0)
+            {
+                LL_WARNS("VKContract") << "VKC fbheap_detail n=" << n
+                                       << " gl=" << (void*)gl
+                                       << " tgt=0x" << std::hex << gl->mTarget << std::dec
+                                       << " slot=0x" << std::hex << gl->mVkHeapSlot << std::dec
+                                       << " view=" << (void*)gl->mVkImageView
+                                       << " disc=" << gl->mCurrentDiscardLevel
+                                       << LL_ENDL;
+            }
+        }
     }
     const LLImageGL* def = sDefaultGLTexture;
     if (def != nullptr && def->getVkHeapSlot() != LLVKLoader::BINDLESS_INVALID_SLOT)

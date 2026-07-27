@@ -60,8 +60,8 @@ class LLRenderTarget
 {
 public:
     static U32 sBytesAllocated;
-    static U32 sCurResX;
-    static U32 sCurResY;
+    static thread_local U32 sCurResX;
+    static thread_local U32 sCurResY;
 
 
     LLRenderTarget();

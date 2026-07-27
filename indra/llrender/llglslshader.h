@@ -395,6 +395,14 @@ public:
     static void vkVerifyPerCallBindingsAtBind(const U32* offsets, U32 dyn_count);
     static void resetPerThreadRecordState();
 
+    struct RecordSeed
+    {
+        VkDescriptorSet set   = VK_NULL_HANDLE;
+        U32             shape = 0xFFFFFFFFu;
+    };
+    typedef std::unordered_map<const LLGLSLShader*, RecordSeed> record_seed_map_t;
+    static thread_local const record_seed_map_t* sRecordSeedMap;
+
     static constexpr U32 VK_FRAG_PC_BASE   = 64;
     static constexpr U32 VK_FRAG_PC_DWORDS = 16;
     F32 mVkFragPC[VK_FRAG_PC_DWORDS] = {};

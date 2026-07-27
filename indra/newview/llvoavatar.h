@@ -30,6 +30,7 @@
 
 #include <map>
 #include <deque>
+#include <mutex>
 #include <string>
 #include <vector>
 
@@ -890,6 +891,7 @@ public:
     // Map of LLMeshSkinInfo::mHash to MatrixPaletteCache
     typedef std::unordered_map<U64, MatrixPaletteCache> matrix_palette_cache_t;
     matrix_palette_cache_t mMatrixPaletteCache;
+    std::mutex mMatrixPaletteCacheMutex;
 
 protected:
     void            releaseMeshData();

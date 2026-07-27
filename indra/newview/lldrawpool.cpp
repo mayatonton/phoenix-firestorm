@@ -629,10 +629,10 @@ void LLRenderPass::buildAndOverrideScenePerDrawSet(LLDrawInfo* params, bool batc
         }
         else
         {
-            slots[0] = LLImageGL::vkHeapSlotOrDefault(gGL.getTexUnit(0)->mCurrImageGL);
+            slots[0] = gGL.getTexUnit(0)->currVkHeapSlotOrDefault();
         }
         U32 id = 0;
-        if (params != nullptr)
+        if (params != nullptr && !LLVKLoader::isRecordJobActive())
         {
             const bool ok = params->ensureVkDrawDataSlot(slots);
             id = ok ? params->mVkDrawDataSlot : LLVKLoader::drawDataWriteScratch(slots);

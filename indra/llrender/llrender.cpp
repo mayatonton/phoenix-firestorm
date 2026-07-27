@@ -39,6 +39,7 @@
 #include "llvkloader.h"
 #include "hbxxh.h"
 #include "glm/gtc/type_ptr.hpp"
+#include <atomic>
 #include <cstring>
 #include <mutex>
 #include <set>
@@ -181,6 +182,7 @@ void LLTexUnit::bindFast(LLTexture* texture)
         setTextureFilteringOptionFast(gl_tex->mFilterOption, gl_tex->getTarget());
     }
     mCurrImageGL = gl_tex;
+    mCurrVkHeapSlot = LLImageGL::vkHeapSlotOrDefault(gl_tex);
     mCurrRenderTarget = nullptr;
     mCurrCubeMap      = nullptr;
     mCurrCompareMode  = false;
@@ -231,6 +233,7 @@ bool LLTexUnit::bind(LLTexture* texture, bool for_rendering, bool forceBind)
                     }
                 }
                 mCurrImageGL = gl_tex;
+                mCurrVkHeapSlot = LLImageGL::vkHeapSlotOrDefault(gl_tex);
                 mCurrRenderTarget = nullptr;
                 mCurrCubeMap      = nullptr;
                 mCurrCompareMode  = false;
@@ -304,15 +307,40 @@ bool LLTexUnit::bind(LLImageGL* texture, bool for_rendering, bool forceBind)
     }
 
     mCurrImageGL = texture;
+    mCurrVkHeapSlot = LLImageGL::vkHeapSlotOrDefault(texture);
     mCurrRenderTarget = nullptr;
     mCurrCubeMap      = nullptr;
     mCurrCompareMode  = false;
     mCurrAddressMode  = texture->getAddressMode();
     mCurrFilterOption = texture->getFilteringOption();
 
+    if (LLVKContract::verboseEnabled() && mIndex < 4 && texture->getTarget() != GL_TEXTURE_2D)
+    {
+        static std::atomic<U32> s_non2d_bind{0};
+        const U32 n = ++s_non2d_bind;
+        if ((n & (n - 1)) == 0)
+        {
+            LL_WARNS("VKContract") << "VKC non2d_bind n=" << n
+                                   << " unit=" << mIndex
+                                   << " tgt=0x" << std::hex << texture->getTarget() << std::dec
+                                   << " w=" << texture->getWidth()
+                                   << " gl=" << (void*)texture
+                                   << " shader=" << (LLGLSLShader::sCurBoundShaderPtr != nullptr
+                                                         ? LLGLSLShader::sCurBoundShaderPtr->mName
+                                                         : std::string("(none)"))
+                                   << " passtag=" << LLVKLoader::gVkPerfPassTag
+                                   << LL_ENDL;
+        }
+    }
 
     vkNotifyShaderChannelBound();
     return true;
+}
+
+U32 LLTexUnit::currVkHeapSlotOrDefault() const
+{
+    return (mCurrVkHeapSlot != 0xFFFFFFFFu) ? mCurrVkHeapSlot
+                                            : LLImageGL::vkHeapSlotOrDefault(nullptr);
 }
 
 bool LLTexUnit::bind(LLCubeMap* cubeMap)
@@ -351,6 +379,7 @@ bool LLTexUnit::bind(LLCubeMap* cubeMap)
 
     mCurrCubeMap      = cubeMap;
     mCurrImageGL      = nullptr;
+    mCurrVkHeapSlot   = 0xFFFFFFFFu;
     mCurrRenderTarget = nullptr;
     mCurrCompareMode  = false;
     mCurrAddressMode  = cubeMap->mImages[0]->getAddressMode();
@@ -377,6 +406,7 @@ bool LLTexUnit::bind(LLRenderTarget* renderTarget, bool bindDepth)
     mCurrRTDepth      = bindDepth;
     mCurrCompareMode  = bindDepth && renderTarget->usesDepthCompareSampler();
     mCurrImageGL      = nullptr;
+    mCurrVkHeapSlot   = 0xFFFFFFFFu;
     mCurrCubeMap      = nullptr;
     mCurrAddressMode  = TAM_WRAP;
     mCurrFilterOption = TFO_BILINEAR;
@@ -475,6 +505,7 @@ bool LLTexUnit::bindManual(eTextureType type, U32 texture, bool hasMips)
     mHasMipMaps = hasMips;
 
     mCurrImageGL = nullptr;
+    mCurrVkHeapSlot = 0xFFFFFFFFu;
     mCurrRenderTarget = nullptr;
     mCurrCubeMap = nullptr;
     return true;
@@ -491,6 +522,7 @@ void LLTexUnit::unbind(eTextureType type)
     if (mCurrTexType == type)
     {
         mCurrImageGL = nullptr;
+        mCurrVkHeapSlot = 0xFFFFFFFFu;
         mCurrRenderTarget = nullptr;
         mCurrCubeMap = nullptr;
 
@@ -505,6 +537,7 @@ void LLTexUnit::unbindFast(eTextureType type)
     if (mCurrTexType == type)
     {
         mCurrImageGL = nullptr;
+        mCurrVkHeapSlot = 0xFFFFFFFFu;
         mCurrRenderTarget = nullptr;
         mCurrCubeMap = nullptr;
 
@@ -763,7 +796,7 @@ LLRender::LLRender()
 
 LLRender::~LLRender()
 {
-    shutdown();
+    resetVertexBuffer();
 }
 
 bool LLRender::init(bool needs_vertex_buffer)
@@ -1530,11 +1563,13 @@ void LLRender::clearStaleImageGLRefs(LLImageGL* victim)
         if (gGL.mTexUnits[i].mCurrImageGL == victim)
         {
             gGL.mTexUnits[i].mCurrImageGL = nullptr;
+            gGL.mTexUnits[i].mCurrVkHeapSlot = 0xFFFFFFFFu;
         }
     }
     if (gGL.mDummyTexUnit.mCurrImageGL == victim)
     {
         gGL.mDummyTexUnit.mCurrImageGL = nullptr;
+        gGL.mDummyTexUnit.mCurrVkHeapSlot = 0xFFFFFFFFu;
     }
     if (sBufferDataList != nullptr)
     {

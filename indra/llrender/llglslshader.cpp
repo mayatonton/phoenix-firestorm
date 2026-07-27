@@ -78,6 +78,7 @@ thread_local U32 LLGLSLShader::sCurPerCallVkDynamicOffsets[LLGLSLShader::MAX_VK_
 thread_local bool LLGLSLShader::sCurPerCallVkOffsetsDirty = false;
 thread_local U32 LLGLSLShader::sCurPerCallVkSetShape = 0xFFFFFFFFu;
 thread_local bool LLGLSLShader::sCurPerCallAuthored = false;
+thread_local const LLGLSLShader::record_seed_map_t* LLGLSLShader::sRecordSeedMap = nullptr;
 
 namespace
 {
@@ -2516,6 +2517,7 @@ S32 LLGLSLShader::bindTexture(S32 uniform, LLRenderTarget* texture, bool depth, 
         rt_tu->mCurrRTAttachment = index;
         rt_tu->mCurrRTDepth      = depth;
         rt_tu->mCurrImageGL      = nullptr;
+        rt_tu->mCurrVkHeapSlot   = 0xFFFFFFFFu;
 
         if (LLVKLoader::isVulkanInitialized())
         {
@@ -3474,6 +3476,7 @@ void LLGLSLShader::resetPerThreadRecordState()
     sCurPerCallVkOffsetsDirty = false;
     sCurPerCallVkSetShape     = 0xFFFFFFFFu;
     sCurPerCallAuthored = false;
+    sRecordSeedMap    = nullptr;
     sVkPipeMemoShader = nullptr;
     sVkPipeMemoPipe   = VK_NULL_HANDLE;
 }
@@ -3524,6 +3527,37 @@ void LLGLSLShader::populateAndBindUniversalDescriptorSet(bool preserve_drawdata)
     }
     if (LLVKLoader::isRecordJobActive())
     {
+        LLGLSLShader* cur = sCurBoundShaderPtr;
+        if (sRecordSeedMap != nullptr && cur != nullptr)
+        {
+            auto seed_it = sRecordSeedMap->find(cur);
+            if (seed_it != sRecordSeedMap->end() && seed_it->second.set != VK_NULL_HANDLE)
+            {
+                if (cur->mVkUsesBindlessHeap && !preserve_drawdata)
+                {
+                    U32 slots[4] = { 0, 0, 0, 0 };
+                    const U32 n = llmin((U32)cur->mFeatures.mIndexedTextureChannels, 4u);
+                    if (n > 0)
+                    {
+                        for (U32 i = 0; i < n; ++i)
+                        {
+                            slots[i] = gGL.getTexUnit((S32)i)->currVkHeapSlotOrDefault();
+                        }
+                    }
+                    else
+                    {
+                        slots[0] = gGL.getTexUnit(0)->currVkHeapSlotOrDefault();
+                    }
+                    const U32 scratch_id = LLVKLoader::drawDataWriteScratch(slots);
+                    LLVKLoader::setCurrentDrawDataID(scratch_id);
+                    LLVKContract::stashDrawDataID(scratch_id);
+                }
+                sCurPerCallVkDescriptorSet = seed_it->second.set;
+                sCurPerCallVkSetShape      = seed_it->second.shape;
+                vkRefreshDynamicOffsetsForDraw();
+                return;
+            }
+        }
         LLVKContract::cause(LLVKContract::C_RECORD_JOB_PULL);
         static std::atomic<U32> s_record_populate_hits{0};
         const U32 n = ++s_record_populate_hits;
@@ -3636,12 +3670,12 @@ void LLGLSLShader::populateAndBindUniversalDescriptorSet(bool preserve_drawdata)
         {
             for (U32 i = 0; i < n; ++i)
             {
-                slots[i] = LLImageGL::vkHeapSlotOrDefault(gGL.getTexUnit((S32)i)->mCurrImageGL);
+                slots[i] = gGL.getTexUnit((S32)i)->currVkHeapSlotOrDefault();
             }
         }
         else
         {
-            slots[0] = LLImageGL::vkHeapSlotOrDefault(gGL.getTexUnit(0)->mCurrImageGL);
+            slots[0] = gGL.getTexUnit(0)->currVkHeapSlotOrDefault();
         }
         {
             const U32 scratch_id = LLVKLoader::drawDataWriteScratch(slots);

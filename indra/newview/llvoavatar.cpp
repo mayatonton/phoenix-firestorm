@@ -10776,6 +10776,7 @@ LLViewerTexture* LLVOAvatar::getBakedTexture(const U8 te)
 const LLVOAvatar::MatrixPaletteCache& LLVOAvatar::updateSkinInfoMatrixPalette(const LLMeshSkinInfo* skin)
 {
     U64 hash = skin->mHash;
+    std::lock_guard<std::mutex> palette_lock(mMatrixPaletteCacheMutex);
     MatrixPaletteCache& entry = mMatrixPaletteCache[hash];
 
     if (entry.mFrame != gFrameCount)

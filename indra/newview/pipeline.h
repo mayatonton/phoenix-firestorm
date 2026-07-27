@@ -306,9 +306,9 @@ public:
     void forAllVisibleDrawables(void (*func)(LLDrawable*));
 
     void renderObjects(U32 type, bool texture = true, bool batch_texture = false, bool rigged = false);
-    void renderGLTFObjects(U32 type, bool texture = true, bool rigged = false);
+    void renderGLTFObjects(U32 type, bool texture = true, bool rigged = false, bool scene_manager = true);
 
-    void renderAlphaObjects(bool rigged = false);
+    void renderAlphaObjects(bool rigged = false, S32 gltf_mode = 0);
     void renderFocusPoint(); // <FS:Beq/> FIRE-32023 Add focus point rendering
     void renderMaskedObjects(U32 type, bool texture = true, bool batch_texture = false, bool rigged = false);
     void renderFullbrightMaskedObjects(U32 type, bool texture = true, bool batch_texture = false, bool rigged = false);
@@ -429,7 +429,7 @@ public:
 
     void renderHighlight(const LLViewerObject* obj, F32 fade);
 
-    void renderShadow(const glm::mat4& view, const glm::mat4& proj, LLCamera& camera, LLCullResult& result, bool depth_clamp);
+    void renderShadow(const glm::mat4& view, const glm::mat4& proj, LLCamera& camera, LLCullResult& result, bool depth_clamp, bool mt_split = false);
     void renderSelectedFaces(const LLColor4& color);
     void renderHighlights();
     bool renderVignette(LLRenderTarget* src, LLRenderTarget* dst);

@@ -268,6 +268,7 @@ namespace LLVKLoader
                                U32                               color_count,
                                const DynamicRenderingAttachment* depth_attachment);
     void endDynamicRendering();
+    void cmdShadowDepthWawBarrierVk(VkCommandBuffer cmd, VkImage depth_image);
 
     VkShaderModule loadSpirvShaderModuleFromMemory(const std::vector<unsigned int>& spirv);
 

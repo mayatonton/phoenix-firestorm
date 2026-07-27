@@ -9216,7 +9216,7 @@ void LLPipeline::renderObjects(U32 type, bool texture, bool batch_texture, bool 
     gGLLastMatrix = NULL;
 }
 
-void LLPipeline::renderGLTFObjects(U32 type, bool texture, bool rigged)
+void LLPipeline::renderGLTFObjects(U32 type, bool texture, bool rigged, bool scene_manager)
 {
     assertInitialized();
     gGL.loadMatrix(gGLModelView);
@@ -9234,6 +9234,11 @@ void LLPipeline::renderGLTFObjects(U32 type, bool texture, bool rigged)
     gGL.loadMatrix(gGLModelView);
     gGLLastMatrix = NULL;
 
+    if (!scene_manager)
+    {
+        return;
+    }
+
     if (!rigged)
     {
         LL::GLTFSceneManager::instance().renderOpaque();
@@ -9245,7 +9250,7 @@ void LLPipeline::renderGLTFObjects(U32 type, bool texture, bool rigged)
 }
 
 // Currently only used for shadows -Cosmic,2023-04-19
-void LLPipeline::renderAlphaObjects(bool rigged)
+void LLPipeline::renderAlphaObjects(bool rigged, S32 gltf_mode)
 {
     LL_PROFILE_ZONE_SCOPED_CATEGORY_PIPELINE;
     assertInitialized();
@@ -9273,6 +9278,12 @@ void LLPipeline::renderAlphaObjects(bool rigged)
         {
             // Pool contains both rigged and non-rigged DrawInfos. Only draw
             // the objects we're interested in in this pass.
+            continue;
+        }
+
+        const bool is_gltf = (pparams->mGLTFMaterial != nullptr);
+        if ((gltf_mode == 1 && is_gltf) || (gltf_mode == 2 && !is_gltf))
+        {
             continue;
         }
 
@@ -13837,7 +13848,291 @@ static bool shadowMatricesFinite(const glm::mat4& view, const glm::mat4& proj)
     return true;
 }
 
-void LLPipeline::renderShadow(const glm::mat4& view, const glm::mat4& proj, LLCamera& shadow_cam, LLCullResult& result, bool depth_clamp)
+namespace
+{
+    struct ShadowWorkerSeeds
+    {
+        bool attempted = false;
+        bool valid     = false;
+        LLGLSLShader::record_seed_map_t map;
+    };
+
+    struct ShadowRecordCtx
+    {
+        F32             view[16];
+        F32             proj[16];
+        F32             last_modelview[16];
+        F32             cull_radius = 0.f;
+        LLCullResult*   result = nullptr;
+        LLRenderTarget* rt = nullptr;
+        VkImage         depth_image = VK_NULL_HANDLE;
+        VkImageView     depth_view = VK_NULL_HANDLE;
+        U32             width = 0;
+        U32             height = 0;
+        VkImageLayout   initial_layout = VK_IMAGE_LAYOUT_UNDEFINED;
+        U32             map_index = 0;
+        bool            color_mask_off = false;
+        bool            depth_clamp = true;
+        const LLGLSLShader::record_seed_map_t* seeds = nullptr;
+    };
+
+    std::vector<LLPointer<LLDrawInfo>> sShadowRecordPins;
+
+    void pinShadowWorkerDrawInfos(LLCullResult& result)
+    {
+        for (U32 ti = 0; ti < LLVKBucket::kBucketizedPassCount; ++ti)
+        {
+            const U32 type = LLVKBucket::kBucketizedPasses[ti] + 1;
+            auto* pb = result.beginRenderMap(type);
+            auto* pe = result.endRenderMap(type);
+            for (auto* pi = pb; pi != pe; ++pi)
+            {
+                sShadowRecordPins.emplace_back(*pi);
+            }
+        }
+        const U32 extra_types[] = {
+            LLRenderPass::PASS_ALPHA_MASK,
+            LLRenderPass::PASS_ALPHA_MASK + 1,
+            LLRenderPass::PASS_FULLBRIGHT_ALPHA_MASK,
+            LLRenderPass::PASS_FULLBRIGHT_ALPHA_MASK + 1,
+            LLRenderPass::PASS_ALPHA,
+            LLRenderPass::PASS_GLTF_PBR + 1,
+        };
+        for (U32 type : extra_types)
+        {
+            auto* pb = result.beginRenderMap(type);
+            auto* pe = result.endRenderMap(type);
+            for (auto* pi = pb; pi != pe; ++pi)
+            {
+                sShadowRecordPins.emplace_back(*pi);
+            }
+        }
+    }
+
+    void ensureShadowWorkerSeeds(ShadowWorkerSeeds& seeds, LLRenderTarget& shadow_rt)
+    {
+        if (seeds.attempted)
+        {
+            return;
+        }
+        seeds.attempted = true;
+        if (!LLVKLoader::isVulkanInitialized() || !LLVKLoader::isBindlessActiveVk())
+        {
+            return;
+        }
+        LLGLSLShader* worker_shaders[] = {
+            gDeferredShadowProgram.mRiggedVariant,
+            &gDeferredShadowAlphaMaskProgram,
+            gDeferredShadowAlphaMaskProgram.mRiggedVariant,
+            &gDeferredShadowFullbrightAlphaMaskProgram,
+            gDeferredShadowFullbrightAlphaMaskProgram.mRiggedVariant,
+        };
+        for (LLGLSLShader* s : worker_shaders)
+        {
+            if (s == nullptr)
+            {
+                return;
+            }
+        }
+        LLRenderTarget* prev_bound = LLRenderTarget::sBoundTarget;
+        LLRenderTarget::sBoundTarget = &shadow_rt;
+        bool all_ok = true;
+        {
+            LLGLEnable cull(GL_CULL_FACE);
+            LLGLEnable clamp_depth(GL_DEPTH_CLAMP);
+            LLGLDepthTest depth_test(GL_TRUE, GL_TRUE, GL_LESS);
+            const bool mask_off = LLPipeline::RenderShadowDetail <= 2;
+            if (mask_off)
+            {
+                gGL.setColorMask(false, false);
+            }
+            gGL.getTexUnit(0)->unbind(LLTexUnit::TT_TEXTURE);
+            for (LLGLSLShader* s : worker_shaders)
+            {
+                s->bind();
+                gGL.diffuseColor4f(1, 1, 1, 1);
+                LLGLSLShader::sCurPerCallVkDescriptorSet = VK_NULL_HANDLE;
+                LLGLSLShader::sCurPerCallAuthored        = false;
+                VkDescriptorSet set = LLGLSLShader::vkResolvePerCallSetForDraw();
+                if (set == VK_NULL_HANDLE)
+                {
+                    all_ok = false;
+                    break;
+                }
+                LLGLSLShader::RecordSeed seed;
+                seed.set   = set;
+                seed.shape = LLGLSLShader::sCurPerCallVkSetShape;
+                seeds.map[s] = seed;
+            }
+            gGL.setColorMask(true, true);
+        }
+        LLRenderTarget::sBoundTarget = prev_bound;
+        seeds.valid = all_ok;
+        if (!all_ok)
+        {
+            seeds.map.clear();
+        }
+    }
+
+    void recordShadowWorkerFamilies(const ShadowRecordCtx& ctx, VkCommandBuffer cmd)
+    {
+        LLPipelineFrameContext& fctx = LLPipelineFrameContext::getInstance();
+        LLCullResult*   prev_cull      = fctx.getCullResult();
+        const bool      prev_shadow    = fctx.isShadowPass();
+        LLRenderTarget* prev_bound     = LLRenderTarget::sBoundTarget;
+        const F32       prev_radius    = LLRenderPass::sShadowBatchCullRadius;
+        const U32       prev_pass_tag  = LLVKLoader::gVkPerfPassTag;
+        const U32       prev_map_index = LLVKLoader::gVkPerfShadowMapIndex;
+        const U32       prev_res_x     = LLRenderTarget::sCurResX;
+        const U32       prev_res_y     = LLRenderTarget::sCurResY;
+        const LLGLSLShader::record_seed_map_t* prev_seeds = LLGLSLShader::sRecordSeedMap;
+
+        fctx.setCullResult(ctx.result);
+        fctx.setShadowPass(true);
+        LLRenderTarget::sBoundTarget = ctx.rt;
+        LLRenderTarget::sCurResX = ctx.width;
+        LLRenderTarget::sCurResY = ctx.height;
+        LLRenderPass::sShadowBatchCullRadius = ctx.cull_radius;
+        LLGLSLShader::sRecordSeedMap = ctx.seeds;
+        std::memcpy(gGLModelView, ctx.view, sizeof(F32) * 16);
+        std::memcpy(gGLLastModelView, ctx.last_modelview, sizeof(F32) * 16);
+        gGLLastMatrix = NULL;
+        LLVKLoader::setRenderViewport(0, 0, (S32)ctx.width, (S32)ctx.height);
+        LLVKLoader::gVkPerfPassTag = 1;
+        LLVKLoader::gVkPerfShadowMapIndex = ctx.map_index;
+
+        VkPipelineStageFlags src_stage;
+        VkAccessFlags        src_access;
+        if (ctx.initial_layout == VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL)
+        {
+            src_stage  = VK_PIPELINE_STAGE_LATE_FRAGMENT_TESTS_BIT;
+            src_access = VK_ACCESS_DEPTH_STENCIL_ATTACHMENT_WRITE_BIT;
+        }
+        else if (ctx.initial_layout == VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL)
+        {
+            src_stage  = VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT;
+            src_access = VK_ACCESS_SHADER_READ_BIT;
+        }
+        else
+        {
+            src_stage  = VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT;
+            src_access = 0;
+        }
+        LLVKLoader::transitionImageLayoutVk(
+            ctx.depth_image,
+            VK_IMAGE_ASPECT_DEPTH_BIT | VK_IMAGE_ASPECT_STENCIL_BIT,
+            ctx.initial_layout,
+            VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL,
+            src_stage,
+            VK_PIPELINE_STAGE_EARLY_FRAGMENT_TESTS_BIT | VK_PIPELINE_STAGE_LATE_FRAGMENT_TESTS_BIT,
+            src_access,
+            VK_ACCESS_DEPTH_STENCIL_ATTACHMENT_READ_BIT | VK_ACCESS_DEPTH_STENCIL_ATTACHMENT_WRITE_BIT);
+
+        LLVKLoader::DynamicRenderingAttachment depth_att = {};
+        depth_att.image_view   = ctx.depth_view;
+        depth_att.image_layout = VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL;
+        depth_att.load_op      = VK_ATTACHMENT_LOAD_OP_CLEAR;
+        depth_att.store_op     = VK_ATTACHMENT_STORE_OP_STORE;
+        depth_att.clear_value.depthStencil.depth   = 1.0f;
+        depth_att.clear_value.depthStencil.stencil = 0;
+        LLVKLoader::beginDynamicRendering(ctx.width, ctx.height, nullptr, 0, &depth_att);
+
+        {
+            LLGLEnable cull(GL_CULL_FACE);
+            LLGLEnable clamp_depth(ctx.depth_clamp ? GL_DEPTH_CLAMP : 0);
+            LLGLDepthTest depth_test(GL_TRUE, GL_TRUE, GL_LESS);
+
+            const LLRender::eBlendFactor prev_bf_cs = gGL.getCurrBlendColorSFactor();
+            const LLRender::eBlendFactor prev_bf_cd = gGL.getCurrBlendColorDFactor();
+            const LLRender::eBlendFactor prev_bf_as = gGL.getCurrBlendAlphaSFactor();
+            const LLRender::eBlendFactor prev_bf_ad = gGL.getCurrBlendAlphaDFactor();
+            gGL.blendFunc(LLRender::BF_ONE, LLRender::BF_ZERO);
+
+            gGL.matrixMode(LLRender::MM_PROJECTION);
+            gGL.pushMatrix();
+            gGL.loadMatrix(ctx.proj);
+            gGL.matrixMode(LLRender::MM_MODELVIEW);
+            gGL.pushMatrix();
+            gGL.loadMatrix(ctx.view);
+
+            gGL.getTexUnit(0)->unbind(LLTexUnit::TT_TEXTURE);
+            if (ctx.color_mask_off)
+            {
+                gGL.setColorMask(false, false);
+            }
+
+            gDeferredShadowProgram.bind(true);
+            gGL.diffuseColor4f(1, 1, 1, 1);
+            gGL.getTexUnit(0)->disable();
+            for (U32 ti = 0; ti < LLVKBucket::kBucketizedPassCount; ++ti)
+            {
+                gPipeline.renderObjects(LLVKBucket::kBucketizedPasses[ti], false, false, true);
+            }
+            gPipeline.renderGLTFObjects(LLRenderPass::PASS_GLTF_PBR, false, true, false);
+            gGL.getTexUnit(0)->enable(LLTexUnit::TT_TEXTURE);
+
+            const U32 target_width = ctx.width;
+            for (int i = 0; i < 2; ++i)
+            {
+                bool rigged = i == 1;
+
+                gDeferredShadowAlphaMaskProgram.bind(rigged);
+                LLGLSLShader::sCurBoundShaderPtr->setMinimumAlpha(ALPHA_BLEND_CUTOFF);
+                LLGLSLShader::sCurBoundShaderPtr->setObjectAlpha(1.f);
+                if (LLVKLoader::isVulkanInitialized())
+                {
+                    LLVKLoader::ShadowParams_PerShaderBind shadow_params = {};
+                    shadow_params.shadow_target_width = (float)target_width;
+                    LLVKLoader::writeCurrentShadowParamsUBO(shadow_params);
+                }
+                gPipeline.renderMaskedObjects(LLRenderPass::PASS_ALPHA_MASK, true, true, rigged);
+
+                gPipeline.renderAlphaObjects(rigged, 1);
+
+                gDeferredShadowFullbrightAlphaMaskProgram.bind(rigged);
+                LLGLSLShader::sCurBoundShaderPtr->setMinimumAlpha(ALPHA_BLEND_CUTOFF);
+                LLGLSLShader::sCurBoundShaderPtr->setObjectAlpha(1.f);
+                if (LLVKLoader::isVulkanInitialized())
+                {
+                    LLVKLoader::ShadowParams_PerShaderBind shadow_params = {};
+                    shadow_params.shadow_target_width = (float)target_width;
+                    LLVKLoader::writeCurrentShadowParamsUBO(shadow_params);
+                }
+                gPipeline.renderFullbrightMaskedObjects(LLRenderPass::PASS_FULLBRIGHT_ALPHA_MASK, true, true, rigged);
+            }
+
+            gGL.setColorMask(true, true);
+
+            gGL.matrixMode(LLRender::MM_PROJECTION);
+            gGL.popMatrix();
+            gGL.matrixMode(LLRender::MM_MODELVIEW);
+            gGL.popMatrix();
+
+            if (prev_bf_cs != LLRender::BF_UNDEF && prev_bf_cd != LLRender::BF_UNDEF
+                && prev_bf_as != LLRender::BF_UNDEF && prev_bf_ad != LLRender::BF_UNDEF)
+            {
+                gGL.blendFunc(prev_bf_cs, prev_bf_cd, prev_bf_as, prev_bf_ad);
+            }
+        }
+
+        LLVKLoader::endDynamicRendering();
+        LLVKLoader::cmdShadowDepthWawBarrierVk(cmd, ctx.depth_image);
+
+        LLGLSLShader::sCurPerCallVkDescriptorSet = VK_NULL_HANDLE;
+        LLGLSLShader::sRecordSeedMap = prev_seeds;
+        LLRenderPass::sShadowBatchCullRadius = prev_radius;
+        LLRenderTarget::sBoundTarget = prev_bound;
+        LLRenderTarget::sCurResX = prev_res_x;
+        LLRenderTarget::sCurResY = prev_res_y;
+        fctx.setCullResult(prev_cull);
+        fctx.setShadowPass(prev_shadow);
+        LLVKLoader::gVkPerfPassTag = prev_pass_tag;
+        LLVKLoader::gVkPerfShadowMapIndex = prev_map_index;
+        gGLLastMatrix = NULL;
+    }
+}
+
+void LLPipeline::renderShadow(const glm::mat4& view, const glm::mat4& proj, LLCamera& shadow_cam, LLCullResult& result, bool depth_clamp, bool mt_split)
 {
     LL_PROFILE_ZONE_SCOPED_CATEGORY_PIPELINE; //LL_RECORD_BLOCK_TIME(FTM_SHADOW_RENDER);
     LL_PROFILE_GPU_ZONE("renderShadow");
@@ -13866,9 +14161,12 @@ void LLPipeline::renderShadow(const glm::mat4& view, const glm::mat4& proj, LLCa
 
     LLGLDepthTest depth_test(GL_TRUE, GL_TRUE, GL_LESS);
 
-    updateCull(shadow_cam, result);
+    if (!mt_split)
+    {
+        updateCull(shadow_cam, result);
 
-    stateSort(shadow_cam, result);
+        stateSort(shadow_cam, result);
+    }
 
     //generate shadow map
     gGL.matrixMode(LLRender::MM_PROJECTION);
@@ -13912,12 +14210,23 @@ void LLPipeline::renderShadow(const glm::mat4& view, const glm::mat4& proj, LLCa
         LL_PROFILE_GPU_ZONE("shadow simple");
         gGL.getTexUnit(0)->disable();
 
-        for (U32 ti = 0; ti < types_count; ++ti)
+        if (!mt_split || !rigged)
         {
-            renderObjects(types[ti], false, false, rigged);
-        }
+            for (U32 ti = 0; ti < types_count; ++ti)
+            {
+                renderObjects(types[ti], false, false, rigged);
+            }
 
-        renderGLTFObjects(LLRenderPass::PASS_GLTF_PBR, false, rigged);
+            renderGLTFObjects(LLRenderPass::PASS_GLTF_PBR, false, rigged);
+        }
+        else
+        {
+            gGL.loadMatrix(gGLModelView);
+            gGLLastMatrix = NULL;
+            LL::GLTFSceneManager::instance().render(true, true);
+            gGL.loadMatrix(gGLModelView);
+            gGLLastMatrix = NULL;
+        }
 
         gGL.getTexUnit(0)->enable(LLTexUnit::TT_TEXTURE);
     }
@@ -13942,6 +14251,7 @@ void LLPipeline::renderShadow(const glm::mat4& view, const glm::mat4& proj, LLCa
         {
             bool rigged = i == 1;
 
+            if (!mt_split)
             {
                 LL_PROFILE_ZONE_NAMED_CATEGORY_PIPELINE("shadow alpha masked");
                 LL_PROFILE_GPU_ZONE("shadow alpha masked");
@@ -13960,9 +14270,10 @@ void LLPipeline::renderShadow(const glm::mat4& view, const glm::mat4& proj, LLCa
             {
                 LL_PROFILE_ZONE_NAMED_CATEGORY_PIPELINE("shadow alpha blend");
                 LL_PROFILE_GPU_ZONE("shadow alpha blend");
-                renderAlphaObjects(rigged);
+                renderAlphaObjects(rigged, mt_split ? 2 : 0);
             }
 
+            if (!mt_split)
             {
                 LL_PROFILE_ZONE_NAMED_CATEGORY_PIPELINE("shadow fullbright alpha masked");
                 LL_PROFILE_GPU_ZONE("shadow alpha masked");
@@ -14538,6 +14849,12 @@ void LLPipeline::generateSunShadow(LLCamera& camera)
     // convenience array of 4 near clip plane distances
     F32 dist[] = { near_clip, mSunClipPlanes.mV[0], mSunClipPlanes.mV[1], mSunClipPlanes.mV[2], mSunClipPlanes.mV[3] };
 
+    ShadowWorkerSeeds shadow_seeds;
+    const bool mt_shadow_capable = !gCubeSnapshot
+                                   && LLVKLoader::isVulkanInitialized()
+                                   && LLVKLoader::shouldUseVulkanRender()
+                                   && LLVKLoader::isBindlessActiveVk();
+
     if (mSunDiffuse == LLColor4::black)
     { //sun diffuse is totally black shadows don't matter
         skipRenderingShadows();
@@ -14938,12 +15255,69 @@ void LLPipeline::generateSunShadow(LLCamera& camera)
 
                 LLRenderTarget& shadow_rt = getFrameRT()->shadow[j];
 
+                bool mt_split = mt_shadow_capable
+                                && shadow_rt.getVkDepthImage() != VK_NULL_HANDLE
+                                && shadow_rt.getVkDepthView() != VK_NULL_HANDLE;
+
+                if (mt_split)
+                {
+                    {
+                        LLPipelineFrameContext::getInstance().setShadowPass(true);
+                        U32 saved_occlusion = sUseOcclusion;
+                        sUseOcclusion = 0;
+                        LLGLEnable cull(GL_CULL_FACE);
+                        LLGLEnable clamp_depth(GL_DEPTH_CLAMP);
+                        LLGLDepthTest depth_test(GL_TRUE, GL_TRUE, GL_LESS);
+                        updateCull(shadow_cam, result[j]);
+                        stateSort(shadow_cam, result[j]);
+                        sUseOcclusion = saved_occlusion;
+                        LLPipelineFrameContext::getInstance().setShadowPass(false);
+                    }
+
+                    ensureShadowWorkerSeeds(shadow_seeds, shadow_rt);
+
+                    bool dispatched = false;
+                    if (shadow_seeds.valid)
+                    {
+                        pinShadowWorkerDrawInfos(result[j]);
+
+                        ShadowRecordCtx ctx;
+                        std::memcpy(ctx.view, glm::value_ptr(view[j]), sizeof(ctx.view));
+                        std::memcpy(ctx.proj, glm::value_ptr(proj[j]), sizeof(ctx.proj));
+                        std::memcpy(ctx.last_modelview, gGLLastModelView, sizeof(ctx.last_modelview));
+                        ctx.cull_radius    = batch_cull_radius;
+                        ctx.result         = &result[j];
+                        ctx.rt             = &shadow_rt;
+                        ctx.depth_image    = shadow_rt.getVkDepthImage();
+                        ctx.depth_view     = shadow_rt.getVkDepthView();
+                        ctx.width          = shadow_rt.getWidth();
+                        ctx.height         = shadow_rt.getHeight();
+                        ctx.initial_layout = shadow_rt.getVkDepthLayout();
+                        ctx.map_index      = (U32)j;
+                        ctx.color_mask_off = RenderShadowDetail <= 2;
+                        ctx.depth_clamp    = true;
+                        ctx.seeds          = &shadow_seeds.map;
+
+                        LLVKLoader::endDynamicRendering();
+                        dispatched = LLVKLoader::dispatchRecordJob(
+                            [ctx](VkCommandBuffer cmd) { recordShadowWorkerFamilies(ctx, cmd); });
+                        if (dispatched)
+                        {
+                            shadow_rt.setVkDepthLayout(VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL);
+                        }
+                    }
+                    mt_split = dispatched;
+                }
+
                 shadow_rt.bindTarget();
                 shadow_rt.getViewport(gGLViewport);
-                shadow_rt.clear();
+                if (!mt_split)
+                {
+                    shadow_rt.clear();
+                }
 
                 LLRenderPass::sShadowBatchCullRadius = batch_cull_radius;
-                renderShadow(view[j], proj[j], shadow_cam, result[j], true);
+                renderShadow(view[j], proj[j], shadow_cam, result[j], true, mt_split);
 
                 LLRenderPass::sShadowBatchCullRadius = 0.f;
 
@@ -15096,10 +15470,6 @@ void LLPipeline::generateSunShadow(LLCamera& camera)
 
                 //
 
-                mSpotShadow[i].bindTarget();
-                mSpotShadow[i].getViewport(gGLViewport);
-                mSpotShadow[i].clear();
-
                 static LLCullResult result[2];
 
                 LLViewerCamera::setCurCameraID((LLViewerCamera::eCameraID)(LLViewerCamera::CAMERA_SPOT_SHADOW0 + i));
@@ -15107,7 +15477,68 @@ void LLPipeline::generateSunShadow(LLCamera& camera)
                 RenderSpotLight = drawable;
 
                 LLVKLoader::gVkPerfShadowMapIndex = 4u + (U32)i;
-                renderShadow(view[i + 4], proj[i + 4], shadow_cam, result[i], false);
+
+                bool mt_split = mt_shadow_capable
+                                && mSpotShadow[i].getVkDepthImage() != VK_NULL_HANDLE
+                                && mSpotShadow[i].getVkDepthView() != VK_NULL_HANDLE;
+
+                if (mt_split)
+                {
+                    {
+                        LLPipelineFrameContext::getInstance().setShadowPass(true);
+                        U32 saved_occlusion = sUseOcclusion;
+                        sUseOcclusion = 0;
+                        LLGLEnable cull(GL_CULL_FACE);
+                        LLGLDepthTest depth_test(GL_TRUE, GL_TRUE, GL_LESS);
+                        updateCull(shadow_cam, result[i]);
+                        stateSort(shadow_cam, result[i]);
+                        sUseOcclusion = saved_occlusion;
+                        LLPipelineFrameContext::getInstance().setShadowPass(false);
+                    }
+
+                    ensureShadowWorkerSeeds(shadow_seeds, mSpotShadow[i]);
+
+                    bool dispatched = false;
+                    if (shadow_seeds.valid)
+                    {
+                        pinShadowWorkerDrawInfos(result[i]);
+
+                        ShadowRecordCtx ctx;
+                        std::memcpy(ctx.view, glm::value_ptr(view[i + 4]), sizeof(ctx.view));
+                        std::memcpy(ctx.proj, glm::value_ptr(proj[i + 4]), sizeof(ctx.proj));
+                        std::memcpy(ctx.last_modelview, gGLLastModelView, sizeof(ctx.last_modelview));
+                        ctx.cull_radius    = 0.f;
+                        ctx.result         = &result[i];
+                        ctx.rt             = &mSpotShadow[i];
+                        ctx.depth_image    = mSpotShadow[i].getVkDepthImage();
+                        ctx.depth_view     = mSpotShadow[i].getVkDepthView();
+                        ctx.width          = mSpotShadow[i].getWidth();
+                        ctx.height         = mSpotShadow[i].getHeight();
+                        ctx.initial_layout = mSpotShadow[i].getVkDepthLayout();
+                        ctx.map_index      = 4u + (U32)i;
+                        ctx.color_mask_off = RenderShadowDetail <= 2;
+                        ctx.depth_clamp    = false;
+                        ctx.seeds          = &shadow_seeds.map;
+
+                        LLVKLoader::endDynamicRendering();
+                        dispatched = LLVKLoader::dispatchRecordJob(
+                            [ctx](VkCommandBuffer cmd) { recordShadowWorkerFamilies(ctx, cmd); });
+                        if (dispatched)
+                        {
+                            mSpotShadow[i].setVkDepthLayout(VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL);
+                        }
+                    }
+                    mt_split = dispatched;
+                }
+
+                mSpotShadow[i].bindTarget();
+                mSpotShadow[i].getViewport(gGLViewport);
+                if (!mt_split)
+                {
+                    mSpotShadow[i].clear();
+                }
+
+                renderShadow(view[i + 4], proj[i + 4], shadow_cam, result[i], false, mt_split);
 
                 RenderSpotLight = nullptr;
 
@@ -15120,6 +15551,9 @@ void LLPipeline::generateSunShadow(LLCamera& camera)
     { //no spotlight shadows
         mShadowSpotLight[0] = mShadowSpotLight[1] = NULL;
     }
+
+    LLVKLoader::joinRecordJobs();
+    sShadowRecordPins.clear();
 
     if (!CameraOffset)
     {

@@ -130,6 +130,8 @@ public:
     void setHasMipMaps(bool hasMips) { mHasMipMaps = hasMips; }
 
     LLImageGL*          mCurrImageGL = nullptr;
+    U32                 mCurrVkHeapSlot = 0xFFFFFFFFu;
+    U32                 currVkHeapSlotOrDefault() const;
 
     LLCubeMap*          mCurrCubeMap = nullptr;
 

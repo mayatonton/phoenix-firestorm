@@ -223,7 +223,6 @@ namespace
     thread_local VkDeviceSize     tIBMemoOff   = 0;
     thread_local VkIndexType      tIBMemoType  = VK_INDEX_TYPE_MAX_ENUM;
 
-    std::atomic<U32> sVkcScratchOwner{0};
     std::atomic<U32> sVkcSlotOwner{0};
     std::atomic<U32> sVkcMegaOwner{0};
 
@@ -384,8 +383,7 @@ namespace
         }
         return sAllocDomains[id];
     }
-    U32                      sDrawDataScratchCursor                  = 0;
-    U32                      sDrawDataScratchFrame                   = 0xFFFFFFFFu;
+    std::atomic<U32>         sDrawDataScratchCursor{0};
     thread_local U32         tCurrentDrawDataID                      = 0;
 
     constexpr U32            INDIRECT_RING_COMMANDS_PER_FRAME        = 524288;
@@ -5495,6 +5493,7 @@ bool beginFrame(bool acquire_swapchain)
 
     sFrameIndex = (sFrameIndex + 1) % FRAMES_IN_FLIGHT;
     sSkinPaletteCursor[sFrameIndex].store(0, std::memory_order_relaxed); // B.0: reset skin palette region ring
+    sDrawDataScratchCursor.store(0, std::memory_order_relaxed);
 
     bool slot_submitted;
     {
@@ -5718,6 +5717,32 @@ void joinRecordJobs()
     sRWFrameCmds.clear();
     sRWDispatched = 0;
     sRWCompleted  = 0;
+}
+
+void cmdShadowDepthWawBarrierVk(VkCommandBuffer cmd, VkImage depth_image)
+{
+    if (cmd == VK_NULL_HANDLE || depth_image == VK_NULL_HANDLE)
+    {
+        return;
+    }
+    VkImageMemoryBarrier b = {};
+    b.sType                           = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER;
+    b.oldLayout                       = VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL;
+    b.newLayout                       = VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL;
+    b.srcQueueFamilyIndex             = VK_QUEUE_FAMILY_IGNORED;
+    b.dstQueueFamilyIndex             = VK_QUEUE_FAMILY_IGNORED;
+    b.image                           = depth_image;
+    b.srcAccessMask                   = VK_ACCESS_DEPTH_STENCIL_ATTACHMENT_WRITE_BIT;
+    b.dstAccessMask                   = VK_ACCESS_DEPTH_STENCIL_ATTACHMENT_READ_BIT | VK_ACCESS_DEPTH_STENCIL_ATTACHMENT_WRITE_BIT;
+    b.subresourceRange.aspectMask     = VK_IMAGE_ASPECT_DEPTH_BIT | VK_IMAGE_ASPECT_STENCIL_BIT;
+    b.subresourceRange.baseMipLevel   = 0;
+    b.subresourceRange.levelCount     = 1;
+    b.subresourceRange.baseArrayLayer = 0;
+    b.subresourceRange.layerCount     = 1;
+    vkCmdPipelineBarrier(cmd,
+                         VK_PIPELINE_STAGE_LATE_FRAGMENT_TESTS_BIT,
+                         VK_PIPELINE_STAGE_EARLY_FRAGMENT_TESTS_BIT | VK_PIPELINE_STAGE_LATE_FRAGMENT_TESTS_BIT,
+                         0, 0, nullptr, 0, nullptr, 1, &b);
 }
 
 bool endFrame()
@@ -7955,13 +7980,13 @@ LLVK_SHARED_UBO_RING_IMPL(PbrTerrain,       PbrTerrain_PerShaderBind,        52,
 #undef LLVK_SHARED_UBO_RING_IMPL
 
 #define LLVK_SHARED_UBO_DYNAMIC_IMPL(BindName, StructType)                                              \
-    static StructType s##BindName##Shadow;                                                              \
-    static U64 s##BindName##WriteGen = 1;                                                               \
-    static U64 s##BindName##UpFrame[FRAMES_IN_FLIGHT]  = { ~0ull, ~0ull, ~0ull };                       \
-    static U64 s##BindName##UpGen[FRAMES_IN_FLIGHT]    = { 0, 0, 0 };                                   \
-    static U32 s##BindName##UpOffset[FRAMES_IN_FLIGHT] = { 0, 0, 0 };                                   \
-    static VkBuffer s##BindName##UpBuf[FRAMES_IN_FLIGHT] = { VK_NULL_HANDLE, VK_NULL_HANDLE, VK_NULL_HANDLE }; \
-    static U64 s##BindName##UpHash[FRAMES_IN_FLIGHT] = { 0, 0, 0 };                                     \
+    static thread_local StructType s##BindName##Shadow;                                                 \
+    static thread_local U64 s##BindName##WriteGen = 1;                                                  \
+    static thread_local U64 s##BindName##UpFrame[FRAMES_IN_FLIGHT]  = { ~0ull, ~0ull, ~0ull };          \
+    static thread_local U64 s##BindName##UpGen[FRAMES_IN_FLIGHT]    = { 0, 0, 0 };                      \
+    static thread_local U32 s##BindName##UpOffset[FRAMES_IN_FLIGHT] = { 0, 0, 0 };                      \
+    static thread_local VkBuffer s##BindName##UpBuf[FRAMES_IN_FLIGHT] = { VK_NULL_HANDLE, VK_NULL_HANDLE, VK_NULL_HANDLE }; \
+    static thread_local U64 s##BindName##UpHash[FRAMES_IN_FLIGHT] = { 0, 0, 0 };                        \
     static bool peek##BindName##State(const void*& out_shadow, U32& out_size,                           \
                                       U32& out_off, bool& out_current, U64& out_up_hash)                \
     {                                                                                                  \
@@ -8206,13 +8231,13 @@ static void tickSharedDynamicPersistentUBOs()
     tickSSRUtilPersistent();
 }
 
-static ObjectSkin_PerProgramBind sObjectSkinShadow;
-static U64 sObjectSkinWriteGen = 1;
-static U64 sObjectSkinUpFrame[FRAMES_IN_FLIGHT]  = { ~0ull, ~0ull, ~0ull };
-static U64 sObjectSkinUpGen[FRAMES_IN_FLIGHT]    = { 0, 0, 0 };
-static U32 sObjectSkinUpOffset[FRAMES_IN_FLIGHT] = { 0, 0, 0 };
-static VkBuffer sObjectSkinUpBuf[FRAMES_IN_FLIGHT] = { VK_NULL_HANDLE, VK_NULL_HANDLE, VK_NULL_HANDLE };
-static U64 sObjectSkinUpHash[FRAMES_IN_FLIGHT] = { 0, 0, 0 };
+static thread_local ObjectSkin_PerProgramBind sObjectSkinShadow;
+static thread_local U64 sObjectSkinWriteGen = 1;
+static thread_local U64 sObjectSkinUpFrame[FRAMES_IN_FLIGHT]  = { ~0ull, ~0ull, ~0ull };
+static thread_local U64 sObjectSkinUpGen[FRAMES_IN_FLIGHT]    = { 0, 0, 0 };
+static thread_local U32 sObjectSkinUpOffset[FRAMES_IN_FLIGHT] = { 0, 0, 0 };
+static thread_local VkBuffer sObjectSkinUpBuf[FRAMES_IN_FLIGHT] = { VK_NULL_HANDLE, VK_NULL_HANDLE, VK_NULL_HANDLE };
+static thread_local U64 sObjectSkinUpHash[FRAMES_IN_FLIGHT] = { 0, 0, 0 };
 
 struct ObjectSkinFrameCacheKey
 {
@@ -8240,8 +8265,9 @@ struct ObjectSkinFrameCacheVal
 };
 static std::unordered_map<ObjectSkinFrameCacheKey, ObjectSkinFrameCacheVal, ObjectSkinFrameCacheKeyHash> sObjectSkinFrameCache;
 static U64 sObjectSkinFrameCacheStamp = ~0ull;
+static std::mutex sObjectSkinFrameCacheMutex;
 
-static void objectSkinFrameCacheGuard()
+static void objectSkinFrameCacheGuardLocked()
 {
     if (sObjectSkinFrameCacheStamp != sMonotonicFrameCount)
     {
@@ -8403,14 +8429,19 @@ bool objectSkinTryAdopt(const void* avatar, U64 skin_hash)
     {
         return false;
     }
-    objectSkinFrameCacheGuard();
-    auto it = sObjectSkinFrameCache.find(ObjectSkinFrameCacheKey{ avatar, skin_hash });
-    if (it == sObjectSkinFrameCache.end())
+    ObjectSkinFrameCacheVal val;
     {
-        return false;
+        std::lock_guard<std::mutex> lk(sObjectSkinFrameCacheMutex);
+        objectSkinFrameCacheGuardLocked();
+        auto it = sObjectSkinFrameCache.find(ObjectSkinFrameCacheKey{ avatar, skin_hash });
+        if (it == sObjectSkinFrameCache.end())
+        {
+            return false;
+        }
+        val = it->second;
     }
-    sObjectSkinUpBuf[f]    = it->second.buf;
-    sObjectSkinUpOffset[f] = it->second.off;
+    sObjectSkinUpBuf[f]    = val.buf;
+    sObjectSkinUpOffset[f] = val.off;
     sObjectSkinUpFrame[f]  = sMonotonicFrameCount;
     ++sObjectSkinWriteGen;
     sObjectSkinUpGen[f]    = sObjectSkinWriteGen;
@@ -8430,7 +8461,6 @@ void objectSkinStoreCache(const void* avatar, U64 skin_hash)
     {
         return;
     }
-    objectSkinFrameCacheGuard();
     VkBuffer buf = VK_NULL_HANDLE;
     U32      off = 0;
     const bool current = (sObjectSkinUpFrame[f] == sMonotonicFrameCount
@@ -8447,8 +8477,12 @@ void objectSkinStoreCache(const void* avatar, U64 skin_hash)
     // B.0: parallel-fill the bindless palette from the same shadow the UBO used.
     // One fill per unique (avatar,skin_hash) this frame == skin_up (dedup-consistent).
     const U32 skin_entry = skinBindlessStorePalette(&sObjectSkinShadow);
-    sObjectSkinFrameCache[ObjectSkinFrameCacheKey{ avatar, skin_hash }] =
-        ObjectSkinFrameCacheVal{ buf, off, skin_entry };
+    {
+        std::lock_guard<std::mutex> lk(sObjectSkinFrameCacheMutex);
+        objectSkinFrameCacheGuardLocked();
+        sObjectSkinFrameCache[ObjectSkinFrameCacheKey{ avatar, skin_hash }] =
+            ObjectSkinFrameCacheVal{ buf, off, skin_entry };
+    }
 }
 
 // B.2: look up this frame's bindless palette entry for (avatar, skin_hash).
@@ -8459,7 +8493,8 @@ U32 objectSkinLookupEntry(const void* avatar, U64 skin_hash)
     {
         return BINDLESS_INVALID_SLOT;
     }
-    objectSkinFrameCacheGuard();
+    std::lock_guard<std::mutex> lk(sObjectSkinFrameCacheMutex);
+    objectSkinFrameCacheGuardLocked();
     auto it = sObjectSkinFrameCache.find(ObjectSkinFrameCacheKey{ avatar, skin_hash });
     return (it != sObjectSkinFrameCache.end()) ? it->second.skin_entry : BINDLESS_INVALID_SLOT;
 }
@@ -12343,25 +12378,19 @@ U32 drawDataWriteScratch(const U32* slots4)
     {
         return tDrawDataScratchMemoSlot;
     }
-    VkcRaceProbe probe(sVkcScratchOwner, LLVKContract::C_DRAWDATA_RACE);
-    if (sDrawDataScratchFrame != sMonotonicFrameCount)
-    {
-        sDrawDataScratchFrame  = sMonotonicFrameCount;
-        sDrawDataScratchCursor = 0;
-    }
-    if (sDrawDataScratchCursor >= DRAWDATA_SCRATCH_PER_FRAME)
+    U32 local = sDrawDataScratchCursor.fetch_add(1, std::memory_order_relaxed);
+    if (local >= DRAWDATA_SCRATCH_PER_FRAME)
     {
         LLVKContract::cause(LLVKContract::C_DRAWDATA_SCRATCH_WRAP);
-        static bool warned = false;
-        if (!warned)
+        static std::atomic<bool> warned{false};
+        if (!warned.exchange(true))
         {
             LL_WARNS("Vulkan") << "VKBindless: DrawData scratch wrapped" << LL_ENDL;
-            warned = true;
         }
-        sDrawDataScratchCursor = 0;
+        local %= DRAWDATA_SCRATCH_PER_FRAME;
     }
     const U32 region = (sFrameIndex < FRAMES_IN_FLIGHT) ? sFrameIndex : 0;
-    const U32 slot = DRAWDATA_PERSISTENT_SLOTS + region * DRAWDATA_SCRATCH_PER_FRAME + sDrawDataScratchCursor++;
+    const U32 slot = DRAWDATA_PERSISTENT_SLOTS + region * DRAWDATA_SCRATCH_PER_FRAME + local;
     std::memcpy(sDrawDataMapped + (size_t)slot * 4, slots4, 16);
     tDrawDataScratchMemoFrame = sMonotonicFrameCount;
     tDrawDataScratchMemoSlot  = slot;

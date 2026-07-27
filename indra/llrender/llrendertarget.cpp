@@ -38,8 +38,8 @@ U32 LLRenderTarget::sBytesAllocated = 0;
 
 extern S32 gGLViewport[4];
 
-U32 LLRenderTarget::sCurResX = 0;
-U32 LLRenderTarget::sCurResY = 0;
+thread_local U32 LLRenderTarget::sCurResX = 0;
+thread_local U32 LLRenderTarget::sCurResY = 0;
 
 LLRenderTarget::LLRenderTarget() :
     mResX(0),
@@ -654,6 +654,7 @@ void LLRenderTarget::bindTexture(U32 index, S32 channel, LLTexUnit::eTextureFilt
         tu->mCurrRTAttachment = index;
         tu->mCurrRTDepth      = false;
         tu->mCurrImageGL      = nullptr;
+        tu->mCurrVkHeapSlot   = 0xFFFFFFFFu;
     }
 
     bindForShaderRead(index, false);
