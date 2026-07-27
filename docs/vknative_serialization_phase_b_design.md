@@ -1,5 +1,7 @@
 # 直列破壊 Phase B — camera scene pass 記録の worker 並列化(詳細設計)
 
+> ⚠️ **設計欠陥判明(2026-07-28)**: 本 doc §2 表 1 の「worker CB は main CB より前に実行(pre_cmds)」は **uiscene 非同期分離モードで順序破壊**(scene S の gbuffer が消費前に S+1 の CLEAR で破壊 = avatar 全消失級)。真実源 = `docs/vknative_async_cadence_ordering_survey.md`(TOP・根治優先)。同 doc §1 の scene 結合チャネルが根治形。B1a 実装はその根治完了まで gate 不可。
+
 - 状態: **設計者起草ドラフト 2026-07-27・approve 前**。HEAD `18580032416`(Phase A 実装完了・crowd gate 待ち)。
 - 位置づけ: `docs/vknative_serialization_root_cure_design.md` §3 表の **Phase B** の JIT 詳細設計(同 doc §5 が予告した起草物)。Phase A の機構(seed / pin / lane CB / pre_cmds join)の直接拡張であり、新基盤の発明ではない。
 - 前提: **Phase A crowd gate PASS 後に着手**(§0 の標的実測も同走行で採取)。

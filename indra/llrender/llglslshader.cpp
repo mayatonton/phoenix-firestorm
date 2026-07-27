@@ -3285,6 +3285,94 @@ bool LLGLSLShader::vkCollectDynamicUBOWrites(LLGLSLShader*                     c
     return true;
 }
 
+bool LLGLSLShader::vkCaptureSeedDynamicBuffers(RecordSeed& seed)
+{
+    LLGLSLShader* cur = sCurBoundShaderPtr;
+    if (cur == nullptr)
+    {
+        return false;
+    }
+    seed.buf_count = 0;
+    for (U32 db : cur->mVkDynamicBindings)
+    {
+        if (seed.buf_count >= MAX_VK_DYNAMIC_BINDINGS)
+        {
+            break;
+        }
+        VkBuffer buf = VK_NULL_HANDLE;
+        U32      off = 0;
+        if (db == 0 && cur->mVkPerProgramUBOBinding == 0)
+        {
+            if (cur->mVkPerProgramUBO != VK_NULL_HANDLE && cur->mVkPerProgramUBOSize > 0)
+            {
+                if (!cur->vkResolvePerProgramForDraw(buf, off))
+                {
+                    return false;
+                }
+            }
+        }
+        else
+        {
+            if (!LLVKLoader::getSharedDynamicUBOForBinding(db, buf, off) || buf == VK_NULL_HANDLE)
+            {
+                return false;
+            }
+        }
+        seed.bufs[seed.buf_count++] = buf;
+    }
+    return true;
+}
+
+bool LLGLSLShader::vkRefreshDynamicOffsetsForSeed(const RecordSeed& seed)
+{
+    LLGLSLShader* cur = sCurBoundShaderPtr;
+    if (cur == nullptr)
+    {
+        return false;
+    }
+    U32 idx = 0;
+    for (U32 db : cur->mVkDynamicBindings)
+    {
+        if (idx >= MAX_VK_DYNAMIC_BINDINGS || idx >= seed.buf_count)
+        {
+            break;
+        }
+        VkBuffer buf = VK_NULL_HANDLE;
+        U32      off = 0;
+        if (db == 0 && cur->mVkPerProgramUBOBinding == 0)
+        {
+            if (cur->mVkPerProgramUBO != VK_NULL_HANDLE && cur->mVkPerProgramUBOSize > 0)
+            {
+                if (!cur->vkResolvePerProgramForDraw(buf, off))
+                {
+                    return false;
+                }
+            }
+        }
+        else
+        {
+            if (!LLVKLoader::getSharedDynamicUBOForBinding(db, buf, off) || buf == VK_NULL_HANDLE)
+            {
+                return false;
+            }
+        }
+        if (buf != seed.bufs[idx])
+        {
+            static std::atomic<U32> s_seed_buf_mismatch{0};
+            const U32 n = ++s_seed_buf_mismatch;
+            if ((n & (n - 1)) == 0)
+            {
+                LL_WARNS("Vulkan") << "VKC record_seed_buf_mismatch shader='" << cur->mName
+                                   << "' db=" << db << " n=" << n << LL_ENDL;
+            }
+            return false;
+        }
+        sCurPerCallVkDynamicOffsets[idx++] = off;
+    }
+    sCurPerCallVkOffsetsDirty = false;
+    return true;
+}
+
 void LLGLSLShader::vkRefreshDynamicOffsetsForDraw()
 {
     LLGLSLShader* cur = sCurBoundShaderPtr;
@@ -3531,7 +3619,8 @@ void LLGLSLShader::populateAndBindUniversalDescriptorSet(bool preserve_drawdata)
         if (sRecordSeedMap != nullptr && cur != nullptr)
         {
             auto seed_it = sRecordSeedMap->find(cur);
-            if (seed_it != sRecordSeedMap->end() && seed_it->second.set != VK_NULL_HANDLE)
+            if (seed_it != sRecordSeedMap->end() && seed_it->second.set != VK_NULL_HANDLE
+                && vkRefreshDynamicOffsetsForSeed(seed_it->second))
             {
                 if (cur->mVkUsesBindlessHeap && !preserve_drawdata)
                 {
@@ -3554,7 +3643,6 @@ void LLGLSLShader::populateAndBindUniversalDescriptorSet(bool preserve_drawdata)
                 }
                 sCurPerCallVkDescriptorSet = seed_it->second.set;
                 sCurPerCallVkSetShape      = seed_it->second.shape;
-                vkRefreshDynamicOffsetsForDraw();
                 return;
             }
         }

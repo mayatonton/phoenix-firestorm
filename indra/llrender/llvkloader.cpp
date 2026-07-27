@@ -1322,6 +1322,7 @@ namespace
 
     void rwResetRecordThreadLocals()
     {
+        ++tCmdRecordEpoch;
         sLastBoundGraphicsPipeline = VK_NULL_HANDLE;
         sLastDescLayout            = VK_NULL_HANDLE;
         sLastDescSet0              = VK_NULL_HANDLE;
@@ -5743,6 +5744,58 @@ void cmdShadowDepthWawBarrierVk(VkCommandBuffer cmd, VkImage depth_image)
                          VK_PIPELINE_STAGE_LATE_FRAGMENT_TESTS_BIT,
                          VK_PIPELINE_STAGE_EARLY_FRAGMENT_TESTS_BIT | VK_PIPELINE_STAGE_LATE_FRAGMENT_TESTS_BIT,
                          0, 0, nullptr, 0, nullptr, 1, &b);
+}
+
+void cmdCameraGbufferBarrierVk(VkCommandBuffer cmd, const VkImage* color_images, U32 color_count, VkImage depth_image)
+{
+    if (cmd == VK_NULL_HANDLE)
+    {
+        return;
+    }
+    VkImageMemoryBarrier barriers[5] = {};
+    U32 n = 0;
+    for (U32 i = 0; i < color_count && i < 4; ++i)
+    {
+        if (color_images[i] == VK_NULL_HANDLE)
+        {
+            continue;
+        }
+        VkImageMemoryBarrier& b = barriers[n++];
+        b.sType                           = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER;
+        b.oldLayout                       = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
+        b.newLayout                       = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
+        b.srcQueueFamilyIndex             = VK_QUEUE_FAMILY_IGNORED;
+        b.dstQueueFamilyIndex             = VK_QUEUE_FAMILY_IGNORED;
+        b.image                           = color_images[i];
+        b.srcAccessMask                   = VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT;
+        b.dstAccessMask                   = VK_ACCESS_COLOR_ATTACHMENT_READ_BIT | VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT;
+        b.subresourceRange.aspectMask     = VK_IMAGE_ASPECT_COLOR_BIT;
+        b.subresourceRange.levelCount     = 1;
+        b.subresourceRange.layerCount     = 1;
+    }
+    if (depth_image != VK_NULL_HANDLE)
+    {
+        VkImageMemoryBarrier& b = barriers[n++];
+        b.sType                           = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER;
+        b.oldLayout                       = VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL;
+        b.newLayout                       = VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL;
+        b.srcQueueFamilyIndex             = VK_QUEUE_FAMILY_IGNORED;
+        b.dstQueueFamilyIndex             = VK_QUEUE_FAMILY_IGNORED;
+        b.image                           = depth_image;
+        b.srcAccessMask                   = VK_ACCESS_DEPTH_STENCIL_ATTACHMENT_WRITE_BIT;
+        b.dstAccessMask                   = VK_ACCESS_DEPTH_STENCIL_ATTACHMENT_READ_BIT | VK_ACCESS_DEPTH_STENCIL_ATTACHMENT_WRITE_BIT;
+        b.subresourceRange.aspectMask     = VK_IMAGE_ASPECT_DEPTH_BIT | VK_IMAGE_ASPECT_STENCIL_BIT;
+        b.subresourceRange.levelCount     = 1;
+        b.subresourceRange.layerCount     = 1;
+    }
+    if (n == 0)
+    {
+        return;
+    }
+    vkCmdPipelineBarrier(cmd,
+                         VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT | VK_PIPELINE_STAGE_LATE_FRAGMENT_TESTS_BIT,
+                         VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT | VK_PIPELINE_STAGE_EARLY_FRAGMENT_TESTS_BIT | VK_PIPELINE_STAGE_LATE_FRAGMENT_TESTS_BIT,
+                         0, 0, nullptr, 0, nullptr, n, barriers);
 }
 
 bool endFrame()

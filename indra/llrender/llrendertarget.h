@@ -156,6 +156,11 @@ public:
     }
     VkImageView getVkDepthView() const { return mVkDepthView; }
 
+    VkImageView getVkAttachmentView(U32 attachment = 0) const
+    {
+        return (attachment < mVkTexView.size()) ? mVkTexView[attachment] : VK_NULL_HANDLE;
+    }
+
     VkImage getVkImage(U32 attachment = 0) const
     {
         return (attachment < mVkTex.size()) ? mVkTex[attachment] : VK_NULL_HANDLE;
@@ -209,6 +214,14 @@ public:
     void swapFBORefs(LLRenderTarget& other);
 
     void setVkDepthLayout(VkImageLayout layout) { setCurDepthLayout(layout); }
+
+    void setVkTexLayout(U32 attachment, VkImageLayout layout)
+    {
+        if (attachment < mVkTexLayout.size())
+        {
+            mVkTexLayout[attachment] = layout;
+        }
+    }
 
     static thread_local LLRenderTarget* sBoundTarget;
 

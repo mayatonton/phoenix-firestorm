@@ -326,6 +326,9 @@ public:
     void checkReferences(LLSpatialGroup* group);
 
     void renderGeomDeferred(LLCamera& camera, bool do_occlusion = false);
+    bool beginCameraRecordSplit();
+    void finishCameraRecordSplit();
+    bool isCameraRecordSplitActive() const { return mCameraRecordSplitActive; }
     void renderGeomPostDeferred(LLCamera& camera);
     void renderGeomShadow(LLCamera& camera);
     // <AYAstorm r30 P2> Velocity pass for SMAA T2x / motion blur. Iterates
@@ -1039,6 +1042,7 @@ public:
     bool                    mShadersLoaded;
 
 protected:
+    bool                    mCameraRecordSplitActive = false;
     bool                    mRenderTypeEnabled[NUM_RENDER_TYPES];
     std::stack<std::string> mRenderTypeEnableStack;
 
