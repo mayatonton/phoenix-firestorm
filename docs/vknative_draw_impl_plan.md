@@ -25,8 +25,21 @@ III-0 検出先行 ─┬─> III-1 背骨 ─> III-2 seed ─> III-3 uniform �
 
 ## III-1 背骨（DrawPlan + freeze schedule）★最大工事
 > **readiness 精緻化（2026-07-28・実装時トレース）**: `getFrameCull()`（`pipeline.cpp:474`）= `LLPipelineFrameContext::getInstance().getCullResult()`・`getInstance()` は **`static thread_local`**。∴ **各 worker は ctx で設定した自分の cull result（shadow=`result[j]`）を読む = cull リストは既に thread_local 隔離**。∴ **急所 S8-b（VB read-during-write = body 消失）は「窓中 VB 不変」= eager rebuildMesh だけで根治**でき、full DrawPlan（scalar 転写）は不要。DrawPlan は S7/S13 用で分離可。→ **III-1 を分割**:
-> - **III-1a = eager rebuildMesh（窓中 VB 不変・S8-b 根治）**: 小・高価値・III-0 guard 沈黙で検証可。DrawPlan 不要（thread_local cull + 無変異窓で足る）。
-> - **III-1b = DrawPlan materialize（scalar copy・S7/S13）**: worker が live LLDrawInfo を読まず copy を読む。大・後段。plan-build は各 stateSort 直後 interleave（main の thread_local cull が successive grabReferences で上書きされるため）。
+> - **III-1a = shadow 3-phase 再構成（窓中 VB 不変・S8-b 根治）**: 下記設計。**generateSunShadow 内で完結・DrawPlan も world hoist も不要**。III-0 guard 沈黙で検証。
+> - **III-1b = DrawPlan materialize（scalar copy・S7/S13）**: worker が live LLDrawInfo を読まず copy を読む。大・後段。急性バグ（body 消失）は III-1a で消えるので優先度下。
+>
+> ### III-1a 設計（shadow 3-phase 再構成・実装時トレース確定）
+> **entanglement 解**: worker=rigged+alpha families（`recordShadowWorkerFamilies` `pipeline.cpp:14474`）・main renderShadow(mt_split)=static+gltf（`:14711-14727`）が各自 thread_local cull を読む。`grabReferences(result)`（`:2806`）= 呼び手 thread の cull を set。**shadow window は ph6 内で開閉完結**（join `:16063`）ゆえ ph9 world stateSort と非干渉。
+> **3-phase 化**（現 cascade 毎 `stateSort→dispatch→renderShadow` 混在 `:15384-15846` を分離）:
+> 1. **Loop1 prep（全 cascade・main・dispatch 前）**: shadow_cam 計算 / cadence skip・no-receiver 判定 / `updateCull(result[j])` / `stateSort(result[j])`【rebuildMesh はここ＝window 前で安全】/ `ensureShadowWorkerSeeds` / `pinShadowWorkerDrawInfos` / `ctx[j]` 構築。per-cascade 状態 {skipped, no_receiver, mt_eligible, ctx, shadow_cam} を保持。
+> 2. **Loop2 dispatch（全 mt cascade）**: `endDynamicRendering` / `dispatchRecordJob(ctx[j])`。← ここで初めて window open。
+> 3. **Loop3 main render（全 cascade）**: `grabReferences(result[j])`【main cull を明示 set】/ `shadow_rt.bindTarget` / `renderShadow(j, mt_split)`【static+gltf・**rebuildMesh を呼ばない**】/ flush / bindForShaderRead / cascade_valid 更新。
+> 4. **join**（`:16063`）+ pins.clear。
+> **∴ 全 rebuildMesh が Loop1（dispatch 前）に集約 → Loop3（window 中）は変異なし = S8-b 根治**。非 mt cascade も Loop3 で main render（変異なし）。DrawPlan 不要。
+> **リスク**: generateSunShadow の cascade ループ再構成（per-cascade 状態の 3-loop 跨ぎ保持・cadence skip/no-receiver 分岐の保存）。**コーディング規律**: 3-loop の共通部（ctx 構築等）は関数化。
+> **⚠️ layout tracking 順序依存（full trace 確定）**: 現コードは per-cascade `dispatch → setVkDepthLayout(ATTACHMENT `:15814`) → renderShadow(main, LOAD 前提 `:15828`)` の順。main renderShadow は shadow_rt の追跡 layout=ATTACHMENT に依存（worker が pre_cmd で initial→ATTACHMENT 遷移する契約）。∴ **「dispatch を後ろに寄せるだけ」の minimal 版は不可**（render が setVkDepthLayout より先に来て壊れる）。**正しくは 3-phase 完全分離**（Loop2 = dispatch + setVkDepthLayout が Loop3 render より前）。
+> **per-cascade 配列化が要る局所**: `shadow_cam`（現ループ内 reuse → `shadow_cam[4]`）/ `ctx`（→ `ctx[4]`）/ mt 判定 / active(skip/no-receiver) フラグ。`view[]`/`proj[]`/`result[4]` は既に配列。
+> **実装単位**: レンダラ最複雑関数の 460 行 reorg + subtle GPU layout 順序 + verify は run 待ち = **fresh session で full focus 推奨**（rush は影破壊リスク）。設計は本節で implementation-ready。
 
 - **目的**: 公理 F の土台。worker が live を読まず DrawPlan（不変 snapshot）を読む + 窓中 mutation ゼロ。
 - **触る**:
