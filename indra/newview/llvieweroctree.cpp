@@ -814,6 +814,7 @@ LLOcclusionCullingGroup::LLOcclusionCullingGroup(OctreeNode* node, LLViewerOctre
         mOcclusionQuery[i] = 0;
         mOcclusionCheckCount[i] = 0;
         mOcclusionIssued[i] = 0;
+        mOcclusionQueuedFrame[i] = 0xFFFFFFFFu;
         mOcclusionState[i] = parent ? SG_STATE_INHERIT_MASK & parent->mOcclusionState[i] : 0;
         mVisible[i] = 0;
     }

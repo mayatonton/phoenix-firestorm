@@ -311,6 +311,9 @@ public:
     bool needsUpdate();
     U32  getLastOcclusionIssuedTime();
 
+    bool isOcclusionQueuedThisFrame(U32 frame) const { return mOcclusionQueuedFrame[LLViewerCamera::getCurCameraID()] == frame; }
+    void setOcclusionQueuedFrame(U32 frame) { mOcclusionQueuedFrame[LLViewerCamera::getCurCameraID()] = frame; }
+
     //virtual
     void handleChildAddition(const OctreeNode* parent, OctreeNode* child);
 
@@ -336,6 +339,7 @@ protected:
     LLViewerOctreePartition* mSpatialPartition;
     U32                      mOcclusionQuery[LLViewerCamera::NUM_CAMERAS];
     U32                      mOcclusionCheckCount[LLViewerCamera::NUM_CAMERAS];
+    U32                      mOcclusionQueuedFrame[LLViewerCamera::NUM_CAMERAS];
 
 public:
     static std::set<U32> sPendingQueries;

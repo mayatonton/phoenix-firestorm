@@ -1493,6 +1493,8 @@ void LLVOVolume::notifySkinInfoUnavailable()
 {
     mSkinInfoUnavaliable = true;
     mSkinInfo = nullptr;
+
+    notifyMeshLoaded();
 }
 
 // sculpt replaces generate() for sculpted surfaces

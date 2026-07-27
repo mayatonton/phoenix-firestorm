@@ -3197,22 +3197,22 @@ void LLPipeline::markNotCulled(LLSpatialGroup* group, LLCamera& camera)
 
 void LLPipeline::markOccluder(LLSpatialGroup* group)
 {
-    if (sUseOcclusion > 1 && group && !group->isOcclusionState(LLSpatialGroup::ACTIVE_OCCLUSION))
+    if (sUseOcclusion > 1 && group && !group->isOcclusionQueuedThisFrame((U32)gFrameCount))
     {
         LLSpatialGroup* parent = group->getParent();
 
         if (!parent || !parent->isOcclusionState(LLSpatialGroup::OCCLUDED))
         { //only mark top most occluders as active occlusion
             getFrameCull()->pushOcclusionGroup(group);
-            group->setOcclusionState(LLSpatialGroup::ACTIVE_OCCLUSION);
+            group->setOcclusionQueuedFrame((U32)gFrameCount);
 
             if (parent &&
-                !parent->isOcclusionState(LLSpatialGroup::ACTIVE_OCCLUSION) &&
+                !parent->isOcclusionQueuedThisFrame((U32)gFrameCount) &&
                 parent->getElementCount() == 0 &&
                 parent->needsUpdate())
             {
                 getFrameCull()->pushOcclusionGroup(group);
-                parent->setOcclusionState(LLSpatialGroup::ACTIVE_OCCLUSION);
+                parent->setOcclusionQueuedFrame((U32)gFrameCount);
             }
         }
     }
@@ -3341,7 +3341,6 @@ void LLPipeline::doOcclusion(LLCamera& camera)
             if (!group->isDead())
             {
                 group->doOcclusion(&camera);
-                group->clearOcclusionState(LLSpatialGroup::ACTIVE_OCCLUSION);
             }
         }
 
