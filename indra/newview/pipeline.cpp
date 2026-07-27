@@ -14859,7 +14859,17 @@ void LLPipeline::generateSunShadow(LLCamera& camera)
     F32 dist[] = { near_clip, mSunClipPlanes.mV[0], mSunClipPlanes.mV[1], mSunClipPlanes.mV[2], mSunClipPlanes.mV[3] };
 
     ShadowWorkerSeeds shadow_seeds;
-    const bool mt_shadow_capable = !gCubeSnapshot
+    static LLCachedControl<bool> shadow_record_mt(gSavedSettings, "AYAShadowRecordMT", true);
+    {
+        static bool s_prev_shadow_record_mt = true;
+        if (s_prev_shadow_record_mt != (bool)shadow_record_mt)
+        {
+            s_prev_shadow_record_mt = shadow_record_mt;
+            LL_INFOS("VkPerf") << "AYAShadowRecordMT -> " << (s_prev_shadow_record_mt ? 1 : 0) << LL_ENDL;
+        }
+    }
+    const bool mt_shadow_capable = shadow_record_mt
+                                   && !gCubeSnapshot
                                    && LLVKLoader::isVulkanInitialized()
                                    && LLVKLoader::shouldUseVulkanRender()
                                    && LLVKLoader::isBindlessActiveVk();

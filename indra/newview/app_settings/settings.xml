@@ -10244,6 +10244,17 @@ Change of this parameter will affect the layout of buttons in notification toast
     <!-- </FS:AYA> -->
 
     <!-- <FS:AYA r20 P0a> Avatar skin SSS prototype (screen-space, no whitelist) -->
+    <key>AYAShadowRecordMT</key>
+    <map>
+      <key>Comment</key>
+      <string>Phase A shadow record worker 並列の実行中トグル (診断足場・A/B 用・gate 後撤去予定)。TRUE = worker 並列 / FALSE = 直列 inline。frame 冒頭で 1 回サンプルされ frame 内は固定</string>
+      <key>Persist</key>
+      <integer>1</integer>
+      <key>Type</key>
+      <string>Boolean</string>
+      <key>Value</key>
+      <integer>1</integer>
+    </map>
     <key>AYAR20AvatarSkinSSSEnabled</key>
     <map>
       <key>Comment</key>
