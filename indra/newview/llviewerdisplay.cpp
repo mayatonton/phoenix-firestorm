@@ -926,11 +926,27 @@ void display(bool rebuild, F32 zoom_factor, int subfield, bool for_snapshot)
             LL_PROFILE_ZONE_NAMED_CATEGORY_DISPLAY("Update Geom");
             LLVKLoader::VkPerfPhaseScope ph(4);
             const F32 max_geom_update_time = 0.005f*10.f*gFrameIntervalSeconds.value(); // 50 ms/second update time
+            const bool gup_track = LLVKLoader::perfLogEnabled();
+            U64 gup_t = gup_track ? (U64)LLTimer::getTotalTime() : 0;
+            auto gup_lap = [&](U32 i)
+            {
+                if (gup_track)
+                {
+                    const U64 now = (U64)LLTimer::getTotalTime();
+                    LLVKLoader::gVkPerf.gupd_us[i] += now - gup_t;
+                    gup_t = now;
+                }
+            };
             LLVolumeGeometryManager::drainGeoPublishQueue();
+            gup_lap(0);
             LLVolumeGeometryManager::drainAvatarPublished();
+            gup_lap(1);
             gPipeline.createObjects(max_geom_update_time);
+            gup_lap(2);
             gPipeline.processPartitionQ();
+            gup_lap(3);
             gPipeline.updateGeom(max_geom_update_time);
+            gup_lap(4);
         }
 
         gPipeline.updateGL();

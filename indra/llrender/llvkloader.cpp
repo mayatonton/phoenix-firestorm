@@ -5978,6 +5978,11 @@ bool endFrame()
                                             }
                                         }
                                         return s; }()
+                                   << " | gup pub=" << (gVkPerf.gupd_us[0].load() / 1000.0)
+                                   << " avp=" << (gVkPerf.gupd_us[1].load() / 1000.0)
+                                   << " crt=" << (gVkPerf.gupd_us[2].load() / 1000.0)
+                                   << " pq=" << (gVkPerf.gupd_us[3].load() / 1000.0)
+                                   << " upg=" << (gVkPerf.gupd_us[4].load() / 1000.0)
                                    << " | bake enq=" << gVkPerf.bake_enq.load()
                                    << " pub=" << gVkPerf.bake_pub.load()
                                    << " defer=" << gVkPerf.bake_defer.load()

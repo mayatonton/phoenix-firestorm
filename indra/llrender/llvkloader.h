@@ -1537,6 +1537,7 @@ namespace LLVKLoader
         std::atomic<U64> geo_dirty_site[24] = {};
         std::atomic<U64> geo_rsn_geomb{0};
         std::atomic<U64> geo_rsn_gbfill{0};
+        std::atomic<U64> gupd_us[5] = {};
         std::atomic<U64> bake_enq{0};
         std::atomic<U64> bake_pub{0};
         std::atomic<U64> bake_defer{0};
@@ -1585,6 +1586,7 @@ namespace LLVKLoader
             for (auto& v : idle_us) v = 0;
             for (auto& v : img_us) v = 0;
             for (auto& v : mlp_us) v = 0;
+            for (auto& v : gupd_us) v = 0;
             tex_enq = 0; tex_pub = 0; tex_fail = 0; tex_dec = 0;
             img_pri_skip = 0; img_pri_full = 0;
             geo_enq = 0; geo_pub = 0; geo_pub_us = 0; geo_dis = 0; geo_inl = 0; geo_defer = 0;
