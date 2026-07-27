@@ -72,6 +72,9 @@ namespace LLVKLoader
     bool dispatchRecordJob(std::function<void(VkCommandBuffer)> body);
     void joinRecordJobs();
     U32  getCurrentRecordLane();
+    // III-0 window-mutation guard (redesign §1.3/§5.2)。
+    bool isRecordWindowActive();
+    void recordWindowMutationGuard(const char* site, U32 localid);
 
     uint32_t acquireOcclusionQueryVk();
     void     releaseOcclusionQueryVk(uint32_t handle);

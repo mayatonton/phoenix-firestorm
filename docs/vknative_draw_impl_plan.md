@@ -24,6 +24,10 @@ III-0 検出先行 ─┬─> III-1 背骨 ─> III-2 seed ─> III-3 uniform �
 - **憲法 4**: 検出器新設 = AYA 承認。**kill switch**: guard は flag 裏（既定 off・診断時 on）。**risk 低**（観測のみ）。
 
 ## III-1 背骨（DrawPlan + freeze schedule）★最大工事
+> **readiness 精緻化（2026-07-28・実装時トレース）**: `getFrameCull()`（`pipeline.cpp:474`）= `LLPipelineFrameContext::getInstance().getCullResult()`・`getInstance()` は **`static thread_local`**。∴ **各 worker は ctx で設定した自分の cull result（shadow=`result[j]`）を読む = cull リストは既に thread_local 隔離**。∴ **急所 S8-b（VB read-during-write = body 消失）は「窓中 VB 不変」= eager rebuildMesh だけで根治**でき、full DrawPlan（scalar 転写）は不要。DrawPlan は S7/S13 用で分離可。→ **III-1 を分割**:
+> - **III-1a = eager rebuildMesh（窓中 VB 不変・S8-b 根治）**: 小・高価値・III-0 guard 沈黙で検証可。DrawPlan 不要（thread_local cull + 無変異窓で足る）。
+> - **III-1b = DrawPlan materialize（scalar copy・S7/S13）**: worker が live LLDrawInfo を読まず copy を読む。大・後段。plan-build は各 stateSort 直後 interleave（main の thread_local cull が successive grabReferences で上書きされるため）。
+
 - **目的**: 公理 F の土台。worker が live を読まず DrawPlan（不変 snapshot）を読む + 窓中 mutation ゼロ。
 - **触る**:
   - **DrawPlanItem/DrawPlan 構造体 新設**（地図 §7.1 の read フィールド網羅・redesign §1.2）+ per-frame arena（A6 `allocPerDrawUBOSlice` 型の DrawPlan 版）。

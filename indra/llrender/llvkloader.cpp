@@ -1297,6 +1297,10 @@ namespace
     std::vector<VkCommandBuffer> sRWFrameCmds;
     std::vector<VkCommandBuffer> sPendingPreFrameCmds;
 
+    // III-0 window-mutation guard: worker record 窓が開いている間 (worker 並走中) true。
+    // freeze 契約 (redesign §1.3) の正のオラクル = 窓中に main が geometry を変異させたら検出。
+    std::atomic<bool>            sRecordWindowActive{false};
+
     thread_local bool tInRecordJob = false;
 
     U32 rwDesiredWorkerCount()
@@ -5690,6 +5694,7 @@ bool dispatchRecordJob(std::function<void(VkCommandBuffer)> body)
         rwExecute(job);
         return true;
     }
+    sRecordWindowActive.store(true, std::memory_order_release);
     {
         std::lock_guard<std::mutex> lk(sRWQueueMutex);
         sRWJobs.push_back(std::move(job));
@@ -5718,6 +5723,31 @@ void joinRecordJobs()
     sRWFrameCmds.clear();
     sRWDispatched = 0;
     sRWCompleted  = 0;
+    sRecordWindowActive.store(false, std::memory_order_release);
+}
+
+bool isRecordWindowActive()
+{
+    return sRecordWindowActive.load(std::memory_order_acquire);
+}
+
+// III-0 window-mutation guard 本体。redesign §1.3/§5.2。
+// 通常起動は無音 (VKC 診断 off なら即 return = コストゼロ)。診断起動 (AYASTORM_VKC) で
+// worker record 窓中に main が geometry を変異させた発生点を採取する = freeze 契約破りの正のオラクル。
+// III-0 は観測 (現状 shadow cascade interleave の S8-b は発火が期待値)。III-1 で freeze 実装後は
+// 沈黙が gate。将来 fail-closed 化 (default-deny) はここを起点にする。
+void recordWindowMutationGuard(const char* site, U32 localid)
+{
+    if (!LLVKContract::verboseEnabled())
+    {
+        return;
+    }
+    if (!sRecordWindowActive.load(std::memory_order_acquire))
+    {
+        return;
+    }
+    LLVKContract::watchStageEvent(localid, site);
+    LLVKContract::cause(LLVKContract::C_PAR_CONCURRENT);
 }
 
 void cmdShadowDepthWawBarrierVk(VkCommandBuffer cmd, VkImage depth_image)
