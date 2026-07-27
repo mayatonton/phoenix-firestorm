@@ -137,15 +137,6 @@ void LLWearableList::processGetAssetReply( const char* filename, const LLAssetID
 // [/SL:KB]
     LLAvatarAppearance *avatarp = data->mAvatarp;
 
-    static const S32 s_asset_fail_inject = []() -> S32 {
-        const char* e = getenv("AYASTORM_ASSET_FAIL_INJECT");
-        return (e != nullptr) ? atoi(e) : 0;
-    }();
-    if (s_asset_fail_inject > 0 && status >= 0 && data->mRetries < s_asset_fail_inject)
-    {
-        status = LL_ERR_ASSET_REQUEST_FAILED;
-    }
-
     if( !filename )
     {
         LL_WARNS("Wearable") << "Bad Wearable Asset: missing file." << LL_ENDL;

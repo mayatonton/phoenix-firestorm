@@ -421,15 +421,6 @@ LLDeadmanTimer LLMeshRepository::sQuiescentTimer(15.0, false);  // true -> gathe
 
 std::atomic<U32> LLMeshRepository::sRearmGeneration(0);
 
-static S32 meshAssetFailInject()
-{
-    static const S32 inject = []() -> S32 {
-        const char* e = getenv("AYASTORM_ASSET_FAIL_INJECT");
-        return (e != nullptr) ? atoi(e) : 0;
-    }();
-    return inject;
-}
-
 namespace {
     // The NoOpDeletor is used when passing certain objects (generally the LLMeshUploadThread)
     // in a smart pointer below for passage into the LLCore::Http libararies.
@@ -694,7 +685,6 @@ public:
     virtual void onCompleted(LLCore::HttpHandle handle, LLCore::HttpResponse * response);
     virtual void processData(LLCore::BufferArray * body, S32 body_offset, U8 * data, S32 data_size) = 0;
     virtual void processFailure(LLCore::HttpStatus status) = 0;
-    virtual bool wantInjectFailure() const { return false; }
 
 public:
     LLVolumeParams mMeshParams;
@@ -729,7 +719,6 @@ public:
 public:
     virtual void processData(LLCore::BufferArray * body, S32 body_offset, U8 * data, S32 data_size);
     virtual void processFailure(LLCore::HttpStatus status);
-    virtual bool wantInjectFailure() const;
 };
 
 
@@ -3887,11 +3876,6 @@ void LLMeshHandlerBase::onCompleted(LLCore::HttpHandle handle, LLCore::HttpRespo
         processFailure(status);
         ++LLMeshRepository::sHTTPErrorCount;
     }
-    else if (wantInjectFailure())
-    {
-        processFailure(LLCore::HttpStatus(HTTP_INTERNAL_ERROR));
-        ++LLMeshRepository::sHTTPErrorCount;
-    }
     else
     {
         // From texture fetch code and may apply here:
@@ -4007,19 +3991,6 @@ LLMeshHeaderHandler::~LLMeshHeaderHandler()
         }
         LLMeshRepoThread::decActiveHeaderRequests();
     }
-}
-
-bool LLMeshHeaderHandler::wantInjectFailure() const
-{
-    const S32 inject = meshAssetFailInject();
-    if (inject <= 0)
-    {
-        return false;
-    }
-    LLMutexLock lock(gMeshRepo.mThread->mMutex);
-    std::map<LLUUID, LLMeshRepoThread::MeshRetryState>::const_iterator it = gMeshRepo.mThread->mHeaderFailCount.find(mMeshParams.getSculptID());
-    const U32 count = (it != gMeshRepo.mThread->mHeaderFailCount.end()) ? it->second.mCount : 0;
-    return (S32)count < inject;
 }
 
 void LLMeshHeaderHandler::processFailure(LLCore::HttpStatus status)
@@ -4700,6 +4671,7 @@ void LLMeshRepository::unregisterSkinInfo(const LLUUID& mesh_id, LLVOVolume* vob
     LL_PROFILE_ZONE_SCOPED_CATEGORY_VOLUME;
 
     llassert(mesh_id.notNull());
+    LLMutexLock lock(mMeshMutex);
     auto skin_pair_iter = mLoadingSkins.find(mesh_id);
     if (skin_pair_iter != mLoadingSkins.end())
     {
@@ -5272,33 +5244,49 @@ void LLMeshRepository::notifySkinInfoReceived(LLMeshSkinInfo* info)
     // Alternative: We can get skin size from header
     sCacheBytesSkins += info->sizeBytes();
 
-    skin_load_map::iterator iter = mLoadingSkins.find(info->mMeshID);
-    if (iter != mLoadingSkins.end())
+    std::vector<LLVOVolume*> waiters;
     {
-        for (LLVOVolume* vobj : iter->second.mVolumes)
+        LLMutexLock lock(mMeshMutex);
+        skin_load_map::iterator iter = mLoadingSkins.find(info->mMeshID);
+        if (iter != mLoadingSkins.end())
         {
-            if (vobj)
+            for (LLVOVolume* vobj : iter->second.mVolumes)
             {
-                vobj->notifySkinInfoLoaded(info);
+                if (vobj)
+                {
+                    waiters.push_back(vobj);
+                }
             }
+            mLoadingSkins.erase(iter);
         }
-        mLoadingSkins.erase(iter);
+    }
+    for (LLVOVolume* vobj : waiters)
+    {
+        vobj->notifySkinInfoLoaded(info);
     }
 }
 
 void LLMeshRepository::notifySkinInfoUnavailable(const LLUUID& mesh_id)
 {
-    skin_load_map::iterator iter = mLoadingSkins.find(mesh_id);
-    if (iter != mLoadingSkins.end())
+    std::vector<LLVOVolume*> waiters;
     {
-        for (LLVOVolume* vobj : iter->second.mVolumes)
+        LLMutexLock lock(mMeshMutex);
+        skin_load_map::iterator iter = mLoadingSkins.find(mesh_id);
+        if (iter != mLoadingSkins.end())
         {
-            if (vobj)
+            for (LLVOVolume* vobj : iter->second.mVolumes)
             {
-                vobj->notifySkinInfoUnavailable();
+                if (vobj)
+                {
+                    waiters.push_back(vobj);
+                }
             }
+            mLoadingSkins.erase(iter);
         }
-        mLoadingSkins.erase(iter);
+    }
+    for (LLVOVolume* vobj : waiters)
+    {
+        vobj->notifySkinInfoUnavailable();
     }
 }
 

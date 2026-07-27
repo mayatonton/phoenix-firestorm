@@ -526,17 +526,6 @@ void LLGLTFMaterialList::onAssetLoadComplete(const LLUUID& id, LLAssetType::ETyp
     LL_PROFILE_ZONE_NAMED("gltf asset callback");
     AssetLoadUserData* asset_data = (AssetLoadUserData*)user_data;
 
-    static const S32 s_asset_fail_inject = []() -> S32 {
-        const char* e = getenv("AYASTORM_ASSET_FAIL_INJECT");
-        return (e != nullptr) ? atoi(e) : 0;
-    }();
-    if (s_asset_fail_inject > 0 && status == LL_ERR_NOERR
-        && asset_data->mMaterial.notNull()
-        && (S32)asset_data->mMaterial->mFetchFailCount < s_asset_fail_inject)
-    {
-        status = LL_ERR_ASSET_REQUEST_FAILED;
-    }
-
     if (status != LL_ERR_NOERR)
     {
         LL_WARNS("GLTF") << "Error getting material asset data: " << LLAssetStorage::getErrorString(status) << " (" << status << ")" << LL_ENDL;

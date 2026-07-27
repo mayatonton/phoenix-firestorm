@@ -2157,17 +2157,6 @@ bool LLViewerFetchedTexture::updateFetch()
         // keep in mind that fetcher still might need raw image, don't modify original
         bool finished = LLAppViewer::getTextureFetch()->getRequestFinished(getID(), fetch_discard, mFetchState, mRawImage, mAuxRawImage,
                                                                            mLastHttpGetStatus);
-        static const S32 s_asset_fail_inject = []() -> S32 {
-            const char* e = getenv("AYASTORM_ASSET_FAIL_INJECT");
-            return (e != nullptr) ? atoi(e) : 0;
-        }();
-        if (s_asset_fail_inject > 0 && finished && mRawImage.notNull()
-            && (S32)mFetchFailCount < s_asset_fail_inject)
-        {
-            mRawImage = nullptr;
-            mAuxRawImage = nullptr;
-            mRawDiscardLevel = INVALID_DISCARD_LEVEL;
-        }
         if (mRawImage.notNull()) sRawCount++;
         if (mAuxRawImage.notNull())
         {

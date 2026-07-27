@@ -33,6 +33,8 @@
 #else
     #include <sys/socket.h>
     #include <netinet/in.h>
+    #include <sys/select.h>
+    #include <sys/time.h>
 #endif
 
 // linden library includes
@@ -43,7 +45,7 @@
 #include "message.h"
 #include "u64.h"
 
-constexpr S16 MAX_BUFFER_RING_SIZE = 1024;
+constexpr S16 MAX_BUFFER_RING_SIZE = 4096;
 constexpr S16 DEFAULT_BUFFER_RING_SIZE = 256;
 
 LLPacketRing::LLPacketRing ()
@@ -71,9 +73,18 @@ LLPacketRing::~LLPacketRing ()
 S32 LLPacketRing::receivePacket (S32 socket, char *datap)
 {
     bool drop = computeDrop();
-    return (mNumBufferedPackets > 0) ?
-        receiveOrDropBufferedPacket(datap, drop) :
-        receiveOrDropPacket(socket, datap, drop);
+    {
+        std::lock_guard<std::mutex> lock(mRingMutex);
+        if (mNumBufferedPackets > 0)
+        {
+            return receiveOrDropBufferedPacket(datap, drop);
+        }
+    }
+    if (mDrainThreadActive)
+    {
+        return 0;
+    }
+    return receiveOrDropPacket(socket, datap, drop);
 }
 
 bool send_packet_helper(int socket, const char * datap, S32 data_size, LLHost host)
@@ -227,6 +238,7 @@ S32 LLPacketRing::receiveOrDropBufferedPacket(char *datap, bool drop)
 
 S32 LLPacketRing::bufferInboundPacket(S32 socket)
 {
+    std::lock_guard<std::mutex> lock(mRingMutex);
     if (mNumBufferedPackets == mPacketRing.size() && mNumBufferedPackets < MAX_BUFFER_RING_SIZE)
     {
         expandRing();
@@ -264,6 +276,7 @@ S32 LLPacketRing::bufferInboundPacket(S32 socket)
                 {
                     // we overwrote an older packet
                     mNumBufferedBytes += packet_size - old_packet_size;
+                    ++mNumDroppedPackets;
                 }
             }
             else
@@ -290,6 +303,7 @@ S32 LLPacketRing::bufferInboundPacket(S32 socket)
             {
                 // we overwrote an older packet
                 mNumBufferedBytes += packet_size - old_packet_size;
+                ++mNumDroppedPackets;
             }
         }
     }
@@ -298,22 +312,33 @@ S32 LLPacketRing::bufferInboundPacket(S32 socket)
 
 S32 LLPacketRing::drainSocket(S32 socket)
 {
-    // drain into buffer
     S32 packet_size = 1;
-    S32 num_loops = 0;
-    S32 old_num_packets = mNumBufferedPackets;
     while (packet_size > 0)
     {
         packet_size = bufferInboundPacket(socket);
-        ++num_loops;
     }
-    S32 num_dropped_packets = (num_loops - 1 + old_num_packets) - mNumBufferedPackets;
-    if (num_dropped_packets > 0)
+    std::lock_guard<std::mutex> lock(mRingMutex);
+    return (S32)(mNumBufferedPackets);
+}
+
+S32 LLPacketRing::waitAndDrain(S32 socket, S32 timeout_ms)
+{
+    fd_set rfds;
+    FD_ZERO(&rfds);
+#if LL_WINDOWS
+    FD_SET((SOCKET)socket, &rfds);
+#else
+    FD_SET(socket, &rfds);
+#endif
+    timeval tv;
+    tv.tv_sec = timeout_ms / 1000;
+    tv.tv_usec = (timeout_ms % 1000) * 1000;
+    int ret = select(socket + 1, &rfds, nullptr, nullptr, &tv);
+    if (ret > 0)
     {
-        // It will eventually be accounted by mDroppedPackets
-        // and mPacketsLost, but track it here for logging purposes.
-        mNumDroppedPackets += num_dropped_packets;
+        return drainSocket(socket);
     }
+    std::lock_guard<std::mutex> lock(mRingMutex);
     return (S32)(mNumBufferedPackets);
 }
 
@@ -352,20 +377,34 @@ bool LLPacketRing::expandRing()
 
 F32 LLPacketRing::getBufferLoadRate() const
 {
+    std::lock_guard<std::mutex> lock(mRingMutex);
     // goes up to MAX_BUFFER_RING_SIZE
     return (F32)mNumBufferedPackets / (F32)DEFAULT_BUFFER_RING_SIZE;
 }
 
 void LLPacketRing::dumpPacketRingStats()
 {
-    mNumDroppedPacketsTotal += mNumDroppedPackets;
+    S16 num_buffered_packets;
+    S32 num_buffered_bytes;
+    S32 num_dropped_packets;
+    S32 num_dropped_packets_total;
+    S32 actual_bytes_in;
+    {
+        std::lock_guard<std::mutex> lock(mRingMutex);
+        mNumDroppedPacketsTotal += mNumDroppedPackets;
+        num_buffered_packets = mNumBufferedPackets;
+        num_buffered_bytes = mNumBufferedBytes;
+        num_dropped_packets = mNumDroppedPackets;
+        num_dropped_packets_total = mNumDroppedPacketsTotal;
+        actual_bytes_in = mActualBytesIn;
+        mNumDroppedPackets = 0;
+    }
     LL_INFOS("Messaging") << "Packet ring stats: " << std::endl
-                          << "Buffered packets: " << mNumBufferedPackets << std::endl
-                          << "Buffered bytes: " << mNumBufferedBytes << std::endl
-                          << "Dropped packets current: " << mNumDroppedPackets << std::endl
-                          << "Dropped packets total: " << mNumDroppedPacketsTotal << std::endl
+                          << "Buffered packets: " << num_buffered_packets << std::endl
+                          << "Buffered bytes: " << num_buffered_bytes << std::endl
+                          << "Dropped packets current: " << num_dropped_packets << std::endl
+                          << "Dropped packets total: " << num_dropped_packets_total << std::endl
                           << "Dropped packets percentage: " << mDropPercentage << "%" << std::endl
-                          << "Actual in bytes: " << mActualBytesIn << std::endl
+                          << "Actual in bytes: " << actual_bytes_in << std::endl
                           << "Actual out bytes: " << mActualBytesOut << LL_ENDL;
-    mNumDroppedPackets = 0;
 }

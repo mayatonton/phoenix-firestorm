@@ -31,8 +31,6 @@
 #include <mutex>
 #include <set>
 #include <tuple>
-#include <unordered_map>
-#include <unordered_set>
 #include <utility>
 
 #include "lldrawpool.h"
@@ -495,63 +493,6 @@ void LLFacePool::LLOverrideFaceColor::setColor(F32 r, F32 g, F32 b, F32 a)
 
 
 thread_local F32 LLRenderPass::sShadowBatchCullRadius = 0.f;
-
-namespace LLVKMdiWatch
-{
-namespace
-{
-std::mutex sMx;
-std::unordered_set<U32> sIds;
-std::atomic<bool> sAny{false};
-std::unordered_map<U32, Counters> sCnt;
-}
-
-void setIds(const std::vector<U32>& ids)
-{
-    std::lock_guard<std::mutex> lk(sMx);
-    for (U32 id : ids)
-    {
-        sIds.insert(id);
-    }
-    sAny.store(!sIds.empty(), std::memory_order_relaxed);
-}
-
-bool active()
-{
-    return sAny.load(std::memory_order_relaxed);
-}
-
-void note(U32 id, U32 kind, bool shadow)
-{
-    std::lock_guard<std::mutex> lk(sMx);
-    if (sIds.find(id) == sIds.end())
-    {
-        return;
-    }
-    Counters& c = sCnt[id];
-    switch (kind)
-    {
-        case 0: ++(shadow ? c.semit : c.emit); break;
-        case 1: ++(shadow ? c.szvis : c.zvis); break;
-        case 2: ++(shadow ? c.szrad : c.zrad); break;
-        case 3: ++c.nospan; break;
-        default: break;
-    }
-}
-
-Counters take(U32 id)
-{
-    std::lock_guard<std::mutex> lk(sMx);
-    auto it = sCnt.find(id);
-    if (it == sCnt.end())
-    {
-        return Counters();
-    }
-    Counters c = it->second;
-    it->second = Counters();
-    return c;
-}
-}
 
 static inline bool vkShadowCullBatch(const LLDrawInfo& params)
 {
@@ -1252,15 +1193,6 @@ void LLRenderPass::buildAndOverrideScenePerDrawSet(LLDrawInfo* params, bool batc
     if (sb_on) { LLVKLoader::gVkPerf.setb_us[3] += (U64)LLTimer::getTotalTime() - sb_t; }
 }
 
-static bool mdiDiagEnabled()
-{
-    static const bool s_on = []() -> bool {
-        const char* e = getenv("AYASTORM_MDI");
-        return e == nullptr || atoi(e) != 0;
-    }();
-    return s_on;
-}
-
 void LLRenderPass::pushBatches(U32 type, bool texture, bool batch_textures)
 {
     LL_PROFILE_ZONE_SCOPED_CATEGORY_DRAWPOOL;
@@ -1269,7 +1201,6 @@ void LLRenderPass::pushBatches(U32 type, bool texture, bool batch_textures)
         if (LLVKBucket::isCameraMdiPass(type)
             && LLVKBucket::emitActive(type)
             && LLVKLoader::isIndirectDrawEnabled()
-            && mdiDiagEnabled()
             && batch_textures
             && LLGLSLShader::sCurBoundShaderPtr != nullptr
             && LLGLSLShader::sCurBoundShaderPtr->mVkUsesBindlessHeap
@@ -1302,7 +1233,6 @@ void LLRenderPass::pushUntexturedBatches(U32 type)
     LL_PROFILE_ZONE_SCOPED_CATEGORY_DRAWPOOL;
     if (LLVKBucket::emitActive(type)
         && LLVKLoader::isIndirectDrawEnabled()
-        && mdiDiagEnabled()
         && LLGLSLShader::sCurBoundShaderPtr != nullptr
         && !LLVKLoader::isRecordJobActive()
         && !gSnapshot)
@@ -1388,7 +1318,6 @@ void LLRenderPass::pushIndirectBucket(LLVKBucket::Bucket& bucket, const std::vec
             std::memcpy(cmds, bucket.mTplCommands.data(),
                         n * sizeof(VkDrawIndexedIndirectCommand));
             U64 zeroed = 0;
-            const bool mdi_watch = LLVKMdiWatch::active();
             for (size_t c = 0; c < n; ++c)
             {
                 const bool gvis = id_visible(bucket.mTplGroupIds[c]);
@@ -1402,36 +1331,6 @@ void LLRenderPass::pushIndirectBucket(LLVKBucket::Bucket& bucket, const std::vec
                 {
                     cmds[c].instanceCount = 0;
                     ++zeroed;
-                }
-                if (mdi_watch && c < bucket.mTplRecords.size() && bucket.mTplRecords[c] != nullptr)
-                {
-                    const U32 wid = bucket.mTplRecords[c]->mFSPickerLocalID;
-                    if (wid != 0)
-                    {
-                        const bool sh = LLPipelineFrameContext::getInstance().isShadowPass()
-                                     || LLPipelineFrameContext::getInstance().isReflectionPass();
-                        if (!gvis)
-                        {
-                            LLVKMdiWatch::note(wid, 1, sh);
-                        }
-                        else if (!vis)
-                        {
-                            LLVKMdiWatch::note(wid, 2, sh);
-                        }
-                        else
-                        {
-                            bool in_span = false;
-                            for (const LLVKBucket::TplChunkSpan& span : bucket.mTplChunkSpans)
-                            {
-                                if ((U32)c >= span.mFirst && (U32)c < span.mFirst + span.mCount)
-                                {
-                                    in_span = true;
-                                    break;
-                                }
-                            }
-                            LLVKMdiWatch::note(wid, in_span ? 0 : 3, sh);
-                        }
-                    }
                 }
             }
             LLVKLoader::gVkPerf.mdi_zero += zeroed;

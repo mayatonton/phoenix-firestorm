@@ -36,6 +36,7 @@
 #include <netinet/in.h>
 #include <arpa/inet.h>
 #endif
+#include <cstdlib>
 #include <iomanip>
 #include <iterator>
 #include <sstream>
@@ -51,6 +52,7 @@
 #include "lldir.h"
 #include "llerror.h"
 #include "llfasttimer.h"
+#include "llthread.h"
 #include "llhttpnodeadapter.h"
 #include "llmd5.h"
 #include "llmessagebuilder.h"
@@ -148,10 +150,33 @@ static const char* nullToEmpty(const char* s)
     return s? s : emptyString;
 }
 
+class LLUdpDrainThread final : public LLThread
+{
+public:
+    LLUdpDrainThread(LLPacketRing& ring, S32 socket)
+        : LLThread("UDPDrain"), mRing(ring), mSocket(socket)
+    {
+    }
+
+    void run() override
+    {
+        constexpr S32 DRAIN_WAIT_MS = 20;
+        while (!isQuitting())
+        {
+            mRing.waitAndDrain(mSocket, DRAIN_WAIT_MS);
+        }
+    }
+
+private:
+    LLPacketRing& mRing;
+    S32 mSocket;
+};
+
 void LLMessageSystem::init()
 {
     // initialize member variables
     mVerboseLog = false;
+    mUdpDrainThread = nullptr;
 
     mbError = false;
     mErrorCode = 0;
@@ -246,6 +271,13 @@ LLMessageSystem::LLMessageSystem(const std::string& filename, U32 port,
         mbError = true;
         mErrorCode = error;
     }
+    else
+    {
+        mPacketRing.setDrainThreadActive(true);
+        mUdpDrainThread = new LLUdpDrainThread(mPacketRing, mSocket);
+        mUdpDrainThread->start();
+        LL_INFOS("Messaging") << "UDP drain thread started, socket " << mSocket << LL_ENDL;
+    }
 //  LL_DEBUGS("Messaging") <<  << "*** port: " << mPort << LL_ENDL;
 
     //
@@ -328,6 +360,14 @@ LLMessageSystem::~LLMessageSystem()
     mMessageTemplates.clear(); // don't delete templates.
     for_each(mMessageNumbers.begin(), mMessageNumbers.end(), DeletePairedPointer());
     mMessageNumbers.clear();
+
+    if (mUdpDrainThread != nullptr)
+    {
+        mPacketRing.setDrainThreadActive(false);
+        mUdpDrainThread->shutdown();
+        delete mUdpDrainThread;
+        mUdpDrainThread = nullptr;
+    }
 
     if (!mbError)
     {
@@ -834,6 +874,10 @@ void LLMessageSystem::processAcks(LockMessageChecker&, F32 collect_time)
 
 S32 LLMessageSystem::drainUdpSocket()
 {
+    if (mPacketRing.getDrainThreadActive())
+    {
+        return mPacketRing.getNumBufferedPackets();
+    }
     return mPacketRing.drainSocket(mSocket);
 }
 

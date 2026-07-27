@@ -1085,9 +1085,6 @@ static void asyncReconcileObject(LLViewerObject* obj)
     }
     if (!any_geom && any_visible_te)
     {
-        gPipeline.markRebuild(drawablep, LLDrawable::REBUILD_GEOMETRY);
-        group->setState(LLSpatialGroup::GEOM_DIRTY);
-        gPipeline.markRebuild(group);
         ++gAssetOracleGeoRepair;
         {
             static F64 s_ef_window = 0.0;

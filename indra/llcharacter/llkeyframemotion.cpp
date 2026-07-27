@@ -2464,20 +2464,6 @@ void LLKeyframeMotion::onLoadComplete(const LLUUID& asset_uuid,
             return;
         }
 
-        static const S32 s_asset_fail_inject = []() -> S32 {
-            const char* e = getenv("AYASTORM_ASSET_FAIL_INJECT");
-            return (e != nullptr) ? atoi(e) : 0;
-        }();
-        if (s_asset_fail_inject > 0 && 0 == status)
-        {
-            static std::map<LLUUID, U8> s_inject_counts;
-            U8& inject_count = s_inject_counts[asset_uuid];
-            if ((S32)inject_count < s_asset_fail_inject)
-            {
-                ++inject_count;
-                status = LL_ERR_ASSET_REQUEST_FAILED;
-            }
-        }
 
         if (0 == status)
         {

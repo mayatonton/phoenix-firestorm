@@ -450,6 +450,7 @@ class LLAudioData
     void setHasWAVLoadFailed(const bool hwlf) { mHasWAVLoadFailed = hwlf; }
 
     bool isFetchRetryBackoff() const;
+    bool wantsFetch() const { return !mHasLocalData && !mHasDecodeFailed && !isFetchRetryBackoff(); }
     bool isFetchRetryOverdue() const;
     void scheduleFetchRetry();
     void resetFetchRetry() { mFetchFailCount = 0; mFetchRetryDue = 0.0; }

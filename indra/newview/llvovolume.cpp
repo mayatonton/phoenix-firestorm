@@ -7840,7 +7840,7 @@ void LLVolumeGeometryManager::rebuildGeom(LLSpatialGroup* group)
                     }
                 }
 
-                if (cur_total > max_total || facep->getIndicesCount() <= 0 || facep->getGeomCount() <= 0)
+                if (facep->getIndicesCount() <= 0 || facep->getGeomCount() <= 0)
                 {
                     facep->clearVertexBuffer();
                     continue;

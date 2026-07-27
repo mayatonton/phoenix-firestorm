@@ -281,6 +281,7 @@ private:
  * instance of LockMessageChecker.
  */
 class LockMessageChecker;
+class LLUdpDrainThread;
 
 class LLMessageSystem : public LLMessageSenderInterface
 {
@@ -290,6 +291,8 @@ class LLMessageSystem : public LLMessageSenderInterface
 
     bool                mBlockUntrustedInterface;
     LLHost              mUntrustedInterface;
+
+    LLUdpDrainThread*   mUdpDrainThread;
 
  public:
     LLPacketRing                mPacketRing;

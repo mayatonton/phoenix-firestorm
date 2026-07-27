@@ -77,7 +77,7 @@ const char* LOOPBACK_ADDRESS_STRING = "127.0.0.1";
 const char* BROADCAST_ADDRESS_STRING = "255.255.255.255";
 
 const int   SEND_BUFFER_SIZE    = 200000;
-const int   RECEIVE_BUFFER_SIZE = 800000;
+const int   RECEIVE_BUFFER_SIZE = 4000000;
 
 // universal functions (cross-platform)
 

@@ -2105,19 +2105,6 @@ bool LLAppViewer::doFrame()
                                                        << " probed=" << probed
                                                        << " max_lid=" << max_lid
                                                        << " region=" << regionp->getRegionID() << LL_ENDL;
-                                if (loss_delta >= 100)
-                                {
-                                    const F32 cur_far = gSavedSettings.getF32("RenderFarClip");
-                                    if (cur_far > 48.f)
-                                    {
-                                        LL_WARNS("AssetRetry") << "scene resync: heavy loss, cycling interest radius" << LL_ENDL;
-                                        gSavedSettings.setF32("RenderFarClip", 32.f);
-                                        doAfterInterval([cur_far]()
-                                        {
-                                            gSavedSettings.setF32("RenderFarClip", cur_far);
-                                        }, 2.f);
-                                    }
-                                }
                             }
                         }
                     }

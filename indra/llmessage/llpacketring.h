@@ -27,6 +27,7 @@
 
 #pragma once
 
+#include <mutex>
 #include <vector>
 
 #include "llhost.h"
@@ -49,20 +50,26 @@ public:
     // drains packets from socket and returns final mNumBufferedPackets
     S32 drainSocket(S32 socket);
 
+    // blocks up to timeout_ms waiting for socket readability, then drains
+    S32 waitAndDrain(S32 socket, S32 timeout_ms);
+
+    void setDrainThreadActive(bool active) { mDrainThreadActive = active; }
+    bool getDrainThreadActive() const { return mDrainThreadActive; }
+
     void dropPackets(U32);
     void setDropPercentage (F32 percent_to_drop);
 
     inline LLHost getLastSender() const;
     inline LLHost getLastReceivingInterface() const;
 
-    S32 getActualInBytes() const { return mActualBytesIn; }
+    S32 getActualInBytes() const { std::lock_guard<std::mutex> lock(mRingMutex); return mActualBytesIn; }
     S32 getActualOutBytes() const { return mActualBytesOut; }
-    S32 getAndResetActualInBits()   { S32 bits = mActualBytesIn * 8; mActualBytesIn = 0; return bits;}
+    S32 getAndResetActualInBits()   { std::lock_guard<std::mutex> lock(mRingMutex); S32 bits = mActualBytesIn * 8; mActualBytesIn = 0; return bits;}
     S32 getAndResetActualOutBits()  { S32 bits = mActualBytesOut * 8; mActualBytesOut = 0; return bits;}
 
-    S32 getNumBufferedPackets() const { return (S32)(mNumBufferedPackets); }
-    S32 getNumBufferedBytes() const { return mNumBufferedBytes; }
-    S32 getNumDroppedPackets() const { return mNumDroppedPacketsTotal + mNumDroppedPackets; }
+    S32 getNumBufferedPackets() const { std::lock_guard<std::mutex> lock(mRingMutex); return (S32)(mNumBufferedPackets); }
+    S32 getNumBufferedBytes() const { std::lock_guard<std::mutex> lock(mRingMutex); return mNumBufferedBytes; }
+    S32 getNumDroppedPackets() const { std::lock_guard<std::mutex> lock(mRingMutex); return mNumDroppedPacketsTotal + mNumDroppedPackets; }
 
     F32 getBufferLoadRate() const; // from 0 to 4 (0 - empty, 1 - default size is full)
     void dumpPacketRingStats();
@@ -81,12 +88,14 @@ protected:
     bool expandRing();
 
 protected:
+    mutable std::mutex mRingMutex;
     std::vector<LLPacketBuffer*> mPacketRing;
     S16 mHeadIndex { 0 };
     S16 mNumBufferedPackets { 0 };
     S32 mNumDroppedPackets { 0 };
     S32 mNumDroppedPacketsTotal { 0 };
     S32 mNumBufferedBytes { 0 };
+    bool mDrainThreadActive { false };
 
     S32 mActualBytesIn { 0 };
     S32 mActualBytesOut { 0 };

@@ -1089,7 +1089,7 @@ void LLAudioEngine::startNextTransfer()
             continue;
         }
 
-        if (!adp->hasLocalData() && !adp->hasDecodeFailed() && !adp->isFetchRetryBackoff())
+        if (adp->wantsFetch())
         {
             asset_id = adp->getID();
             max_pri = asp->getPriority();
@@ -1125,7 +1125,7 @@ void LLAudioEngine::startNextTransfer()
                 continue;
             }
 
-            if (!adp->hasLocalData() && !adp->hasDecodeFailed() && !adp->isFetchRetryBackoff())
+            if (adp->wantsFetch())
             {
                 asset_id = adp->getID();
                 max_pri = asp->getPriority();
@@ -1165,7 +1165,7 @@ void LLAudioEngine::startNextTransfer()
                     continue;
                 }
 
-                if (!adp->hasLocalData() && !adp->hasDecodeFailed() && !adp->isFetchRetryBackoff())
+                if (adp->wantsFetch())
                 {
                     asset_id = adp->getID();
                     max_pri = asp->getPriority();
@@ -1193,7 +1193,7 @@ void LLAudioEngine::startNextTransfer()
             }
 
             adp = asp->getCurrentData();
-            if (adp && !adp->hasLocalData() && !adp->hasDecodeFailed() && !adp->isFetchRetryBackoff())
+            if (adp && adp->wantsFetch())
             {
                 asset_id = adp->getID();
                 max_pri = asp->getPriority();
@@ -1201,7 +1201,7 @@ void LLAudioEngine::startNextTransfer()
             }
 
             adp = asp->getQueuedData();
-            if (adp && !adp->hasLocalData() && !adp->hasDecodeFailed() && !adp->isFetchRetryBackoff())
+            if (adp && adp->wantsFetch())
             {
                 asset_id = adp->getID();
                 max_pri = asp->getPriority();
@@ -1216,7 +1216,7 @@ void LLAudioEngine::startNextTransfer()
                     continue;
                 }
 
-                if (!adp->hasLocalData() && !adp->hasDecodeFailed() && !adp->isFetchRetryBackoff())
+                if (adp->wantsFetch())
                 {
                     asset_id = adp->getID();
                     max_pri = asp->getPriority();
@@ -1248,19 +1248,6 @@ void LLAudioEngine::assetCallback(const LLUUID &uuid, LLAssetType::EType type, v
     {
         LL_WARNS("AudioEngine") << "LLAudioEngine instance doesn't exist!" << LL_ENDL;
         return;
-    }
-
-    static const S32 s_asset_fail_inject = []() -> S32 {
-        const char* e = getenv("AYASTORM_ASSET_FAIL_INJECT");
-        return (e != nullptr) ? atoi(e) : 0;
-    }();
-    if (s_asset_fail_inject > 0 && result_code == 0)
-    {
-        LLAudioData *adp = gAudiop->getAudioData(uuid);
-        if (adp && (S32)adp->getFetchFailCount() < s_asset_fail_inject)
-        {
-            result_code = LL_ERR_ASSET_REQUEST_FAILED;
-        }
     }
 
     if (result_code)

@@ -4861,7 +4861,6 @@ namespace LLVKUuidWatch
                     m.localid = o->getLocalID();
                     sMembers.push_back(m);
                     LLVKContract::watchAddLocal(m.localid);
-                    LLVKMdiWatch::setIds({m.localid});
                     LL_WARNS("VKContract") << "VKC-UUID resolved uuid=" << m.uuid
                                            << " local=" << m.localid << LL_ENDL;
                 }
@@ -4887,38 +4886,9 @@ namespace LLVKUuidWatch
         {
             S32 vis = -1, occl = -1, dirty = -1, inflight = -1, recs = -1, own = -1;
             S32 rbage = -1, rbret = -1;
-            std::string fdetail;
             LLViewerObject* o = gObjectList.findObject(m.uuid);
             if (o != nullptr && o->mDrawable.notNull())
             {
-                if (emit_state)
-                {
-                    LLVOVolume* vvo = dynamic_cast<LLVOVolume*>(o);
-                    if (vvo != nullptr)
-                    {
-                        std::ostringstream fx;
-                        fx << " lod=" << vvo->getLOD();
-                        LLVolume* vol = vvo->getVolume();
-                        if (vol != nullptr)
-                        {
-                            fx << " sculpt=" << vol->getParams().getSculptID()
-                               << " vlod=" << vol->getDetail() << " vf=[";
-                            for (S32 i2 = 0; i2 < vol->getNumVolumeFaces(); ++i2)
-                            {
-                                fx << (i2 ? "," : "") << vol->getVolumeFace(i2).mNumVertices;
-                            }
-                            fx << "]";
-                        }
-                        fx << " fg=[";
-                        for (S32 i2 = 0; i2 < o->mDrawable->getNumFaces(); ++i2)
-                        {
-                            LLFace* fp = o->mDrawable->getFace(i2);
-                            fx << (i2 ? "," : "") << (fp != nullptr ? (S32)fp->getGeomCount() : -1);
-                        }
-                        fx << "]";
-                        fdetail = fx.str();
-                    }
-                }
                 LLSpatialGroup* g = o->mDrawable->getSpatialGroup();
                 if (g != nullptr)
                 {
@@ -4942,292 +4912,10 @@ namespace LLVKUuidWatch
                             }
                         }
                     }
-                    if (emit_state)
-                    {
-                        std::ostringstream fx2;
-                        fx2 << " fr=[";
-                        for (S32 i2 = 0; i2 < dr->getNumFaces(); ++i2)
-                        {
-                            LLFace* fp = dr->getFace(i2);
-                            S32 cov = -1;
-                            if (fp != nullptr && fp->getVertexBuffer() != nullptr)
-                            {
-                                cov = 0;
-                                const U32 fs = fp->getGeomIndex();
-                                const U32 fe = fs + fp->getGeomCount() - 1;
-                                for (LLSpatialGroup::draw_map_t::iterator j4 = g->mDrawMap.begin(); j4 != g->mDrawMap.end(); ++j4)
-                                {
-                                    for (LLSpatialGroup::drawmap_elem_t::iterator k4 = j4->second.begin(); k4 != j4->second.end(); ++k4)
-                                    {
-                                        if (k4->notNull()
-                                            && (*k4)->mVertexBuffer.get() == fp->getVertexBuffer()
-                                            && (U32)(*k4)->mStart <= fe
-                                            && (U32)(*k4)->mEnd >= fs)
-                                        {
-                                            ++cov;
-                                        }
-                                    }
-                                }
-                            }
-                            fx2 << (i2 ? "," : "") << cov;
-                        }
-                        fx2 << "] fi=[";
-                        for (S32 i2 = 0; i2 < dr->getNumFaces(); ++i2)
-                        {
-                            LLFace* fp = dr->getFace(i2);
-                            S32 icov = -1;
-                            if (fp != nullptr && fp->getVertexBuffer() != nullptr)
-                            {
-                                icov = 0;
-                                const U32 is = (U32)fp->getIndicesStart();
-                                const U32 ie = is + fp->getIndicesCount();
-                                for (LLSpatialGroup::draw_map_t::iterator j4 = g->mDrawMap.begin(); j4 != g->mDrawMap.end(); ++j4)
-                                {
-                                    for (LLSpatialGroup::drawmap_elem_t::iterator k4 = j4->second.begin(); k4 != j4->second.end(); ++k4)
-                                    {
-                                        if (k4->notNull()
-                                            && (*k4)->mVertexBuffer.get() == fp->getVertexBuffer()
-                                            && (*k4)->mOffset <= is
-                                            && (*k4)->mOffset + (*k4)->mCount >= ie)
-                                        {
-                                            ++icov;
-                                        }
-                                    }
-                                }
-                            }
-                            fx2 << (i2 ? "," : "") << icov;
-                        }
-                        fx2 << "] vz=[";
-                        for (S32 i2 = 0; i2 < dr->getNumFaces(); ++i2)
-                        {
-                            LLFace* fp = dr->getFace(i2);
-                            fx2 << (i2 ? "," : "");
-                            if (fp == nullptr || fp->getVertexBuffer() == nullptr)
-                            {
-                                fx2 << "N";
-                                continue;
-                            }
-                            LLVertexBuffer* vb = fp->getVertexBuffer();
-                            const U32 gs = fp->getGeomIndex();
-                            const U32 gc = fp->getGeomCount();
-                            U32 nz = 0;
-                            F32 mx = 0.f;
-                            bool have = false;
-                            for (U32 k2 = 0; k2 < gc; ++k2)
-                            {
-                                const U8* p2 = vb->getVkVertexWritePtr(LLVertexBuffer::TYPE_VERTEX, gs + k2);
-                                if (p2 == nullptr)
-                                {
-                                    break;
-                                }
-                                have = true;
-                                const F32* f2 = (const F32*)p2;
-                                const F32 ax = fabsf(f2[0]), ay = fabsf(f2[1]), az = fabsf(f2[2]);
-                                if (ax > 0.f || ay > 0.f || az > 0.f)
-                                {
-                                    ++nz;
-                                }
-                                mx = llmax(mx, ax, ay, az);
-                            }
-                            if (!have)
-                            {
-                                fx2 << "U";
-                                continue;
-                            }
-                            fx2 << nz << "/" << gc << ":" << (S32)mx;
-                        }
-                        fx2 << "] ii=[";
-                        for (S32 i2 = 0; i2 < dr->getNumFaces(); ++i2)
-                        {
-                            LLFace* fp = dr->getFace(i2);
-                            fx2 << (i2 ? "," : "");
-                            if (fp == nullptr || fp->getVertexBuffer() == nullptr)
-                            {
-                                fx2 << "N";
-                                continue;
-                            }
-                            LLVertexBuffer* vb = fp->getVertexBuffer();
-                            const U32 gs = fp->getGeomIndex();
-                            const U32 gc = fp->getGeomCount();
-                            const U32 is2 = (U32)fp->getIndicesStart();
-                            const U32 ic2 = fp->getIndicesCount();
-                            U32 imin = 0xFFFFFFFFu, imax = 0;
-                            bool have = false;
-                            for (U32 k2 = 0; k2 < ic2; ++k2)
-                            {
-                                const U8* p2 = vb->getVkIndexWritePtr(is2 + k2);
-                                if (p2 == nullptr)
-                                {
-                                    break;
-                                }
-                                have = true;
-                                const U16 iv = *(const U16*)p2;
-                                imin = llmin(imin, (U32)iv);
-                                imax = llmax(imax, (U32)iv);
-                            }
-                            if (!have)
-                            {
-                                fx2 << "U";
-                                continue;
-                            }
-                            fx2 << imin << "-" << imax
-                                << ((imin >= gs && imax < gs + gc) ? "ok" : "!R" )
-                                << "e" << gs << "-" << (gs + gc - 1);
-                        }
-                        fx2 << "] wn=[";
-                        for (S32 i2 = 0; i2 < dr->getNumFaces(); ++i2)
-                        {
-                            LLFace* fp = dr->getFace(i2);
-                            fx2 << (i2 ? "," : "");
-                            if (fp == nullptr || fp->getVertexBuffer() == nullptr)
-                            {
-                                fx2 << "N";
-                                continue;
-                            }
-                            LLVertexBuffer* vb = fp->getVertexBuffer();
-                            const U32 is2 = (U32)fp->getIndicesStart();
-                            const U32 ic2 = fp->getIndicesCount();
-                            U32 tri = 0, flip = 0, degen = 0;
-                            bool have = true;
-                            for (U32 k2 = 0; k2 + 2 < ic2; k2 += 3)
-                            {
-                                const U8* pi0 = vb->getVkIndexWritePtr(is2 + k2);
-                                const U8* pi1 = vb->getVkIndexWritePtr(is2 + k2 + 1);
-                                const U8* pi2 = vb->getVkIndexWritePtr(is2 + k2 + 2);
-                                if (pi0 == nullptr || pi1 == nullptr || pi2 == nullptr)
-                                {
-                                    have = false;
-                                    break;
-                                }
-                                const U32 i0 = *(const U16*)pi0, i1 = *(const U16*)pi1, i22 = *(const U16*)pi2;
-                                const F32* v0 = (const F32*)vb->getVkVertexWritePtr(LLVertexBuffer::TYPE_VERTEX, i0);
-                                const F32* v1 = (const F32*)vb->getVkVertexWritePtr(LLVertexBuffer::TYPE_VERTEX, i1);
-                                const F32* v2 = (const F32*)vb->getVkVertexWritePtr(LLVertexBuffer::TYPE_VERTEX, i22);
-                                const F32* n0 = (const F32*)vb->getVkVertexWritePtr(LLVertexBuffer::TYPE_NORMAL, i0);
-                                if (v0 == nullptr || v1 == nullptr || v2 == nullptr || n0 == nullptr)
-                                {
-                                    have = false;
-                                    break;
-                                }
-                                const F32 e1x = v1[0]-v0[0], e1y = v1[1]-v0[1], e1z = v1[2]-v0[2];
-                                const F32 e2x = v2[0]-v0[0], e2y = v2[1]-v0[1], e2z = v2[2]-v0[2];
-                                const F32 cx = e1y*e2z - e1z*e2y;
-                                const F32 cy = e1z*e2x - e1x*e2z;
-                                const F32 cz = e1x*e2y - e1y*e2x;
-                                const F32 len2 = cx*cx + cy*cy + cz*cz;
-                                if (len2 <= 1e-12f)
-                                {
-                                    ++degen;
-                                    continue;
-                                }
-                                const F32 d = cx*n0[0] + cy*n0[1] + cz*n0[2];
-                                ++tri;
-                                if (d < 0.f)
-                                {
-                                    ++flip;
-                                }
-                            }
-                            if (!have)
-                            {
-                                fx2 << "U";
-                                continue;
-                            }
-                            fx2 << flip << "/" << tri;
-                            if (degen > 0)
-                            {
-                                fx2 << "d" << degen;
-                            }
-                        }
-                        fx2 << "] xf=[";
-                        {
-                            const LLVector3 pa = o->getPositionAgent();
-                            fx2 << "act" << (dr->isActive() ? 1 : 0)
-                                << " pa(" << (S32)pa.mV[0] << "," << (S32)pa.mV[1] << "," << (S32)pa.mV[2] << ")";
-                            LLFace* fp0 = dr->getFace(0);
-                            const LLMatrix4* mm0 = nullptr;
-                            for (LLSpatialGroup::draw_map_t::iterator j4 = g->mDrawMap.begin(); j4 != g->mDrawMap.end() && mm0 == nullptr; ++j4)
-                            {
-                                for (LLSpatialGroup::drawmap_elem_t::iterator k4 = j4->second.begin(); k4 != j4->second.end(); ++k4)
-                                {
-                                    if (k4->notNull() && (*k4)->mSrcDrawable.get() == dr)
-                                    {
-                                        mm0 = (*k4)->mModelMatrix;
-                                        break;
-                                    }
-                                }
-                            }
-                            const LLViewerRegion* reg = o->getRegion();
-                            fx2 << " mm" << (mm0 == nullptr ? "0"
-                                             : (reg != nullptr && mm0 == &reg->mRenderMatrix) ? "R" : "?");
-                            if (mm0 != nullptr && fp0 != nullptr && fp0->getVertexBuffer() != nullptr)
-                            {
-                                LLVertexBuffer* vb0 = fp0->getVertexBuffer();
-                                const U32 gs0 = fp0->getGeomIndex();
-                                const U32 gc0 = fp0->getGeomCount();
-                                F64 sx = 0, sy = 0, sz = 0;
-                                U32 ns2 = 0;
-                                for (U32 k2 = 0; k2 < gc0 && k2 < 64; ++k2)
-                                {
-                                    const U8* p2 = vb0->getVkVertexWritePtr(LLVertexBuffer::TYPE_VERTEX, gs0 + k2);
-                                    if (p2 == nullptr)
-                                    {
-                                        break;
-                                    }
-                                    const F32* f2 = (const F32*)p2;
-                                    sx += f2[0]; sy += f2[1]; sz += f2[2];
-                                    ++ns2;
-                                }
-                                if (ns2 > 0)
-                                {
-                                    LLVector4 lp((F32)(sx / ns2), (F32)(sy / ns2), (F32)(sz / ns2), 1.f);
-                                    const LLVector4 wp = lp * (*mm0);
-                                    fx2 << " vc(" << (S32)wp.mV[0] << "," << (S32)wp.mV[1] << "," << (S32)wp.mV[2] << ")";
-                                }
-                            }
-                        }
-                        fx2 << "] or=[";
-                        S32 nor = 0;
-                        for (LLSpatialGroup::draw_map_t::iterator j4 = g->mDrawMap.begin(); j4 != g->mDrawMap.end(); ++j4)
-                        {
-                            for (LLSpatialGroup::drawmap_elem_t::iterator k4 = j4->second.begin(); k4 != j4->second.end(); ++k4)
-                            {
-                                if (k4->notNull() && (*k4)->mSrcDrawable.get() == dr)
-                                {
-                                    LLDrawInfo* di = k4->get();
-                                    fx2 << (nor++ ? "," : "") << "p" << j4->first
-                                        << "c" << di->mCount;
-                                    LLVKBucket::Bucket* bk = di->mVkTplBucket;
-                                    if (bk != nullptr)
-                                    {
-                                        const U32 ci = di->mVkTplCmdIndex;
-                                        fx2 << ":i" << ci
-                                            << (bk->mTplDirty ? "D" : "")
-                                            << ":G" << g->mVkBucketGroupId << "=";
-                                        if (ci < bk->mTplGroupIds.size())
-                                        {
-                                            fx2 << bk->mTplGroupIds[ci]
-                                                << ((ci < bk->mTplRecords.size() && bk->mTplRecords[ci] == di) ? "M" : "X");
-                                        }
-                                        else
-                                        {
-                                            fx2 << "OOB";
-                                        }
-                                    }
-                                    else
-                                    {
-                                        fx2 << ":nb";
-                                    }
-                                }
-                            }
-                        }
-                        fx2 << "]";
-                        fdetail += fx2.str();
-                    }
                 }
             }
             if (emit_state)
             {
-                const LLVKMdiWatch::Counters mdc = LLVKMdiWatch::take(m.localid);
                 LL_WARNS("VKContract") << "VKC-UUID state uuid=" << m.uuid
                                        << " local=" << m.localid
                                        << " vis=" << vis << " occl=" << occl
@@ -5235,12 +4923,7 @@ namespace LLVKUuidWatch
                                        << " recs=" << recs << " own=" << own
                                        << " rbage=" << rbage << " rbret=" << rbret
                                        << " fires=" << LLVKContract::watchTakeFires(m.localid)
-                                       << " absent=" << m.absent
-                                       << " md=[e" << mdc.emit << ",zv" << mdc.zvis
-                                       << ",zr" << mdc.zrad << ",ns" << mdc.nospan
-                                       << "|se" << mdc.semit << ",szv" << mdc.szvis
-                                       << ",szr" << mdc.szrad << "]"
-                                       << fdetail << LL_ENDL;
+                                       << " absent=" << m.absent << LL_ENDL;
             }
             auto it = LLVKListOracle::sCur.find(m.localid);
             if (it != LLVKListOracle::sCur.end())

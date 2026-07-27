@@ -4006,12 +4006,8 @@ VkPipeline LLGLSLShader::getOrCreateVkPipelineForBoundRT(U32 mode)
         key.color_formats[0]   = static_cast<U32>(swap_format);
     }
 
-    static const bool s_diag_nocull = []() -> bool {
-        const char* e = getenv("AYASTORM_NOCULL");
-        return e != nullptr && atoi(e) != 0;
-    }();
     VkCullModeFlags vk_cull_mode;
-    if (s_diag_nocull || !LLGLState::isCullFaceEnabled())
+    if (!LLGLState::isCullFaceEnabled())
     {
         key.cull_mode = 0u;
         vk_cull_mode  = VK_CULL_MODE_NONE;
