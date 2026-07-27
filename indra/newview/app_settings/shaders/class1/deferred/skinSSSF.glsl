@@ -66,9 +66,9 @@ uniform int       aya_visual_realism_enabled;
 uniform int       aya_r20_skin_sss_enabled;
 // <FS:AYA r20 Phase C> gbuffer3 (DEFERRED_EMISSIVE / "emissiveRect") carries
 // the per-pixel skin bit in .a — written by the gbuffer pass for whitelisted
-// draws. Bound on pass 2 (composite). On pass 1 (scratch fill) the mask read
-// is harmless because pass 1 ignores alpha. Reusing the existing reserved
-// uniform name avoids adding a new shader binding plumbing.
+// draws. Bound on both passes: the blur taps weight each sample by the tap
+// pixel's skin bit (renormalized) so non-skin colors never bleed into the
+// SSS result, and pass 2 gates the composite by the center pixel's bit.
 uniform sampler2D emissiveRect;
 // </FS:AYA>
 #endif
@@ -161,13 +161,17 @@ void main()
     vec2 step = aya_blur_dir * r_eff / screen_res;
     // </FS:AYA>
 
-    vec3 sum = vec3(0.0);
+    vec3 sum  = vec3(0.0);
+    vec3 wsum = vec3(0.0);
     for (int i = 0; i < 5; ++i)
     {
-        float t  = float(i) - 2.0;
-        vec3  c  = texture(diffuseRect, tc + step * t).rgb;
-        sum += c * weights[i];
+        float t   = float(i) - 2.0;
+        vec2  stc = tc + step * t;
+        float m   = (i == 2 || texture(emissiveRect, stc).a >= 0.5) ? 1.0 : 0.0;
+        sum  += texture(diffuseRect, stc).rgb * weights[i] * m;
+        wsum += weights[i] * m;
     }
+    sum /= max(wsum, vec3(1e-4));
 
     // Inner-glow / luminosity gain: real SSS isn't just energy-conserving
     // blur — light penetrates the surface, scatters, and returns slightly

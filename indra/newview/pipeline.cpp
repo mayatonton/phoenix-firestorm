@@ -13317,6 +13317,7 @@ void LLPipeline::doSkinSSS()
 
     getFrameRT()->screen.bindTarget();
     gGL.setSceneBlendType(LLRender::BT_ALPHA);
+    gGL.setColorMask(true, false);
 }
 // </FS:AYA>
 
