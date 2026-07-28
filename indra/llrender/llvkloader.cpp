@@ -945,23 +945,78 @@ namespace
     VkPresentModeKHR        sActivePresentMode = VK_PRESENT_MODE_FIFO_KHR;
     std::atomic<bool>       sVsyncEnabled{true};
 
-    void peExecute(PEJob& job)
+    struct PEJobReleaser
     {
-        if (sVkDeviceLost.load(std::memory_order_acquire))
+        PEJob&   mJob;
+        VkResult mLastSr       = VK_ERROR_UNKNOWN;
+        bool     mSlotDone     = false;
+        bool     mSyncDone     = false;
+        bool     mFenceDecided = false;
+
+        explicit PEJobReleaser(PEJob& job) : mJob(job) {}
+
+        void finishSlot(U32 state)
         {
-            if (job.is_frame)
+            if (!mJob.is_frame || mSlotDone)
             {
-                {
-                    std::lock_guard<std::mutex> lk(sPESlotMutex);
-                    sPESlotState[job.slot].store(PE_SLOT_FAILED);
-                }
-                sPESlotCv.notify_all();
+                return;
             }
-            else if (job.is_oneshot && job.fence != VK_NULL_HANDLE)
+            {
+                std::lock_guard<std::mutex> lk(sPESlotMutex);
+                sPESlotState[mJob.slot].store(state);
+            }
+            sPESlotCv.notify_all();
+            mSlotDone = true;
+        }
+
+        void finishSync(VkResult r)
+        {
+            if (mJob.sync == nullptr || mSyncDone)
+            {
+                return;
+            }
+            {
+                std::lock_guard<std::mutex> lk(mJob.sync->m);
+                mJob.sync->done   = true;
+                mJob.sync->result = r;
+                mJob.sync->cv.notify_all();
+            }
+            mSyncDone = true;
+        }
+
+        void failOneshotFence()
+        {
+            if (!mJob.is_oneshot || mJob.fence == VK_NULL_HANDLE || mFenceDecided)
+            {
+                return;
+            }
             {
                 std::lock_guard<std::mutex> lk(sPEFailedMutex);
-                sPEFailedOneShotFences.push_back(job.fence);
+                sPEFailedOneShotFences.push_back(mJob.fence);
             }
+            mFenceDecided = true;
+        }
+
+        void markFenceLive()
+        {
+            mFenceDecided = true;
+        }
+
+        ~PEJobReleaser()
+        {
+            finishSlot(PE_SLOT_FAILED);
+            finishSync(mLastSr);
+            failOneshotFence();
+        }
+    };
+
+    void peExecute(PEJob& job)
+    {
+        PEJobReleaser rel(job);
+        if (sVkDeviceLost.load(std::memory_order_acquire))
+        {
+            rel.finishSlot(PE_SLOT_FAILED);
+            rel.failOneshotFence();
             static bool s_lost_skip_logged = false;
             if (!s_lost_skip_logged)
             {
@@ -970,6 +1025,7 @@ namespace
                                    << " (first skipped: is_frame=" << (job.is_frame ? 1 : 0)
                                    << " is_oneshot=" << (job.is_oneshot ? 1 : 0) << ")" << LL_ENDL;
             }
+            rel.finishSync(VK_ERROR_DEVICE_LOST);
             return;
         }
         VkSubmitInfo si = {};
@@ -1017,18 +1073,18 @@ namespace
         sPESubmitUs += (U64)std::chrono::duration_cast<std::chrono::microseconds>(
             std::chrono::steady_clock::now() - t0).count();
 
-        if (job.is_frame)
+        rel.mLastSr = sr;
+        rel.finishSlot((sr == VK_SUCCESS) ? PE_SLOT_SUBMITTED : PE_SLOT_FAILED);
+        if (job.is_oneshot)
         {
+            if (sr == VK_SUCCESS)
             {
-                std::lock_guard<std::mutex> lk(sPESlotMutex);
-                sPESlotState[job.slot].store((sr == VK_SUCCESS) ? PE_SLOT_SUBMITTED : PE_SLOT_FAILED);
+                rel.markFenceLive();
             }
-            sPESlotCv.notify_all();
-        }
-        else if (sr != VK_SUCCESS && job.is_oneshot && job.fence != VK_NULL_HANDLE)
-        {
-            std::lock_guard<std::mutex> lk(sPEFailedMutex);
-            sPEFailedOneShotFences.push_back(job.fence);
+            else
+            {
+                rel.failOneshotFence();
+            }
         }
 
         if (sr != VK_SUCCESS)
@@ -1133,18 +1189,7 @@ namespace
             }
         }
 
-        if (job.sync != nullptr)
-        {
-            {
-                std::lock_guard<std::mutex> lk(job.sync->m);
-                job.sync->done   = true;
-                job.sync->result = sr;
-                // `sync` belongs to the submitting stack frame. Notify while
-                // holding its mutex so the waiter cannot return and destroy it
-                // before this condition-variable operation has completed.
-                job.sync->cv.notify_all();
-            }
-        }
+        rel.finishSync(sr);
     }
 
     void peThreadMain()
@@ -1401,25 +1446,38 @@ namespace
         VkCommandBuffer cmd = rwAcquireLaneCmd();
         if (cmd != VK_NULL_HANDLE)
         {
-            rwResetRecordThreadLocals();
-            LLGLSLShader::resetPerThreadRecordState();
-            tInRecordJob       = true;
-            tRecordCmdOverride = cmd;
-            job.body(cmd);
-            if (sInDynamicRendering)
+            try
             {
-                vkCmdEndRendering(cmd);
-                sInDynamicRendering = false;
+                rwResetRecordThreadLocals();
+                LLGLSLShader::resetPerThreadRecordState();
+                tInRecordJob       = true;
+                tRecordCmdOverride = cmd;
+                job.body(cmd);
+                if (sInDynamicRendering)
+                {
+                    vkCmdEndRendering(cmd);
+                    sInDynamicRendering = false;
+                }
+                tRecordCmdOverride = VK_NULL_HANDLE;
+                tInRecordJob       = false;
+                if (vkEndCommandBuffer(cmd) != VK_SUCCESS)
+                {
+                    LL_WARNS("Vulkan") << "record job vkEndCommandBuffer failed lane=" << tRecordLaneIndex << LL_ENDL;
+                    cmd = VK_NULL_HANDLE;
+                }
+                rwResetRecordThreadLocals();
+                LLGLSLShader::resetPerThreadRecordState();
             }
-            tRecordCmdOverride = VK_NULL_HANDLE;
-            tInRecordJob       = false;
-            if (vkEndCommandBuffer(cmd) != VK_SUCCESS)
+            catch (const std::bad_alloc&)
             {
-                LL_WARNS("Vulkan") << "record job vkEndCommandBuffer failed lane=" << tRecordLaneIndex << LL_ENDL;
+                LL_WARNS("Vulkan") << "record job out of memory (bad_alloc) lane=" << tRecordLaneIndex
+                                   << " seq=" << job.seq << " — degrading frame" << LL_ENDL;
+                tRecordCmdOverride = VK_NULL_HANDLE;
+                tInRecordJob       = false;
+                rwResetRecordThreadLocals();
+                LLGLSLShader::resetPerThreadRecordState();
                 cmd = VK_NULL_HANDLE;
             }
-            rwResetRecordThreadLocals();
-            LLGLSLShader::resetPerThreadRecordState();
         }
         else
         {
@@ -4911,7 +4969,11 @@ void shutdownVulkan(bool device_lost)
     {
         if (!device_lost)
         {
-            vkDeviceWaitIdle(sDevice);
+            if (vkDeviceWaitIdle(sDevice) != VK_SUCCESS)
+            {
+                device_lost = true;
+                sVkDeviceLost.store(true, std::memory_order_release);
+            }
         }
         rwDestroyLanePools();
 

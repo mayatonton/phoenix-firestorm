@@ -8159,7 +8159,9 @@ void LLVolumeGeometryManager::rebuildGeom(LLSpatialGroup* group)
         }
     }
 
-    if (staged.mInline || staged.mFills.empty())
+    const bool geo_over_cap = !sGeoInflight.empty()
+        && LLVKLoader::gVkGeoInflightBytes.load() + geometryBytes > GEO_INFLIGHT_BYTE_CAP;
+    if (staged.mInline || staged.mFills.empty() || geo_over_cap)
     {
         ++group->mVkGeoGen;
         LLTimer inl_timer;

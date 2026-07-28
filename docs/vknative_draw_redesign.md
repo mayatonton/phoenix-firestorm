@@ -18,6 +18,24 @@
 
 地図の全欠陥は「公理 F が規約でしか守られていない」ことの現れ。段階 II は公理 F を**機構**で立てる。
 
+> **公理 F は 2 辺を持つ**（俯瞰改訂 2026-07-28）: **辺1 = main↔worker（時間軸）** = 「窓中 main 不変」（本 §0 の記述）。**辺2 = worker↔worker（空間軸・公理 F′）** = 「worker は共有 program インスタンス（`LLGLSLShader`）の可変状態を write しない（per-lane / arena 隔離のみ）」= **§9**。§2.5（1 program 1 job 解除）+ §4（alpha 並列）が辺2 を開くため、**両辺が揃って初めて worker 記録が閉じる**。辺1 だけを立てた設計（従来 §1-§5）は crowd（alpha）到達路上に未 governance 区間を残す（finding 4/5）。
+
+## §0.1 no-grandfather / no-implemented（AYA 制定 2026-07-28）
+
+> 本設計において worker 記録に関する既存コード（Phase A shadow / Phase B materials / III-1a / seed fix P5 / epoch fix P6）は**全て「未実装」= 段階 II の draft 入力**として扱う。**「実装済み / 検収済」は correct・safe の根拠にならない**: 旧 gate（validation 0 + 視覚同一）は、公理 F/F′ が対象とする**規約依存の隔離欠陥・稀 / サイレントな race** を検出できない = 当該欠陥クラスに対し **void**。実証 = Phase A shadow は「機能検収済」でも S8-b（VB read-during-write）+ worker↔worker 軸（§9 H1）を抱えたまま旧 gate を通過した。
+> ∴ 段階 III は「既存コードの移植」ではなく **公理 F + F′ + 真のモデルからの新規導出**であり、各段は §6.3 の 3 層 gate（観測到達 → 機構 → 視覚）を**再度**通す。CLOSED / 検収は **AYA gate のみ**（憲法 1）。**物理コードの存続と設計ステータスは別概念**（未実装扱い ≠ 削除。現行 viewer が動くための物理コードは残す・load-bearing の撤去はしない = CLAUDE.md「削るな」）。
+
+| 記録 | 旧ステータス | 新扱い | 根拠 |
+|------|------------|--------|------|
+| Phase A shadow worker | 実装完了・機能検収済 | **未実装（draft 参照）** | S8-b + §9 H1 未 governance・旧 gate は当該クラス盲目 |
+| Phase B materials worker | baseline commit（欠陥承知） | **未実装（draft 参照）** | S6 seed 規約依存・§7 read-set 不完全（mGLTFMaterial 欠落） |
+| III-1a shadow 3-phase | 実装済（未 commit・機械 green） | **未実装（draft 参照）** | 視覚 gate 未達・freeze で観測不能 |
+| P5 seed 検証バイパス fix | FIX-IN-TREE | **未検収 = 未実装扱い** | 関節異方向の同定も未検収 |
+| P6 worker epoch fix | FIX-IN-TREE | **未検収 = 未実装扱い** | validation 0 化は標本・gate 未 |
+| safety_valve V1/V2・kill switch 群 | 実装済 | **参照・再 gate 対象** | 穴 2 点（G4）残・gate PASS 後撤去前提 |
+
+> 本表は **worker 記録の設計ステータス**のみをリセットする。M6 旧経路 per-draw / occlusion / 検出器 file 等の load-bearing（CLAUDE.md「削るな」）は別軸で有効・対象外。
+
 ---
 
 ## §1 中核アーキテクチャ = DrawPlan snapshot + freeze-by-contract（背骨）
@@ -235,6 +253,7 @@ X =「secondary CB が dynamic rendering scope 内で動くか（本 codebase �
 | V2: worker が DrawPlan 外の live state を read | S7 残余（新フィールド未転写） | worker-read seal（§5.3） |
 | V3: on-demand seed build 失敗 | S6 残余（消失） | seed-fail alarm（§5.4） |
 | V4: DrawPlan が参照する group/VB が世代変化 | 越境の stale | generation validation（§5.5） |
+| V5: worker が共有 program インスタンス可変状態を write（worker↔worker 軸） | finding 4/5（per-program UBO ring race・immediate-cache 制御フラグ） | worker-shared-write guard（§9.3） |
 
 ### 5.2 検出 1 = window-mutation guard（V1・S8-b/S13 の機構化）
 - **frame-scoped フラグ `sRecordWindowActive`**（最初の dispatch で set・最終 join で clear）。
@@ -284,6 +303,7 @@ X =「secondary CB が dynamic rendering scope 内で動くか（本 codebase �
 | **III-0 検出装置 先行** | §5.2 window-mutation guard + §5.5 gen validation を**現行コードに先に入れる** | 移行前に「今どこで freeze 契約が破れているか」を可視化（S8-b の現発生を捕捉）。移行の安全網を先に張る | guard がシーンで発火する箇所 = 移行前に潰すべき mutation の実地図 |
 | **III-1 背骨（DrawPlan + freeze schedule）** | §1.2 DrawPlanItem/DrawPlan + arena / §1.3 eager rebuildMesh + 窓中 mutation ゼロ + shadow cascade interleave 廃止 | 全経路の土台。snapshot が無いと seed/uniform/alpha が乗らない | window guard 沈黙（freeze 契約成立の正のオラクル）/ 視覚同一 |
 | **III-2 seed 統一（S6 根治）** | §2 record 経路を main 経路の per-lane on-demand build に統一・seed map/ensureXxxSeeds/vkCaptureSeedDynamicBuffers 撤去 + §2.7 descriptor write 経路の lane 隔離 audit | 背骨の上で seed を on-demand 化。動的 pool の前提 | seed_build_fail=0 / shadow・materials A/B byte 一致 |
+| **III-2.5 公理 F′（worker↔worker 隔離）** | §9: H1 per-program UBO を arena / per-lane 隔離 + H3 memo bypass 正式化（§2.7.2）+ §9.3 V5 検出器 | §2.5 が worker↔worker 軸を開いた**直後**に閉じる（alpha より前・辺2 未 governance のまま拡張しない） | V5 沈黙（worker 共有 write 0）+ H2 JIT 判定完了 |
 | **III-3 uniform（S14/S15）** | §3 gGLDeltaModelView thread_local 対称化 + GlobalF arena slice | 小・独立。背骨の ctx に相乗り | A/B byte 一致 |
 | **III-4 既存 worker 経路の移行** | Phase A shadow + Phase B materials を DrawPlan + on-demand seed へ載せ替え・**isMapped skip 撤去**（§1.3）・「1 program 1 job」前提コード撤去（§2.5） | 新機構で既存を再実装＝非退行を先に確定してから拡張 | shadow/materials の L3 A/B・稀症状（体消失/関節崩れ）消失の実地確認 |
 | **III-5 静的 pool 拡張** | simple/fullbright を worker 化（§8: 1 pass 1 shader ゆえ低リスク） | 背骨+seed が効くので安全に横展開 | 各 pool A/B・shad/gbuffer wall 短縮 |
@@ -321,6 +341,122 @@ X =「secondary CB が dynamic rendering scope 内で動くか（本 codebase �
 - **§3 uniform** = S14 thread_local 対称化・S15 A6 arena slice → cross-cutting 未隔離ゼロ。
 - **§4 alpha** = ordered span + secondary CB 順序実行 → **crowd blocker を CPU 記録並列化で崩す**（GPU blend は直列のまま）。
 - **§5 検出** = window guard / worker-read seal / seed-fail / gen validation + L3 A/B → **「規約でなく機構」完成**（fail-closed・憲法 2/5/6）。
-- **§6 移行** = 検出先行 → 背骨 → seed → uniform → 既存移行 → 静的拡張 → alpha の順・各段 A/B gate。
+- **§6 移行** = 検出先行 → 背骨 → seed → **F′（worker↔worker）** → uniform → 既存移行 → 静的拡張 → alpha の順・各段 A/B gate。
+- **§9 公理 F′（worker↔worker 隔離辺）** = record 中に共有 program 可変 field が**存在しない**（per-lane / arena / snapshot 化 = 構造的除去）。母集団 = H1（UBO slot）/ H5（UBO content）/ H6（push-constant shadow・最広）/ H3（enum view）/ H2・H4。**V5 は backstop**（旧「write site 1 点で完全性を導出」は破綻検証で偽と判明・列挙は穴を残す）。§2.5「1 program 1 job 解除」は per-program 可変 state 全体の隔離を伴って初めて許される。crowd（alpha）到達路の未 governance 区間を消す。
+- **§0.1 no-grandfather / no-implemented** = worker 記録の既存コード（Phase A/B・III-1a・P5/P6）は「未実装」draft 扱い・「検収済」は当該欠陥クラスに void・再導出 + 再 gate。
 
 > **段階 II（再設計）ここまで**。実装は段階 III・計測は段階 IV（最終 gate のみ）。**PASS は宣言しない**（憲法 1）= 本設計の検収・段階 III 着手は AYA gate。
+
+---
+
+## §9 公理 F′ — worker↔worker 隔離辺【俯瞰改訂 2026-07-28・AYA 制定】
+
+> **発端（俯瞰欠陥）**: 公理 F（§0）は **main↔worker 軸（時間軸 = 「窓中 main 不変」）** のみを govern する。しかし §2.5（「1 program 1 job」解除）+ §4（alpha 並列）が **worker↔worker 軸（空間軸 = 複数 worker が同一 program インスタンスの可変状態を共有）** を新たに開き、公理 F も §5 検出器（V1-V4）もこの軸を govern しない。finding 4/5 はこの未 governance 軸に落ちた**必然**（ランダムな見落としでない）。本節は公理 F にもう 1 本の辺を足して軸を閉じる。
+
+### §9.0 拡張公理（破綻検証 2026-07-28 で「検出」→「構造的除去」に強化）
+
+> **公理 F′（worker 相互隔離）**: worker record job 中、**共有 program インスタンス（`LLGLSLShader`）の可変 field は存在してはならない**。worker が per-draw に触る program state（seed / per-program UBO の slot と content / push-constant shadow / enum-bound-view / immediate cache）は、**すべて (a) per-lane 隔離**（`mVkPerDrawLane[lane]` 型・lane 添字）**または (b) cross-thread 安全な arena**（`allocPerDrawUBOSlice`）**または (c) 不変 snapshot**（plan-build で main が DrawPlanItem に materialize）**の機構経路のみ**を通る。∴ **record 中に共有可変 field が「存在しない」= 競合が構造的に不能**（write を検出するのでなく、共有 field を消す）。§9.3 V5 は除去し損ねの backstop。
+
+> **⚠️ §2.5 の前提訂正（破綻検証で確定）**: 「1 program 1 job」は seed 網羅だけでなく、**per-program 可変 state 全体（per-program UBO の slot と content・push-constant shadow `mVkFragPC`・enum-bound-view・immediate cache）への worker 排他アクセス**を担保していた（1 job = 1 program 占有ゆえ 2 worker が同 program state を触らない）。§2.5「on-demand seed が seed を代替するから 1 program 1 job を外してよい」は **seed 以外の per-program 可変 state を代替しない** = 多軸で不足。∴ §2.5 は単なる「seed 撤去」でなく「**per-program 可変 state 全体の per-lane/arena/snapshot 化**」を伴って初めて worker↔worker 軸を開いてよい。**Phase B materials は既に worker で `vkPushFragPC`（`lldrawpool.cpp:2304`）を実行しており、現状「1 program 1 job」だけが H6 の race を救っている**（= §0.1 no-grandfather の実証・「検収済」でも lifeline 依存）。
+
+公理 F（main 不変・辺1）+ 公理 F′（worker 相互隔離・辺2）= worker 記録の**両軸**が不変条件で閉じる。
+
+### §9.1 共有 program インスタンス可変状態 台帳（検証済み・file:line・**母集団トレース完了 = 破綻検証 2026-07-28 で H5/H6 回収**）
+
+| ID | 状態 | write 経路 | 現隔離 | worker 並列時の破綻 | verdict |
+|----|------|-----------|--------|---------------------|---------|
+| **H1** | per-program UBO rotated-ring **slot**: `mVkPerProgramRingIdx[f]` / `mVkActivePerProgramUBO`(+Mapped) / `mVkPerProgramUBORing[f]` | `rotatePerProgramUBOSlot`（`llglslshader.cpp:3195-3210`）・read = `vkResolvePerProgramForDraw:3452-3456`・呼び手 = `lldrawpoolalpha.cpp:927/1341/1355`・`lldrawpoolavatar.cpp:937` ほか | **なし**（frame 別だが lane 非分離・非 atomic） | ring カーソル lost update → 同一 UBO slot 二重配布 / active ptr clobber / vector 並列 push_back = UAF | **BROKEN**（= finding 4・correctness） |
+| **H5** | per-program UBO **content**: `mVkActivePerProgramUBOMapped` への値 write + `mVkPerProgramUBOGeneration` | `setMinimumAlpha`（`llglslshader.cpp:2732-2733`・`mWritePerProgramUBOMinimumAlpha` program のみ）・呼び手 = alpha `lldrawpoolalpha.cpp:129/133/320/361` | **なし**（共有 mapped・非 atomic） | 2 worker が同 program の content を並列 write + generation race → torn 値。**H1 の arena 化では閉じない**（memcpy 元 `mVkPerProgramShadow`/active mapped 自体が共有 write 先） | **BROKEN**（狭い・破綻検証で確定） |
+| **H6** | push-constant **shadow**: `mVkFragPC[VK_FRAG_PC_DWORDS]` / `mVkFragPCMask`（`llglslshader.h:412-413`・shader インスタンス共有） | 全 `vkPushFragPC`（`llglslshader.cpp:2682/2685`）= **15 setter**（PBR material params roughness/metallic/emissive/SSS/min_alpha `llfetchedgltfmaterial.cpp:86/131-135`・alpha `lldrawpoolalpha.cpp:121/124`・avatar `:902/953`・**materials `lldrawpool.cpp:2304` = Phase B で既に worker 実行中**）。read + 再 push = `vkReassertFragPC`（`:2697`）を bind() 経路（`:2163`）が record 中に呼ぶ | **なし**（非 lane・非 thread_local・非 atomic） | worker A の bind→reassert が worker B の書いた mVkFragPC を read → A の CB に B の定数を再 push = **誤 material 描画**（roughness/alpha/SSS 化け） | **BROKEN**（広い・母集団 = 全 PBR/alpha/avatar/materials） |
+| **H8** | 共有 PBR material UBO（`getSharedPBRMaterialUBO` accessor・binding 48 `llglslshader.cpp:2935`）content = texture transforms + factors | `writeCurrentPBRMaterialUBO`（`llfetchedgltfmaterial.cpp:155`） | **thread_local**（`LLVK_SHARED_UBO_DYNAMIC_IMPL` `llvkloader.cpp:8070-8097` = shadow/gen/UpBuf すべて `static thread_local`・macro family AvatarSkin/DrawColor/ShadowParams も同） | なし（write は thread_local shadow のみ）= **hazard でない** | **SAFE**（トレース済 2026-07-28・「Shared」= shader 間共通 binding の意で shadow は per-thread） |
+| **H2** | immediate-cache 統計 / 制御: `mVkImmediateHits`（`:3711`）/ `mVkImmediateFills`（`:4051`）/ **`mVkImmediateNoFill`**（`:4052-4054`・制御フラグ）/ `mVkSigListLogged`（`:4009`） | build 経路 hit/fill 時 | **なし**（instance 共有・非 atomic） | 非 bindless program のみ該当。torn RMW → cache heuristic 誤無効化（perf 退行）。correctness 影響なし | **要判定**（worker 対象が全 bindless なら moot = §9.2-H2） |
+| **H3** | L3 memo `mVkEnumBoundView[enum]`（`llglslshader.h:360`） | `vkCaptureEnumBoundView`（`:2215`・`bindTexture` 後） | **なし** | 同 shader を per-draw bind する 2 worker が共有 write = race | **設計済**（§2.7.2 memo bypass で解消）→ 公理 F′ の初例に昇格 |
+| **H4** | `gVkPerf.populate*`（global） | build 経路各所（`:3688` ほか） | **なし**（perf-log gate 主） | stat 破損のみ（S4 型 benign） | benign（§9.2-H4） |
+
+- **既に公理 F′ 準拠（§2 の基盤）**: `mVkPerDrawLane[lane]` / `mVkAccessorBindingListLanes[lane]` / `mVkAccessorBindingListBuiltLanes[lane]` = lane 添字 = 隔離済み。
+- **read-only（link 時確定・競合なし）**: `mVkLayoutBindings` / `mVkBindingToChannel/Enum` / `mTexture` / `mVkBindingSamplerDim`。
+- **H7（pipeline cache・隣接軸）= 検証クリーン SAFE（2026-07-28 トレース済・hazard でない）**: pipeline cache map `mVkPipelineCache`（`llglslshader.h:309`）は global `sVkPipelineCacheMutex`（`:88`）保護下で全 find/insert（`:4224/4259/4515`）= thread-safe。pipeline memo `sVkPipeMemo*`（`:85-87`）= **thread_local**。bind memo `sLastBoundGraphicsPipeline`（`llvkloader.cpp:195`）+ `memoSyncCmd`（`:13442`・`tCmdRecordEpoch` epoch reset）= **thread_local**。∴ worker↔worker correctness hazard なし。**安全は mutex + thread_local 由来 =「1 program 1 job」非依存**（H6 と対照・§2.5 解除で露出しない）。**残留 = pipeline 作成が単一 global mutex 下で直列化 = 初回遭遇時の contention（perf・段階 IV 計測事項・correctness でない）**。
+
+### §9.2 各ハザードの機構（直し方）
+
+- **H1（最優先・correctness）**: worker が記録する program の per-program UBO 解決を **arena 経路に強制**（`vkResolvePerProgramForDraw` の arena 分岐 `:3458-3467` は memcpy → per-draw slice で既に cross-thread 安全）。ring 分岐（`mVkPerProgramUBOBinding≠0` or 非 dynamic）に落ちる program は **per-lane ring 化**（`mVkPerProgramUBORing[lane][f]` + カーソル / active ptr を per-lane 化）を既定機構とする。
+  - ⚠️ **JIT トレース必要**: ring 分岐が存在する構造的理由（binding≠0 な非 dynamic UBO を arena に載せられない制約）を `mVkPerProgramUBOBinding` / `mVkSet1DynamicCount` の設定源で確定し、arena 化 vs per-lane ring を各 program 類に割り当てる。**arena 優先（A6 思想）・不能な類のみ per-lane ring**（= AYA 既定選択）。
+- **H5（per-program UBO content・H1 と一体）**: content 値（minimum_alpha 等）を **plan-build で DrawPlanItem/arena に materialize（公理 F′-c）** し、worker は `setMinimumAlpha` 等の setter を呼ばず snapshot 値を参照。**H1 の arena slice（宛先）だけでは不十分** = memcpy 元（`mVkPerProgramShadow`/active mapped）が共有 write 先ゆえ、content の**source も per-lane/snapshot 化**が必須。∴ H1+H5 は「per-program UBO を slot も content も worker が共有 write しない」1 機構で閉じる。
+- **H6（push-constant shadow・最広母集団）**: `mVkFragPC[]`/`mVkFragPCMask` は「現 CB の push 定数状態」= A1（描画現在状態 globals の thread_local 化）と同型の current-state shadow。∴ **per-lane 化**（`mVkFragPC[MAX_RECORD_LANES][…]` + `getCurrentRecordLane()` 添字）が既定機構。CB への実 push（`:2692`）は既に thread_local override で安全ゆえ、shadow を per-lane にすれば `vkReassertFragPC` も自 lane を read = 競合消滅。**代替 = push 定数値を DrawPlanItem に materialize（公理 F′-c・material params は per-draw 定数ゆえ snapshot が自然・finding 6 の mGLTFMaterial 封入と統合）**。
+- **H2**: worker 対象 program が**全て bindless**（`mVkUsesBindlessHeap=true` → `imm_cache=false` → build 経路の immediate 分岐 `:3703/3726` に入らない）なら H2 は worker 経路で**発生しない**。
+  - ⚠️ **JIT トレース必要**: §4 alpha / §2 拡張対象 pool の program が全 bindless か確認。非 bindless が worker 対象なら、当該 counter を **per-lane 化 or atomic + `mVkImmediateNoFill` を単調ラッチ化**（torn で振動しない）。
+- **H3**: **§2.7.2 の memo bypass を公理 F′ 一般規則の初例として正式化** = 「worker build 経路は L3 memo（`vkCaptureEnumBoundView`）を write せず `live_view` 直接解決」。公理 F′ 下では「worker↔worker shared write を発見したら bypass or per-lane 化」の**テンプレート**として位置づけ。
+- **H4**: benign（描画無害）。低優先で `gVkPerf` を atomic 化 or 現状受容（§9.5 申告）。**「唯一のハザード」と誤主張しない**（§2.7.1 の完全性主張を本 §9.1 台帳 H1-H4 で置換）。
+
+### §9.3 検出器 V5 = backstop（主保証は §9.2 の構造的除去）
+
+> **⚠️ 訂正（破綻検証 2026-07-28）**: 旧稿は「V5 が write site **1 点で完全性を導出**（read-set 完全性に依存しない）」と書いた —— **これは偽だった**。旧 V5 の write site 列挙（rotate / captureEnumBoundView / immediate）から、`setMinimumAlpha`（H5・`:2732`）と `mVkFragPC`（H6・`:2682`・全 15 setter）という共有 write site が**漏れていた**。V5 は結局 write site の**列挙**にすぎない（read 側でなく write 側というだけ）= 列挙は必ず穴を残す。この overclaim 自体が「完全性を列挙で立てて穴を残す」罠の再演だった。
+> ∴ **主保証は §9.2 = 共有可変 field の構造的除去**（per-lane / arena / snapshot 化して record 中に**共有 field が存在しない**状態にする）。共有 field が無ければ競合は起き得ない = 完全性は「構造（除去）」で担保。**V5 は「除去し損ねた field の回帰網」= backstop に格下げ**。
+
+- **V5 機構（backstop）**: per-lane/arena/snapshot へ移した後も残存する共有 program 可変 field への write を `isRecordJobActive()` 下で検出（`llglslshader.cpp:3616` / `lldrawpool.cpp:1835` の既存述語）。**主保証でなく回帰網**ゆえ、理想は「§9.2 の除去が完全 → V5 永久沈黙」（憲法 6 = 実装済み機構の合否 gate であって実装可否には使わない）。
+- **憲法 4**: 検出器実装（`llvkcontract.*` diff 含む）は AYA 承認対象。新 alarm シグナル（例 `worker_shared_program_write{shader,site}`）は allowlist 無断追記禁止 = 既定ブロック側。
+
+### §9.4 移行順への統合（§6.1 更新済 = III-2.5）
+
+worker↔worker 軸は **§2.5（1 program 1 job 解除）が開く**。∴ 公理 F′ の機構（H1 arena/per-lane + V5）は **§6.1 の III-2.5 として III-2 直後・III-6 alpha より前**に層0/層1 gate を通す（§6.1 表に反映済）。
+
+- **finding 6（mGLTFMaterial の read-set 欠落）は本軸と同根**（alpha/GLTF の per-draw 資源が snapshot/隔離設計に未収録）。§9 と併せて **DrawPlanItem（§1.2）に `mGLTFMaterial` を封入 + material bind の worker 安全化**（`draw->mGLTFMaterial->bind()` `lldrawpoolalpha.cpp:741/839` が触る program 状態も H1/H3 経由で隔離）を III-6 前提に加える。§7 read-set は「静的 pool は category-complete・alpha/GLTF は field-incomplete」と訂正（§7.5 申告の GLTF material 送りを本項で回収）。
+
+### §9.5 申告（縮小・省略・解釈）
+
+- **母集団トレース完了（破綻検証 2026-07-28 で回収）**: worker が record 中に触る per-program 可変 state = **H1（slot）/ H5（per-program UBO content = `setMinimumAlpha` のみ・狭い）/ H6（push-constant shadow = 全 15 setter・広い・PBR material params）/ H3（enum view）/ H2・H4（immediate/perf）**。旧 §9.1（H1-H4）は不完全だった。
+- **H7（pipeline cache・隣接軸）= トレース済 SAFE**（§9.1 末に記録・mutex + thread_local で保護・1 program 1 job 非依存 = 対象外）。残留は perf contention のみ（段階 IV）。
+- **H6/H5 JIT = §9.6 で決定済（Option B = material draw bundle materialize）**。**②非 material PC 源 = 全て materialize 可能を確定**（frame/pass 定数 or per-draw フィールド `mObjectAlpha`/`mIsSSSTarget`）→ bundle に追加封入（§9.6.1）。
+- **①H8（PBR material UBO）= トレース済 SAFE**（`LLVK_SHARED_UBO_DYNAMIC_IMPL` = thread_local・§9.1 訂正）。当初「候補 BROKEN」は過剰・トレースで SAFE に解決。macro family（AvatarSkin/DrawColor/ShadowParams）も同 SAFE。
+- **JIT 未完（残）**: H1 の arena vs per-lane ring 選択（§9.6 の materialize で per-program UBO 依存が消えるなら ring 自体が worker 経路から不要になる可能性 = 先に §9.6 実装で判明）/ H2 の worker 対象 program 全 bindless 確認。
+- **省略**: H4（gVkPerf）は benign ゆえ低優先。V5 の実装粒度（debug-only か常時か）は §5 検出器方針に合わせ AYA と決定。
+- **解釈**: 「共有 program インスタンス可変状態」= `LLGLSLShader` の非 lane 添字・非 thread_local・非 read-only な member。thread_local（`sCurPerCall*` 等 A1）と lane 添字（§2 基盤）は対象外。
+- **PASS 宣言なし**（憲法 1）: 本節の検収・§6/§4 への反映・実装着手は AYA gate。
+
+### §9.6 JIT 詳細設計 = H6/H5/H8 統合機構「material draw bundle materialize」【2026-07-28】
+
+> **決定 = Option B（materialize）を採用・Option A（per-lane shadow）を却下**。理由 = ①per-lane shadow は H6（PC）しか閉じず H5（per-program UBO content）が残る。materialize は **H5+H6+finding 6 を 1 機構で閉じる**（H8 = PBR material UBO は thread_local ゆえ元々 SAFE = §9.1 訂正・機構対象外だが、bundle emit の一貫性で snapshot に含める）。②公理 F′-c（構造的除去 = worker は snapshot を read するだけ・setter を呼ばない）に整合。③値が **CB 非依存で materialize 可能**なことを実トレースで確認（下記）。
+
+#### §9.6.1 materialize 可能性の確定（実トレース）
+`mGLTFMaterial->bind()`（`llfetchedgltfmaterial.cpp:68-157`）が per-draw に生む共有 write は 3 種、**全て material 自フィールド + frame state から導出 = plan-build（main・CB 無し）で値確定可能**:
+- **PC 値（H6）**: min_alpha=`mAlphaCutoff`（`:84`・ALPHA_MODE_MASK 時）/ SSS flag=定数 / roughness=`mRoughnessFactor` / metallic=`mMetallicFactor` / emissive=`mEmissiveColor`（`:130-135`）。分岐条件 = `isShadowPass()`（`:80/98`・frame state）。
+- **texture 参照**: `mBaseColor/Normal/MetallicRoughness/EmissiveTexture` + media_tex override（`:77-78`）= LLPointer（DrawPlanItem に既に materialize 予定・§1.2）。
+- **PBR material UBO content（H8）**: texture transforms `mTextureTransform[].getPacked()`（`:147-155`）= material 自フィールド。**※ H8 は thread_local ゆえ hazard でない（§9.1 SAFE）が、値は同様に materialize 可能**。
+∴ **materialize 可能**（CB も live bind state も要らない）。
+- **非 material PC 値も全て materialize 可能（トレース済 2026-07-28）**: water_sign=`water_sign` 引数 + `isHUDPass()`（`lldrawpoolalpha.cpp:115-121`・frame/pass state）/ neutral_atmos=定数 / gaussian=blur config（frame 定数・そもそも post 系で worker 非対象の可能性）/ **object_alpha=`pparams->mObjectAlpha`（`pipeline.cpp:9785` ほか）= per-draw LLDrawInfo フィールド** / **SSS flag=`params.mIsSSSTarget`（`lldrawpool.cpp:2304`）= per-draw フィールド**。
+- **∴ 追加 read-set フィールド（finding 6 と同穴）**: DrawPlanItem/bundle に **`mObjectAlpha`・`mIsSSSTarget`・`mGLTFMaterial`** を封入（§7 read-set はこれらを落としていた = §7.5 訂正の実体）。frame/pass 定数（water_sign/neutral_atmos）は plan-build 時の frame state から解決。
+
+#### §9.6.2 機構 = DrawPlanItem に「material draw bundle」を封入
+plan-build（main・凍結中）で、各 material/alpha draw について以下を DrawPlanItem の不変 snapshot に確定:
+```
+struct MaterialEmitBundle {          // DrawPlanItem に追加（finding 6 の mGLTFMaterial 封入の実体）
+    F32  frag_pc[VK_FRAG_PC_DWORDS];  // 完全な PC ブロック（delta でなく累積後の全値）
+    U32  frag_pc_mask;               // どの dword が有効か
+    // texture 参照/heap slot は既存 DrawPlanItem フィールド（§1.2）
+    PBRMaterial_PerMaterial pbr_ubo;  // H8 の content（texture transforms + factors）
+};
+```
+- **PC は「累積後の全ブロック」を capture**（現状 setMinimumAlpha→GLTF bind の 5 push が積み上がる = 単一 setter の delta でなく draw 時点の完全な mVkFragPC 相当を snapshot）。∴ plan-build で「値計算」を実行して bundle へ書く（下記 refactor）。
+
+#### §9.6.3 refactor = 「値計算」と「CB emit」の分離（setter 群）
+現 setter は「値計算 + 共有 shadow write + CB push」が一体。これを 2 相に割る:
+- **plan-build 相（main）**: `computeMaterialBundle(draw)` = 現 `bind()`/`setMinimumAlpha` の**値計算部のみ**を実行し bundle（frag_pc/mask/pbr_ubo）へ write。**共有 shadow（mVkFragPC）・共有 UBO（PBR material）・CB には一切触らない**。
+- **worker record 相**: `emitMaterialBundle(bundle, cmd, lane)` = bundle を **worker 自身の CB へ直接 push**（`vkCmdPushConstants(cmd, …, bundle.frag_pc)`）+ pbr_ubo content を **per-lane/arena slice**（§9.2-H1 と同経路）へ write して descriptor 参照。**setter を呼ばない = 共有 shadow/UBO を触らない**。
+
+#### §9.6.4 副次効果（機構が単純化する）
+- **`vkReassertFragPC`（`:2697`）は worker 経路で不要化**: 各 draw が bundle から完全 PC ブロックを push するので、pipeline 再 bind 後の再 push は「その draw の push」で足りる（累積 shadow を再送する必要が消える）。→ H6 の shadow `mVkFragPC` は **worker 経路から構造的に消滅**（main serial 経路は現状維持）。
+- **H5（per-program UBO content = setMinimumAlpha:2732）も同時に閉じる**: min_alpha は bundle の frag_pc に入る（PC 経路）ため、per-program UBO への content write 自体が worker 経路から消える（`mWritePerProgramUBOMinimumAlpha` 分岐を worker では通らない）。
+- **H1（per-program UBO slot）との関係**: bundle materialize 後、worker が per-program UBO に要るのは pbr_ubo content の per-lane/arena slice のみ = §9.2-H1 の arena 化に一本化。ring 経路自体が worker から不要になる可能性（§9.5 残 JIT で確定）。
+
+#### §9.6.5 V5 backstop の精緻化（§9.3 を強める）
+Option B 下では **worker record 経路は setter（`vkPushFragPC` / `writeCurrentPBRMaterialUBO` / `setMinimumAlpha` / `rotatePerProgramUBOSlot`）を 1 つも呼ばない**（emit は bundle から直接 CB/arena）。∴ V5 = **これら setter の entry に `if (isRecordJobActive()) → alarm`**。**setter entry = 小さく閉じた mutating API 表面**（内部 field write の列挙より遥かに網羅しやすい）。理想 = 「worker が snapshot から emit する構造ゆえ setter に到達しない → V5 永久沈黙」（構造的除去の正のオラクル）。
+
+#### §9.6.6 罠・申告
+- **罠1（PC 累積）**: bundle は delta でなく draw 時点の**完全 PC ブロック**を持つ。computeMaterialBundle は現 setter の呼び順（setMinimumAlpha → GLTF bind の SSS/roughness/metallic/emissive）を再現して累積する。
+- **罠2（pass 依存）**: `isShadowPass()` で PC 分岐（`:80/98`）= bundle は **(draw, pass) 毎**に materialize（shadow 用と gbuffer 用で別 bundle）。
+- **罠3（media_tex）**: `bind(media_tex)` の override（`:77`）は per-draw 引数 = bundle capture 時に解決。
+- **罠4（非 material PC）**: water_sign/neutral_atmos/gaussian/object_alpha 等 material 外の PC setter も同 bundle に畳むか個別 materialize するか = §9.5 残 JIT（源が frame 定数なら plan-build で自明）。
+- **省略**: bundle の正確なメモリレイアウト・DrawPlanItem への埋め込み方（既存 §1.2 フィールドとの整合）は III-6 実装時に確定。computeMaterialBundle の refactor 範囲（`bind()` の値計算部抽出）は実装時に diff で確定。
+- **product 挙動不変**: materialize は「同じ値を別経路で同じ CB へ push」= GPU に届く push 定数/UBO は現状と byte 同一（§5.7 L3 型 A/B で証明）。品質トレードなし。
+- **PASS なし**（憲法 1）: 本 JIT の検収・実装は AYA gate。
+- **立証責任**（憲法 6）: H1-H4 は検証済み write site の**下限**。V5（write 側 1 点検出）により「他に未列挙の共有 write があっても worker が触れば発火」= この軸に限り完全性を機構で担保する設計意図。

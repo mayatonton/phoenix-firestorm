@@ -14359,6 +14359,22 @@ namespace
         const LLGLSLShader::record_seed_map_t* seeds = nullptr;
     };
 
+    // III-1a: worker 化する cascade/spot の per-slot 記録計画。dispatch 前に prep 相 (Pass 1) で
+    // 埋め、dispatch (Pass 2) / render (Pass 3) は全 mutation 完了後にまとめて回す (S8-b 根治)。
+    struct ShadowRenderPlan
+    {
+        bool            mt = false;              // worker 化する slot か (Pass 2/3 対象)
+        bool            dispatch_failed = false; // dispatch 失敗時 = Pass 3 で clear + static のみ描画
+        ShadowRecordCtx ctx;
+        LLCamera        shadow_cam;
+        F32             cull_radius = 0.f;
+        LLRenderTarget* rt = nullptr;
+        LLCullResult*   result = nullptr;
+        bool            depth_clamp = true;      // renderShadow 5th arg + ctx.depth_clamp (sun=true/spot=false)
+        S32             sun_j = -1;              // sun cascade index (s_cascade_valid 用)・-1=spot
+        LLDrawable*     spot_light = nullptr;    // Pass 3 の RenderSpotLight (spot のみ)
+    };
+
     std::vector<LLPointer<LLDrawInfo>> sShadowRecordPins;
 
     void pinShadowWorkerDrawInfo(LLDrawInfo* info)
@@ -15348,6 +15364,15 @@ void LLPipeline::generateSunShadow(LLCamera& camera)
     F32 dist[] = { near_clip, mSunClipPlanes.mV[0], mSunClipPlanes.mV[1], mSunClipPlanes.mV[2], mSunClipPlanes.mV[3] };
 
     ShadowWorkerSeeds shadow_seeds;
+
+    // III-1a 3-phase 再構成: prep(Pass 1)=全 cascade/spot の matrix+cull+stateSort(mutation)+seed+pin+ctx を
+    // dispatch 前に完了 → dispatch(Pass 2) → render(Pass 3)。sun[0..3]/spot[4..5] を 1 本の slot 空間で扱う。
+    ShadowRenderPlan shadow_plan[6];
+    static LLCullResult sun_result[4];
+    static LLCullResult spot_result[2];
+    static bool s_cascade_valid[4] = { false, false, false, false };
+    static U32 s_cascade_res[4] = { 0, 0, 0, 0 };
+
     static LLCachedControl<bool> shadow_record_mt(gSavedSettings, "AYAShadowRecordMT", true);
     {
         static bool s_prev_shadow_record_mt = true;
@@ -15374,8 +15399,6 @@ void LLPipeline::generateSunShadow(LLCamera& camera)
             return (e == nullptr) || (atof(e) != 0.0);
         }();
         static U32 s_shadow_frame = 0;
-        static bool s_cascade_valid[4] = { false, false, false, false };
-        static U32 s_cascade_res[4] = { 0, 0, 0, 0 };
         if (!gCubeSnapshot)
         {
             ++s_shadow_frame;
@@ -15759,15 +15782,17 @@ void LLPipeline::generateSunShadow(LLCamera& camera)
                         ? s_cull_texels * split_span / map_res
                         : 0.f;
 
-                static LLCullResult result[4];
-
                 LLRenderTarget& shadow_rt = getFrameRT()->shadow[j];
 
-                bool mt_split = mt_shadow_capable
+                const bool mt_eligible = mt_shadow_capable
                                 && shadow_rt.getVkDepthImage() != VK_NULL_HANDLE
                                 && shadow_rt.getVkDepthView() != VK_NULL_HANDLE;
 
-                if (mt_split)
+                // III-1a Pass 1 (prep): mutation (updateCull+stateSort=rebuildMesh) は worker 窓が
+                // 開く前に完了させる。mt 対象は plan へ退避 (dispatch/render は Pass 2/3)。
+                // 非 mt はここでインライン描画 = 従来挙動 (Pass 1 は窓を開かないので安全)。
+                bool deferred = false;
+                if (mt_eligible)
                 {
                     {
                         LLPipelineFrameContext::getInstance().setShadowPass(true);
@@ -15776,68 +15801,65 @@ void LLPipeline::generateSunShadow(LLCamera& camera)
                         LLGLEnable cull(GL_CULL_FACE);
                         LLGLEnable clamp_depth(GL_DEPTH_CLAMP);
                         LLGLDepthTest depth_test(GL_TRUE, GL_TRUE, GL_LESS);
-                        updateCull(shadow_cam, result[j]);
-                        stateSort(shadow_cam, result[j]);
+                        updateCull(shadow_cam, sun_result[j]);
+                        stateSort(shadow_cam, sun_result[j]);
                         sUseOcclusion = saved_occlusion;
                         LLPipelineFrameContext::getInstance().setShadowPass(false);
                     }
 
                     ensureShadowWorkerSeeds(shadow_seeds, shadow_rt);
 
-                    bool dispatched = false;
                     if (shadow_seeds.valid)
                     {
-                        pinShadowWorkerDrawInfos(result[j]);
+                        pinShadowWorkerDrawInfos(sun_result[j]);
 
-                        ShadowRecordCtx ctx;
-                        std::memcpy(ctx.view, glm::value_ptr(view[j]), sizeof(ctx.view));
-                        std::memcpy(ctx.proj, glm::value_ptr(proj[j]), sizeof(ctx.proj));
-                        std::memcpy(ctx.last_modelview, gGLLastModelView, sizeof(ctx.last_modelview));
-                        ctx.cull_radius    = batch_cull_radius;
-                        ctx.result         = &result[j];
-                        ctx.rt             = &shadow_rt;
-                        ctx.depth_image    = shadow_rt.getVkDepthImage();
-                        ctx.depth_view     = shadow_rt.getVkDepthView();
-                        ctx.width          = shadow_rt.getWidth();
-                        ctx.height         = shadow_rt.getHeight();
-                        ctx.initial_layout = shadow_rt.getVkDepthLayout();
-                        ctx.map_index      = (U32)j;
-                        ctx.color_mask_off = RenderShadowDetail <= 2;
-                        ctx.depth_clamp    = true;
-                        ctx.seeds          = &shadow_seeds.map;
-
-                        LLVKLoader::endDynamicRendering();
-                        dispatched = LLVKLoader::dispatchRecordJob(
-                            [ctx](VkCommandBuffer cmd) { recordShadowWorkerFamilies(ctx, cmd); });
-                        if (dispatched)
-                        {
-                            shadow_rt.setVkDepthLayout(VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL);
-                        }
+                        ShadowRenderPlan& p = shadow_plan[j];
+                        p.mt          = true;
+                        p.shadow_cam  = shadow_cam;
+                        p.cull_radius = batch_cull_radius;
+                        p.rt          = &shadow_rt;
+                        p.result      = &sun_result[j];
+                        p.depth_clamp = true;
+                        p.sun_j       = j;
+                        std::memcpy(p.ctx.view, glm::value_ptr(view[j]), sizeof(p.ctx.view));
+                        std::memcpy(p.ctx.proj, glm::value_ptr(proj[j]), sizeof(p.ctx.proj));
+                        std::memcpy(p.ctx.last_modelview, gGLLastModelView, sizeof(p.ctx.last_modelview));
+                        p.ctx.cull_radius    = batch_cull_radius;
+                        p.ctx.result         = &sun_result[j];
+                        p.ctx.rt             = &shadow_rt;
+                        p.ctx.depth_image    = shadow_rt.getVkDepthImage();
+                        p.ctx.depth_view     = shadow_rt.getVkDepthView();
+                        p.ctx.width          = shadow_rt.getWidth();
+                        p.ctx.height         = shadow_rt.getHeight();
+                        p.ctx.initial_layout = shadow_rt.getVkDepthLayout();
+                        p.ctx.map_index      = (U32)j;
+                        p.ctx.color_mask_off = RenderShadowDetail <= 2;
+                        p.ctx.depth_clamp    = true;
+                        p.ctx.seeds          = &shadow_seeds.map;
+                        deferred = true;
                     }
-                    mt_split = dispatched;
                 }
 
-                shadow_rt.bindTarget();
-                shadow_rt.getViewport(gGLViewport);
-                if (!mt_split)
+                if (!deferred)
                 {
+                    shadow_rt.bindTarget();
+                    shadow_rt.getViewport(gGLViewport);
                     shadow_rt.clear();
-                }
 
-                LLRenderPass::sShadowBatchCullRadius = batch_cull_radius;
-                renderShadow(view[j], proj[j], shadow_cam, result[j], true, mt_split);
+                    LLRenderPass::sShadowBatchCullRadius = batch_cull_radius;
+                    renderShadow(view[j], proj[j], shadow_cam, sun_result[j], true, false);
+                    LLRenderPass::sShadowBatchCullRadius = 0.f;
 
-                LLRenderPass::sShadowBatchCullRadius = 0.f;
+                    if (!gCubeSnapshot)
+                    {
+                        s_cascade_valid[j] = true;
+                        s_cascade_res[j]   = getFrameRT()->shadow[j].getWidth();
+                    }
 
-                if (!gCubeSnapshot)
-                {
-                    s_cascade_valid[j] = true;
-                    s_cascade_res[j]   = getFrameRT()->shadow[j].getWidth();
+                    shadow_rt.flush();
+                    shadow_rt.bindForShaderRead(0, true);
                 }
             }
-
-            getFrameRT()->shadow[j].flush();
-            getFrameRT()->shadow[j].bindForShaderRead(0, true);
 
             if (!gPipeline.hasRenderDebugMask(LLPipeline::RENDER_DEBUG_SHADOW_FRUSTA) && !gCubeSnapshot)
             {
@@ -15976,88 +15998,148 @@ void LLPipeline::generateSunShadow(LLCamera& camera)
 
                 LLViewerCamera::updateFrustumPlanes(shadow_cam, false, false, true);
 
-                //
-
-                static LLCullResult result[2];
-
                 LLViewerCamera::setCurCameraID((LLViewerCamera::eCameraID)(LLViewerCamera::CAMERA_SPOT_SHADOW0 + i));
-
-                RenderSpotLight = drawable;
 
                 LLVKLoader::gVkPerfShadowMapIndex = 4u + (U32)i;
 
-                bool mt_split = mt_shadow_capable
-                                && mSpotShadow[i].getVkDepthImage() != VK_NULL_HANDLE
-                                && mSpotShadow[i].getVkDepthView() != VK_NULL_HANDLE;
+                LLRenderTarget& spot_rt = mSpotShadow[i];
 
-                if (mt_split)
+                const bool mt_eligible = mt_shadow_capable
+                                && spot_rt.getVkDepthImage() != VK_NULL_HANDLE
+                                && spot_rt.getVkDepthView() != VK_NULL_HANDLE;
+
+                // III-1a Pass 1 (prep): sun cascade と同一方針。mt は plan 退避 (dispatch/render は Pass 2/3)。
+                bool deferred = false;
+                if (mt_eligible)
                 {
+                    RenderSpotLight = drawable;
                     {
                         LLPipelineFrameContext::getInstance().setShadowPass(true);
                         U32 saved_occlusion = sUseOcclusion;
                         sUseOcclusion = 0;
                         LLGLEnable cull(GL_CULL_FACE);
                         LLGLDepthTest depth_test(GL_TRUE, GL_TRUE, GL_LESS);
-                        updateCull(shadow_cam, result[i]);
-                        stateSort(shadow_cam, result[i]);
+                        updateCull(shadow_cam, spot_result[i]);
+                        stateSort(shadow_cam, spot_result[i]);
                         sUseOcclusion = saved_occlusion;
                         LLPipelineFrameContext::getInstance().setShadowPass(false);
                     }
+                    RenderSpotLight = nullptr;
 
-                    ensureShadowWorkerSeeds(shadow_seeds, mSpotShadow[i]);
+                    ensureShadowWorkerSeeds(shadow_seeds, spot_rt);
 
-                    bool dispatched = false;
                     if (shadow_seeds.valid)
                     {
-                        pinShadowWorkerDrawInfos(result[i]);
+                        pinShadowWorkerDrawInfos(spot_result[i]);
 
-                        ShadowRecordCtx ctx;
-                        std::memcpy(ctx.view, glm::value_ptr(view[i + 4]), sizeof(ctx.view));
-                        std::memcpy(ctx.proj, glm::value_ptr(proj[i + 4]), sizeof(ctx.proj));
-                        std::memcpy(ctx.last_modelview, gGLLastModelView, sizeof(ctx.last_modelview));
-                        ctx.cull_radius    = 0.f;
-                        ctx.result         = &result[i];
-                        ctx.rt             = &mSpotShadow[i];
-                        ctx.depth_image    = mSpotShadow[i].getVkDepthImage();
-                        ctx.depth_view     = mSpotShadow[i].getVkDepthView();
-                        ctx.width          = mSpotShadow[i].getWidth();
-                        ctx.height         = mSpotShadow[i].getHeight();
-                        ctx.initial_layout = mSpotShadow[i].getVkDepthLayout();
-                        ctx.map_index      = 4u + (U32)i;
-                        ctx.color_mask_off = RenderShadowDetail <= 2;
-                        ctx.depth_clamp    = false;
-                        ctx.seeds          = &shadow_seeds.map;
-
-                        LLVKLoader::endDynamicRendering();
-                        dispatched = LLVKLoader::dispatchRecordJob(
-                            [ctx](VkCommandBuffer cmd) { recordShadowWorkerFamilies(ctx, cmd); });
-                        if (dispatched)
-                        {
-                            mSpotShadow[i].setVkDepthLayout(VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL);
-                        }
+                        ShadowRenderPlan& p = shadow_plan[4 + i];
+                        p.mt          = true;
+                        p.shadow_cam  = shadow_cam;
+                        p.cull_radius = 0.f;
+                        p.rt          = &spot_rt;
+                        p.result      = &spot_result[i];
+                        p.depth_clamp = false;
+                        p.sun_j       = -1;
+                        p.spot_light  = drawable;
+                        std::memcpy(p.ctx.view, glm::value_ptr(view[i + 4]), sizeof(p.ctx.view));
+                        std::memcpy(p.ctx.proj, glm::value_ptr(proj[i + 4]), sizeof(p.ctx.proj));
+                        std::memcpy(p.ctx.last_modelview, gGLLastModelView, sizeof(p.ctx.last_modelview));
+                        p.ctx.cull_radius    = 0.f;
+                        p.ctx.result         = &spot_result[i];
+                        p.ctx.rt             = &spot_rt;
+                        p.ctx.depth_image    = spot_rt.getVkDepthImage();
+                        p.ctx.depth_view     = spot_rt.getVkDepthView();
+                        p.ctx.width          = spot_rt.getWidth();
+                        p.ctx.height         = spot_rt.getHeight();
+                        p.ctx.initial_layout = spot_rt.getVkDepthLayout();
+                        p.ctx.map_index      = 4u + (U32)i;
+                        p.ctx.color_mask_off = RenderShadowDetail <= 2;
+                        p.ctx.depth_clamp    = false;
+                        p.ctx.seeds          = &shadow_seeds.map;
+                        deferred = true;
                     }
-                    mt_split = dispatched;
                 }
 
-                mSpotShadow[i].bindTarget();
-                mSpotShadow[i].getViewport(gGLViewport);
-                if (!mt_split)
+                if (!deferred)
                 {
-                    mSpotShadow[i].clear();
+                    RenderSpotLight = drawable;
+                    spot_rt.bindTarget();
+                    spot_rt.getViewport(gGLViewport);
+                    spot_rt.clear();
+
+                    renderShadow(view[i + 4], proj[i + 4], shadow_cam, spot_result[i], false, false);
+
+                    RenderSpotLight = nullptr;
+
+                    spot_rt.flush();
+                    spot_rt.bindForShaderRead(0, true);
                 }
-
-                renderShadow(view[i + 4], proj[i + 4], shadow_cam, result[i], false, mt_split);
-
-                RenderSpotLight = nullptr;
-
-                mSpotShadow[i].flush();
-                mSpotShadow[i].bindForShaderRead(0, true);
             }
         }
     }
     else
     { //no spotlight shadows
         mShadowSpotLight[0] = mShadowSpotLight[1] = NULL;
+    }
+
+    // III-1a Pass 2 (dispatch): 全 cascade/spot の mutation 完了後にまとめて worker へ dispatch。
+    // ここで初めて record 窓が開く (以降 Pass 3 も含め mutation ゼロ = S8-b 根治)。
+    for (S32 k = 0; k < 6; ++k)
+    {
+        ShadowRenderPlan& p = shadow_plan[k];
+        if (!p.mt)
+        {
+            continue;
+        }
+        LLVKLoader::endDynamicRendering();
+        ShadowRecordCtx ctx = p.ctx;
+        const bool dispatched = LLVKLoader::dispatchRecordJob(
+            [ctx](VkCommandBuffer cmd) { recordShadowWorkerFamilies(ctx, cmd); });
+        if (dispatched)
+        {
+            p.rt->setVkDepthLayout(VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL);
+        }
+        else
+        {
+            p.dispatch_failed = true;
+        }
+    }
+
+    // III-1a Pass 3 (render): worker 窓が開いた状態で main が static+gltf を LOAD 描画。
+    // renderShadow は mt_split=true で updateCull/stateSort/rebuildMesh を呼ばない = 窓中 mutation ゼロ。
+    // cull は grabReferences で slot 別 result を明示 set (Pass 1 の last stateSort が別 result を残すため)。
+    for (S32 k = 0; k < 6; ++k)
+    {
+        ShadowRenderPlan& p = shadow_plan[k];
+        if (!p.mt)
+        {
+            continue;
+        }
+        grabReferences(*p.result);
+        p.rt->bindTarget();
+        p.rt->getViewport(gGLViewport);
+        if (p.dispatch_failed)
+        {
+            p.rt->clear();
+        }
+        if (p.sun_j < 0)
+        {
+            RenderSpotLight = p.spot_light;
+        }
+        LLRenderPass::sShadowBatchCullRadius = p.cull_radius;
+        renderShadow(view[k], proj[k], p.shadow_cam, *p.result, p.depth_clamp, true);
+        LLRenderPass::sShadowBatchCullRadius = 0.f;
+        if (p.sun_j < 0)
+        {
+            RenderSpotLight = nullptr;
+        }
+        if (p.sun_j >= 0 && !gCubeSnapshot)
+        {
+            s_cascade_valid[p.sun_j] = true;
+            s_cascade_res[p.sun_j]   = getFrameRT()->shadow[p.sun_j].getWidth();
+        }
+        p.rt->flush();
+        p.rt->bindForShaderRead(0, true);
     }
 
     LLVKLoader::joinRecordJobs();

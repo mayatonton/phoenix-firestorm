@@ -123,6 +123,7 @@ public:
     LLMatrix4 mTexMat;
     LLQuaternion mBumpQuat;
     LLPointer<LLVolume> mVolume;
+    LLPointer<LLVertexBuffer> mBuffer;
     LLFace* mSrcFace = nullptr;
 
     LLGeoFaceSnapshot mSnapshot;

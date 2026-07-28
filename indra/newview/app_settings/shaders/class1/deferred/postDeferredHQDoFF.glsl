@@ -149,7 +149,7 @@ void main()
 			// (NaN > 0.5 is always false on conformant GL but undefined under Metal emulation).
 			for (int safety = 0; safety < 32 && sc > 0.5; ++safety)
 			{
-				int its = int(max(1.0,(sc*3.7)));
+				int its = min(int(max(1.0,(sc*3.7))), 1024);
 				for (int i=0; i<its; ++i)
 				{
 					float ang = sc+i*2*PI/its; // sc is added for rotary perturbance
@@ -170,7 +170,7 @@ void main()
 			// Apple Silicon Metal safety: bounded loop (see comment above).
 			for (int safety = 0; safety < 32 && sc > 0.5; ++safety)
 			{
-				int its = int(max(1.0,(sc*3.7)));
+				int its = min(int(max(1.0,(sc*3.7))), 1024);
 				for (int i=0; i<its; ++i)
 				{
 					float ang = sc+i*2*PI/its; // sc is added for rotary perturbance

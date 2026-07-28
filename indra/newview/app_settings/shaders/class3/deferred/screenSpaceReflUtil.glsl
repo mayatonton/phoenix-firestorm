@@ -135,7 +135,7 @@ bool traceScreenRay(vec3 position, vec3 reflection, out vec4 hitColor, out float
         return false;
     }
 
-    for (int i = 0; i < int(iterationCount); i++)
+    for (int i = 0; i < clamp(int(iterationCount), 0, 256); i++)
     {
         screenPosition = generateProjectedPosition(marchingPosition);
         bool offscreen = (screenPosition.x > 1 || screenPosition.x < 0 ||

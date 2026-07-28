@@ -135,7 +135,7 @@ void main()
     float shaftify = 0.0;
     float last_shadsample = 0.0;
 
-    for (int i=godray_res-1; i>0; --i)
+    for (int i=clamp(godray_res, 1, 64)-1; i>0; --i)
     {
       vec4 spos = vec4(mix(vec3(0,0,0), farpos, (i-roffset)/(godray_res)), 1.0);
       float this_shadsample = 0.275 * nonpcfShadowAtPos(spos, tc);
@@ -196,7 +196,7 @@ void main()
     float shaftify = 0.0;
     float last_shadsample = 0.0;
 
-    for (int i=godray_res-1; i>0; --i)
+    for (int i=clamp(godray_res, 1, 64)-1; i>0; --i)
     {
       vec4 spos = vec4(mix(vec3(0,0,0), farpos, (i-roffset)/(godray_res)), 1.0);
       float this_shadsample = 0.275 * sampleDirectionalShadow(spos.xyz, sun_dir, tc);

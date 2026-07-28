@@ -127,7 +127,7 @@ bool traceScreenRay(vec3 position, vec3 direction, out vec2 hitTC, out float hit
     vec3 marchingPosition = position + step;
     vec2 screenPosition;
 
-    for (int i = 0; i < int(iterationCount); i++)
+    for (int i = 0; i < clamp(int(iterationCount), 0, 256); i++)
     {
         if (length(marchingPosition - position) > maxZDepth)
         {
