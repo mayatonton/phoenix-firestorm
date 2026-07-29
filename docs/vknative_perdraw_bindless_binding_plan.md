@@ -1,5 +1,11 @@
 # per-draw bindless 束縛 = 列挙 → メンバー毎 設計改修 計画（根治）
 
+> **⚠️ 訂正(2026-07-29)**: 本計画の発端だった crowd 手足飛散の真の根は per-draw 束縛でなく
+> **Camera 記録の worker 並列化(`AYACameraRecordMT`)の category error**(視覚 bisect で `e960bd428f5`
+> 特定・撤去 `0eecd7be225`・memory `finding_camera_mt_categoryerror_rigfly`)。per-draw 束縛は serial
+> 記録下で健全 = 飛散の犯人ではない。以下の束縛 hygiene 監査は一般改善としては有効だが、
+> **「飛散の根治」という動機は無効**(飛散は Camera 並列化撤去で解決済)。
+
 ## 0. パターン定義
 `aya_draw_id = gl_InstanceIndex = firstInstance = draw_id` で per-draw の側テーブルを引く束縛。
 共通の失敗軸 = **(a) slot が取れない/溢れる (b) INVALID/溢れ時の落とし先 (c) freshness が規約依存

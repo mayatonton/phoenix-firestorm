@@ -1,5 +1,13 @@
 # VK-native 描画 worker 記録 再設計（段階 II）
 
+> **⚠️ 訂正(2026-07-29)**: §9(公理 F′・worker↔worker hazard = 共有 program state の race)は
+> **Camera 記録の worker 並列化を前提にした設計だが、その Camera 並列化は category error として
+> 撤去済**（1 視点デバイスの人為分割・視覚 bisect で `e960bd428f5` 特定・撤去 `0eecd7be225`・memory
+> `finding_camera_mt_categoryerror_rigfly`）。∴ **§9 の worker↔worker 隔離論は camera 分は moot**
+> （shadow=独立カスケード=自然分解のみ有効）。crowd の camera 記録コストは並列化でなく
+> **elimination(indirect/MDI)** で当たる。段階 II/III の worker 再設計は shadow・および将来の
+> 自然分解可能な仕事に限る。
+
 > **位置づけ**: AYA 方法論（survey §4）の**段階 II = 再設計**。段階 I の全体地図 `docs/vknative_draw_structure_map.md`
 > が確定した欠陥（S6/S7/S8-b/S13/S14/S15）と資産（A1-A6）を出発点に、**「規約でなく機構」で worker 記録を安全化する設計**を定める。
 > **grandfather しない**（Phase A/B の現実装も本設計に置き換える対象）。実装は**段階 III（大工事一括再実装）**・計測は**段階 IV（最終 gate のみ）**。

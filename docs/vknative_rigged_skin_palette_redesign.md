@@ -1,5 +1,13 @@
 # rigged skin palette 束縛 再設計(bindless・7/23 退行の作り直し)
 
+> ## ⛔ VOID(2026-07-29・視覚 bisect で反証)
+> **本 doc の前提「7/23 SSBO 化で入った skin palette 束縛が飛散の原因」は誤り。** commit 単位の
+> 視覚 bisect で 7/23(SSBO 化前)〜7/27 は全て視覚正常、**7/28 `e960bd428f5`(Camera 記録の worker
+> 並列化 `AYACameraRecordMT`)で飛散再現**と機械特定。真の根 = **Camera 並列化の category error**
+> (1 視点を pool 分割→worker が per-draw 共有資源を破壊)。skin palette 束縛は無罪(serial 下で健全)。
+> 撤去 commit = `0eecd7be225`。真実源 = memory `finding_camera_mt_categoryerror_rigfly`。
+> **本 doc の「skin 束縛を作り直す」設計は不要 = 実装しない。** 以下は歴史的経緯として残置。
+
 ## 0. 位置づけ
 7/23 `66ae1fb` の UBO→SSBO bindless 化で入った rigged skin palette 束縛が、混雑で
 rig 破壊(別 avatar の palette を掴んで肢体が world 各所へ飛散)を起こす。原因は単一の
