@@ -1127,12 +1127,8 @@ void display(bool rebuild, F32 zoom_factor, int subfield, bool for_snapshot)
         {
             gGL.setClearColor(1, 0, 1, 1);
         }
-        const bool camera_record_split = gPipeline.beginCameraRecordSplit();
         LLPipelineFrameContext::getInstance().getActiveRT()->deferredScreen.bindTarget();
-        if (!camera_record_split)
-        {
-            LLPipelineFrameContext::getInstance().getActiveRT()->deferredScreen.clear();
-        }
+        LLPipelineFrameContext::getInstance().getActiveRT()->deferredScreen.clear();
 
         gGL.setColorMask(true, false);
 
@@ -1170,8 +1166,6 @@ void display(bool rebuild, F32 zoom_factor, int subfield, bool for_snapshot)
             LLVKLoader::VkPerfPhaseScope ph(10);
             gPipeline.renderGeomDeferred(*LLViewerCamera::getInstance(), true);
         }
-
-        gPipeline.finishCameraRecordSplit();
 
         {
             LL_PROFILE_ZONE_NAMED_CATEGORY_DISPLAY("Texture Unbind");
