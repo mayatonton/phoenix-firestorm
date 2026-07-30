@@ -2954,13 +2954,13 @@ namespace
 
         {
             void* dd_mapped = nullptr;
-            if (createBufferVkImpl(DRAWDATA_TOTAL_SLOTS * 16,
+            if (createBufferVkImpl(DRAWDATA_TOTAL_SLOTS * DRAWDATA_SLOT_UINTS * 4,
                                    VK_BUFFER_USAGE_STORAGE_BUFFER_BIT,
                                    sDrawDataBuffer, sDrawDataAllocation, &dd_mapped, true)
                 && dd_mapped != nullptr)
             {
                 sDrawDataMapped = reinterpret_cast<U32*>(dd_mapped);
-                std::memset(sDrawDataMapped, 0, 16);
+                std::memset(sDrawDataMapped, 0, DRAWDATA_SLOT_UINTS * 4);
 
                 VkDescriptorBufferInfo bi = {};
                 bi.buffer = sDrawDataBuffer;
@@ -11861,7 +11861,7 @@ U32 drawDataAcquireSlot(const U32* slots4)
         }
         return BINDLESS_INVALID_SLOT;
     }
-    std::memcpy(sDrawDataMapped + (size_t)slot * 4, slots4, 16);
+    std::memcpy(sDrawDataMapped + (size_t)slot * DRAWDATA_SLOT_UINTS, slots4, DRAWDATA_SLOT_UINTS * 4);
     return slot;
 }
 
@@ -11901,7 +11901,7 @@ bool allocDomainSelfTest()
         std::vector<MegaSliceI> islices;
         for (U32 i = 0; i < ITER; ++i)
         {
-            U32 dd[4] = { sd->mId, i, 0xA5A5A5A5u, i * 7u + 1u };
+            U32 dd[DRAWDATA_SLOT_UINTS] = { sd->mId, i, 0xA5A5A5A5u, i * 7u + 1u };
             U32 s = drawDataAcquireSlot(dd);
             if (s == BINDLESS_INVALID_SLOT)
             {
@@ -11962,7 +11962,7 @@ bool allocDomainSelfTest()
 
 static thread_local U32 tDrawDataScratchMemoFrame   = 0xFFFFFFFFu;
 static thread_local U32 tDrawDataScratchMemoSlot    = 0;
-static thread_local U32 tDrawDataScratchMemoVals[4] = {};
+static thread_local U32 tDrawDataScratchMemoVals[DRAWDATA_SLOT_UINTS] = {};
 
 U32 drawDataWriteScratch(const U32* slots4)
 {
@@ -11971,7 +11971,7 @@ U32 drawDataWriteScratch(const U32* slots4)
         return 0;
     }
     if (tDrawDataScratchMemoFrame == sMonotonicFrameCount
-        && std::memcmp(tDrawDataScratchMemoVals, slots4, 16) == 0)
+        && std::memcmp(tDrawDataScratchMemoVals, slots4, DRAWDATA_SLOT_UINTS * 4) == 0)
     {
         return tDrawDataScratchMemoSlot;
     }
@@ -11988,10 +11988,10 @@ U32 drawDataWriteScratch(const U32* slots4)
     }
     const U32 region = (sFrameIndex < FRAMES_IN_FLIGHT) ? sFrameIndex : 0;
     const U32 slot = DRAWDATA_PERSISTENT_SLOTS + region * DRAWDATA_SCRATCH_PER_FRAME + local;
-    std::memcpy(sDrawDataMapped + (size_t)slot * 4, slots4, 16);
+    std::memcpy(sDrawDataMapped + (size_t)slot * DRAWDATA_SLOT_UINTS, slots4, DRAWDATA_SLOT_UINTS * 4);
     tDrawDataScratchMemoFrame = sMonotonicFrameCount;
     tDrawDataScratchMemoSlot  = slot;
-    std::memcpy(tDrawDataScratchMemoVals, slots4, 16);
+    std::memcpy(tDrawDataScratchMemoVals, slots4, DRAWDATA_SLOT_UINTS * 4);
     return slot;
 }
 

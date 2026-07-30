@@ -159,9 +159,9 @@ public:
     LLVKLoader::PerDrawCacheLane mVkPerDrawCache;
 
     U32   mVkDrawDataSlot = 0xFFFFFFFFu;
-    U32   mVkDrawDataSlots[4] = {};
+    U32   mVkDrawDataSlots[LLVKLoader::DRAWDATA_SLOT_UINTS] = {};
     U32   mVkSkinFrame = 0xFFFFFFFFu;
-    bool ensureVkDrawDataSlot(const U32 slots[4]);
+    bool ensureVkDrawDataSlot(const U32 slots[LLVKLoader::DRAWDATA_SLOT_UINTS]);
 
     LLVKBucket::Bucket* mVkTplBucket = nullptr;
     U32   mVkTplCmdIndex = 0;

@@ -149,6 +149,8 @@ namespace LLVKLoader
 
     constexpr U32 FRAMES_IN_FLIGHT = 3;
 
+    constexpr U32 DRAWDATA_SLOT_UINTS = 12;
+
     U32 getCurrentFrameIndex();
     U32 getMonotonicFrameCount();
     U32 getLastCompletedMonotonic();

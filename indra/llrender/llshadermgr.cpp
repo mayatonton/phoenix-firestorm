@@ -642,7 +642,7 @@ GLuint LLShaderMgr::loadShaderFile(const std::string& filename, S32 & shader_lev
             extra_code_text[extra_code_count++] =
                 strdup("layout(set=2, binding=1) uniform sampler2D ayaTexHeap[];\n");
             extra_code_text[extra_code_count++] =
-                strdup("layout(set=2, binding=0, std430) readonly buffer AyaDrawDataBlock { uvec4 aya_tex_slots[]; };\n");
+                strdup("struct AyaDrawData { uvec4 tex_slots; vec4 spec_color; vec4 misc; };\nlayout(set=2, binding=0, std430) readonly buffer AyaDrawDataBlock { AyaDrawData aya_dd[]; };\n");
             extra_code_text[extra_code_count++] =
                 strdup("layout(location=19) flat in int aya_draw_id;\n");
 
@@ -657,12 +657,12 @@ GLuint LLShaderMgr::loadShaderFile(const std::string& filename, S32 & shader_lev
             if (texture_index_channels == 1)
             {
                 extra_code_text[extra_code_count++] =
-                    strdup("\treturn texture(ayaTexHeap[nonuniformEXT(aya_tex_slots[aya_draw_id].x)], texcoord);\n");
+                    strdup("\treturn texture(ayaTexHeap[nonuniformEXT(aya_dd[aya_draw_id].tex_slots.x)], texcoord);\n");
             }
             else
             {
                 extra_code_text[extra_code_count++] =
-                    strdup("\treturn texture(ayaTexHeap[nonuniformEXT(aya_tex_slots[aya_draw_id][vary_texture_index])], texcoord);\n");
+                    strdup("\treturn texture(ayaTexHeap[nonuniformEXT(aya_dd[aya_draw_id].tex_slots[vary_texture_index])], texcoord);\n");
             }
             extra_code_text[extra_code_count++] = strdup("}\n");
         }

@@ -330,7 +330,7 @@ namespace
 
     bool ensureRecordDrawDataSlot(LLDrawInfo* info)
     {
-        U32 slots[4];
+        U32 slots[LLVKLoader::DRAWDATA_SLOT_UINTS] = {};
         computeRecordSlots(info, slots);
         return info->ensureVkDrawDataSlot(slots);
     }

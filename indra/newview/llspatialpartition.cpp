@@ -4247,10 +4247,10 @@ void LLDrawInfo::clearVkPerDrawCachePins()
     }
 }
 
-bool LLDrawInfo::ensureVkDrawDataSlot(const U32 slots[4])
+bool LLDrawInfo::ensureVkDrawDataSlot(const U32 slots[LLVKLoader::DRAWDATA_SLOT_UINTS])
 {
     if (mVkDrawDataSlot == LLVKLoader::BINDLESS_INVALID_SLOT
-        || std::memcmp(mVkDrawDataSlots, slots, 16) != 0)
+        || std::memcmp(mVkDrawDataSlots, slots, LLVKLoader::DRAWDATA_SLOT_UINTS * 4) != 0)
     {
         U32 ns = LLVKLoader::drawDataAcquireSlot(slots);
         if (ns != LLVKLoader::BINDLESS_INVALID_SLOT)
@@ -4258,7 +4258,7 @@ bool LLDrawInfo::ensureVkDrawDataSlot(const U32 slots[4])
             if (mVkDrawDataSlot != LLVKLoader::BINDLESS_INVALID_SLOT)
                 LLVKLoader::drawDataReleaseSlotDeferred(mVkDrawDataSlot);
             mVkDrawDataSlot = ns;
-            std::memcpy(mVkDrawDataSlots, slots, 16);
+            std::memcpy(mVkDrawDataSlots, slots, LLVKLoader::DRAWDATA_SLOT_UINTS * 4);
         }
     }
     return mVkDrawDataSlot != LLVKLoader::BINDLESS_INVALID_SLOT;

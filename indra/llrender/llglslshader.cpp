@@ -3624,7 +3624,7 @@ void LLGLSLShader::populateAndBindUniversalDescriptorSet(bool preserve_drawdata)
             {
                 if (cur->mVkUsesBindlessHeap && !preserve_drawdata)
                 {
-                    U32 slots[4] = { 0, 0, 0, 0 };
+                    U32 slots[LLVKLoader::DRAWDATA_SLOT_UINTS] = {};
                     const U32 n = llmin((U32)cur->mFeatures.mIndexedTextureChannels, 4u);
                     if (n > 0)
                     {
@@ -3752,7 +3752,7 @@ void LLGLSLShader::populateAndBindUniversalDescriptorSet(bool preserve_drawdata)
 
     if (cur->mVkUsesBindlessHeap && !preserve_drawdata)
     {
-        U32 slots[4] = { 0, 0, 0, 0 };
+        U32 slots[LLVKLoader::DRAWDATA_SLOT_UINTS] = {};
         const U32 n = llmin((U32)cur->mFeatures.mIndexedTextureChannels, 4u);
         if (n > 0)
         {

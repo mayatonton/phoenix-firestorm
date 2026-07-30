@@ -605,7 +605,7 @@ void LLRenderPass::buildAndOverrideScenePerDrawSet(LLDrawInfo* params, bool batc
 
     if (cur->mVkUsesBindlessHeap)
     {
-        U32 slots[4] = { 0, 0, 0, 0 };
+        U32 slots[LLVKLoader::DRAWDATA_SLOT_UINTS] = {};
         if (params != nullptr && batch_textures && params->mTextureList.size() > 1)
         {
             const U32 n = llmin((U32)params->mTextureList.size(), 4u);
@@ -1481,7 +1481,7 @@ namespace
             }
             else
             {
-                U32 slots[4] = { 0, 0, 0, 0 };
+                U32 slots[LLVKLoader::DRAWDATA_SLOT_UINTS] = {};
                 if (batch_textures && p->mTextureList.size() > 1)
                 {
                     const U32 n = llmin((U32)p->mTextureList.size(), 4u);
