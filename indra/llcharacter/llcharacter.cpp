@@ -445,7 +445,6 @@ void LLCharacter::addSharedVisualParam(LLVisualParam *param)
 //-----------------------------------------------------------------------------
 void LLCharacter::addVisualParam(LLVisualParam *param)
 {
-    auto struct_lk = mMotionController.lockForStructuralMutation();
     S32 index = param->getID();
     // Add Index map
     std::pair<visual_param_index_map_t::iterator, bool> idxres;

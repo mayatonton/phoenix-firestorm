@@ -181,6 +181,45 @@ void LLSkinningUtil::initSkinningMatrixPalette(
     {
         matMulUnsafe(*(invBind++), *(w++), *(m++));
     }
+
+    static const bool s_skin_diag = []() -> bool {
+        const char* s = getenv("AYASTORM_SKIN_SANITY");
+        return s != nullptr && atoi(s) != 0;
+    }();
+    if (s_skin_diag)
+    {
+        auto mat_bad = [](const F32* mm, F32 bound) -> bool {
+            for (U32 k = 0; k < 16; ++k)
+            {
+                if (!std::isfinite(mm[k]) || fabsf(mm[k]) > bound)
+                {
+                    return true;
+                }
+            }
+            return false;
+        };
+        for (S32 j = 0; j < count; ++j)
+        {
+            const F32* mm = (const F32*)mat[j].mMatrix[0].getF32ptr();
+            if (!mat_bad(mm, 1.0e3f))
+            {
+                continue;
+            }
+            const F32* wb = (const F32*)world[j].mMatrix[0].getF32ptr();
+            const F32* ib = (const F32*)skin->mInvBindMatrix[j].mMatrix[0].getF32ptr();
+            const bool wbad = mat_bad(wb, 1.0e4f);
+            const bool ibad = mat_bad(ib, 1.0e4f);
+            LL_WARNS("Vulkan") << "VKC skin_palette_bad av=" << avatar->getID()
+                               << " hash=" << skin->mHash << " joint=" << j
+                               << " jointnum=" << skin->mJointNums[j] << " refs=" << skin->getNumRefs()
+                               << " src=" << (wbad ? "WORLD " : "") << (ibad ? "INVBIND " : "")
+                               << ((!wbad && !ibad) ? "COMBINE" : "")
+                               << " world_r0=(" << wb[0] << "," << wb[1] << "," << wb[2] << "," << wb[12] << ")"
+                               << " invbind_r0=(" << ib[0] << "," << ib[1] << "," << ib[2] << "," << ib[12] << ")"
+                               << " out_r0=(" << mm[0] << "," << mm[1] << "," << mm[2] << "," << mm[12] << ")" << LL_ENDL;
+            break;
+        }
+    }
 }
 
 void LLSkinningUtil::checkSkinWeights(LLVector4a* weights, U32 num_vertices, const LLMeshSkinInfo* skin)

@@ -63,106 +63,6 @@ const F32 MIN_TEX_ANIM_SIZE = 16.f;
 // </FS:minerjr>
 const U8 FACE_DO_NOT_BATCH_TEXTURES = 255;
 
-// Stage-time private copy of the LLVolumeFace arrays that runVkGeoFill reads.
-// Makes "worker input is immutable during job lifetime" true by construction:
-// the aya-geoup worker reads this snapshot, never the live LLVolumeFace, so any
-// main-thread mutation (mesh LOD arrival / sculpt / regen / genTangents) can no
-// longer race the worker. Move-only; owns its buffers.
-class alignas(16) LLGeoFaceSnapshot
-{
-public:
-    LLGeoFaceSnapshot() = default;
-    ~LLGeoFaceSnapshot();
-    LLGeoFaceSnapshot(const LLGeoFaceSnapshot&) = delete;
-    LLGeoFaceSnapshot& operator=(const LLGeoFaceSnapshot&) = delete;
-    LLGeoFaceSnapshot(LLGeoFaceSnapshot&& rhs) noexcept;
-    LLGeoFaceSnapshot& operator=(LLGeoFaceSnapshot&& rhs) noexcept;
-
-    void capture(const LLVolumeFace& vf, S32 num_vertices, S32 num_indices);
-    void reset();
-
-    LLVector4a  mCenter;
-    LLVector4a* mPositions = nullptr; // owns the pos/norm/tc block
-    LLVector4a* mNormals   = nullptr; // into mPositions block (null if source had none)
-    LLVector2*  mTexCoords = nullptr; // into mPositions block (null if source had none)
-    LLVector4a* mTangents  = nullptr; // separate alloc (null if none)
-    LLVector4a* mWeights   = nullptr; // separate alloc (null if none)
-    U16*        mIndices   = nullptr; // separate alloc
-    S32         mNumVertices = 0;
-    S32         mNumIndices  = 0;
-    U64         mBytes = 0;
-    bool        mHasCenter = false;
-    bool        mCaptured  = false;
-
-private:
-    void moveFrom(LLGeoFaceSnapshot& rhs) noexcept;
-};
-
-class alignas(16) LLGeoFaceFill
-{
-    LL_ALIGN_NEW
-public:
-    struct TCChannel
-    {
-        bool mEnabled = false;
-        bool mXform = false;
-        F32 mCos = 1.f;
-        F32 mSin = 0.f;
-        F32 mOs = 0.f;
-        F32 mOt = 0.f;
-        F32 mMs = 1.f;
-        F32 mMt = 1.f;
-    };
-
-    LLMatrix4a mMatVert;
-    LLMatrix4a mMatNormal;
-    LLVector4a mScale;
-    LLVector4a mBinormalDir;
-    LLVector4a mBumpSRay;
-    LLVector4a mBumpTRay;
-    LLMatrix4 mTexMat;
-    LLQuaternion mBumpQuat;
-    LLPointer<LLVolume> mVolume;
-    LLPointer<LLVertexBuffer> mBuffer;
-    LLFace* mSrcFace = nullptr;
-
-    LLGeoFaceSnapshot mSnapshot;
-
-    S32 mFaceIndex = 0;
-    S32 mNumVertices = 0;
-    S32 mNumIndices = 0;
-    U16 mIndexOffset = 0;
-    U32 mGeomCount = 0;
-
-    U8* mDstIndex = nullptr;
-    U8* mDstPos = nullptr;
-    U8* mDstNormal = nullptr;
-    U8* mDstTangent = nullptr;
-    U8* mDstWeights = nullptr;
-    U8* mDstColor = nullptr;
-    U8* mDstEmissive = nullptr;
-    U8* mDstTC[3] = { nullptr, nullptr, nullptr };
-
-    F32 mTexIdxF = 0.f;
-    U32 mColorRGBA = 0;
-    U32 mGlowRGBA = 0;
-
-    bool mDoNormal = false;
-    bool mDoTangent = false;
-    bool mDoWeights = false;
-    bool mDoEmissive = false;
-    bool mDoTC = false;
-
-    bool mPlanar = false;
-    bool mDoTexMat = false;
-    bool mExpTexMat = false;
-    bool mCheapXform = false;
-    bool mExpensiveTC = false;
-    bool mDoBumpOffset = false;
-    bool mBumpActive = false;
-    TCChannel mTC[3];
-};
-
 class alignas(16) LLFace
 {
     LL_ALIGN_NEW
@@ -267,21 +167,6 @@ public:
                             bool no_debug_assert = false,
                             bool rebuild_for_gltf = false);
 
-    enum EGeoFillBuild
-    {
-        GEO_FILL_OK = 0,
-        GEO_FILL_FAIL,
-        GEO_FILL_DEFER,
-        GEO_FILL_SKIP,
-    };
-    EGeoFillBuild buildVkGeoFill(LLGeoFaceFill& out,
-                                 LLVertexBuffer* buffer,
-                                 const LLMatrix4& mat_vert_in,
-                                 const LLMatrix3& mat_norm_in,
-                                 U16 index_offset,
-                                 U32 geom_index,
-                                 U32 indices_index);
-    static bool runVkGeoFill(LLGeoFaceFill& fill);
 
     // For volumes, etc.
     U16             getGeometry(LLStrider<LLVector3> &vertices,

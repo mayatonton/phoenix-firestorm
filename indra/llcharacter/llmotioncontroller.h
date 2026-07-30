@@ -139,12 +139,7 @@ public:
     // minimal update (e.g. while hidden)
     void updateMotionsMinimal();
 
-    void setAsyncCompute(bool enable) { mAsyncCompute = enable; }
-    void runMotionComputeWorker();
-    std::unique_lock<std::recursive_mutex> lockForStructuralMutation();
     LLCharacter* getCharacter() const { return mCharacter; }
-    typedef void (*post_motion_compute_fn)(LLMotionController*);
-    static void setPostMotionComputeHook(post_motion_compute_fn fn) { sPostMotionComputeHook = fn; }
 
     void clearBlenders() { mPoseBlender.clearBlenders(); }
 
@@ -206,10 +201,6 @@ protected:
     void purgeExcessMotions();
     void deactivateStoppedMotions();
     void applyDeferredMotionLifecycle();
-    void applyDeferredStartStop();
-    bool asyncActive() const;
-    bool drainComputeWindow();
-    void updateMotionsAsync(bool force_update);
     void motionCapture();
 
 protected:
@@ -246,18 +237,6 @@ protected:
         bool mPaused = false;
     };
     MotionInput mMotionInput;
-
-    std::recursive_mutex mComputeMutex;
-
-    bool mComputeWindowOpen = false;
-    std::vector<std::pair<LLUUID, F32> >  mDeferredStartMotion;
-    std::vector<std::pair<LLUUID, bool> > mDeferredStopMotion;
-
-    bool mAsyncCompute = false;
-    bool mComputeDispatched = false;
-    bool mComputeForceUpdate = false;
-    std::atomic<bool> mComputeWorkerDone{false};
-    static post_motion_compute_fn sPostMotionComputeHook;
 
     LLFrameTimer        mTimer;
     F32                 mPrevTimerElapsed;

@@ -1257,11 +1257,6 @@ void LLVOAvatar::initInstance()
 
     mVoiceVisualizer->setVoiceEnabled( LLVoiceClient::getInstance()->getVoiceEnabled( mID ) );
 
-    if (!isSelf())
-    {
-        mMotionController.setAsyncCompute(true);
-    }
-
     mInitFlags |= 1<<1;
 }
 
@@ -2432,7 +2427,6 @@ void LLVOAvatar::resetSkeleton(bool reset_animations)
         return;
     }
 
-    auto skel_lk = mMotionController.lockForStructuralMutation();
 
     // Save mPelvis state
     //LLVector3 pelvis_pos = getJoint("mPelvis")->getPosition();
@@ -7110,7 +7104,6 @@ void LLVOAvatar::clearAttachmentOverrides()
 // rebuildAttachmentOverrides
 void LLVOAvatar::rebuildAttachmentOverrides()
 {
-    auto skel_lk = mMotionController.lockForStructuralMutation();
 
     LL_DEBUGS("AnimatedObjects") << "rebuilding" << LL_ENDL;
 
@@ -7159,7 +7152,6 @@ void LLVOAvatar::rebuildAttachmentOverrides()
 // -----------------------------------------------------------------------------
 void LLVOAvatar::updateAttachmentOverrides()
 {
-    auto skel_lk = mMotionController.lockForStructuralMutation();
 
     LL_DEBUGS("AnimatedObjects") << "updating" << LL_ENDL;
 
@@ -8107,7 +8099,6 @@ LLViewerJointAttachment* LLVOAvatar::getTargetAttachmentPoint(LLViewerObject* vi
 // attachObject()
 const LLViewerJointAttachment *LLVOAvatar::attachObject(LLViewerObject *viewer_object)
 {
-    auto skel_lk = mMotionController.lockForStructuralMutation();
     if (isSelf())
     {
         const LLUUID& item_id = viewer_object->getAttachmentItemID();
@@ -8446,7 +8437,6 @@ bool LLVOAvatar::hasPendingAttachedMeshes()
 // detachObject()
 bool LLVOAvatar::detachObject(LLViewerObject *viewer_object)
 {
-    auto skel_lk = mMotionController.lockForStructuralMutation();
     for (attachment_map_t::iterator iter = mAttachmentPoints.begin();
          iter != mAttachmentPoints.end();
          ++iter)
@@ -8544,7 +8534,6 @@ void LLVOAvatar::sitDown(bool bSitting)
 // sitOnObject()
 void LLVOAvatar::sitOnObject(LLViewerObject *sit_object)
 {
-    auto skel_lk = mMotionController.lockForStructuralMutation();
     if (isSelf())
     {
         // Might be first sit
@@ -8619,7 +8608,6 @@ void LLVOAvatar::getOffObject()
         return;
     }
 
-    auto skel_lk = mMotionController.lockForStructuralMutation();
 
     LLViewerObject* sit_object = (LLViewerObject*)getParent();
 

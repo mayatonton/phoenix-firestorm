@@ -170,31 +170,6 @@ private:
     void updateImagesUpdateStats();
     F32  updateImagesLoadingFastCache(F32 max_time);
 
-    struct TexCreateJobEntry
-    {
-        LLPointer<LLViewerFetchedTexture> mTexture;
-        LLPointer<LLImageGL>              mGLImage;
-        LLPointer<LLImageRaw>             mRawImage;
-        LLVkTexUploadJob                  mJob;
-    };
-
-    bool texWorkerEnabled();
-    void startTexWorker();
-    void stopTexWorker();
-    void texWorkerMain();
-    void enqueueTexCreateJobs();
-    void drainTexPublishQueue();
-    static void texWorkerStopHook();
-
-    std::thread                   mTexWorkerThread;
-    bool                          mTexWorkerRunning = false;
-    bool                          mTexWorkerQuit = false;
-    std::mutex                    mTexJobMutex;
-    std::condition_variable       mTexJobCv;
-    std::deque<TexCreateJobEntry> mTexJobQueue;
-    std::mutex                    mTexPublishMutex;
-    std::deque<TexCreateJobEntry> mTexPublishQueue;
-
     void addImage(LLViewerFetchedTexture *image, ETexListType tex_type);
     void deleteImage(LLViewerFetchedTexture *image);
 

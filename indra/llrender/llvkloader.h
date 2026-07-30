@@ -69,8 +69,6 @@ namespace LLVKLoader
 
     U32  recordWorkerCount();
     bool isRecordJobActive();
-    bool dispatchRecordJob(std::function<void(VkCommandBuffer)> body);
-    void joinRecordJobs();
     U32  getCurrentRecordLane();
     // III-0 window-mutation guard (redesign §1.3/§5.2)。
     bool isRecordWindowActive();
@@ -1144,6 +1142,7 @@ namespace LLVKLoader
         U32        count  = 0;
         const U32* region_offsets = nullptr;
         U64        chunk  = 0;
+        U64        owner_token = 0;
     };
 
     struct MegaSliceI
@@ -1162,6 +1161,7 @@ namespace LLVKLoader
     bool megabufAcquireIndex(U32 size_bytes, MegaSliceI& out);
     void megabufReleaseIndex(const MegaSliceI& slice);
     void megabufStats(U64& chunks, U64& capacity_bytes, U64& used_bytes);
+    U64  megaCurrentRangeOwner(U64 chunk_id, U32 first);
 
     void bindVertexBufferVk(VkCommandBuffer cmd_buf,
                             VkBuffer        buffer,
@@ -1225,23 +1225,10 @@ namespace LLVKLoader
 
     bool generateMipChainBlitVk(VkImage image, U32 base_w, U32 base_h, U32 mip_count, VkFormat format);
 
-    bool texWorkerInit();
-    void texWorkerMarkThread();
-    void texWorkerShutdown();
-    void setVkTexWorkerStopHook(void (*fn)());
     void setVkGeoWorkerStopHook(void (*fn)());
     void setVkBakeWorkerStopHook(void (*fn)());
     void setVkDeviceLostHook(void (*fn)());
     void parWorkerForbiddenCheck();
-    bool uploadTextureOneShotVk(U32          width,
-                                U32          height,
-                                VkFormat     format,
-                                const void*  data,
-                                U32          data_size_bytes,
-                                U32&         mip_count,
-                                VkImage&     out_image,
-                                VkImageView& out_view,
-                                void*&       out_allocation);
 
     bool downscaleImageVk(VkImage      src_image,
                           U32          src_mip,

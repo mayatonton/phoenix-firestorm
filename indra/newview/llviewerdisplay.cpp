@@ -937,10 +937,6 @@ void display(bool rebuild, F32 zoom_factor, int subfield, bool for_snapshot)
                     gup_t = now;
                 }
             };
-            LLVolumeGeometryManager::drainGeoPublishQueue();
-            gup_lap(0);
-            LLVolumeGeometryManager::drainAvatarPublished();
-            gup_lap(1);
             gPipeline.createObjects(max_geom_update_time);
             gup_lap(2);
             gPipeline.processPartitionQ();

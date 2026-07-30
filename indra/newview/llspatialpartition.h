@@ -768,10 +768,6 @@ class LLVolumeGeometryManager: public LLGeometryManager
     U32 genDrawInfo(LLSpatialGroup* group, U32 mask, LLFace** faces, U32 face_count, bool distance_sort = false, bool batch_textures = false, bool rigged = false, struct LLGeoStagedRebuild* staged = nullptr);
     static void registerFace(LLSpatialGroup* group, LLFace* facep, U32 type);
 
-    static bool geoWorkerEnabled();
-    static void drainGeoPublishQueue();
-    static void drainAvatarPublished();
-    static void stopGeoWorker();
     static bool geoEnsureTangents(LLVolume* volume, S32 face_index);
 
 private:

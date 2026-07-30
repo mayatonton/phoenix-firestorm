@@ -43,7 +43,7 @@ class domMesh;
 #define MAX_MODEL_FACES 8
 
 LL_ALIGN_PREFIX(16)
-class LLMeshSkinInfo : public LLRefCount
+class LLMeshSkinInfo : public LLThreadSafeRefCount
 {
     LL_ALIGN_NEW
 public:

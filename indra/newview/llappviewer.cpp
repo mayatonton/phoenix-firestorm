@@ -2242,8 +2242,6 @@ bool LLAppViewer::cleanup()
     velopack_cleanup();
 #endif
 
-    LLVolumeGeometryManager::stopGeoWorker();
-
     //ditch LLVOAvatarSelf instance
     gAgentAvatarp = NULL;
 

@@ -48,64 +48,6 @@ class LLWindow;
 #define BYTES_TO_MEGA_BYTES(x) ((x) >> 20)
 #define MEGA_BYTES_TO_BYTES(x) ((x) << 20)
 
-struct LLVkTexUploadJob
-{
-    S32      mDiscard    = 0;
-    S32      mRawWidth   = 0;
-    S32      mRawHeight  = 0;
-    S32      mFullWidth  = 0;
-    S32      mFullHeight = 0;
-    S8       mComponents = 0;
-    LLGLint  mFormatInternal = 0;
-    LLGLenum mFormatPrimary  = 0;
-    LLGLenum mFormatType     = 0;
-    VkFormat mVkFormat   = VK_FORMAT_UNDEFINED;
-    U32      mMipCount   = 1;
-    bool     mUseMipMaps = false;
-    bool     mNeedsAlphaAndPickMask = false;
-    S8       mAlphaStride = 0;
-    S8       mAlphaOffset = 0;
-    S32      mCategory   = 0;
-
-    VkImage     mImage      = VK_NULL_HANDLE;
-    VkImageView mView       = VK_NULL_HANDLE;
-    void*       mAllocation = nullptr;
-    bool        mIsMask     = false;
-    bool        mHasMaskResult = false;
-    U8*         mPickMask   = nullptr;
-    U16         mPickMaskWidth  = 0;
-    U16         mPickMaskHeight = 0;
-    bool        mOk = false;
-
-    LLVkTexUploadJob() = default;
-    LLVkTexUploadJob(const LLVkTexUploadJob&) = delete;
-    LLVkTexUploadJob& operator=(const LLVkTexUploadJob&) = delete;
-    LLVkTexUploadJob(LLVkTexUploadJob&& o) noexcept { *this = std::move(o); }
-    LLVkTexUploadJob& operator=(LLVkTexUploadJob&& o) noexcept
-    {
-        if (this != &o)
-        {
-            delete[] mPickMask;
-            mDiscard = o.mDiscard; mRawWidth = o.mRawWidth; mRawHeight = o.mRawHeight;
-            mFullWidth = o.mFullWidth; mFullHeight = o.mFullHeight; mComponents = o.mComponents;
-            mFormatInternal = o.mFormatInternal; mFormatPrimary = o.mFormatPrimary; mFormatType = o.mFormatType;
-            mVkFormat = o.mVkFormat; mMipCount = o.mMipCount; mUseMipMaps = o.mUseMipMaps;
-            mNeedsAlphaAndPickMask = o.mNeedsAlphaAndPickMask;
-            mAlphaStride = o.mAlphaStride; mAlphaOffset = o.mAlphaOffset; mCategory = o.mCategory;
-            mImage = o.mImage; mView = o.mView; mAllocation = o.mAllocation;
-            mIsMask = o.mIsMask; mHasMaskResult = o.mHasMaskResult;
-            mPickMask = o.mPickMask; mPickMaskWidth = o.mPickMaskWidth; mPickMaskHeight = o.mPickMaskHeight;
-            mOk = o.mOk;
-            o.mImage = VK_NULL_HANDLE;
-            o.mView = VK_NULL_HANDLE;
-            o.mAllocation = nullptr;
-            o.mPickMask = nullptr;
-        }
-        return *this;
-    }
-    ~LLVkTexUploadJob() { delete[] mPickMask; }
-};
-
 class LLImageGL : public LLRefCount
 {
     friend class LLTexUnit;
@@ -206,9 +148,6 @@ public:
     void syncVulkanMip0Image(U32 intformat, U32 primary, U32 type, S32 w, S32 h, const void* data, bool is_compressed,
                              S32 mip_level = 0, S32 mip_count = 1);
 
-    bool buildVkUploadJob(LLVkTexUploadJob& job, S32 discard_level, const LLImageRaw* imageraw) const;
-    static bool runVkUploadJob(LLVkTexUploadJob& job, const U8* data);
-    void applyVkUploadJob(LLVkTexUploadJob& job);
     static bool computeIsMask(const void* data_in, U32 w, U32 h, S8 alpha_stride, S8 alpha_offset);
     static U8* buildPickMask(S32 width, S32 height, const U8* data_in, U16& out_width, U16& out_height);
 

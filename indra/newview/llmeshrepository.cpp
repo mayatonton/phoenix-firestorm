@@ -5083,7 +5083,7 @@ void LLMeshRepository::notifyLoadedMeshes()
             // erase from background thread
             mThread->mWorkQueue.post([=, this]()
                 {
-                    LLMutexLock(mThread->mSkinMapMutex);
+                    LLMutexLock lock(mThread->mSkinMapMutex);
                     mThread->mSkinMap.erase(id);
                 });
         }

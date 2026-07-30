@@ -1692,18 +1692,19 @@ void LLMeshSkinInfo::fromLLSD(LLSD& skin)
                 for (U32 k = 0; k < 4; k++)
                 {
                     mat.mMatrix[j][k] = (F32)skin["inverse_bind_matrix"][i][j*4+k].asReal();
-                    if (!std::isfinite(mat.mMatrix[j][k])) { ibm_bad = true; }
+                    if (!std::isfinite(mat.mMatrix[j][k]) || fabsf(mat.mMatrix[j][k]) > 1.0e6f) { ibm_bad = true; }
                 }
             }
 
             if (ibm_bad)
             {
                 static std::atomic<U32> s_ibm_nan_warn{0};
-                if (s_ibm_nan_warn.fetch_add(1, std::memory_order_relaxed) < 20u)
+                if (s_ibm_nan_warn.fetch_add(1, std::memory_order_relaxed) < 40u)
                 {
-                    LL_WARNS("MESHSKININFO") << "non-finite inverse_bind_matrix at decode mesh=" << mMeshID
+                    LL_WARNS("MESHSKININFO") << "VKC bad_invbind_at_decode mesh=" << mMeshID
                         << " joint#" << i
                         << " name=" << ((i < mJointNames.size()) ? mJointNames[i] : std::string("?"))
+                        << " m=(" << mat.mMatrix[0][0] << "," << mat.mMatrix[0][1] << "," << mat.mMatrix[0][2] << "," << mat.mMatrix[0][3] << ")"
                         << " -> sanitized to identity" << LL_ENDL;
                 }
                 mInvBindMatrix.push_back(LLMatrix4a::identity());

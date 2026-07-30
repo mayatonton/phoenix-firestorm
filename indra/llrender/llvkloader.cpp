@@ -741,11 +741,7 @@ namespace
     std::vector<VkFence>            sSubmitFencePool;
     std::mutex                      sOneShotMutex;
     std::vector<VkCommandBuffer>    sRetiredMainOneShotCmds;
-    std::vector<VkCommandBuffer>    sRetiredTexOneShotCmds;
     std::atomic<U64>                sOneShotStagingBytes{0};
-    VkCommandPool                   sTexWorkerCommandPool = VK_NULL_HANDLE;
-    thread_local bool               tTexWorkerThread = false;
-    void (*sTexWorkerStopHook)()   = nullptr;
     void (*sGeoWorkerStopHook)()   = nullptr;
     void (*sBakeWorkerStopHook)()  = nullptr;
 
@@ -1285,6 +1281,11 @@ namespace
     {
         const char* e = getenv("AYASTORM_MT_THREADS");
         sPEThreaded = (e == nullptr) || (atoi(e) > 1);
+        const char* p = getenv("AYASTORM_MT_PE");
+        if (p != nullptr && atoi(p) == 0)
+        {
+            sPEThreaded = false;
+        }
         if (!sPEThreaded)
         {
             return;
@@ -1313,33 +1314,6 @@ namespace
         sPEThreaded = false;
     }
 
-    struct RecordJob
-    {
-        std::function<void(VkCommandBuffer)> body;
-        U32                                  seq = 0;
-    };
-
-    struct RecordLaneCmds
-    {
-        VkCommandPool                pool[FRAMES_IN_FLIGHT] = {};
-        std::vector<VkCommandBuffer> bufs[FRAMES_IN_FLIGHT];
-        U32                          used[FRAMES_IN_FLIGHT] = {};
-        U32                          reset_frame[FRAMES_IN_FLIGHT] = { ~0u, ~0u, ~0u };
-    };
-    RecordLaneCmds sRecordLaneCmds[MAX_RECORD_LANES];
-
-    std::mutex               sRWQueueMutex;
-    std::condition_variable  sRWQueueCv;
-    std::deque<RecordJob>    sRWJobs;
-    bool                     sRWStopRequested = false;
-    std::vector<std::thread> sRWThreads;
-    bool                     sRWStarted = false;
-
-    std::mutex                   sRWDoneMutex;
-    std::condition_variable      sRWDoneCv;
-    U32                          sRWDispatched = 0;
-    U32                          sRWCompleted  = 0;
-    std::vector<VkCommandBuffer> sRWFrameCmds;
     std::vector<VkCommandBuffer> sPendingPreFrameCmds;
 
     // III-0 window-mutation guard: worker record 窓が開いている間 (worker 並走中) true。
@@ -1351,6 +1325,11 @@ namespace
     U32 rwDesiredWorkerCount()
     {
         static const U32 s_count = []() -> U32 {
+            const char* r = getenv("AYASTORM_MT_RECORD");
+            if (r != nullptr && atoi(r) == 0)
+            {
+                return 0;
+            }
             const char* e = getenv("AYASTORM_MT_THREADS");
             if (e != nullptr && atoi(e) <= 1)
             {
@@ -1367,212 +1346,6 @@ namespace
             return llmin(llmin(want, 4u), cap);
         }();
         return s_count;
-    }
-
-    void rwResetRecordThreadLocals()
-    {
-        ++tCmdRecordEpoch;
-        sLastBoundGraphicsPipeline = VK_NULL_HANDLE;
-        sLastDescLayout            = VK_NULL_HANDLE;
-        sLastDescSet0              = VK_NULL_HANDLE;
-        sLastDescSet1              = VK_NULL_HANDLE;
-        sLastDescSet2              = VK_NULL_HANDLE;
-        sLastDescDynCount          = 0;
-        sLastMvLayout              = VK_NULL_HANDLE;
-        sViewportScissorValid      = false;
-        sInDynamicRendering        = false;
-        sSavedColorCount           = 0;
-        sSavedHasDepth             = false;
-        sScissorEnabled            = false;
-        for (U32 f = 0; f < FRAMES_IN_FLIGHT; ++f)
-        {
-            sMatrixRingHasCurrent[f] = false;
-        }
-    }
-
-    VkCommandBuffer rwAcquireLaneCmd()
-    {
-        const U32 lane = tRecordLaneIndex;
-        const U32 f    = sFrameIndex;
-        if (lane >= MAX_RECORD_LANES || f >= FRAMES_IN_FLIGHT || sDevice == VK_NULL_HANDLE)
-        {
-            return VK_NULL_HANDLE;
-        }
-        RecordLaneCmds& lc = sRecordLaneCmds[lane];
-        if (lc.pool[f] == VK_NULL_HANDLE)
-        {
-            VkCommandPoolCreateInfo ci = {};
-            ci.sType            = VK_STRUCTURE_TYPE_COMMAND_POOL_CREATE_INFO;
-            ci.queueFamilyIndex = sGraphicsQueueFamily;
-            if (vkCreateCommandPool(sDevice, &ci, nullptr, &lc.pool[f]) != VK_SUCCESS)
-            {
-                return VK_NULL_HANDLE;
-            }
-        }
-        if (lc.reset_frame[f] != sMonotonicFrameCount)
-        {
-            vkResetCommandPool(sDevice, lc.pool[f], 0);
-            lc.used[f]        = 0;
-            lc.reset_frame[f] = sMonotonicFrameCount;
-        }
-        if (lc.used[f] == (U32)lc.bufs[f].size())
-        {
-            VkCommandBufferAllocateInfo ai = {};
-            ai.sType              = VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO;
-            ai.commandPool        = lc.pool[f];
-            ai.level              = VK_COMMAND_BUFFER_LEVEL_PRIMARY;
-            ai.commandBufferCount = 1;
-            VkCommandBuffer nb = VK_NULL_HANDLE;
-            if (vkAllocateCommandBuffers(sDevice, &ai, &nb) != VK_SUCCESS || nb == VK_NULL_HANDLE)
-            {
-                return VK_NULL_HANDLE;
-            }
-            lc.bufs[f].push_back(nb);
-        }
-        VkCommandBuffer cmd = lc.bufs[f][lc.used[f]];
-        ++lc.used[f];
-        VkCommandBufferBeginInfo bi = {};
-        bi.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO;
-        bi.flags = VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT;
-        if (vkBeginCommandBuffer(cmd, &bi) != VK_SUCCESS)
-        {
-            return VK_NULL_HANDLE;
-        }
-        return cmd;
-    }
-
-    void rwExecute(RecordJob& job)
-    {
-        VkCommandBuffer cmd = rwAcquireLaneCmd();
-        if (cmd != VK_NULL_HANDLE)
-        {
-            try
-            {
-                rwResetRecordThreadLocals();
-                LLGLSLShader::resetPerThreadRecordState();
-                tInRecordJob       = true;
-                tRecordCmdOverride = cmd;
-                job.body(cmd);
-                if (sInDynamicRendering)
-                {
-                    vkCmdEndRendering(cmd);
-                    sInDynamicRendering = false;
-                }
-                tRecordCmdOverride = VK_NULL_HANDLE;
-                tInRecordJob       = false;
-                if (vkEndCommandBuffer(cmd) != VK_SUCCESS)
-                {
-                    LL_WARNS("Vulkan") << "record job vkEndCommandBuffer failed lane=" << tRecordLaneIndex << LL_ENDL;
-                    cmd = VK_NULL_HANDLE;
-                }
-                rwResetRecordThreadLocals();
-                LLGLSLShader::resetPerThreadRecordState();
-            }
-            catch (const std::bad_alloc&)
-            {
-                LL_WARNS("Vulkan") << "record job out of memory (bad_alloc) lane=" << tRecordLaneIndex
-                                   << " seq=" << job.seq << " — degrading frame" << LL_ENDL;
-                tRecordCmdOverride = VK_NULL_HANDLE;
-                tInRecordJob       = false;
-                rwResetRecordThreadLocals();
-                LLGLSLShader::resetPerThreadRecordState();
-                cmd = VK_NULL_HANDLE;
-            }
-        }
-        else
-        {
-            LL_WARNS("Vulkan") << "record job cmd acquire failed lane=" << tRecordLaneIndex << LL_ENDL;
-        }
-        {
-            std::lock_guard<std::mutex> lk(sRWDoneMutex);
-            if (job.seq >= (U32)sRWFrameCmds.size())
-            {
-                sRWFrameCmds.resize(job.seq + 1, VK_NULL_HANDLE);
-            }
-            sRWFrameCmds[job.seq] = cmd;
-            ++sRWCompleted;
-        }
-        sRWDoneCv.notify_all();
-    }
-
-    void rwThreadMain(U32 lane)
-    {
-#if LL_LINUX
-        char nm[16];
-        snprintf(nm, sizeof(nm), "aya-rec%u", lane);
-        pthread_setname_np(pthread_self(), nm);
-#endif
-        tRecordLaneIndex = lane;
-        for (;;)
-        {
-            RecordJob job;
-            {
-                std::unique_lock<std::mutex> lk(sRWQueueMutex);
-                sRWQueueCv.wait(lk, [] { return sRWStopRequested || !sRWJobs.empty(); });
-                if (sRWJobs.empty())
-                {
-                    return;
-                }
-                job = std::move(sRWJobs.front());
-                sRWJobs.pop_front();
-            }
-            rwExecute(job);
-        }
-    }
-
-    void rwStart()
-    {
-        if (sRWStarted)
-        {
-            return;
-        }
-        sRWStarted = true;
-        const U32 n = rwDesiredWorkerCount();
-        for (U32 i = 0; i < n; ++i)
-        {
-            sRWThreads.emplace_back(rwThreadMain, i + 1);
-        }
-    }
-
-    void rwStop()
-    {
-        if (!sRWStarted)
-        {
-            return;
-        }
-        {
-            std::lock_guard<std::mutex> lk(sRWQueueMutex);
-            sRWStopRequested = true;
-        }
-        sRWQueueCv.notify_all();
-        for (std::thread& t : sRWThreads)
-        {
-            if (t.joinable())
-            {
-                t.join();
-            }
-        }
-        sRWThreads.clear();
-        sRWStarted       = false;
-        sRWStopRequested = false;
-    }
-
-    void rwDestroyLanePools()
-    {
-        for (RecordLaneCmds& lc : sRecordLaneCmds)
-        {
-            for (U32 f = 0; f < FRAMES_IN_FLIGHT; ++f)
-            {
-                if (lc.pool[f] != VK_NULL_HANDLE)
-                {
-                    vkDestroyCommandPool(sDevice, lc.pool[f], nullptr);
-                    lc.pool[f] = VK_NULL_HANDLE;
-                }
-                lc.bufs[f].clear();
-                lc.used[f]        = 0;
-                lc.reset_frame[f] = ~0u;
-            }
-        }
     }
 
     struct PendingQueryRelease
@@ -4941,15 +4714,7 @@ void vkQuiesceProducers()
         sGeoWorkerStopHook = nullptr;
         hook();
     }
-    if (sTexWorkerStopHook != nullptr)
-    {
-        void (*hook)() = sTexWorkerStopHook;
-        sTexWorkerStopHook = nullptr;
-        hook();
-    }
-    rwStop();
     peStop();
-    texWorkerShutdown();
 }
 
 void shutdownVulkan(bool device_lost)
@@ -4975,8 +4740,6 @@ void shutdownVulkan(bool device_lost)
                 sVkDeviceLost.store(true, std::memory_order_release);
             }
         }
-        rwDestroyLanePools();
-
         reapAllDeferred(device_lost ? REAP_LOST : REAP_CLOSE);
         for (VkFence pooled_fence : sSubmitFencePool)
         {
@@ -5738,54 +5501,6 @@ U32 getCurrentRecordLane()
 bool isRecordJobActive()
 {
     return tInRecordJob;
-}
-
-bool dispatchRecordJob(std::function<void(VkCommandBuffer)> body)
-{
-    if (!sInitialized || !sInFrame || tInRecordJob || !body)
-    {
-        return false;
-    }
-    rwStart();
-    RecordJob job;
-    job.body = std::move(body);
-    job.seq  = sRWDispatched;
-    ++sRWDispatched;
-    if (sRWThreads.empty())
-    {
-        rwExecute(job);
-        return true;
-    }
-    sRecordWindowActive.store(true, std::memory_order_release);
-    {
-        std::lock_guard<std::mutex> lk(sRWQueueMutex);
-        sRWJobs.push_back(std::move(job));
-    }
-    sRWQueueCv.notify_one();
-    return true;
-}
-
-void joinRecordJobs()
-{
-    if (sRWDispatched == 0)
-    {
-        return;
-    }
-    {
-        std::unique_lock<std::mutex> lk(sRWDoneMutex);
-        sRWDoneCv.wait(lk, [] { return sRWCompleted >= sRWDispatched; });
-    }
-    for (VkCommandBuffer c : sRWFrameCmds)
-    {
-        if (c != VK_NULL_HANDLE)
-        {
-            sPendingPreFrameCmds.push_back(c);
-        }
-    }
-    sRWFrameCmds.clear();
-    sRWDispatched = 0;
-    sRWCompleted  = 0;
-    sRecordWindowActive.store(false, std::memory_order_release);
 }
 
 bool isRecordWindowActive()
@@ -8911,14 +8626,7 @@ bool submitOneShotVkFromPool(VkCommandBuffer cmd, VkCommandPool pool, VkBuffer s
             sSubmitFencePool.push_back(wait_entry.fence);
             if (wait_entry.cmd != VK_NULL_HANDLE)
             {
-                if (wait_entry.pool == sTexWorkerCommandPool && sTexWorkerCommandPool != VK_NULL_HANDLE)
-                {
-                    sRetiredTexOneShotCmds.push_back(wait_entry.cmd);
-                }
-                else
-                {
-                    sRetiredMainOneShotCmds.push_back(wait_entry.cmd);
-                }
+                sRetiredMainOneShotCmds.push_back(wait_entry.cmd);
             }
         }
         else
@@ -8998,7 +8706,7 @@ void tickOneShotFreeQueue()
         failed.swap(sPEFailedOneShotFences);
     }
     std::vector<VkCommandBuffer> free_now;
-    const VkCommandPool free_pool = tTexWorkerThread ? sTexWorkerCommandPool : sCommandPool;
+    const VkCommandPool free_pool = sCommandPool;
     {
         std::lock_guard<std::mutex> lk(sOneShotMutex);
         size_t w = 0;
@@ -9018,14 +8726,7 @@ void tickOneShotFreeQueue()
                 sSubmitFencePool.push_back(e.fence);
                 if (e.cmd != VK_NULL_HANDLE)
                 {
-                    if (e.pool == sTexWorkerCommandPool && sTexWorkerCommandPool != VK_NULL_HANDLE)
-                    {
-                        sRetiredTexOneShotCmds.push_back(e.cmd);
-                    }
-                    else
-                    {
-                        sRetiredMainOneShotCmds.push_back(e.cmd);
-                    }
+                    sRetiredMainOneShotCmds.push_back(e.cmd);
                 }
             }
             else
@@ -9038,45 +8739,12 @@ void tickOneShotFreeQueue()
             }
         }
         sPendingOneShotFrees.resize(w);
-        if (tTexWorkerThread)
-        {
-            free_now.swap(sRetiredTexOneShotCmds);
-        }
-        else
-        {
-            free_now.swap(sRetiredMainOneShotCmds);
-        }
+        free_now.swap(sRetiredMainOneShotCmds);
     }
     if (!free_now.empty() && free_pool != VK_NULL_HANDLE)
     {
         vkFreeCommandBuffers(sDevice, free_pool, (U32)free_now.size(), free_now.data());
     }
-}
-
-bool texWorkerInit()
-{
-    if (sDevice == VK_NULL_HANDLE)
-    {
-        return false;
-    }
-    if (sTexWorkerCommandPool != VK_NULL_HANDLE)
-    {
-        return true;
-    }
-    VkCommandPoolCreateInfo ci = {};
-    ci.sType            = VK_STRUCTURE_TYPE_COMMAND_POOL_CREATE_INFO;
-    ci.queueFamilyIndex = sGraphicsQueueFamily;
-    return vkCreateCommandPool(sDevice, &ci, nullptr, &sTexWorkerCommandPool) == VK_SUCCESS;
-}
-
-void texWorkerMarkThread()
-{
-    tTexWorkerThread = true;
-}
-
-void setVkTexWorkerStopHook(void (*fn)())
-{
-    sTexWorkerStopHook = fn;
 }
 
 void setVkGeoWorkerStopHook(void (*fn)())
@@ -9102,271 +8770,6 @@ void parWorkerForbiddenCheck()
     }
 }
 
-void texWorkerShutdown()
-{
-    if (sTexWorkerCommandPool == VK_NULL_HANDLE)
-    {
-        return;
-    }
-    for (;;)
-    {
-        PendingOneShotFree e;
-        bool have = false;
-        {
-            std::lock_guard<std::mutex> lk(sOneShotMutex);
-            for (size_t i = 0; i < sPendingOneShotFrees.size(); ++i)
-            {
-                if (sPendingOneShotFrees[i].pool == sTexWorkerCommandPool)
-                {
-                    e = sPendingOneShotFrees[i];
-                    sPendingOneShotFrees.erase(sPendingOneShotFrees.begin() + i);
-                    have = true;
-                    break;
-                }
-            }
-        }
-        if (!have)
-        {
-            break;
-        }
-        vkWaitForFences(sDevice, 1, &e.fence, VK_TRUE, 1000000000ull);
-        if (e.buffer != VK_NULL_HANDLE || e.allocation != VK_NULL_HANDLE)
-        {
-            vmaDestroyBuffer(sAllocator, e.buffer, e.allocation);
-        }
-        sOneShotStagingBytes.fetch_sub(e.staging_bytes);
-        {
-            std::lock_guard<std::mutex> lk(sOneShotMutex);
-            sSubmitFencePool.push_back(e.fence);
-        }
-    }
-    {
-        std::lock_guard<std::mutex> lk(sOneShotMutex);
-        sRetiredTexOneShotCmds.clear();
-    }
-    vkDestroyCommandPool(sDevice, sTexWorkerCommandPool, nullptr);
-    sTexWorkerCommandPool = VK_NULL_HANDLE;
-}
-
-bool uploadTextureOneShotVk(U32          width,
-                            U32          height,
-                            VkFormat     format,
-                            const void*  data,
-                            U32          data_size_bytes,
-                            U32&         mip_count,
-                            VkImage&     out_image,
-                            VkImageView& out_view,
-                            void*&       out_allocation)
-{
-    out_image      = VK_NULL_HANDLE;
-    out_view       = VK_NULL_HANDLE;
-    out_allocation = nullptr;
-    if (!tTexWorkerThread || sTexWorkerCommandPool == VK_NULL_HANDLE)
-    {
-        return false;
-    }
-    if (data == nullptr || data_size_bytes == 0 || width == 0 || height == 0)
-    {
-        return false;
-    }
-    if (sDevice == VK_NULL_HANDLE || sAllocator == VK_NULL_HANDLE || sGraphicsQueue == VK_NULL_HANDLE)
-    {
-        return false;
-    }
-
-    U32 mips = (mip_count > 0) ? mip_count : 1;
-    if (mips > 1)
-    {
-        VkFormatProperties fp = {};
-        vkGetPhysicalDeviceFormatProperties(sPhysicalDevice, format, &fp);
-        if (!(fp.optimalTilingFeatures & VK_FORMAT_FEATURE_SAMPLED_IMAGE_FILTER_LINEAR_BIT))
-        {
-            mips = 1;
-        }
-    }
-    mip_count = mips;
-
-    VkImageUsageFlags usage = VK_IMAGE_USAGE_TRANSFER_DST_BIT | VK_IMAGE_USAGE_SAMPLED_BIT;
-    if (mips > 1)
-    {
-        usage |= VK_IMAGE_USAGE_TRANSFER_SRC_BIT;
-    }
-    VkImage     image      = VK_NULL_HANDLE;
-    VkImageView view       = VK_NULL_HANDLE;
-    void*       allocation = nullptr;
-    if (!createAttachmentImageVkImpl(width, height, format, usage,
-                                     VK_IMAGE_ASPECT_COLOR_BIT,
-                                     "texWorkerUpload",
-                                     image, view, allocation, mips))
-    {
-        return false;
-    }
-
-    VkBuffer      staging_buffer     = VK_NULL_HANDLE;
-    VmaAllocation staging_allocation = VK_NULL_HANDLE;
-    void*         staging_mapped     = nullptr;
-    {
-        VkBufferCreateInfo bci = {};
-        bci.sType       = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO;
-        bci.size        = data_size_bytes;
-        bci.usage       = VK_BUFFER_USAGE_TRANSFER_SRC_BIT;
-        bci.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
-
-        VmaAllocationCreateInfo aci = {};
-        aci.usage         = VMA_MEMORY_USAGE_AUTO;
-        aci.flags         = VMA_ALLOCATION_CREATE_HOST_ACCESS_SEQUENTIAL_WRITE_BIT
-                          | VMA_ALLOCATION_CREATE_MAPPED_BIT;
-        aci.requiredFlags = VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT
-                          | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT;
-
-        VmaAllocationInfo info = {};
-        VkResult r = vmaCreateBuffer(sAllocator, &bci, &aci, &staging_buffer,
-                                     &staging_allocation, &info);
-        if (r != VK_SUCCESS || staging_buffer == VK_NULL_HANDLE || info.pMappedData == nullptr)
-        {
-            if (staging_buffer != VK_NULL_HANDLE)
-            {
-                vmaDestroyBuffer(sAllocator, staging_buffer, staging_allocation);
-            }
-            vkDestroyImageView(sDevice, view, nullptr);
-            vmaDestroyImage(sAllocator, image, reinterpret_cast<VmaAllocation>(allocation));
-            return false;
-        }
-        staging_mapped = info.pMappedData;
-    }
-
-    memcpy(staging_mapped, data, data_size_bytes);
-
-    VkCommandBufferAllocateInfo cbai = {};
-    cbai.sType              = VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO;
-    cbai.commandPool        = sTexWorkerCommandPool;
-    cbai.level              = VK_COMMAND_BUFFER_LEVEL_PRIMARY;
-    cbai.commandBufferCount = 1;
-    VkCommandBuffer cmd = VK_NULL_HANDLE;
-    if (vkAllocateCommandBuffers(sDevice, &cbai, &cmd) != VK_SUCCESS || cmd == VK_NULL_HANDLE)
-    {
-        vmaDestroyBuffer(sAllocator, staging_buffer, staging_allocation);
-        vkDestroyImageView(sDevice, view, nullptr);
-        vmaDestroyImage(sAllocator, image, reinterpret_cast<VmaAllocation>(allocation));
-        return false;
-    }
-
-    VkCommandBufferBeginInfo cbbi = {};
-    cbbi.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO;
-    cbbi.flags = VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT;
-    vkBeginCommandBuffer(cmd, &cbbi);
-
-    auto mip_barrier = [&](U32 level, VkImageLayout oldL, VkImageLayout newL,
-                           VkAccessFlags srcA, VkAccessFlags dstA,
-                           VkPipelineStageFlags srcS, VkPipelineStageFlags dstS)
-    {
-        VkImageMemoryBarrier b = {};
-        b.sType                           = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER;
-        b.image                           = image;
-        b.oldLayout                       = oldL;
-        b.newLayout                       = newL;
-        b.srcAccessMask                   = srcA;
-        b.dstAccessMask                   = dstA;
-        b.srcQueueFamilyIndex             = VK_QUEUE_FAMILY_IGNORED;
-        b.dstQueueFamilyIndex             = VK_QUEUE_FAMILY_IGNORED;
-        b.subresourceRange.aspectMask     = VK_IMAGE_ASPECT_COLOR_BIT;
-        b.subresourceRange.baseMipLevel   = level;
-        b.subresourceRange.levelCount     = 1;
-        b.subresourceRange.baseArrayLayer = 0;
-        b.subresourceRange.layerCount     = 1;
-        vkCmdPipelineBarrier(cmd, srcS, dstS, 0, 0, nullptr, 0, nullptr, 1, &b);
-    };
-
-    mip_barrier(0,
-                VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
-                0, VK_ACCESS_TRANSFER_WRITE_BIT,
-                VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT, VK_PIPELINE_STAGE_TRANSFER_BIT);
-
-    {
-        VkBufferImageCopy region = {};
-        region.imageSubresource.aspectMask     = VK_IMAGE_ASPECT_COLOR_BIT;
-        region.imageSubresource.mipLevel       = 0;
-        region.imageSubresource.baseArrayLayer = 0;
-        region.imageSubresource.layerCount     = 1;
-        region.imageExtent                     = {width, height, 1};
-        vkCmdCopyBufferToImage(cmd, staging_buffer, image,
-                               VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, 1, &region);
-    }
-
-    if (mips > 1)
-    {
-        S32 mw = (S32)width;
-        S32 mh = (S32)height;
-        for (U32 i = 1; i < mips; ++i)
-        {
-            const S32 dw = (mw > 1) ? (mw / 2) : 1;
-            const S32 dh = (mh > 1) ? (mh / 2) : 1;
-
-            mip_barrier(i - 1,
-                        VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL,
-                        VK_ACCESS_TRANSFER_WRITE_BIT, VK_ACCESS_TRANSFER_READ_BIT,
-                        VK_PIPELINE_STAGE_TRANSFER_BIT, VK_PIPELINE_STAGE_TRANSFER_BIT);
-            mip_barrier(i,
-                        VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
-                        0, VK_ACCESS_TRANSFER_WRITE_BIT,
-                        VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT, VK_PIPELINE_STAGE_TRANSFER_BIT);
-
-            VkImageBlit blit = {};
-            blit.srcSubresource.aspectMask     = VK_IMAGE_ASPECT_COLOR_BIT;
-            blit.srcSubresource.mipLevel       = i - 1;
-            blit.srcSubresource.baseArrayLayer = 0;
-            blit.srcSubresource.layerCount     = 1;
-            blit.srcOffsets[0]                 = { 0, 0, 0 };
-            blit.srcOffsets[1]                 = { mw, mh, 1 };
-            blit.dstSubresource.aspectMask     = VK_IMAGE_ASPECT_COLOR_BIT;
-            blit.dstSubresource.mipLevel       = i;
-            blit.dstSubresource.baseArrayLayer = 0;
-            blit.dstSubresource.layerCount     = 1;
-            blit.dstOffsets[0]                 = { 0, 0, 0 };
-            blit.dstOffsets[1]                 = { dw, dh, 1 };
-            vkCmdBlitImage(cmd,
-                           image, VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL,
-                           image, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
-                           1, &blit, VK_FILTER_LINEAR);
-
-            mw = dw;
-            mh = dh;
-        }
-
-        for (U32 i = 0; i < mips; ++i)
-        {
-            const bool is_last = (i == mips - 1);
-            mip_barrier(i,
-                        is_last ? VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL : VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL,
-                        VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,
-                        is_last ? VK_ACCESS_TRANSFER_WRITE_BIT : VK_ACCESS_TRANSFER_READ_BIT,
-                        VK_ACCESS_SHADER_READ_BIT,
-                        VK_PIPELINE_STAGE_TRANSFER_BIT, VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT);
-        }
-    }
-    else
-    {
-        mip_barrier(0,
-                    VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,
-                    VK_ACCESS_TRANSFER_WRITE_BIT, VK_ACCESS_SHADER_READ_BIT,
-                    VK_PIPELINE_STAGE_TRANSFER_BIT, VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT);
-    }
-
-    vkEndCommandBuffer(cmd);
-
-    if (!submitOneShotVkFromPool(cmd, sTexWorkerCommandPool, staging_buffer, staging_allocation, data_size_bytes))
-    {
-        vkDestroyImageView(sDevice, view, nullptr);
-        vmaDestroyImage(sAllocator, image, reinterpret_cast<VmaAllocation>(allocation));
-        return false;
-    }
-
-    out_image      = image;
-    out_view       = view;
-    out_allocation = allocation;
-    return true;
-}
-
 namespace
 {
     struct MegaChunk
@@ -9390,6 +8793,24 @@ namespace
     std::vector<MegaChunk*> sMegaIndexPool;
     std::unordered_map<U64, MegaChunk*> sMegaChunksById;
     U64 sMegaChunkNextId = 1;
+
+    std::atomic<U64>             sMegaOwnerNextToken{1};
+    std::mutex                   sMegaOwnerMutex;
+    std::unordered_map<U64, U64> sMegaRangeOwner;
+
+    bool megaOwnerCheckEnabled()
+    {
+        static const bool s_on = []() -> bool {
+            const char* s = getenv("AYASTORM_MEGA_OWNER");
+            return s != nullptr && atoi(s) != 0;
+        }();
+        return s_on;
+    }
+
+    U64 megaOwnerKey(U64 chunk_id, U32 first)
+    {
+        return (chunk_id << 32) | (U64)first;
+    }
 
     struct PendingMegaFree
     {
@@ -9469,6 +8890,11 @@ namespace
     void megaFreeRange(MegaChunk* c, U32 first, U32 count)
     {
         c->used -= count;
+        if (megaOwnerCheckEnabled())
+        {
+            std::lock_guard<std::mutex> lk(sMegaOwnerMutex);
+            sMegaRangeOwner.erase(megaOwnerKey(c->id, first));
+        }
         auto& v = c->free_ranges;
         size_t i = 0;
         while (i < v.size() && v[i].first < first)
@@ -9649,6 +9075,15 @@ bool megabufAcquireVertex(U32 typemask, U32 nverts, MegaSliceV& out)
     out.count          = count;
     out.region_offsets = chunk->region_offsets;
     out.chunk          = chunk->id;
+    if (megaOwnerCheckEnabled())
+    {
+        const U64 tok = sMegaOwnerNextToken.fetch_add(1, std::memory_order_relaxed);
+        {
+            std::lock_guard<std::mutex> lk(sMegaOwnerMutex);
+            sMegaRangeOwner[megaOwnerKey(chunk->id, first)] = tok;
+        }
+        out.owner_token = tok;
+    }
     return true;
 }
 
@@ -9659,6 +9094,17 @@ void megabufReleaseVertex(const MegaSliceV& slice)
         return;
     }
     megaEnqueueFree(slice.chunk, slice.first, slice.count);
+}
+
+U64 megaCurrentRangeOwner(U64 chunk_id, U32 first)
+{
+    if (!megaOwnerCheckEnabled())
+    {
+        return 0;
+    }
+    std::lock_guard<std::mutex> lk(sMegaOwnerMutex);
+    auto it = sMegaRangeOwner.find(megaOwnerKey(chunk_id, first));
+    return (it != sMegaRangeOwner.end()) ? it->second : 0;
 }
 
 bool megabufAcquireIndex(U32 size_bytes, MegaSliceI& out)

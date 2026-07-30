@@ -100,12 +100,12 @@ public:
         return *this;
     }
 
-    void ref()
+    void ref() const
     {
         mRef++;
     }
 
-    void unref()
+    void unref() const
     {
         llassert(mRef >= 1);
         if ((--mRef) == 0)
@@ -125,7 +125,7 @@ public:
     }
 
 private:
-    LLAtomicS32 mRef;
+    mutable LLAtomicS32 mRef;
 };
 
 /**
