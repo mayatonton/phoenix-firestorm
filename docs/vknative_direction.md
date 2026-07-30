@@ -19,8 +19,14 @@
 
 ## 3. 方針(順序)
 1. **分散処理を main に戻す**(直列土台を正しい設計として据える)。worker を段階的に物理削除(残すのは §2 の例外のみ)。kill switch で誤魔化さず既定 = 直列。
-2. **per-draw 記録を VK 本来の安さにする**(直列のまま)。「1 draw 記録で何をやっているか」を追い、GL 時代の重い per-draw 処理を bindless/indirect で削る。参照 = `percall_set_authority_map.md` / `vknative_draw_structure_map.md`。
-3. per-draw 依存を崩せる族だけ畳む(rigged=bindless index に可能性 / alpha=物理的に順序必須で頭打ち)。
+2. **per-draw 記録を VK 本来の安さにする**(直列のまま)。参照 = `percall_set_authority_map.md` / `vknative_draw_structure_map.md`。
+   - **★source+実測で確定(2026-07-30)= 削減軸は「per-draw *単価*」でなく「pass 別 MDI 畳み込み(draw *数*)」**。per-draw 単価は全層 cache 済で分散(heap slot cheap / drawData memcmp / skin lookup / vkCmd)= 単一 hot spot 無し = 天井近い。6x-GL 差はこの分散した VK per-draw モデル overhead の総和 × 18k。
+   - **pass 別 MDI 地図(crowd 17.5k draw 実測・`isCameraMdiPass`/`kBucketizedPasses` llvkbucket.cpp)**:
+     - simple/fullbright = ✅ MDI 済(消化済)。
+     - **material = 6%(1080/f・97% bindless)= bucket 済+bindless で shader 配線済(aya_tex_slots[aya_draw_id])= routing のみ**。小工事・中配当。**最速の次の一手**。
+     - **shadow 24% + probe 20% = 未 bucket・独自 render = depth-only/順序自由ゆえ MDI 可だが bucket 新設が要る大工事**(shadow は scene 同一 geometry の別 POV 再描画 = GPU-driven 1-geometry-多-view が真の勝ち筋)。**draw 数の本命レバー(44%)**。
+     - alpha = 物理的に順序 bound = MDI 不可 = 天井(alpha にのみ残る)。
+3. **カメラパン時のカクつき = この記録天井の frame-time 変動**(present==scene lockstep で画面更新が変動 record 時間に直結)。∴ feel 改善 = pass 別 MDI で draw 数を下げる(上記)+ 将来 present decouple。
 
 ## 4. doctrine(不変)
 - **並列化の前に分解可能性を検証**(不可分な鎖を割るな)。

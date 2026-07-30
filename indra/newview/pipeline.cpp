@@ -3479,7 +3479,6 @@ void LLPipeline::rebuildPriorityGroups()
         LLSpatialGroup* group = *iter;
         group->rebuildGeom();
         if (!group->isDead()
-            && !group->mVkGeoInflight
             && group->hasState(LLSpatialGroup::GEOM_DIRTY | LLSpatialGroup::ALPHA_DIRTY)
             && (group->mVkRebuildRet == 2 || group->mVkRebuildRet == 4))
         {
@@ -4307,7 +4306,6 @@ void LLPipeline::stateSort(LLCamera& camera, LLCullResult &result)
     }
     {
         LL_PROFILE_ZONE_NAMED_CATEGORY_PIPELINE("StateSort: visible groups");
-    U32 vkc_empty_inflight = 0;
     U32 vkc_empty_dirty    = 0;
     U32 vkc_empty_other    = 0;
     static U32 s_vkc_other_class[10] = {};
@@ -4323,11 +4321,7 @@ void LLPipeline::stateSort(LLCamera& camera, LLCullResult &result)
         }
         if (group->mDrawMap.empty() && group->getElementCount() > 0)
         {
-            if (group->mVkGeoInflight)
-            {
-                ++vkc_empty_inflight;
-            }
-            else if (group->hasState(LLSpatialGroup::GEOM_DIRTY | LLSpatialGroup::ALPHA_DIRTY))
+            if (group->hasState(LLSpatialGroup::GEOM_DIRTY | LLSpatialGroup::ALPHA_DIRTY))
             {
                 ++vkc_empty_dirty;
             }
@@ -4356,13 +4350,11 @@ void LLPipeline::stateSort(LLCamera& camera, LLCullResult &result)
             }
         }
     }
-    if (vkc_empty_inflight + vkc_empty_dirty + vkc_empty_other > 0)
+    if (vkc_empty_dirty + vkc_empty_other > 0)
     {
         static U32 s_vkc_empty_frames = 0;
-        static U32 s_acc_inflight = 0;
         static U32 s_acc_dirty = 0;
         static U32 s_acc_other = 0;
-        s_acc_inflight += vkc_empty_inflight;
         s_acc_dirty    += vkc_empty_dirty;
         s_acc_other    += vkc_empty_other;
         if ((++s_vkc_empty_frames % 60) == 1)
@@ -4408,10 +4400,9 @@ void LLPipeline::stateSort(LLCamera& camera, LLCullResult &result)
                     cls << "]";
                 }
             }
-            LL_WARNS("VKGeo") << "visible empty-drawmap groups (60f acc): inflight=" << s_acc_inflight
-                              << " dirty=" << s_acc_dirty
+            LL_WARNS("VKGeo") << "visible empty-drawmap groups (60f acc): dirty=" << s_acc_dirty
                               << " other=" << s_acc_other << cls.str() << LL_ENDL;
-            s_acc_inflight = s_acc_dirty = s_acc_other = 0;
+            s_acc_dirty = s_acc_other = 0;
             for (U32 ci = 0; ci < 10; ++ci)
             {
                 s_vkc_other_class[ci] = 0;
@@ -4806,7 +4797,6 @@ namespace LLVKUuidWatch
         S32 prevVis = -2;
         S32 prevOccl = -2;
         S32 prevDirty = -2;
-        S32 prevInflight = -2;
         S32 prevRecs = -2;
         S32 prevOwn = -2;
         LL_ALIGN_16(LLVector4a center);
@@ -4883,7 +4873,7 @@ namespace LLVKUuidWatch
         }
         for (Member& m : sMembers)
         {
-            S32 vis = -1, occl = -1, dirty = -1, inflight = -1, recs = -1, own = -1;
+            S32 vis = -1, occl = -1, dirty = -1, recs = -1, own = -1;
             S32 rbage = -1, rbret = -1;
             LLViewerObject* o = gObjectList.findObject(m.uuid);
             if (o != nullptr && o->mDrawable.notNull())
@@ -4894,7 +4884,6 @@ namespace LLVKUuidWatch
                     vis      = g->isVisible() ? 1 : 0;
                     occl     = g->isOcclusionState(LLSpatialGroup::OCCLUDED) ? 1 : 0;
                     dirty    = g->hasState(LLSpatialGroup::GEOM_DIRTY | LLSpatialGroup::ALPHA_DIRTY) ? 1 : 0;
-                    inflight = g->mVkGeoInflight ? 1 : 0;
                     rbage    = (S32)((U32)gFrameCount - g->mVkRebuildVisitFrame);
                     rbret    = (S32)g->mVkRebuildRet;
                     recs     = 0;
@@ -4918,7 +4907,7 @@ namespace LLVKUuidWatch
                 LL_WARNS("VKContract") << "VKC-UUID state uuid=" << m.uuid
                                        << " local=" << m.localid
                                        << " vis=" << vis << " occl=" << occl
-                                       << " dirty=" << dirty << " inflight=" << inflight
+                                       << " dirty=" << dirty
                                        << " recs=" << recs << " own=" << own
                                        << " rbage=" << rbage << " rbret=" << rbret
                                        << " fires=" << LLVKContract::watchTakeFires(m.localid)
@@ -4952,7 +4941,7 @@ namespace LLVKUuidWatch
                     LL_WARNS("VKContract") << "VKC-UUID absent local=" << m.localid
                                            << " streak=" << m.absent << " frame=" << frame
                                            << " vis=" << m.prevVis << " occl=" << m.prevOccl
-                                           << " dirty=" << m.prevDirty << " inflight=" << m.prevInflight
+                                           << " dirty=" << m.prevDirty
                                            << " recs=" << m.prevRecs
                                            << " own=" << m.prevOwn
                                            << " evict=" << (he ? LLVKContract::sentinelSiteName(esite) : "-")
@@ -4964,7 +4953,6 @@ namespace LLVKUuidWatch
             m.prevVis      = vis;
             m.prevOccl     = occl;
             m.prevDirty    = dirty;
-            m.prevInflight = inflight;
             m.prevRecs     = recs;
             m.prevOwn      = own;
         }

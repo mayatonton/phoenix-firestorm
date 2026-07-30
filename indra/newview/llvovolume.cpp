@@ -2335,21 +2335,6 @@ bool LLVOVolume::updateGeometry(LLDrawable *drawable)
 {
     LL_PROFILE_ZONE_SCOPED_CATEGORY_VOLUME;
 
-    {
-        LLSpatialGroup* geo_group = drawable ? drawable->getSpatialGroup() : nullptr;
-        if (geo_group && geo_group->mVkGeoInflight)
-        {
-            if (++geo_group->mVkGeoUpdateBlocked < 120)
-            {
-                return false;
-            }
-        }
-        if (geo_group)
-        {
-            geo_group->mVkGeoUpdateBlocked = 0;
-        }
-    }
-
     if (mDrawable->isState(LLDrawable::REBUILD_RIGGED))
     {
         LL_PROFILE_ZONE_NAMED_CATEGORY_VOLUME("rebuild rigged");
@@ -6479,12 +6464,6 @@ void LLVolumeGeometryManager::rebuildGeom(LLSpatialGroup* group)
     }
 
     group->mVkRebuildVisitFrame = (U32)gFrameCount;
-    if (group->mVkGeoInflight && !group->mVkForceInlineRebuild)
-    {
-        group->mVkRebuildRet = 1;
-        return;
-    }
-
 
     if (group->changeLOD())
     {
@@ -7082,7 +7061,6 @@ void LLVolumeGeometryManager::rebuildGeom(LLSpatialGroup* group)
 
     ++group->mVkGeoGen;
     applyGeoStaged(group, staged);
-    group->mVkForceInlineRebuild = false;
     ++LLVKLoader::gVkPerf.geo_inl;
 }
 
@@ -7090,10 +7068,6 @@ void LLVolumeGeometryManager::rebuildMesh(LLSpatialGroup* group)
 {
     LL_PROFILE_ZONE_SCOPED_CATEGORY_VOLUME;
     llassert(group);
-    if (group && group->mVkGeoInflight)
-    {
-        return;
-    }
     if (group && group->hasState(LLSpatialGroup::MESH_DIRTY) && !group->hasState(LLSpatialGroup::GEOM_DIRTY))
     {
         {

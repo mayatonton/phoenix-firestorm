@@ -445,12 +445,9 @@ public:
     U32 mVkBucketGroupId = 0xFFFFFFFFu;
     U32 mVkBucketIndexCount = 0;
     std::vector<std::pair<LLVKBucket::Bucket*, U32> > mVkBucketSlots;
-    bool mVkGeoInflight = false;
-    bool mVkForceInlineRebuild = false;
     U32 mVkGeoGen = 0;
     U32 mVkRebuildVisitFrame = 0;
     U8  mVkRebuildRet = 0;
-    U16 mVkGeoUpdateBlocked = 0;
     U32 mVkLastFireFrame = 0;
 } LL_ALIGN_POSTFIX(16);
 

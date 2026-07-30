@@ -307,7 +307,6 @@ void LLSpatialGroup::stripDrawRecords(LLDrawable* drawablep, U32 evict_site)
     if (removed)
     {
         LLVKContract::sentinelEvict(evict_site, drawablep, removed_obj, removed_count, drawablep->isDead(), !drawablep->isDead());
-        mVkForceInlineRebuild = true;
         LLVKBucket::patchGroup(this);
     }
 }
@@ -486,10 +485,6 @@ bool LLSpatialGroup::addObject(LLDrawable *drawablep)
             (getSpatialPartition() && getSpatialPartition()->asBridge()) ? 15 : 2];
         setOcclusionState(LLSpatialGroup::DISCARD_QUERY, LLSpatialGroup::STATE_MODE_ALL_CAMERAS);
         gPipeline.markRebuild(this);
-        if (drawablep->isVisible())
-        {
-            mVkForceInlineRebuild = true;
-        }
         if (drawablep->isSpatialBridge())
         {
             mBridgeList.push_back((LLSpatialBridge*) drawablep);

@@ -16,6 +16,40 @@
 
 ---
 
+## §0.5 直列化再整合（方向転換 2026-07-30・この Doc の脅威モデル更新）
+
+> 本 Doc は 2026-07-28 の **worker 中心脅威モデル**で書かれた（§III/§IV は worker↔worker を並列化トラックへ委譲・§I/§V も worker 境界前提）。2026-07-30 に**並列化 = category error として撤退確定**（`docs/vknative_direction.md`）し、off-main 描画 worker 群を物理撤去（commit `5ff72fb14e0`）。∴ 脅威モデルが大幅縮小した。**I〜VI の不変条件定義は不変（有効）**。変わるのは「どの境界に適用されるか」= 下記。
+
+**直列後の実脅威モデル（HEAD トレース）= 描画 stability に関与する並行スレッドは 2 本のみ**:
+1. **PE thread**（`llvkloader.cpp:1295` `peThreadMain`）= 単一 submitter/present（資産 A2）。
+2. **bake worker**（`llviewertexlayer.cpp:1129` `bakeWorkerMain`）= CPU asset producer。`sBakeJobMutex`/`sBakePublishMutex` handoff・**VK/描画 state 非接触**（bakeWorkerMain 本体に vk*/LLVK/DrawInfo/mVb 参照ゼロ）。
+- runtime 描画経路外 = `allocDomainSelfTest` ta/tb（`:11949` dev self-test）/ `llvkcontract` w1/w2（`:282` 憲法4 detector）。
+- **消滅済（HEAD grep 0）** = geo/avatar/motion worker・fill-snapshot・record pool・tex-upload worker・`mComputeMutex`・GEOAB。
+
+**I〜VI の直列下ステータス**:
+| 不変条件 | 直列下ステータス | 根拠 |
+|---|---|---|
+| §I CPU生存 | **縮小・維持** | cross-THREAD 境界 = PE(handle=値/sync=caller-stack)+ bake(job 所有 LLPointer)のみ。geo/texture/avatar worker 境界消滅。残 = cross-FRAME 生存(deferred-free/arena・thread 非依存)。型強制不変条件は維持=将来境界を fail-closed |
+| §II GPU生存 | **全面維持（thread 数非依存）** | WaitIdle 検査(`:4737`)✅ / arena reset fence-gate(`:5562` 後)✅ / deferred-free ✅ |
+| §III 並行性 | **大幅縮小** | 描画鎖=単一スレッド化→鎖内 race 構造的消滅。§III=PE/bake 境界のみ(両者 mutex handoff+隔離)。「worker↔worker 共有 program state」残渣 = **撤退で MOOT** |
+| §IV 順序 | **大幅縮小（by-construction）** | 描画鎖順序=単一スレッド実行で自動保証。残=CPU-GPU fence(present)/ GPU-GPU semaphore(shadow)/ PE submit 順。async cadence submit 列残渣 = **MOOT** |
+| §V 枯渇 | **縮小・機構充足** | geo inflight byte cap 撤去。直列=in-flight 高々1(main inline・one-at-a-time)=累積枯渇 **構造的に不能**(正トレース)。残=one-shot staging cap(256MB `:8895`)✅ / **PE queue(sPEJobs)= 構造的 bound**(全 peEnqueue が per-frame=frame submit ×4 `:6054-6104`+aux present `:12721`+one-shot admission cap `:8679`・**per-draw enqueue ゼロ**・beginFrame FIF fence `:5562` throttle→main は FRAMES_IN_FLIGHT 以上先行不能)✅ / deferred-free=fence-gated ✅ |
+| §VI 失敗処理 | **維持** | PEJobReleaser 単一解放点(`:944`)✅ / A3 validate-then-apply(applyGeoStaged)✅ / device-lost clean-degrade ✅。rwExecute bad_alloc guard = worker record 専用で撤去=当該 OOM 経路消滅= **MOOT** |
+
+**実装状態（commit `5ff72fb14e0`）**:
+- ✅ 実装 = §II（WaitIdle/reap）/ §VI（PEJobReleaser）/ G9（shader clamp）。
+- 撤去（直列で構造的 MOOT）= §V geo cap / §VI rwExecute guard。
+- ⚠️ **全て AYA gate 未（層0 観測 run 未実施）= 安定性トラックの「未完部分」の本体**。
+- 残設計課題（ledger）: **(1)(2) は 2026-07-30 に source で閉じた**:
+  - (1)**PE queue（sPEJobs）§V bound = ✅ 構造的充足**（全 peEnqueue が per-frame・per-draw enqueue ゼロ・FIF fence throttle・one-shot admission cap）。gap なし。
+  - (2)**`mVkGeoInflight` = ✅ 撤去完了（2026-07-30・build clean/deploy 済/未 commit）**。族全体（`mVkGeoInflight`/`mVkForceInlineRebuild`/`mVkGeoUpdateBlocked`）+ 機能 dead 分岐 + VKC 検出器の inflight サブカテゴリを全撤去（4 file・23 site）。VKC empty-drawmap 検出器は **inflight のみ外科除去・empty_dirty/empty_other と llvkcontract.* コアは温存**（憲法4 = AYA 承認済のうえ実施）。理想＝定数報告する dead 検出器入力を残さず全撤去。
+  - (3)§I `LLSpatialGroup::mAvatarp`（low・§III 寄り・未着手）。
+- **∴ 直列モデルでの安定性設計 = I〜VI 全て「機構保護 or 構造的不能」で閉じた**。唯一の未完 = 実装群（§II/§VI/G9）が **AYA gate 未（層0 観測 run）** + dead 残渣（mVkGeoInflight）の hygiene 撤去。
+
+**§7（並列化との関係）の更新**: 並列化トラックは撤退。§III/§IV が「並列化トラックへ委譲」とした worker↔worker 具体は**委譲先が消滅した = MOOT**（棚上げでなく解消）。安定基盤は now 直列土台の上に②per-draw 記録軽量化が乗る。
+
+---
+
 ## §I. CPU オブジェクト生存（heap 破損 / UAF / double-free クラス）
 
 **不変条件**: すべての managed オブジェクト（refcountable=LLRefCount / poolable）は、その生存期間が**全スレッド・全フレームの全使用を厳密に包含**する。借用中解放・二重解放・解放後使用・再割当後の旧参照使用が構造的に不能。

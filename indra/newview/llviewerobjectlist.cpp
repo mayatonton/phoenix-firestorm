@@ -1024,7 +1024,6 @@ static void asyncReconcileObject(LLViewerObject* obj)
                                        << " rq=" << (drawablep->isState(LLDrawable::IN_REBUILD_Q) ? 1 : 0)
                                        << " rv=" << (drawablep->isState(LLDrawable::REBUILD_VOLUME) ? 1 : 0)
                                        << " gd=" << ((kg != nullptr && kg->hasState(LLSpatialGroup::GEOM_DIRTY | LLSpatialGroup::ALPHA_DIRTY)) ? 1 : 0)
-                                       << " gi=" << ((kg != nullptr && kg->mVkGeoInflight) ? 1 : 0)
                                        << " rbret=" << (kg != nullptr ? (S32)kg->mVkRebuildRet : -1)
                                        << " rbage=" << (kg != nullptr ? (S32)((U32)gFrameCount - kg->mVkRebuildVisitFrame) : -1)
                                        << LL_ENDL;
@@ -1057,7 +1056,7 @@ static void asyncReconcileObject(LLViewerObject* obj)
         return;
     }
     LLSpatialGroup* group = drawablep->getSpatialGroup();
-    if (group == nullptr || group->isDead() || group->mVkGeoInflight
+    if (group == nullptr || group->isDead()
         || group->hasState(LLSpatialGroup::GEOM_DIRTY | LLSpatialGroup::ALPHA_DIRTY))
     {
         return;
@@ -1104,7 +1103,6 @@ static void asyncReconcileObject(LLViewerObject* obj)
                                        << " nf=" << volume->getNumVolumeFaces()
                                        << " dfaces=" << drawablep->getNumFaces()
                                        << " gd=" << (group->hasState(LLSpatialGroup::GEOM_DIRTY | LLSpatialGroup::ALPHA_DIRTY) ? 1 : 0)
-                                       << " gi=" << (group->mVkGeoInflight ? 1 : 0)
                                        << " rbret=" << (S32)group->mVkRebuildRet
                                        << " rbage=" << (S32)((U32)gFrameCount - group->mVkRebuildVisitFrame)
                                        << LL_ENDL;

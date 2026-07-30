@@ -158,9 +158,16 @@ void LLDrawPoolMaterials::renderDeferred(S32 pass)
     U64 lastMeshId = 0;
     bool skipLastSkin = false;
 
+    const bool mat_bindless = (mShader != nullptr && mShader->mVkUsesBindlessHeap);
+
     LLVKBucket::forEachSource(type, [&](LLDrawInfo& params)
     {
         LL_PROFILE_ZONE_NAMED_CATEGORY_MATERIAL("materials draw loop");
+        ++LLVKLoader::gVkPerf.mat_draws;
+        if (mat_bindless)
+        {
+            ++LLVKLoader::gVkPerf.mat_bindless_draws;
+        }
 
         if (normChannel > -1 && params.mNormalMap != lastNormalMap)
         {
