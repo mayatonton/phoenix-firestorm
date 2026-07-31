@@ -73,7 +73,8 @@ const char* CAUSE_NAMES[CAUSE_COUNT] =
     "par_main_only_write",
     "par_worker_forbidden",
     "par_concurrent",
-    "par_dead_access"
+    "par_dead_access",
+    "skin_draw_no_commit"
 };
 
 const char* SITE_NAMES[SITE_COUNT] =
@@ -725,6 +726,7 @@ namespace
 std::atomic<U64> sVfyWin[VFY_COUNT] = {};
 thread_local U32  tExpectedDrawDataID = 0;
 thread_local bool tExpectedDDValid    = false;
+thread_local bool tPerDrawIDCommitted = false;
 }
 
 void vfyTick(U32 which)
@@ -752,6 +754,28 @@ void checkDrawDataIDAtFire(U32 actual)
     {
         causeNamed(C_DRAWDATA_ID_MISMATCH,
                    std::to_string(actual) + "!=" + std::to_string(tExpectedDrawDataID));
+    }
+}
+
+void markPerDrawIDCommitted()
+{
+    tPerDrawIDCommitted = true;
+}
+
+void checkPerDrawIDFreshnessAtFire(bool fired, bool uses_skin_set, const char* shader_name)
+{
+    if (!verboseEnabled())
+    {
+        return;
+    }
+    const bool committed = tPerDrawIDCommitted;
+    tPerDrawIDCommitted = false;
+    if (fired && uses_skin_set && !committed)
+    {
+        const std::string name = (shader_name != nullptr) ? shader_name : "";
+        note(C_SKIN_DRAW_NO_COMMIT, name);
+        noteFbSlot((const void*)(uintptr_t)std::hash<std::string>{}(name),
+                   name, (U32)C_SKIN_DRAW_NO_COMMIT, "no_commit");
     }
 }
 

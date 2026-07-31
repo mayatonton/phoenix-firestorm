@@ -61,6 +61,7 @@ enum ECause : U32
     C_PAR_WORKER_FORBIDDEN,
     C_PAR_CONCURRENT,
     C_PAR_DEAD_ACCESS,
+    C_SKIN_DRAW_NO_COMMIT,
     CAUSE_COUNT
 };
 
@@ -129,6 +130,8 @@ enum EVfy : U32
 void vfyTick(U32 which);
 void stashDrawDataID(U32 id);
 void checkDrawDataIDAtFire(U32 actual);
+void markPerDrawIDCommitted();
+void checkPerDrawIDFreshnessAtFire(bool fired, bool uses_skin_set, const char* shader_name);
 
 void parallelEpochBegin();
 void parallelEpochEnd();

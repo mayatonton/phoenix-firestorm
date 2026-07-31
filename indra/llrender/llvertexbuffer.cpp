@@ -570,6 +570,15 @@ void LLVertexBuffer::drawRange(U32 mode, U32 start, U32 end, U32 count, U32 indi
         }
     }
 
+    if (LLVKLoader::shouldUseVulkanRender())
+    {
+        LLGLSLShader* sh = LLGLSLShader::sCurBoundShaderPtr;
+        LLVKContract::checkPerDrawIDFreshnessAtFire(
+            vk_fired,
+            sh != nullptr && sh->mVkUsesSkinSet,
+            sh != nullptr ? sh->mName.c_str() : nullptr);
+    }
+
     if (!vk_fired)
     {
         if (LLVKLoader::shouldUseVulkanRender()
@@ -601,6 +610,13 @@ void LLVertexBuffer::drawRangeFast(U32 mode, U32 start, U32 end, U32 count, U32 
                 vk_fired = true;
                 LLVKContract::drawFired();
             }
+        }
+        {
+            LLGLSLShader* sh = LLGLSLShader::sCurBoundShaderPtr;
+            LLVKContract::checkPerDrawIDFreshnessAtFire(
+                vk_fired,
+                sh != nullptr && sh->mVkUsesSkinSet,
+                sh != nullptr ? sh->mName.c_str() : nullptr);
         }
         if (!vk_fired && LLGLSLShader::sCurBoundShaderPtr == nullptr)
         {
@@ -641,6 +657,15 @@ void LLVertexBuffer::drawArrays(U32 mode, U32 first, U32 count) const
             vk_fired = true;
             LLVKContract::drawFired();
         }
+    }
+
+    if (LLVKLoader::shouldUseVulkanRender())
+    {
+        LLGLSLShader* sh = LLGLSLShader::sCurBoundShaderPtr;
+        LLVKContract::checkPerDrawIDFreshnessAtFire(
+            vk_fired,
+            sh != nullptr && sh->mVkUsesSkinSet,
+            sh != nullptr ? sh->mName.c_str() : nullptr);
     }
 
     if (!vk_fired)

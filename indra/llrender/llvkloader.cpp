@@ -12064,6 +12064,7 @@ void commitPerDrawID(U32 id, bool publish_skin, const void* avatar, U64 skin_has
     setCurrentDrawDataID(id);
     const U32 draw_id = (id == BINDLESS_INVALID_SLOT) ? 0 : id;
     LLVKContract::stashDrawDataID(draw_id);
+    LLVKContract::markPerDrawIDCommitted();
     if (publish_skin)
     {
         publishDrawSkinBase(draw_id, avatar, skin_hash);
