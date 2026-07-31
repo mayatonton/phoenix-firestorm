@@ -78,7 +78,6 @@ thread_local U32 LLGLSLShader::sCurPerCallVkDynamicOffsets[LLGLSLShader::MAX_VK_
 thread_local bool LLGLSLShader::sCurPerCallVkOffsetsDirty = false;
 thread_local U32 LLGLSLShader::sCurPerCallVkSetShape = 0xFFFFFFFFu;
 thread_local bool LLGLSLShader::sCurPerCallAuthored = false;
-thread_local const LLGLSLShader::record_seed_map_t* LLGLSLShader::sRecordSeedMap = nullptr;
 
 namespace
 {
@@ -406,7 +405,8 @@ void LLGLSLShader::unloadInternal()
         mVkImmediateHits        = 0;
         mVkImmediateFills       = 0;
         mVkImmediateNoFill      = false;
-        mVkUsesBindlessHeap = false;
+        mVkUsesHeapSet = false;
+        mVkUsesSkinSet = false;
         if (mVkPerProgramUBO != VK_NULL_HANDLE)
         {
             LLVKLoader::destroyBufferVk(mVkPerProgramUBO, mVkPerProgramUBOAllocation);
@@ -1194,7 +1194,8 @@ static void reflectUsedSet1SamplerBindingsFromSpirv(const std::vector<unsigned i
 static void reflectVkSet1BindingsFromSpirv(const std::vector<unsigned int>& spirv,
                                            std::vector<VkSpirvSet1Sampler>& out_samplers,
                                            std::vector<S32>& out_ubo_bindings,
-                                           bool* out_uses_set2 = nullptr)
+                                           bool* out_uses_set2 = nullptr,
+                                           bool* out_uses_set3 = nullptr)
 {
     if (spirv.size() < 5)
     {
@@ -1295,6 +1296,10 @@ static void reflectVkSet1BindingsFromSpirv(const std::vector<unsigned int>& spir
             if (out_uses_set2 != nullptr && sit != desc_sets.end() && sit->second == 2)
             {
                 *out_uses_set2 = true;
+            }
+            if (out_uses_set3 != nullptr && sit != desc_sets.end() && sit->second == 3)
+            {
+                *out_uses_set3 = true;
             }
             if (sit != desc_sets.end() && sit->second == 1 && bit != desc_bindings.end())
             {
@@ -1946,13 +1951,14 @@ bool LLGLSLShader::generatePerProgramSPIRV(const std::vector<StageSource>& stage
     }
 
     mVkReflUsesHeapSet = false;
+    mVkReflUsesSkinSet = false;
     for (const auto& ss : stage_spvs)
     {
         const U8 stage_mask = (ss.type == GL_FRAGMENT_SHADER) ? VKBS_FRAGMENT
                             : (ss.type == GL_VERTEX_SHADER)   ? VKBS_VERTEX : (U8)0;
         std::vector<VkSpirvSet1Sampler> samplers;
         std::vector<S32> ubo_bindings;
-        reflectVkSet1BindingsFromSpirv(ss.spirv, samplers, ubo_bindings, &mVkReflUsesHeapSet);
+        reflectVkSet1BindingsFromSpirv(ss.spirv, samplers, ubo_bindings, &mVkReflUsesHeapSet, &mVkReflUsesSkinSet);
         reflectVkUboLayoutsFromSpirv(ss.spirv, stage_mask, mVkReflUboBlocks, mVkReflPushConstants);
         std::set<S32> used_sampler_bindings;
         reflectUsedSet1SamplerBindingsFromSpirv(ss.spirv, used_sampler_bindings);
@@ -2138,17 +2144,13 @@ void LLGLSLShader::bind()
 
     if (sCurBoundShaderPtr != this)  // Don't re-bind current shader
     {
-        const bool record_job = LLVKLoader::isRecordJobActive();
-        if (sCurBoundShaderPtr && !record_job)
+        if (sCurBoundShaderPtr)
         {
             sCurBoundShaderPtr->readProfileQuery();
         }
         LLVertexBuffer::unbind();
         sCurBoundShaderPtr = this;
-        if (!record_job)
-        {
-            placeProfileQuery();
-        }
+        placeProfileQuery();
 
         if (LLVKLoader::isVulkanInitialized() && mVkPipelineLayout != VK_NULL_HANDLE)
         {
@@ -2164,7 +2166,7 @@ void LLGLSLShader::bind()
             }
         }
 
-        if (LLVKLoader::isVulkanInitialized() && !mChannelToEnum.empty() && !record_job)
+        if (LLVKLoader::isVulkanInitialized() && !mChannelToEnum.empty())
         {
             const S32 snap_count = llmin(mActiveTextureChannels, (S32)mChannelToEnum.size());
             for (S32 ch = 0; ch < snap_count; ++ch)
@@ -2942,8 +2944,9 @@ bool LLGLSLShader::createVkPipeline(U32 perProgramUBOSize, bool needsSharedWater
                     VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER_DYNAMIC);
     add_sampler(50, VK_SHADER_STAGE_FRAGMENT_BIT, LLShaderMgr::DEFERRED_LIGHTFUNC);
 
-    mVkUsesBindlessHeap = (LLVKLoader::isBindlessActiveVk() && mVkReflUsesHeapSet);
-    if (mFeatures.mIndexedTextureChannels > 0 && !mVkUsesBindlessHeap)
+    mVkUsesHeapSet = (LLVKLoader::isBindlessActiveVk() && mVkReflUsesHeapSet);
+    mVkUsesSkinSet = (LLVKLoader::isBindlessActiveVk() && mVkReflUsesSkinSet);
+    if (mFeatures.mIndexedTextureChannels > 0 && !mVkUsesHeapSet)
     {
         for (S32 i = 0; i < mFeatures.mIndexedTextureChannels && i < 8; ++i)
         {
@@ -3097,19 +3100,38 @@ bool LLGLSLShader::createVkPipeline(U32 perProgramUBOSize, bool needsSharedWater
         VK_NULL_HANDLE
     };
     U32 set_layout_count = 2;
-    if (mVkUsesBindlessHeap)
+    if (mVkUsesHeapSet || mVkUsesSkinSet)
     {
-        VkDescriptorSetLayout heap_layout = LLVKLoader::getBindlessHeapLayout();
-        VkDescriptorSetLayout skin_layout = LLVKLoader::getSkinBaseLayout();
-        if (heap_layout != VK_NULL_HANDLE && skin_layout != VK_NULL_HANDLE)
+        VkDescriptorSetLayout heap_layout  = LLVKLoader::getBindlessHeapLayout();
+        VkDescriptorSetLayout skin_layout  = LLVKLoader::getSkinBaseLayout();
+        VkDescriptorSetLayout empty_layout = LLVKLoader::getEmptySetLayout();
+        if (mVkUsesHeapSet && heap_layout == VK_NULL_HANDLE)
+        {
+            mVkUsesHeapSet = false;
+        }
+        if (mVkUsesSkinSet && skin_layout == VK_NULL_HANDLE)
+        {
+            mVkUsesSkinSet = false;
+        }
+        if (mVkUsesSkinSet && !mVkUsesHeapSet && empty_layout == VK_NULL_HANDLE)
+        {
+            LL_WARNS("Vulkan") << "VKBindless: empty set layout unavailable; skin set staying inactive" << LL_ENDL;
+            mVkUsesSkinSet = false;
+        }
+        if (mVkUsesHeapSet)
         {
             set_layouts[2]   = heap_layout;
+            set_layout_count = 3;
+        }
+        else if (mVkUsesSkinSet)
+        {
+            set_layouts[2]   = empty_layout;
+            set_layout_count = 3;
+        }
+        if (mVkUsesSkinSet)
+        {
             set_layouts[3]   = skin_layout;
             set_layout_count = 4;
-        }
-        else
-        {
-            mVkUsesBindlessHeap = false;
         }
     }
 
@@ -3282,94 +3304,6 @@ bool LLGLSLShader::vkCollectDynamicUBOWrites(LLGLSLShader*                     c
         }
         out_offsets[idx++] = off;
     }
-    return true;
-}
-
-bool LLGLSLShader::vkCaptureSeedDynamicBuffers(RecordSeed& seed)
-{
-    LLGLSLShader* cur = sCurBoundShaderPtr;
-    if (cur == nullptr)
-    {
-        return false;
-    }
-    seed.buf_count = 0;
-    for (U32 db : cur->mVkDynamicBindings)
-    {
-        if (seed.buf_count >= MAX_VK_DYNAMIC_BINDINGS)
-        {
-            break;
-        }
-        VkBuffer buf = VK_NULL_HANDLE;
-        U32      off = 0;
-        if (db == 0 && cur->mVkPerProgramUBOBinding == 0)
-        {
-            if (cur->mVkPerProgramUBO != VK_NULL_HANDLE && cur->mVkPerProgramUBOSize > 0)
-            {
-                if (!cur->vkResolvePerProgramForDraw(buf, off))
-                {
-                    return false;
-                }
-            }
-        }
-        else
-        {
-            if (!LLVKLoader::getSharedDynamicUBOForBinding(db, buf, off) || buf == VK_NULL_HANDLE)
-            {
-                return false;
-            }
-        }
-        seed.bufs[seed.buf_count++] = buf;
-    }
-    return true;
-}
-
-bool LLGLSLShader::vkRefreshDynamicOffsetsForSeed(const RecordSeed& seed)
-{
-    LLGLSLShader* cur = sCurBoundShaderPtr;
-    if (cur == nullptr)
-    {
-        return false;
-    }
-    U32 idx = 0;
-    for (U32 db : cur->mVkDynamicBindings)
-    {
-        if (idx >= MAX_VK_DYNAMIC_BINDINGS || idx >= seed.buf_count)
-        {
-            break;
-        }
-        VkBuffer buf = VK_NULL_HANDLE;
-        U32      off = 0;
-        if (db == 0 && cur->mVkPerProgramUBOBinding == 0)
-        {
-            if (cur->mVkPerProgramUBO != VK_NULL_HANDLE && cur->mVkPerProgramUBOSize > 0)
-            {
-                if (!cur->vkResolvePerProgramForDraw(buf, off))
-                {
-                    return false;
-                }
-            }
-        }
-        else
-        {
-            if (!LLVKLoader::getSharedDynamicUBOForBinding(db, buf, off) || buf == VK_NULL_HANDLE)
-            {
-                return false;
-            }
-        }
-        if (buf != seed.bufs[idx])
-        {
-            static std::atomic<U32> s_seed_buf_mismatch{0};
-            const U32 n = ++s_seed_buf_mismatch;
-            if ((n & (n - 1)) == 0)
-            {
-                LL_WARNS("Vulkan") << "VKC record_seed_buf_mismatch shader='" << cur->mName
-                                   << "' db=" << db << " n=" << n << LL_ENDL;
-            }
-            return false;
-        }
-        sCurPerCallVkDynamicOffsets[idx++] = off;
-    }
-    sCurPerCallVkOffsetsDirty = false;
     return true;
 }
 
@@ -3564,7 +3498,6 @@ void LLGLSLShader::resetPerThreadRecordState()
     sCurPerCallVkOffsetsDirty = false;
     sCurPerCallVkSetShape     = 0xFFFFFFFFu;
     sCurPerCallAuthored = false;
-    sRecordSeedMap    = nullptr;
     sVkPipeMemoShader = nullptr;
     sVkPipeMemoPipe   = VK_NULL_HANDLE;
 }
@@ -3613,50 +3546,6 @@ void LLGLSLShader::populateAndBindUniversalDescriptorSet(bool preserve_drawdata)
         LLVKContract::cause(LLVKContract::C_VK_NOT_INIT);
         return;
     }
-    if (LLVKLoader::isRecordJobActive())
-    {
-        LLGLSLShader* cur = sCurBoundShaderPtr;
-        if (sRecordSeedMap != nullptr && cur != nullptr)
-        {
-            auto seed_it = sRecordSeedMap->find(cur);
-            if (seed_it != sRecordSeedMap->end() && seed_it->second.set != VK_NULL_HANDLE
-                && vkRefreshDynamicOffsetsForSeed(seed_it->second))
-            {
-                if (cur->mVkUsesBindlessHeap && !preserve_drawdata)
-                {
-                    U32 slots[LLVKLoader::DRAWDATA_SLOT_UINTS] = {};
-                    const U32 n = llmin((U32)cur->mFeatures.mIndexedTextureChannels, 4u);
-                    if (n > 0)
-                    {
-                        for (U32 i = 0; i < n; ++i)
-                        {
-                            slots[i] = gGL.getTexUnit((S32)i)->currVkHeapSlotOrDefault();
-                        }
-                    }
-                    else
-                    {
-                        slots[0] = gGL.getTexUnit(0)->currVkHeapSlotOrDefault();
-                    }
-                    const U32 scratch_id = LLVKLoader::drawDataWriteScratch(slots);
-                    LLVKLoader::setCurrentDrawDataID(scratch_id);
-                    LLVKContract::stashDrawDataID(scratch_id);
-                }
-                sCurPerCallVkDescriptorSet = seed_it->second.set;
-                sCurPerCallVkSetShape      = seed_it->second.shape;
-                return;
-            }
-        }
-        LLVKContract::cause(LLVKContract::C_RECORD_JOB_PULL);
-        static std::atomic<U32> s_record_populate_hits{0};
-        const U32 n = ++s_record_populate_hits;
-        if ((n & (n - 1)) == 0)
-        {
-            LL_WARNS("Vulkan") << "populateAndBindUniversalDescriptorSet called in record job (seed lost) shader='"
-                               << (sCurBoundShaderPtr ? sCurBoundShaderPtr->mName : std::string("?"))
-                               << "' count=" << n << LL_ENDL;
-        }
-        return;
-    }
     LLGLSLShader* cur = LLGLSLShader::sCurBoundShaderPtr;
     if (cur == nullptr || cur->mVkDescriptorSetLayout == VK_NULL_HANDLE)
     {
@@ -3677,13 +3566,13 @@ void LLGLSLShader::populateAndBindUniversalDescriptorSet(bool preserve_drawdata)
         ~PopulateCostTimer() { if (t0) LLVKLoader::gVkPerf.populate_us += (U64)LLTimer::getTotalTime() - t0; }
     } populate_cost_timer;
 
-    const bool imm_cache = !cur->mVkUsesBindlessHeap;
+    const bool imm_cache = !cur->mVkUsesHeapSet;
     const U32  imm_lane  = LLVKLoader::getCurrentRecordLane();
     const U32  imm_frame = LLVKLoader::getCurrentFrameIndex();
 
     if (LLVKLoader::perfLogEnabled())
     {
-        if (cur->mVkUsesBindlessHeap)
+        if (cur->mVkUsesHeapSet)
         {
             ++LLVKLoader::gVkPerf.populate_bl;
             LLVKLoader::PerDrawCacheLane& bl = cur->mVkPerDrawLane[imm_lane];
@@ -3750,25 +3639,27 @@ void LLGLSLShader::populateAndBindUniversalDescriptorSet(bool preserve_drawdata)
 
     U32 per_program_dynamic_offset = 0;
 
-    if (cur->mVkUsesBindlessHeap && !preserve_drawdata)
+    if ((cur->mVkUsesHeapSet || cur->mVkUsesSkinSet) && !preserve_drawdata)
     {
         U32 slots[LLVKLoader::DRAWDATA_SLOT_UINTS] = {};
-        const U32 n = llmin((U32)cur->mFeatures.mIndexedTextureChannels, 4u);
-        if (n > 0)
+        if (cur->mVkUsesHeapSet)
         {
-            for (U32 i = 0; i < n; ++i)
+            const U32 n = llmin((U32)cur->mFeatures.mIndexedTextureChannels, 4u);
+            if (n > 0)
             {
-                slots[i] = gGL.getTexUnit((S32)i)->currVkHeapSlotOrDefault();
+                for (U32 i = 0; i < n; ++i)
+                {
+                    slots[i] = gGL.getTexUnit((S32)i)->currVkHeapSlotOrDefault();
+                }
             }
-        }
-        else
-        {
-            slots[0] = gGL.getTexUnit(0)->currVkHeapSlotOrDefault();
+            else
+            {
+                slots[0] = gGL.getTexUnit(0)->currVkHeapSlotOrDefault();
+            }
         }
         {
             const U32 scratch_id = LLVKLoader::drawDataWriteScratch(slots);
-            LLVKLoader::setCurrentDrawDataID(scratch_id);
-            LLVKContract::stashDrawDataID(scratch_id);
+            LLVKLoader::commitPerDrawID(scratch_id, false, nullptr, 0);
         }
     }
 

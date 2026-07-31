@@ -558,7 +558,8 @@ void LLVertexBuffer::drawRange(U32 mode, U32 start, U32 end, U32 count, U32 indi
         VkCommandBuffer cmd = VK_NULL_HANDLE;
         if (LLVKLoader::beginShaderDrawOrSkip(LLGLSLShader::sCurBoundShaderPtr, mode, cmd))
         {
-            if (LLGLSLShader::sCurBoundShaderPtr->mVkUsesBindlessHeap)
+            if (LLGLSLShader::sCurBoundShaderPtr->mVkUsesHeapSet
+                || LLGLSLShader::sCurBoundShaderPtr->mVkUsesSkinSet)
             {
                 LLVKContract::checkDrawDataIDAtFire(LLVKLoader::getCurrentDrawDataID());
             }
@@ -590,7 +591,8 @@ void LLVertexBuffer::drawRangeFast(U32 mode, U32 start, U32 end, U32 count, U32 
             VkCommandBuffer cmd = VK_NULL_HANDLE;
             if (LLVKLoader::beginShaderDrawOrSkip(LLGLSLShader::sCurBoundShaderPtr, mode, cmd))
             {
-                if (LLGLSLShader::sCurBoundShaderPtr->mVkUsesBindlessHeap)
+                if (LLGLSLShader::sCurBoundShaderPtr->mVkUsesHeapSet
+                    || LLGLSLShader::sCurBoundShaderPtr->mVkUsesSkinSet)
                 {
                     LLVKContract::checkDrawDataIDAtFire(LLVKLoader::getCurrentDrawDataID());
                 }
@@ -629,7 +631,8 @@ void LLVertexBuffer::drawArrays(U32 mode, U32 first, U32 count) const
         VkCommandBuffer cmd = VK_NULL_HANDLE;
         if (LLVKLoader::beginShaderDrawOrSkip(LLGLSLShader::sCurBoundShaderPtr, mode, cmd))
         {
-            if (LLGLSLShader::sCurBoundShaderPtr->mVkUsesBindlessHeap)
+            if (LLGLSLShader::sCurBoundShaderPtr->mVkUsesHeapSet
+                || LLGLSLShader::sCurBoundShaderPtr->mVkUsesSkinSet)
             {
                 LLVKContract::checkDrawDataIDAtFire(LLVKLoader::getCurrentDrawDataID());
             }

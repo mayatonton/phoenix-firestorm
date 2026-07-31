@@ -158,7 +158,7 @@ void LLDrawPoolMaterials::renderDeferred(S32 pass)
     U64 lastMeshId = 0;
     bool skipLastSkin = false;
 
-    const bool mat_bindless = (mShader != nullptr && mShader->mVkUsesBindlessHeap);
+    const bool mat_bindless = (mShader != nullptr && mShader->mVkUsesHeapSet);
 
     LLVKBucket::forEachSource(type, [&](LLDrawInfo& params)
     {

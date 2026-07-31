@@ -68,7 +68,6 @@ namespace LLVKLoader
     constexpr U32 MAX_RECORD_LANES = 8;
 
     U32  recordWorkerCount();
-    bool isRecordJobActive();
     U32  getCurrentRecordLane();
     // III-0 window-mutation guard (redesign §1.3/§5.2)。
     bool isRecordWindowActive();
@@ -585,6 +584,7 @@ namespace LLVKLoader
     void objectSkinStoreCache(const void* avatar, U64 skin_hash);
     U32  objectSkinLookupEntry(const void* avatar, U64 skin_hash); // B.2: bindless palette entry for (avatar,hash)
     void writeDrawSkinBase(U32 draw_id, U32 skin_entry);           // B.2: write skin base at DrawData slot
+    U32  publishDrawSkinBase(U32 draw_id, const void* avatar, U64 skin_hash);
 
     struct Lights_PerProgramBind
     {
@@ -1368,6 +1368,7 @@ namespace LLVKLoader
 
     VkDescriptorSetLayout getBindlessHeapLayout();
     VkDescriptorSetLayout getSkinBaseLayout();
+    VkDescriptorSetLayout getEmptySetLayout();
 
     U32  drawDataAcquireSlot(const U32* slots4);
 
@@ -1384,6 +1385,8 @@ namespace LLVKLoader
     void setCurrentDrawDataID(U32 id);
 
     U32  getCurrentDrawDataID();
+
+    void commitPerDrawID(U32 id, bool publish_skin, const void* avatar, U64 skin_hash);
 
     void transitionImageLayoutVk(VkImage              image,
                                  VkImageAspectFlags   aspect_mask,

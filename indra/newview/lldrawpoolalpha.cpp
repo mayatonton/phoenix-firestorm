@@ -1068,7 +1068,7 @@ void LLDrawPoolAlpha::renderEmissives(std::vector<LLDrawInfo*>& emissives)
 
     const bool collapse = LLVKLoader::isIndirectDrawEnabled()
         && emissive_shader != nullptr
-        && emissive_shader->mVkUsesBindlessHeap;
+        && emissive_shader->mVkUsesHeapSet;
 
     if (!collapse)
     {
@@ -1547,7 +1547,7 @@ void LLDrawPoolAlpha::renderAlpha(U32 mask, bool depth_only, bool rigged, bool u
 
                     const bool collapse_now = run_candidate
                         && current_shader != nullptr
-                        && current_shader->mVkUsesBindlessHeap;
+                        && current_shader->mVkUsesHeapSet;
 
                     { U64 t2 = alp_now(); alp_us[4] += t2 - alp_t; alp_t = t2; }
 

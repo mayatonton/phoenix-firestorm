@@ -315,8 +315,10 @@ public:
     VkDescriptorSetLayout      mVkDescriptorSetLayout = VK_NULL_HANDLE;
 
     bool                       mVkVertexPushConstantOver64 = false;
-    bool                       mVkUsesBindlessHeap         = false;
+    bool                       mVkUsesHeapSet              = false;
+    bool                       mVkUsesSkinSet              = false;
     bool                       mVkReflUsesHeapSet          = false;
+    bool                       mVkReflUsesSkinSet          = false;
 
     U32                        mVkAttributeMask = 0;
     bool                       mVkAttributeMaskValid = false;
@@ -394,18 +396,6 @@ public:
     static VkDescriptorSet vkResolvePerCallSetForDraw();
     static void vkVerifyPerCallBindingsAtBind(const U32* offsets, U32 dyn_count);
     static void resetPerThreadRecordState();
-
-    struct RecordSeed
-    {
-        VkDescriptorSet set   = VK_NULL_HANDLE;
-        U32             shape = 0xFFFFFFFFu;
-        VkBuffer        bufs[MAX_VK_DYNAMIC_BINDINGS] = {};
-        U32             buf_count = 0;
-    };
-    typedef std::unordered_map<const LLGLSLShader*, RecordSeed> record_seed_map_t;
-    static thread_local const record_seed_map_t* sRecordSeedMap;
-    static bool vkCaptureSeedDynamicBuffers(RecordSeed& seed);
-    static bool vkRefreshDynamicOffsetsForSeed(const RecordSeed& seed);
 
     static constexpr U32 VK_FRAG_PC_BASE   = 64;
     static constexpr U32 VK_FRAG_PC_DWORDS = 16;
