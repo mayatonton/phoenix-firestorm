@@ -47,6 +47,7 @@
 ## 4. 段階ロードマップ(身の丈・各段 gate 付き)
 - **段階1(今)= bind 作り直し**: skin palette を set=2→set=3(base と同居・vertex 専用)。分類の溶接を解く。skin の per-draw ID 供給を bindless 従属でなく「skin を使う draw なら必ず publish」に一貫化(非 bindless でも firstInstance=skin slot が揃い SSBO が正しく走る)。**washout はこの結果として落ちる**。skin = per-draw-indexed SSBO を別 set で綺麗にやる雛形になる。B.2/B.3 の scratch・welding・RIGGED_MDI の残滓を整理。gate = 視覚(靴下)+ 検出器沈黙 + validation 0。
   - **⚠️ 段階1 = 指示書 A/B/C は「バラバラの 3 設計」でなく内実ひとつの結合変更・同一 build で不可分**(session ffd75280 が §7 肉付けで source 確定)。理由: palette を set=2 から退かした瞬間、現状 skin set を bind している唯一の力(= `mVkUsesBindlessHeap` の set=2 誤 trip = washout の原因そのもの)が消え、B(`mVkUsesSkinSet` 独立反射)無しでは skin が unbind・C(per-draw ID を skin gate で publish)無しでは firstInstance が stale化。**設計の実体 = `mVkUsesBindlessHeap` 1 フラグに溶接された 3 別命題を「分離しながら実装する」こと**(AYA 2026-07-31)。詳細 = §7 A/B/C の詳細設計。
+- **段階1.5(今)= per-draw ID の構造化(指示書 G1-G4)**: 段階1(指示書 C)は per-draw ID の**表現**を単一 choke(`commitPerDrawID`)に統一したが、その choke の**呼び出しの網羅を強制していなかった**。commit の caller は 2 箇所(`buildAndOverrideScenePerDrawSet` / scratch)だけで、**skin を読むが commit を迂回する draw-fire 経路**(`pushUntexturedBatch`=影 / object-ID pass)が残った。忘れた draw は可変 global `tCurrentDrawDataID` の残値(別 draw の slot)を継承 → 別 avatar の palette = 歪み影/rig 混線(session ffd75280 のオラクルが機械列挙 + AYA 実機 bisect `SKIN_BINDLESS=0` で確定)。**真の fix = per-draw ID を「draw の属性として fire まで運ぶ」構造にし、可変 global を廃す**。gate = 視覚(crowd で影/選択枠が崩れない)+ `skin_draw_no_commit=0` 全経路 + validation 0。詳細 = §7 指示書 G1-G4 + §8 真のモデル。
 - **段階2 = material params → per-draw SSBO**: dynamic UBO を廃し、skin 雛形に倣って per-draw ID で index する GPU buffer へ。draw 毎 memcpy/offset を消す。gate = 視覚同一 + per-draw 記録コスト実測減。
 - **段階3 = material MDI**: material が per-draw-indexed になった土台で draw を畳む。gate = draw 数減 + frame time。
 - **段階4 = shadow / probe**: 同モデルを shadow(24%)・probe(20%)へ(bucket 大工事・44% 本命)。
@@ -208,7 +209,8 @@ set_layout_count = mVkUsesSkinSet ? 4 : (mVkUsesHeapSet ? 3 : 2);
 
 **B の申告に必須**: 26 site 全ての分類表(Cat1 機械改名 / Cat2 機械改名(C 再 gate 予定)/ 核 / Cat4 挙動変化)を完了報告に添付。設計に無い gate 変更(特に Cat2 を勝手に heap||skin にしない=C 領分)を炙れる形で。
 
-### 指示書 C(段階1)= per-draw ID 表現の一貫化 + skin base publish
+### 指示書 C(段階1・実装済 `04f30cbfe1c`)= per-draw ID 表現の一貫化 + skin base publish
+> **⚠️ C の fail-closed 不変条件(下記 line「mVkUsesSkinSet な draw は必ず setCurrentDrawDataID を通る」)は不完全だった**: 「必ず通る」は「全 skin draw が commit の caller(`buildAndOverrideScenePerDrawSet`)へ到達する」を暗黙前提にしていたが、これは偽。commit を迂回する draw-fire 経路(`pushUntexturedBatch`=影 / object-ID pass)が存在し、そこでは choke が発火しない。C は「id と skin publish を同一変数にした(表現統一)」までで、「commit の呼び出しを網羅させた」ではない。**構造化は §7 指示書 G1-G4(段階1.5)が引き継ぐ**。C の成果(単一表現 `commitPerDrawID`・gate `mVkUsesHeapSet||mVkUsesSkinSet`)は G の土台として維持。
 - **対象**: per-draw ID(gl_InstanceIndex=firstInstance)の設定経路(`setCurrentDrawDataID`/`drawDataWriteScratch`/`ensureVkDrawDataSlot`/`mVkDrawDataSlot`/populate の scratch 上書き)を **単一 choke に一貫化**。skin base publish を「skin を使う draw なら bindless 従属でなく必ず publish」に(非 bindless でも firstInstance=skin slot が揃い SSBO が正走)。
 - **起点トレース**: `lldrawpool.cpp:606-658`(skin publish + setCurrentDrawDataID・現 gate=mVkUsesBindlessHeap)/ `llglslshader.cpp:3572 vkResolvePerCallSetForDraw`(authored 分岐)/ `:3625/:3753`(scratch 上書き)/ `:3640/3769`。
 - **切り口**: per-draw ID は「多重に設定される値」でなく「draw ごとに 1 度決まる単一表現」。scratch と persistent slot の役割を整理。
@@ -275,6 +277,141 @@ skin-only draw(SkinnedPBRAlpha post-fix = heap 非使用)は現状 3 site 全て
 - record-job seed 経路で skin base の frame-ring 書込タイミング(seed 再利用時に publish が 1 度で足りるか)= 実装時に VkPerf `skin_base_wr` で観測。
 - `mVkUsesHeapSet` 改名(現 `mVkReflUsesHeapSet`)の全参照追従(検出器 `LLVKContract` 側含む・憲法4 = 検出器 diff は AYA 承認)。
 
+### 指示書 G1-G4(段階1.5)= per-draw ID の構造化 = 可変 global 廃止 + draw 属性化
+> **総括(AYA 2026-07-31)=「設計してないからこうなった」= 構造欠陥**。session 5a7bbf1c が全 fire 経路を実読で機械潰し(§8 真のモデル・scratchpad `perdraw_id_trace.md`)。指示書 C の「表現統一」の上に、**呼び出しの網羅を構造で強制する**。狙い = 忘れた draw が「別 avatar の palette」でなく「自分の正しい UBO fallback」に落ちる = silent corruption を構造排除。**patch(2 経路を個別に塞ぐ)は禁**([[feedback_design_defects_not_fixed_by_measurement]])。
+>
+> **設計判断(session 5a7bbf1c・設計者決定)= strangler 順で 4 段階の非破壊移行**。各 G は独立 build + 独立 gate(視覚 + オラクル + validation 0)。**依存は直列**(G1→G2→G3→G4)。fail-closed 保険は「毎 frame ring 全 clear(4MB memset/frame = CPU コスト増で②に逆行)」でなく「**予約 slot 0 = 常時 INVALID**」を採る(理由 = §8)。
+
+#### 指示書 G1(段階1.5)= firstInstance を draw API の明示パラメータにする(非破壊ブリッジ)
+- **対象**: `LLVertexBuffer::drawRange`/`drawRangeFast`/`drawArrays`/`draw` に per-draw slot を明示引数として通す。既定値 = 現行維持のブリッジ値(下記)。global 経路は G3 まで温存。
+- **起点トレース(HEAD 実読済)**: fire = llvertexbuffer.cpp:549 drawRange(:566 `vkCmdDrawIndexed(...,firstInstance=getCurrentDrawDataID())`)/ :593 drawRangeFast(:608)/ :637 drawArrays(:655)。VB は LLDrawInfo を持たず bound shader(sCurBoundShaderPtr)のみ。
+- **設計**: 引数 `U32 draw_data_slot = LLVKLoader::PERDRAW_SLOT_INHERIT`(新 sentinel 定数)。fire で `slot==INHERIT ? getCurrentDrawDataID() : slot`。**全既存 caller は無引数 → INHERIT → 現行 global(挙動不変)**。新 primitive のみ明示 slot を渡す。
+- **不変条件**: 挙動完全不変(全 caller INHERIT)。オラクル(checkDrawDataIDAtFire/checkPerDrawIDFreshnessAtFire)= 現行違反 2 件のまま(まだ塞がない)。
+- **gate**: 視覚同一 + validation 0 + オラクル counter が G1 前と同一(退行ゼロ)。
+- **申告欄**: fire hot path に 1 分岐追加(G3 で除去)。indirect(alpha:996/terrain:288 の `dc.firstInstance`)は G1 では触らない(既に per-command 値・G2 で slot 供給元を統一)。
+
+#### 指示書 G2(段階1.5)= 単一 bindless draw primitive の導入 + 全 skin/heap loop の routing
+- **対象**: skin/heap を読む全 draw-fire を単一 primitive 経由に統一し、per-draw ID commit(slot 導出 + skin base publish)と fire(明示 slot)を**不可分**にする。
+- **起点トレース(HEAD 実読済・全 fire 経路)**:
+  - commit する経路: `pushBatch`(lldrawpool.cpp:1794→`buildAndOverrideScenePerDrawSet`:573→:650 commit / :1805 drawRange)。
+  - **commit 迂回(違反)**: ①`pushUntexturedBatch`(:1815-1830・buildAndOverride 無し→:1828 drawRange)= Deferred Skinned Shadow。②`renderRiggedObjectIDBufferForAvatar`(pipeline.cpp:11672・:11771 uploadMatrixPalette は呼ぶが commit 無し→:11778 drawRange)= FS Object ID。
+  - slot 導出の実体: `buildAndOverride`:637-646(`params->ensureVkDrawDataSlot(slots)`→`mVkDrawDataSlot` / 不能なら `drawDataWriteScratch`)。indirect 正解形: `pushRiggedBatchesIndirect`(lldrawpool.cpp:1466-1518)= per-draw ensureSlot+publishBase+`rec.cmd.firstInstance=draw_id`。
+- **設計**: `LLRenderPass::drawInfoBindless(LLDrawInfo& info, LLGLSLShader* cur, <tex slot 材料>)`(名前 TBD)を新設 =(a)slot 導出(既存 ensureVkDrawDataSlot/scratch を関数化 [[feedback_delete_dead_and_factor_common]])(b)`mVkUsesSkinSet` なら publishDrawSkinBase(slot,...)(c)`info.mVertexBuffer->drawRange(..., slot)`(G1 の明示引数)。**descriptor set authoring(buildAndOverride の heap memo/build 部)は分離して残す**(per-draw ID commit のみ primitive へ移す)。
+- **★record-producer 不変条件(分散 end-state 適合・§8.7・AYA 2026-07-31 GO)**: primitive を「逐次 immediate fire ヘルパ」でなく「**per-draw record producer**」として設計する = **(a)(b) は pure・order 独立**(distinct slot への書込のみ = 互いに非干渉)、**(c) emit は分離可能な tail**(record + read-only 共有 buffer のみ読む)。→ 段階3(MDI)/段階5(分散)は (c) を immediate→indirect-append に差し替え・(a)(b) を off-main に出すだけで乗る(teardown なし)。record は MDI command 同形(`rec.cmd.firstInstance=draw_id` lldrawpool.cpp:1518 が参照実装)。**先回り実装は禁**(憲法5)= record 構造体を今作り込まない。守るのは「(a)(b) を (c) から分離可能に書く」規律のみ。
+  - routing: pushBatch / pushUntexturedBatch / object-ID pass / alpha・terrain indirect(slot 導出元を primitive のヘルパに統一)を全て primitive 経由に。**非 bindless draw(UI 等)は生 drawRange のまま**(slot 不要 = G3 で sentinel)。
+- **不変条件**: skin/heap を読む draw は例外なく primitive を通る = commit を迂回できる経路が構造的に消える。firstInstance と skin base publish は同一 slot・同一 primitive 内(採番分離不能)。
+- **gate**: 視覚同一(靴下 + 影 + object-ID picker)+ **`skin_draw_no_commit=0`(違反 2 経路が消えること)** + validation 0。**この G2 完了時点で歪み影が根治するはず**(global はまだ在るが全 skin draw が自分を publish するため）。
+- **申告欄・要 実装時精査**: buildAndOverride の authoring 部と commit 部の分離粒度(共有する slot/slots 計算をヘルパ化)。object-ID pass は gGL 直叩き経路 = primitive 適用時に描画状態(colormask/depth)の順序を壊さない。alpha indirect(appendAlphaRunCmd:971)は commit タイミング(append 前に primitive で publish 済か)を実装時に VkPerf `skin_base_wr` で観測。
+
+#### 指示書 G2.5(段階1.5)= per-draw ID commit の単一化(競合する scratch fallback を①優先で無競合化)
+> **設計欠陥の発見(session 5a7bbf1c・G2 実機 gate が露呈)**: per-draw ID の commit が **2 関数に分裂**し脆弱フラグで協調 → 1 draw に 2 commit 競合。G1 まで fire=global=最後(scratch)で無発火・G2 の明示 id で `drawdata_id_mismatch`(非 allowlist・fail-closed)として顕在化。指示書 C-3(line 270)が予見したが段階1 C は表現統一に留まり**実際には閉じなかった**積み残し。**inline patch でなく設計**([[feedback_design_defects_not_fixed_by_measurement]])。
+
+- **真のモデル(全実読確定・HEAD)= 2 つの commit 経路**:
+  - ① persistent: `buildAndOverride→establishPerDrawId`(G2)= id X(persistent 域 [0, 950272))・**skin publish する**・drawRange **前**。
+  - ② scratch fallback: `vkResolvePerCallSetForDraw`(llglslshader.cpp:3505)→`populateAndBindUniversalDescriptorSet(false)`(:3642-3663)= `drawDataWriteScratch`+`commitPerDrawID(scratch, publish_skin=false)`・scratch 域 [950272, 1048576)・**skin publish しない**・drawRange **内**(beginShaderDrawOrSkip)。
+  - 協調 = `sCurPerCallAuthored`(thread_local・draw またぎ持続): true→②preserve(scratch skip)/ false→②走る。buildAndOverride が memo/build 成功で true を立てる(lldrawpool.cpp:678/696 等)。pushUntextured/object-ID は buildAndOverride を通らず set/reset しない=前 draw の値を継承。
+- **欠陥の機序**: ①が X を commit しても `sCurPerCallAuthored==false` なら②が scratch を commit → global/stash が scratch に上書き。fire(明示 X)≠ stash(scratch) → mismatch。値 = actual 小(persistent)≠ expected 大(scratch)で実 log 確認済。**元バグ(歪み影)も同根**: shadow は前 draw の authored=true 継承で②preserve + ①無し = 完全未 commit(skin_draw_no_commit 発火)。
+- **設計(invariant-first・first-wins 単一 commit)**: **不変条件 =「1 draw の per-draw ID commit は高々 1 回。①(persistent・draw 前)が優先・②(scratch)は①が無い draw の fallback のみ」**。
+  - 実装形 = **`commitPerDrawID` を「本 draw で first-wins」に**(per-draw latch: 既 commit ならスキップ・draw 境界で reset)。latch は llvkloader 内(検出器 `llvkcontract.*` 非改修=憲法4 非該当)。reset は fire(drawRange の check 近傍)。
+  - ①が X commit(latch set・skin publish)→ ②の scratch commit は no-op → 単一 commit X → **fire(X)==stash(X)= mismatch 0**。
+  - ①が無い draw → ②が唯一 commit(従来 fallback 維持)。**②の dead 証明が不要**(precedence ゆえ live/dead どちらでも正しい)= 撤去の risk なし。
+- **起点トレース(実読済)**: 競合 = llglslshader.cpp:3505 vkResolvePerCallSetForDraw / :3542 populateAndBindUniversalDescriptorSet / :3642-3663 scratch commit。①= lldrawpool.cpp establishPerDrawId(G2)。commit 本体 = llvkloader.cpp:12062 commitPerDrawID(:12064 setCurrentDrawDataID / :12066 stashDrawDataID / :12067 markPerDrawIDCommitted / :12070 publishDrawSkinBase)。latch reset 候補 = 既存 `tPerDrawIDCommitted`(llvkcontract:729・fire で reset)と対の llvkloader-side latch を新設。
+- **不変条件・gate**: **`drawdata_id_mismatch=0`(全 pool・crowd 込み)** + `skin_draw_no_commit=0` 維持 + 視覚同一 + validation 0。G2+G2.5 は対で mismatch=0 まで **両者 commit 保留**(G2 単独は fail-closed)。
+- **申告・要実装時精査**: (1) latch の reset 点(fire=drawRange か beginShaderDrawOrSkip か)を「②が①の後・次 draw の①の前」に正しく置く。(2) ①が publish_skin=true、②が false の非対称 = first-wins で①が勝てば skin publish される(正)。②が唯一のとき skin 未 publish=UBO fallback(従来同・正)。(3) latch を skin freshness(tPerDrawIDCommitted)と共有するか別立てか(責務分離のため別立て推奨)。
+- **G3 との関係**: G2.5(commit 単一化)は G3(global 廃止)の**前提**。commit が競合したまま global を消すと fire の id 源が壊れる。G2.5→G3 の順。
+
+#### 指示書 G3(段階1.5)= 可変 global `tCurrentDrawDataID` の廃止 + ② scratch commit 競合の除去 + 予約 slot sentinel
+> **⚠️ G2.5(first-wins latch)は revert 済(session 引き継ぎ・deploy md5 `a9371c5ba1db67c9c2c66a8063a2baae`・未 commit)**。latch は「1 draw 1 commit・①優先・draw 境界 reset」を後付け state で強制する band-aid で、静的モデルは頑健に成立を予測するのに実機で `skin_draw_no_commit=3164`(退行)= **設計欠陥を state で patch した時の fragility の署名**([[feedback_design_defects_not_fixed_by_measurement]])。∴ latch を捨て、競合そのものを構造除去する G3 に一本化。現在地 = G2(`skin_draw_no_commit=0`・`drawdata_id_mismatch=567`)。
+
+**真のモデル(session 引き継ぎ・全 fire 経路 実読で確定 = §8 の具体化)**
+per-draw ID の commit が **2 経路で競合**する:
+- **① persistent**: `establishPerDrawId`→`commitPerDrawID`(lldrawpool.cpp:626)= persistent slot・skin publish・drawRange の**前**。
+- **② scratch**: `populateAndBindUniversalDescriptorSet(false)` 内(llglslshader.cpp:3642-3663 の `(heap||skin)&&!preserve_drawdata` block)→`commitPerDrawID(scratch,publish_skin=false)`= scratch slot・skin publish せず・drawRange の**中**(beginShaderDrawOrSkip の vkResolve:3512)。flush 経路(llrender.cpp:1787)からも同 block に到達。
+- **競合の機序**: ① が persistent id X を commit(setCurrentDrawDataID+stash+mark)しても、続く drawRange 内の vkResolve が `sCurPerCallAuthored==false` で ② を走らせ scratch id Y で **global/stash を上書き**。fire は G1 の**明示 slot X** を使うので描画は正しいが、`checkDrawDataIDAtFire(X)` vs `stash(Y)` で **`drawdata_id_mismatch`**。**global を消すだけでは不足**: ② が stash に Y を書けば mismatch は再燃 = **② の commit block ごと除去が構造解**。
+
+- **対象**: 可変 global を物理削除し、fire を「draw が運ぶ属性(明示 slot)」に一本化 + **② scratch commit block を除去**(global 廃止後 dead・stash 競合源)。
+- **起点トレース(HEAD post-revert 実読済)**: global = `tCurrentDrawDataID`(llvkloader.cpp thread_local)/ `setCurrentDrawDataID`/`getCurrentDrawDataID`/ `commitPerDrawID` の `setCurrentDrawDataID(id)`。消費(global read)= immediate fire ×3(llvertexbuffer drawRange/Fast/arrays の `INHERIT?getCurrentDrawDataID():slot`)+ **alpha append**(lldrawpoolalpha.cpp:996 `dc.firstInstance=getCurrentDrawDataID()`)+ **terrain append**(lldrawpoolterrain.cpp:288 同)。MDI rig は既に explicit(lldrawpool.cpp:1518 `rec.cmd.firstInstance=draw_id`)。
+- **設計(全 fire を明示 slot に → global 削除 → ② 除去)**:
+  1. **immediate**: drawRange/Fast/arrays の既定を `INHERIT`→**予約 slot 0**。establish 経由 caller は既に id を渡す(G1/G2)。非 establish(非 heap/skin)caller は 0(=INVALID・無害)。fire から `getCurrentDrawDataID()` 参照を除去。
+  2. **alpha indirect**: `appendAlphaRunCmd(run, draw, id)` に id 引数追加。id 源 = 直前の `buildAndOverrideScenePerDrawSet(draw,true)` の**戻り値**(lldrawpoolalpha.cpp:1127→1128 / :1563→1581 / :1602→ 各 append の直前で既に呼んでいる = 戻り値を捕える)。`dc.firstInstance = id`。
+  3. **terrain indirect**: terrain は establish/commit を持たない(lldrawpoolterrain.cpp は append のみ)。**確定(実読・closed)**: terrain shader 群(terrainV/F・pbrterrainV/F/UtilF)は `aya_dd`/`gl_InstanceIndex`/`aya_draw_id` を一切参照しない = per-draw DrawData 非依存。∴ `dc.firstInstance=0`(予約 INVALID)で**無害**・establish 追加不要。
+  4. **global 削除**: `tCurrentDrawDataID`/`getCurrentDrawDataID`/`setCurrentDrawDataID` を削除。`commitPerDrawID` は `setCurrentDrawDataID` 呼びを落とし **stash + mark + (publish_skin なら)publishDrawSkinBase のみ**(id は param で流れる)。
+  5. **② scratch commit block 除去**: llglslshader.cpp:3642-3663 の commit block を削除。`populateAndBindUniversalDescriptorSet(false)` は descriptor 解決(sampler/dynamic UBO)のみに戻る。→ ①②競合が構造消滅 = mismatch の根絶。
+  6. **予約 slot 0 = 常時 INVALID**: `ensureVkDrawDataSlot`/`drawDataWriteScratch` は 0 を返さない(1 起点)。`aya_skin_base[*][0]` は生成時 0xFF memset で INVALID・DrawData[0]=0 固定。→ bypass/非 establish draw は slot 0=INVALID を読み UBO fallback(skin)/ 0 tex(heap 無害)に落ちる = fail-closed。
+- **不変条件**: per-draw ID を fire へ運ぶ手段が「draw の属性(明示 slot)」のみ = 別 draw の値を継承する経路も、競合する第2 commit も構造的に存在しない。忘れ = 予約 INVALID = 正しい fallback。
+- **gate**: 視覚同一 + **crowd で影/選択枠/rig が崩れない(決定的)** + `skin_draw_no_commit=0` かつ **`drawdata_id_mismatch=0`** 全経路 + validation 0。= 最終 gate(AYA 視覚)。
+- **申告欄(縮小・省略・未決)**:
+  - **(a) closed(実読)**: terrain は per-draw DrawData 非依存 = 予約 0 で無害(手順3)。
+  - **⚠️ (b) 訂正(独立監査 audit_brief_g1_g2_g3_perdraw で REFUTED)**: 下記の「② ほぼ冗長・全 skin establish」の静的網羅は**不完全だった**。監査が **establish 未経由の生き skin residual を完全列挙**: production = **bump rigged(pushBumpBatch lldrawpoolbump:1031・bumpV HAS_SKIN→getObjectSkinnedTransform=set=3)** / **rigged emissive(drawEmissive lldrawpoolalpha:714・emissiveV:95)** / **rigged PBR emissive(renderPbrEmissives lldrawpoolalpha:844・pbrglowV:100=objectSkinV 経由・GLTF UBO でない)** / preview(model uploader llmodelpreview:5022 gSkinnedObjectPreviewProgram) + debug 3 系(renderDebugAlpha:585 / renderVisibility llspatialpartition:1940 / renderBatchSize:1659)。全て fire INHERIT→0→slot0 INVALID→UBO fallback=**視覚正・skin-only(heap 非該当)=tex 破壊なし**だが `skin_draw_no_commit` 発火 → **G3 gate 到達には各に establish① 追加が必要(Phase 2)**。**教訓 = 静的網羅は現に外した(設計者=実装指揮の利害相反 blind spot)→ 完全性の権威は dual oracle。** heap residual はゼロ(全 material consumer が establish)確定。↓ 以下の旧記述は「② の scratch commit 部の除去可否」としては成立(commit 競合は消える)が、「全 skin が establish 済」の部分が誤り。
+  - **(b・旧・部分誤り)= ② はレンダリング上ほぼ冗長**:
+    - ② を発火させる shader は **set=2(heap)= materialV/F・indexedTextureV(`aya_dd` 消費)/ set=3(skin)= objectSkinV(`aya_skin_base` 消費)の 4 つのみ**(全 shader tree grep 確定 = `set = 2` 宣言は materialF、`set = 3` は objectSkinV のみ)。
+    - これら real consumer は全て **pool 経由で establish①** を通る: pushBatch(:1809)/ pushUntexturedBatch(:1841)/ pushVelocityBatchesTextured(:2133)/ pushRiggedVelocityBatchesTextured(:2188)/ materials(:240)/ alpha(buildAndOverride)/ object-ID(pipeline:11777)/ avatar 本体(llviewerjointmesh:254/263)/ trees。
+    - **⚠️🔴 pushGLTFBatch の「非 skin」判定は REFUTED(Phase 2 独立監査 audit_brief_g3_phase2_residual_establish)**: **in-world GLTF-PBR material の rigged variant(gDeferredPBROpaqueProgram.bind(true) / gPBRGlowProgram.bind(true)・pbropaqueV:127/pbrglowV:100 が HAS_SKIN→getObjectSkinnedTransform=objectSkinV=set=3・AYA_SKIN_SSBO は global define llviewershadermgr:1245)は set=3 skin**。これが `pushGLTFBatch`(lldrawpool.cpp:2306)/`pushUntexturedGLTFBatch`(:2327)で establish 無し fire = **最大の skin residual**(main deferred 毎フレーム + shadow)。旧記述は **GLTFSceneManager(drag-drop asset の node UBO skinning=非set3) と in-world GLTF-PBR pool(object skinning=set3) を混同した誤り**。→ Phase 2 の fix 対象に GLTF batch family(:2306/:2327)を追加。**教訓再掲 = 静的網羅は 2 度外した(emissive/preview→GLTF PBR)= 完全性の権威は dual oracle。** 以下 preview/probe/sky/debug は非 heap/skin(要 gate 確認):
+    - preview(previewV/F = set0 のみ)/ probe/sky/debug/pipeline-post(screen/debug shader)。リスク 11 ファイルが material/skinned/indexed program を一切 bind しないことを grep 確認済(**ただし上記 GLTF 見落としを踏まえ、最終権威は AYA gate の skin_draw_no_commit=0**)。
+    - **唯一の残り = rigged velocity**(`pushRiggedVelocityBatches`:2042 が establish せず fire・`gVelocitySkinnedProgram` は `hasObjectSkinning=true`(llviewershadermgr.cpp:4121)で objectSkinV auto-attach)。ただし skinnedVelocityV.glsl は**独自 main + UBO skinning** で `aya_skin_base` を読まない(:4098-4102 コメント)= 描画は per-draw skin base 非依存。set=3 が反射され `mVkUsesSkinSet=true` になるか(→ ② 発火/oracle 対象)は **objectSkinV の未使用 set=3 が SPIR-V で dead-strip されるか = codegen の壁**(source 決定不能)。motion blur 既定 off。
+    - **∴ G3 の robust 手順(strip 挙動に依存しない)**: ② 除去と対で **pushRiggedVelocityBatches / pushVelocityBatches に establish① を 1 本追加**(pool メソッドゆえ他と同型・cheap)= 「全 heap/skin draw が establish を通る」を**構造的に真**にする → ② 除去は無条件に安全。velocity が実際に非 set3 なら establish は no-op(gate `heap||skin` で弾かれる)= 害なし。
+  - 解釈: alpha の id は buildAndOverride の戻り値を使う(別採番しない = §8.2 の「firstInstance と skin publish 同一 slot」不変条件を維持)。
+  - slot 0 予約で総 slot 1 減(1048575・非問題)。TLS(global)削除は直列前提と整合。
+  - **G3→G4 順**: mismatch/no_commit の gate 前に G4(全 fire 機構オラクル拡張)で alpha/terrain indirect の skin freshness を観測可能にしておく(現 immediate のみ)= G3 の gate を全経路で取れる。
+
+#### 指示書 G4(段階1.5)= オラクルを全 fire 機構へ拡張 + 成立の fail-closed 証明(憲法4 承認)
+- **対象**: freshness オラクル(現 immediate fire のみ = llvertexbuffer:576/616)を **indirect fire(alpha/terrain)にも拡張**し、全 skin draw の未 publish を機械検出。
+- **起点トレース(HEAD 実読済)**: 既存 = `checkPerDrawIDFreshnessAtFire`/`markPerDrawIDCommitted`/`C_SKIN_DRAW_NO_COMMIT`(llvkcontract.*)。immediate のみ配線。indirect = appendAlphaRunCmd(lldrawpoolalpha.cpp:996 append 時に firstInstance snapshot)/ flushAlphaRun(:1000)/ terrain:288 は未オラクル。
+- **設計(実装確定 session ec2ce7be)**: alpha `appendAlphaRunCmd` / terrain `appendTerrainRunCmd` の firstInstance 確定点(append 末尾)で既存 `LLVKContract::checkPerDrawIDFreshnessAtFire(true, sh->mVkUsesSkinSet, sh->mName)` を**呼ぶだけ**(immediate 参照実装 = llvertexbuffer drawArrays:665-671)。**★ 検出器 `llvkcontract.*` は無改修**(checkPerDrawIDFreshnessAtFire は llvkcontract.h:134 で既に public・cause C_SKIN_DRAW_NO_COMMIT も既存)= **憲法4 非該当**(design の「新 check 関数が要れば憲法4」分岐は要らない方に確定)。副次効果 = append 点で flag を consume し immediate オラクルの lingering 偽陰性も解消。
+  - **MDI-rig(:1518)= G4 対象外 deferred**: `pushRiggedBatchesIndirect` は `publishDrawSkinBase` を直呼びで `markPerDrawIDCommitted` を通らない → 既存 flag では偽陽性。かつ default-off(`AYASTORM_RIGGED_MDI`)。オラクル化は「producer が markPerDrawIDCommitted を呼ぶ」改修を伴う別 stage(default-config gate を非ブロック)。
+- **不変条件**: default-config の全 fire 機構(immediate ×4 VB method / alpha indirect / terrain indirect)で `skin_draw_no_commit` が観測可能。ゼロ = 設計成立の正のオラクル(§8 の不変条件が全経路で守られている証明)。MDI-rig は default-off ゆえ別途。
+- **gate**: 診断起動(`AYASTORM_VKC=1`)で全経路 `skin_draw_no_commit=0`(crowd 込み)+ validation 0。**この G4 が「観測可能な fail-closed 証明」= 段階1.5 の gate 本体**(視覚は AYA 最終のみ)。
+- **申告欄**: MDI-rig(killswitch off)は既に正解形だが、オラクル対象化して回帰網に入れる。terrain は非 skin = skin オラクルは無発火が正(heap のみ)= それも明示検証。
+
+#### 指示書 G★(段階1.5・確定設計 = universal choke)= per-dispatch establish(whack-a-mole)の廃棄と「fire 点で強制される単一不変条件」への一本化
+> **総括(AYA 承認 2026-08-01「理想形で」)= G3 Phase1/2 の「各 dispatch に establish を足す」は enumeration = 構造でなく、GLTF PBR rigged を 2 度外した(設計者の静的網羅の blind spot・[[feedback_make_observable_not_reason_to_safety]] の実証)。∴ enumeration を捨て、完全性を「fire 点で機械強制される不変条件」に符号化する。** 旧 §7 G2/G3/Phase2 の per-site 記述は本節に supersede(establish の抽出・予約 slot0・global 廃止・② scratch 除去 は土台として維持)。
+>
+> **設計トレース = session ec2ce7be(指揮官)全 fire 経路 実読 = scratchpad `g3_design_AvsB_trace.md` + 本節。HEAD `075e4e70a47` + working tree。**
+
+**★ 核心不変条件(1 文)**: **「bindless shader(`mVkUsesHeapSet || mVkUsesSkinSet`)が bind された状態で fire する draw は、必ず established な per-draw slot(自分の `mVkDrawDataSlot` or scratch)を firstInstance に持つ。持たずに fire したら fail-closed(production=予約 slot0=INVALID→UBO fallback / 診断=オラクル発火)。」** — これは routing 規律でなく **fire 点で判定可能な述語**(fire 点は `sCurBoundShaderPtr` を持つ=bindless か否かを知る)。完全性は「全 dispatch を覚えて establish する」でなく「**この述語が全 fire 機構で観測される**」ことで保証する。
+
+**なぜ (A) uploadMatrixPalette 基点でなく (B) primitive + fire-point 不変条件か**(trace 確定):
+- **(A) は構造にならない**: uploadMatrixPalette は per-(avatar,mesh) **dedup**(lldrawpool.cpp:1882/1923 の lastAvatar/lastMeshId/skipLastSkin)= establish の per-draw 粒度と不一致で融合不能。かつ heap draw(materialV/indexedTextureV=`aya_draw_id`)は uploadMatrixPalette を通らない=skin 限定。∴ (A) は 24 site の**検証プロパティ**(コード変更毎に再監査)= whack-a-mole のチェックリスト化。→ **(A) は「監査の cross-check ツール」に格下げ**(下記 Part 3)。
+- **(B) は establish を fire と不可分に融合**し、忘れ経路を fire 点の述語が捕まえる=構造。doc §8.7 record-producer((a)(b) pure・(c) emit 分離 tail)と一致=分散 end-state の prefix。
+
+**★ 3 部構成(construction + proof + audit)**:
+
+**Part 1 = 融合 primitive(construction・idiom drift の除去)**。現状 ~23 site が `id = establish/buildAndOverride(...)` … `fire(..., id)` を各自複製(間に site 固有 setup)。immediate は密集した同型 idiom を単一 primitive に畳む。indirect は fusable site が 1 個しか無いため専用 primitive を作らず explicit id 明示化で足りる(下記・P1a/P1b 実装確定 session ec2ce7be):
+- **immediate = `LLRenderPass::drawInfoBindless(LLDrawInfo& params, BindlessEstablish mode, bool batch_textures)`(実装済 P1a・lldrawpool.cpp)** = 融合 atomic 単位 `{ establish(mode) → setBuffer → drawRange(TRIANGLES,...,id) → vkcVerify }`。mode = `Authored`(buildAndOverride=heap authoring 込)/ `Bare`(establishPerDrawId=skin-only。skin-only では authoring 不要ゆえ Bare が正・:648 sampler guard を回避)。**DrawScope は所有せず site が保持**(tag が oracle currentDrawTag に出るため)。**site 固有 pre-setup(texture bind / applyModelMatrix / pushConstant / cull_face / SSS flag / tex_setup teardown)は呼び出し側に残す**(shader 依存で融合不能)。routing 13 site = pushBatch/pushUntexturedBatch/velocity×3/materials/bump/alpha immediate×3/pushVerts + **GLTF batch×2(leak 根治)**。
+- **indirect = 専用 primitive を作らない(P1b 設計確定・AYA 承認 session ec2ce7be)**。理由: establish↔append を融合できる site は `renderEmissives`(#a)の 1 箇所のみで、`renderAlpha`(#b)は間に als_ perf 計測が挟まり融合不可(edge が正)。1-caller の wrapper は drift を消さず indirection を足すだけ。∴ **`appendAlphaRunCmd(run, draw, id)` に explicit id を渡す形(P1a 実装済・可変 global 非経由)+ Part 2 の G4 オラクル(append 点)で indirect 完全性を担保**。専用 record primitive は不要。
+- **★ 最大効果 = GLTF batch leak の構造根治**: `pushGLTFBatch`(lldrawpool.cpp:2306)/`pushUntexturedGLTFBatch`(:2327)は現状 `drawRange(...)` を **id 無し**で呼ぶ(=INHERIT→slot0=最大 skin residual)。primitive 経由に置換で establish が構造的に入る。
+- **fuse できない edge**(fire 機構が違う=無理に 1 signature に畳まない): octree debug `draw()`(llspatialpartition:1942)/ object-ID(pipeline:11777 explicit shader・DrawScope 無し)/ null-param(tree:120/208・jointmesh:254/263・preview:5021)/ MDI-rig(:1518 既に正解形)/ terrain(:288 非 bindless=firstInstance 0 が正)。**これら edge は establish-then-fire のまま残すが、完全性は Part 2 の fire 点述語が担保**(primitive は「密集した同型 immediate 群の idiom drift を消す」道具であって、完全性の source ではない)。
+
+**Part 2 = fire 点 fail-closed 不変条件(proof・完全性の唯一の source)**。完全性は routing でなく **全 fire 機構で核心述語を観測可能にする**ことで保証。**全 fire 機構 = 7**(独立監査 audit_brief_g_star_full で確定・当初 6 は bucket MDI を数え落とし):
+1-4. **immediate ×4**(llvertexbuffer drawRange:577 / drawRangeFast:618 / drawArrays:668 / draw→drawRange 委譲)。5. **alpha indirect append**(appendAlphaRunCmd・G4 で配線)。6. **terrain indirect append**(appendTerrainRunCmd)。7. **static bucket MDI**(pushIndirectSpans lldrawpool.cpp:1227・`vkCmdDrawIndexedIndirect`)。
+- **production**: 予約 slot0=常時 INVALID(§8.5・G3 で確立)→ 未 establish の bindless draw は slot0 を読み UBO fallback(skin)/ 0 tex(heap)= silent corruption 不能。
+- **診断(`AYASTORM_VKC=1`)**: オラクル `skin_draw_no_commit` が全 fire 機構で発火可能(G4 で indirect append + bucket MDI に配線)。**`skin_draw_no_commit=0`(全 7 機構・crowd 込)が「全 bindless skin draw が established」の機械証明**。
+- **★ G4 は検出器無改修 = 憲法4 非該当**(`checkPerDrawIDFreshnessAtFire` は既に public・call-site 追加のみ)。
+- **bucket MDI の skin 不変条件(明記)**: bucket は skin を publish しない設計ゆえ **skin draw は bucket に入れてはならない**。現状これは**構造的に排除**済(`kBucketizedPasses` に `*_RIGGED` 皆無 + bucketize 条件 `info->mAvatar.isNull()` llvkbucket.cpp:378 + untextured MDI は非 heap)。この排除を fire 点で **fail-closed 観測**するため pushIndirectSpans にもオラクルを配線(現状無発火・将来 rigged を bucket 化したら発火=tripwire)。
+- **terrain は非配線に戻す(監査 D-2)**: terrain shader は**構造的に永久非 skin** = オラクルは無発火が確定=観測価値ゼロ、かつ flag consume の微小 masking。∴ terrain append の freshness 呼びは撤去。bucket MDI(将来 skin 化し得る)とは扱いを分ける。
+- ∴ 新規/忘れ dispatch が将来入っても、fire 点述語が silent 化を不能にする(= [[feedback_invariant_first]] + [[feedback_make_observable_not_reason_to_safety]] の理想)。
+
+**Part 3 = uploadMatrixPalette-set cross-check = 補助であって完全性の証明ではない(★ 監査で反例確定)**。当初 skin draw の ground-truth 列挙に uploadMatrixPalette caller を使う想定だったが、**独立監査が uploadMatrixPalette を通らない skin draw を発見**(rigged GLTF shadow = `gDeferredShadowGLTFAlphaBlendProgram.bind(rigged)`→`pushGLTFBatch` 直呼び・pipeline.cpp:9313-9324・set=3 skin・uploadMatrixPalette 無し)。∴ **uploadMatrixPalette-set は skin draw の全集合でない = Part 3 は完全性を証明できない補助**。これは (A)(uploadMatrixPalette 基点 enumeration)を却下し (B)(fire 点 authority)を採った判断の実例的裏付けでもある。**完全性の権威は Part 2(fire 点オラクル)のみ**。設計者は Part 3 を「証明」扱いしない(gate 前に漏れを先に 1 つ潰す静的 aid に留める)。
+
+**fire-shape taxonomy(実読確定・routing の母集団)**:
+| fire 形 | 機構 | 代表 site | routing |
+|---|---|---|---|
+| immediate + LLDrawInfo + drawRange(TRI) | `drawRange(...,id)` | pushBatch:1820 / pushUntextured:1845 / velocity×3 / materials / bump / alpha immediate×3 / spatial:1658 / **GLTF batch×2(leak)** | **drawInfoBindless** |
+| indirect append + LLDrawInfo | `appendAlphaRunCmd(run,draw,id)`→flush | alpha:1131/1566/1605 | **explicit id 明示化(P1a済・専用 primitive 無し)+ G4 オラクル** |
+| immediate + null-param | `buildAndOverride(nullptr)`→drawRange | tree:120/208 / jointmesh:254/263 / preview:5021 | edge(establish-then-fire 維持・Part2 担保) |
+| immediate + draw()/explicit shader | `draw(...,id)` / DrawScope 無し | octree:1942 / object-ID:11777 | edge(同上) |
+| MDI-rig | `rec.cmd.firstInstance=draw_id` | lldrawpool:1518 | 正解形(不変・default-off・publishDrawSkinBase 直呼びで既存 flag オラクル化不可=別 stage) |
+| terrain indirect | `dc.firstInstance=0`(構造的永久非 skin) | terrain appendTerrainRunCmd | 対象外(0 が正・オラクル非配線=D-2) |
+| **static bucket MDI** | `vkCmdDrawIndexedIndirect`(pushIndirectSpans) | lldrawpool:1227 | skin は構造排除(avatar.isNull)+ **fire 点 tripwire オラクル配線**(将来 skin bucket 化を fail-closed 化) |
+
+**完成の gate(AYA・最終のみ PASS 権)**: 視覚同一(crowd で影/選択枠/rig/靴下 崩れない=決定的・**特に rigged GLTF/PBR の影**〔pipeline:9324 が post-G★ で SSBO skin 新規活性〕を明示確認)+ **`skin_draw_no_commit=0`(全 7 fire 機構・crowd 込)** + `drawdata_id_mismatch=0`(全 pool・crowd)+ **`C_MV_STALE_VALUE=0`**(vkcVerify 新規 coverage 7 site=監査 D-3)+ validation 0。gate で漏れ=Part 2 不変条件の穴=構造を直す(単発 patch 禁)。
+
+> **歪み影について(AYA 2026-08-01)**: 本設計が根治する「歪み影」(rigged 衣装の影が別ポーズ/別アバターの palette で歪む・AYA 実機 bisect `AYASTORM_SKIN_BINDLESS=0` で消滅)は **bind 経路の設計欠陥の症状**であり、**バグ patch でなく「欠陥設計を新設計に置換」して根治**した(段階1 = skin set=3 独立化 / G★ = per-draw ID の可変 global 廃止・draw 属性化・fire 点 fail-closed)。∴ **"歪み影 Fix" という discrete な修正痕は存在しない**(設計そのものを入れ替えたので欠陥の住処が消えた)。再発経路は「可変 global 継承の不在 + 全 fire 機構の fail-closed 観測」で構造排除。視覚 gate は「新設計が正しく描くか」= 新設計の受け入れであって、バグ修正の着地確認ではない。
+
+**実装座組**: 本節が設計 doc(設計者維持)→ **Fresh 実装 Brief**(primitive 2 本 + ~23 site routing + GLTF leak + G4 オラクル拡張)→ 設計者が**完全読了突合** + Part 3 cross-check → AYA gate。**Part 1(primitive+routing)と Part 2(G4 オラクル)は独立 build・独立 gate**(依存: routing 後に G4 で全経路観測)。
+
+---
+
 ### 指示書 D(段階2)= material params の per-draw-indexed SSBO 化
 - **対象**: material params(per-program UBO・per-draw dynamic)を dynamic UBO から **per-draw ID で index する GPU buffer** へ移す設計。draw 毎の alloc+memcpy+offset を消す。
 - **起点トレース**: `llglslshader.cpp vkResolvePerProgramForDraw`(allocPerDrawUBOSlice+memcpy+dynamic offset)/ `mVkPerProgramUBOBinding`/ `LLVkUboReg`(per-program block 台帳)/ materialF の per-program block(SSRUtil/AlphaF 等)。
@@ -296,3 +433,68 @@ skin-only draw(SkinnedPBRAlpha post-fix = heap 非使用)は現状 3 site 全て
 
 ### (段階5+)draw 連鎖の分離・分散 = **まだ設計しない**
 - per-draw が完全に SSBO/MDI 化して初めて分解可能性を再評価。ここで指示書を新規に起こす。**先回り設計は禁**(過去の失敗パターン)。
+
+## 8. per-draw ID の真のモデル(session 5a7bbf1c・全 fire 経路 実読トレース = HEAD `075e4e70a47`)
+> 全 producer/consumer をソース file:line で機械潰し(grep-spot でなく実読)。段階1.5(指示書 G)の設計根拠。scratchpad 詳細 = `perdraw_id_trace.md`。
+
+### 8.1 一文モデル
+**per-draw ID(= LLDrawInfo の draw 固有 slot `params->mVkDrawDataSlot`)は既に draw の属性として存在する。欠陥は、それを fire(`vkCmdDraw(...,firstInstance)`)へ届ける手段が「可変 thread_local global `tCurrentDrawDataID` を fire 前に誰かが commit する」ことに依存し、その commit が draw の属性でなく「render loop がどの push* を選んだか」に配線されている点。** vkCmdDraw は firstInstance を明示引数で取る = slot を渡せる口は既にある。バグは global を渡していること。
+
+### 8.2 全鎖(producer → 保持 → consumer)
+```
+[producer] commitPerDrawID(id, publish_skin, avatar, hash)  llvkloader.cpp:12062
+  ├ setCurrentDrawDataID(id) :12064 → tCurrentDrawDataID(:391 TLS) = id
+  ├ stashDrawDataID + markPerDrawIDCommitted :12066-67 (オラクル記録)
+  └ if(publish_skin) publishDrawSkinBase(draw_id,avatar,hash) :12070
+        → skin_entry = objectSkinLookupEntry(avatar,hash) :12056
+        → writeDrawSkinBase(draw_id, skin_entry) :8410 → sSkinBaseMapped[frame*TOTAL+draw_id]=skin_entry
+  caller1 = buildAndOverrideScenePerDrawSet lldrawpool.cpp:650 (publish_skin=cur->mVkUsesSkinSet)
+  caller2 = llglslshader.cpp:3662 scratch (publish_skin=false)
+[保持] tCurrentDrawDataID = 唯一の可変現在値(consumer 全員が「現在値」を読む)
+[consumer] firstInstance:
+  (1) immediate  llvertexbuffer.cpp:566/608/655  vkCmdDraw*(...,getCurrentDrawDataID())
+  (2) alpha/terrain indirect  lldrawpoolalpha.cpp:996 / lldrawpoolterrain.cpp:288
+        dc.firstInstance = getCurrentDrawDataID()  ← append 時に per-command struct へ snapshot
+  (3) MDI-rig indirect (killswitch off)  lldrawpool.cpp:1518  rec.cmd.firstInstance = draw_id  ← 正解形(global 非経由)
+[shader] gl_InstanceIndex = firstInstance
+  ├ skin: objectSkinV.glsl:86/145  aya_skin_base[gl_InstanceIndex] (set=3 b0)
+  │    → INVALID なら dynamic UBO matrixPalette に fallback(:87)
+  └ heap: indexedTextureV:45 / materialV:144  aya_draw_id = gl_InstanceIndex(DrawData 索引)
+```
+
+### 8.3 なぜ silent に壊れるか(sentinel をすり抜ける機序)
+shader は既に fail-closed fallback を持つ: `aya_skin_base[gl_InstanceIndex]==AYA_SKIN_INVALID(0xFFFFFFFF)` なら正しい UBO へ落ちる(uploadMatrixPalette が draw 直前に現 draw の palette を UBO へ upload 済)。**しかし** 忘れた draw の gl_InstanceIndex = stale global slot = *別 draw が publish 済の有効値* → INVALID 判定をすり抜け → 別 avatar の SSBO palette を読む。sentinel は「INVALID か否か」しか見ず「stale-valid」を捕まえられない = 歪み影/rig 混線。
+
+### 8.4 commit を迂回する経路(違反・実読確定 = オラクル列挙と一致)
+- ①`pushUntexturedBatch`(lldrawpool.cpp:1815-1830): `buildAndOverride` を呼ばず直接 drawRange = Deferred Skinned Shadow。対 `pushBatch`(:1794 は呼ぶ)。
+- ②`renderRiggedObjectIDBufferForAvatar`(pipeline.cpp:11672): uploadMatrixPalette(:11771 palette DATA)は呼ぶが commitPerDrawID 無し(:11778 drawRange)= FS Object ID(grep が見逃した 2 例目をオラクルが発見)。
+
+### 8.5 ring buffer 寿命(fail-closed 保険の設計根拠)
+`sSkinBaseMapped` は生成時 1 度だけ memset(0xFF=INVALID)(:3057)。**毎 frame clear なし**。frame-index 別 ring は FRAMES_IN_FLIGHT frame 前の値を保持。
+- **設計決定(G3)**: 「毎 frame ring 全 clear」は 4MB memset/frame = CPU per-draw コスト削減(②)に逆行 = 不採用。代わり **予約 slot 0 = 常時 INVALID** で bypass を fail-closed 化。real draw は G2 primitive が draw ごとに publish するため自 slot は常に current(未 publish の real draw は「描かれない draw」= 誰も読まない)= 全 clear 不要。
+
+### 8.6 G 完了後の end-state 不変条件(§2 の per-draw ID 部分の具体形)
+- per-draw ID を fire へ運ぶ手段 = draw の属性(明示 slot 引数)のみ。可変 global 不在。
+- skin/heap を読む draw は例外なく単一 primitive を通り、firstInstance と skin base publish が同一 slot・不可分。
+- 迂回・忘れ = 予約 INVALID slot = 正しい UBO fallback(skin)/ 0 tex(heap)= silent corruption 構造排除。
+- 全 fire 機構で `skin_draw_no_commit=0` が観測可能(G4 オラクル)= 成立の正のオラクル。
+
+### 8.7 分散 end-state 適合 = 描画連鎖の「鎖リンク」列挙(AYA 2026-07-31・目標台帳)
+> AYA 視点: 並列化は諦めていない。描画連鎖(cull→geo→resolve→record→submit)の鎖を切り分けられれば分散可能。**分散機構の設計は本 bind/per-draw 設計が先頭に立った後**(その時この設計にも変更が入るのは当然)。ここでは「鎖のリンク = draw 記録を order/state 依存にしている共有可変状態」を列挙し、各段がどれを切るかを台帳化する(**今は認識のみ・先回り実装は禁 憲法5**)。self-describing draw(各 draw が自分の全パラメータをデータで持つ)= 記録が pure = 分散の必要条件。
+>
+> **切断とは**: draw 間で共有される可変カーソル/状態を消し、per-draw ID で index する GPU buffer への独立書込 + command struct に埋めた自己記述 record に置換すること。
+
+| # | 鎖リンク(共有可変状態) | source | 担当段 | 状態 |
+|---|---|---|---|---|
+| L1 | **可変 global per-draw ID カーソル** `tCurrentDrawDataID`(前 draw が set→次 draw が read) | llvkloader.cpp:391 | **段階1.5 G3** | 本設計で切断 |
+| L2 | **per-draw descriptor bind state**(sCurPerCallVkDescriptorSet / per-call memo / sCurBoundShaderPtr) | llglslshader.cpp per-call 群 | 段階1-4(bind redesign)+ bindless | 進行中 |
+| L3 | **per-draw dynamic UBO(material params)** = draw 毎 alloc+memcpy+offset | llglslshader vkResolvePerProgramForDraw | 段階2(指示書 D) | 未 |
+| L4 | slot slab acquire(cold・cache 済) `ensureVkDrawDataSlot` | llspatialpartition.cpp:4250 | 分散設計時 | 認識のみ(低頻度共有点) |
+| L5 | skin entry lookup mutex `objectSkinLookupEntry`(read-mostly cache) | llvkloader.cpp:8396 | 分散設計時 | 認識のみ(競合軽微) |
+| L6 | **alpha 描画順序**(back-to-front = GPU semantic order) | POOL_ALPHA | 段階5+ | 記録は並列可・submit は順序(sort で解ける=分解の壁でない) |
+| L7 | **単一 submitter / command buffer** | PE submit thread | — | **load-bearing = 保持**(分散形 = per-thread CB + ordered submit) |
+| L8 | mega-buffer VB/IB slices | llvertexbuffer megabuffer | — | **read-only 共有 = 並列安全**(切断不要) |
+
+- **本設計(段階1.5)= L1 を切る**。self-describing draw への第一歩。
+- **prefix 判定基準(全 G 共通)**: 各 G 判断は「分散モデルの prefix か / precludeするか」で検証する。preclude する設計(例: 逐次 immediate に不可分に結合した primitive)は採らない(→ G2 の record-producer 不変条件)。
+- **未証明の正直な限界**: 段階5(分散)は未設計 = 本設計が「十分」とは証明できない。主張できるのは ①既知リンク L1 を除く ②既合意 MDI/SSBO 到達形と整合 ③record-producer で prefix に留める、の 3 点(= 作り直しリスクを構造的に最小化)。

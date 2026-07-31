@@ -55,7 +55,6 @@ public:
     /*virtual*/ void prerender() override;
 
     void pushBumpBatches(U32 type);
-    void renderGroup(LLSpatialGroup* group, U32 type, bool texture) override;
 
     S32 numBumpPasses();
 

@@ -253,13 +253,13 @@ public:
     U8* getMappedIndices() const            { return mMappedIndexData; }
     U32 getOffset(AttributeType type) const { return mOffsets[type]; }
 
-    void draw(U32 mode, U32 count, U32 indices_offset) const;
-    void drawArrays(U32 mode, U32 offset, U32 count) const;
-    void drawRange(U32 mode, U32 start, U32 end, U32 count, U32 indices_offset) const;
+    void draw(U32 mode, U32 count, U32 indices_offset, U32 draw_data_slot = LLVKLoader::PERDRAW_SLOT_INHERIT) const;
+    void drawArrays(U32 mode, U32 offset, U32 count, U32 draw_data_slot = LLVKLoader::PERDRAW_SLOT_INHERIT) const;
+    void drawRange(U32 mode, U32 start, U32 end, U32 count, U32 indices_offset, U32 draw_data_slot = LLVKLoader::PERDRAW_SLOT_INHERIT) const;
 
     // draw without syncing matrices.  If you're positive there have been no matrix
     // since the last call to syncMatrices, this is much faster than drawRange
-    void drawRangeFast(U32 mode, U32 start, U32 end, U32 count, U32 indices_offset) const;
+    void drawRangeFast(U32 mode, U32 start, U32 end, U32 count, U32 indices_offset, U32 draw_data_slot = LLVKLoader::PERDRAW_SLOT_INHERIT) const;
 
     //for debugging, validate data in given range is valid
     bool validateRange(U32 start, U32 end, U32 count, U32 offset) const;

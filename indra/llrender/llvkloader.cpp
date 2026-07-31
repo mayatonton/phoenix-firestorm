@@ -388,7 +388,6 @@ namespace
         return sAllocDomains[id];
     }
     std::atomic<U32>         sDrawDataScratchCursor{0};
-    thread_local U32         tCurrentDrawDataID                      = 0;
 
     constexpr U32            INDIRECT_RING_COMMANDS_PER_FRAME        = 524288;
     VkBuffer                 sIndirectRingBuffer                     = VK_NULL_HANDLE;
@@ -12040,16 +12039,6 @@ U32 drawDataWriteScratch(const U32* slots4)
     return slot;
 }
 
-void setCurrentDrawDataID(U32 id)
-{
-    tCurrentDrawDataID = (id == BINDLESS_INVALID_SLOT) ? 0 : id;
-}
-
-U32 getCurrentDrawDataID()
-{
-    return tCurrentDrawDataID;
-}
-
 U32 publishDrawSkinBase(U32 draw_id, const void* avatar, U64 skin_hash)
 {
     const U32 skin_entry = (avatar != nullptr)
@@ -12061,7 +12050,6 @@ U32 publishDrawSkinBase(U32 draw_id, const void* avatar, U64 skin_hash)
 
 void commitPerDrawID(U32 id, bool publish_skin, const void* avatar, U64 skin_hash)
 {
-    setCurrentDrawDataID(id);
     const U32 draw_id = (id == BINDLESS_INVALID_SLOT) ? 0 : id;
     LLVKContract::stashDrawDataID(draw_id);
     LLVKContract::markPerDrawIDCommitted();

@@ -795,6 +795,7 @@ void GLTFSceneManager::render(Asset& asset, U8 variant)
                 Mesh& mesh = asset.mMeshes[node.mMesh];
                 Primitive& primitive = mesh.mPrimitives[pdata.mPrimitiveIndex];
 
+                U32 id = LLVKLoader::PERDRAW_SLOT_INHERIT;
                 if (rigged)
                 {
                     LL_PROFILE_ZONE_NAMED_CATEGORY_GLTF("gltfdc - bind skin");
@@ -805,7 +806,7 @@ void GLTFSceneManager::render(Asset& asset, U8 variant)
                         asset.mVkMaterialsUBO    != VK_NULL_HANDLE)
                     {
                         writeGLTFMRPerDrawRingUBO(LLGLSLShader::sCurBoundShaderPtr, mat_idx, 0, false);
-                        LLRenderPass::buildAndOverrideScenePerDrawSet(
+                        id = LLRenderPass::buildAndOverrideScenePerDrawSet(
                             nullptr, false,
                             reinterpret_cast<U64>(asset.mVkMaterialsUBO), asset.mVkMaterialsUBOSize,
                             reinterpret_cast<U64>(skin.mVkUBO),           skin.mVkUBOSize);
@@ -818,7 +819,7 @@ void GLTFSceneManager::render(Asset& asset, U8 variant)
                         asset.mVkNodesUBO     != VK_NULL_HANDLE)
                     {
                         writeGLTFMRPerDrawRingUBO(LLGLSLShader::sCurBoundShaderPtr, mat_idx, pdata.mNodeIndex, true);
-                        LLRenderPass::buildAndOverrideScenePerDrawSet(
+                        id = LLRenderPass::buildAndOverrideScenePerDrawSet(
                             nullptr, false,
                             reinterpret_cast<U64>(asset.mVkMaterialsUBO), asset.mVkMaterialsUBOSize,
                             reinterpret_cast<U64>(asset.mVkNodesUBO),     asset.mVkNodesUBOSize);
@@ -828,7 +829,7 @@ void GLTFSceneManager::render(Asset& asset, U8 variant)
                 {
                     LL_PROFILE_ZONE_NAMED_CATEGORY_GLTF("gltfdc - push vb");
 
-                    primitive.mVertexBuffer->drawRangeFast(primitive.mGLMode, primitive.mVertexOffset, primitive.mVertexOffset + primitive.getVertexCount() - 1, primitive.getIndexCount(), primitive.mIndexOffset);
+                    primitive.mVertexBuffer->drawRangeFast(primitive.mGLMode, primitive.mVertexOffset, primitive.mVertexOffset + primitive.getVertexCount() - 1, primitive.getIndexCount(), primitive.mIndexOffset, id);
                 }
             }
         }

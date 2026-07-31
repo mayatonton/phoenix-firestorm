@@ -526,51 +526,64 @@ LLRenderPass::~LLRenderPass()
 
 }
 
-void LLRenderPass::renderGroup(LLSpatialGroup* group, U32 type, bool texture)
+U32 LLRenderPass::establishPerDrawId(LLDrawInfo* params, LLGLSLShader* cur, bool batch_textures)
 {
-    LL_PROFILE_ZONE_SCOPED_CATEGORY_DRAWPOOL;
-    group->mVkLastFireFrame = gFrameCount;
-    LLSpatialGroup::drawmap_elem_t& draw_info = group->mDrawMap[type];
-
-    for (LLSpatialGroup::drawmap_elem_t::iterator k = draw_info.begin(); k != draw_info.end(); ++k)
+    if (!LLVKLoader::isVulkanInitialized() || cur == nullptr)
     {
-        LLDrawInfo *pparams = *k;
-        if (pparams)
-        {
-            pushBatch(*pparams, texture);
-        }
+        return LLVKLoader::PERDRAW_SLOT_INHERIT;
     }
-}
-
-void LLRenderPass::renderRiggedGroup(LLSpatialGroup* group, U32 type, bool texture)
-{
-    LL_PROFILE_ZONE_SCOPED_CATEGORY_DRAWPOOL;
-    const bool e3on = LLVKLoader::perfLogEnabled();
-    const U64  e3t0 = e3on ? (U64)LLTimer::getTotalTime() : 0;
-    group->mVkLastFireFrame = gFrameCount;
-    LLSpatialGroup::drawmap_elem_t& draw_info = group->mDrawMap[type];
-    const LLVOAvatar* lastAvatar = nullptr;
-    U64 lastMeshId = 0;
-    bool skipLastSkin = false;
-
-    for (LLSpatialGroup::drawmap_elem_t::iterator k = draw_info.begin(); k != draw_info.end(); ++k)
+    if (!(cur->mVkUsesHeapSet || cur->mVkUsesSkinSet))
     {
-        LLDrawInfo* pparams = *k;
-        if (pparams)
+        return LLVKLoader::PERDRAW_SLOT_INHERIT;
+    }
+
+    U32 slots[LLVKLoader::DRAWDATA_SLOT_UINTS] = {};
+    if (cur->mVkUsesHeapSet)
+    {
+        if (params != nullptr && batch_textures && params->mTextureList.size() > 1)
         {
-            if (uploadMatrixPalette(pparams->mAvatar, pparams->mSkinInfo, lastAvatar, lastMeshId, skipLastSkin))
+            const U32 n = llmin((U32)params->mTextureList.size(), 4u);
+            for (U32 i = 0; i < n; ++i)
             {
-                pushBatch(*pparams, texture);
+                LLTexture* t = params->mTextureList[i].get();
+                slots[i] = LLImageGL::vkHeapSlotOrDefault(t ? t->getGLTexture() : nullptr);
             }
         }
+        else if (params != nullptr && params->mTexture.notNull())
+        {
+            slots[0] = LLImageGL::vkHeapSlotOrDefault(params->mTexture->getGLTexture());
+            if (params->mNormalMap.notNull())
+            {
+                slots[1] = LLImageGL::vkHeapSlotOrDefault(params->mNormalMap->getGLTexture());
+            }
+            if (params->mSpecularMap.notNull())
+            {
+                slots[2] = LLImageGL::vkHeapSlotOrDefault(params->mSpecularMap->getGLTexture());
+            }
+        }
+        else
+        {
+            slots[0] = gGL.getTexUnit(0)->currVkHeapSlotOrDefault();
+        }
     }
-    if (e3on)
+    U32 id = 0;
+    if (params != nullptr)
     {
-        LLVKLoader::gVkPerf.e3_rig_us[e3RigBucket()] += (U64)LLTimer::getTotalTime() - e3t0;
+        const bool ok = params->ensureVkDrawDataSlot(slots);
+        id = ok ? params->mVkDrawDataSlot : LLVKLoader::drawDataWriteScratch(slots);
     }
+    else
+    {
+        id = LLVKLoader::drawDataWriteScratch(slots);
+    }
+    const void* skin_avatar = (params != nullptr && params->mAvatar.notNull() && params->mSkinInfo != nullptr)
+                                  ? (const void*)params->mAvatar.get() : nullptr;
+    const U64   skin_hash   = (skin_avatar != nullptr) ? params->mSkinInfo->mHash : 0;
+    LLVKLoader::commitPerDrawID(id, cur->mVkUsesSkinSet, skin_avatar, skin_hash);
+    return id;
 }
 
-void LLRenderPass::buildAndOverrideScenePerDrawSet(LLDrawInfo* params, bool batch_textures,
+U32 LLRenderPass::buildAndOverrideScenePerDrawSet(LLDrawInfo* params, bool batch_textures,
                                                     U64 gltf_materials_ubo,
                                                     U32 gltf_materials_size,
                                                     U64 gltf_geometry_ubo,
@@ -580,17 +593,17 @@ void LLRenderPass::buildAndOverrideScenePerDrawSet(LLDrawInfo* params, bool batc
     LLVKLoader::gVkPerfSetCause = LLVKLoader::VKPERF_SETCZ_NONE;
     if (!LLVKLoader::isVulkanInitialized())
     {
-        return;
+        return LLVKLoader::PERDRAW_SLOT_INHERIT;
     }
     LLGLSLShader* cur = LLGLSLShader::sCurBoundShaderPtr;
     if (cur == nullptr)
     {
-        return;
+        return LLVKLoader::PERDRAW_SLOT_INHERIT;
     }
     VkSampler sampler = LLVKLoader::getStandardLinearSampler();
     if (sampler == VK_NULL_HANDLE || cur->mVkDescriptorSetLayout == VK_NULL_HANDLE)
     {
-        return;
+        return LLVKLoader::PERDRAW_SLOT_INHERIT;
     }
 
     LLGLSLShader::sCurPerCallAuthored = false;
@@ -603,52 +616,7 @@ void LLRenderPass::buildAndOverrideScenePerDrawSet(LLDrawInfo* params, bool batc
                               ? llmin((U32)params->mTextureList.size(), indexed_layout_count)
                               : (is_indexed ? 1u : 0u);
 
-    if (cur->mVkUsesHeapSet || cur->mVkUsesSkinSet)
-    {
-        U32 slots[LLVKLoader::DRAWDATA_SLOT_UINTS] = {};
-        if (cur->mVkUsesHeapSet)
-        {
-            if (params != nullptr && batch_textures && params->mTextureList.size() > 1)
-            {
-                const U32 n = llmin((U32)params->mTextureList.size(), 4u);
-                for (U32 i = 0; i < n; ++i)
-                {
-                    LLTexture* t = params->mTextureList[i].get();
-                    slots[i] = LLImageGL::vkHeapSlotOrDefault(t ? t->getGLTexture() : nullptr);
-                }
-            }
-            else if (params != nullptr && params->mTexture.notNull())
-            {
-                slots[0] = LLImageGL::vkHeapSlotOrDefault(params->mTexture->getGLTexture());
-                if (params->mNormalMap.notNull())
-                {
-                    slots[1] = LLImageGL::vkHeapSlotOrDefault(params->mNormalMap->getGLTexture());
-                }
-                if (params->mSpecularMap.notNull())
-                {
-                    slots[2] = LLImageGL::vkHeapSlotOrDefault(params->mSpecularMap->getGLTexture());
-                }
-            }
-            else
-            {
-                slots[0] = gGL.getTexUnit(0)->currVkHeapSlotOrDefault();
-            }
-        }
-        U32 id = 0;
-        if (params != nullptr)
-        {
-            const bool ok = params->ensureVkDrawDataSlot(slots);
-            id = ok ? params->mVkDrawDataSlot : LLVKLoader::drawDataWriteScratch(slots);
-        }
-        else
-        {
-            id = LLVKLoader::drawDataWriteScratch(slots);
-        }
-        const void* skin_avatar = (params != nullptr && params->mAvatar.notNull() && params->mSkinInfo != nullptr)
-                                      ? (const void*)params->mAvatar.get() : nullptr;
-        const U64   skin_hash   = (skin_avatar != nullptr) ? params->mSkinInfo->mHash : 0;
-        LLVKLoader::commitPerDrawID(id, cur->mVkUsesSkinSet, skin_avatar, skin_hash);
-    }
+    const U32 id = establishPerDrawId(params, cur, batch_textures);
 
     const bool memo_eligible = (params != nullptr && is_indexed && set_shape >= 1
                                 && gltf_materials_ubo == 0 && gltf_geometry_ubo == 0);
@@ -678,7 +646,7 @@ void LLRenderPass::buildAndOverrideScenePerDrawSet(LLDrawInfo* params, bool batc
                 LLGLSLShader::sCurPerCallAuthored        = true;
                 ++LLVKLoader::gVkPerf.set_memo;
                 LLVKLoader::gVkPerfSetPath = LLVKLoader::VKPERF_SETPATH_BINDLESS;
-                return;
+                return id;
             }
             LLVKLoader::gVkPerfSetCause = LLVKLoader::VKPERF_SETCZ_VAL;
         }
@@ -696,7 +664,7 @@ void LLRenderPass::buildAndOverrideScenePerDrawSet(LLDrawInfo* params, bool batc
             LLGLSLShader::sCurPerCallAuthored        = true;
             ++LLVKLoader::gVkPerf.set_memo;
             LLVKLoader::gVkPerfSetPath = LLVKLoader::VKPERF_SETPATH_MEMO;
-            return;
+            return id;
         }
         LLVKLoader::gVkPerfSetCause = LLVKLoader::VKPERF_SETCZ_MVAL;
     }
@@ -1131,7 +1099,7 @@ void LLRenderPass::buildAndOverrideScenePerDrawSet(LLDrawInfo* params, bool batc
     U32 dyn_offsets[LLGLSLShader::MAX_VK_DYNAMIC_BINDINGS] = {};
     if (!LLGLSLShader::vkCollectDynamicUBOWrites(cur, bindings, per_program_dynamic_offset, dyn_offsets))
     {
-        return;
+        return id;
     }
 
     if (sb_on) { U64 t2 = (U64)LLTimer::getTotalTime(); LLVKLoader::gVkPerf.setb_us[1] += t2 - sb_t; sb_t = t2; }
@@ -1184,6 +1152,18 @@ void LLRenderPass::buildAndOverrideScenePerDrawSet(LLDrawInfo* params, bool batc
     }
 
     if (sb_on) { LLVKLoader::gVkPerf.setb_us[3] += (U64)LLTimer::getTotalTime() - sb_t; }
+
+    return id;
+}
+
+void LLRenderPass::drawInfoBindless(LLDrawInfo& params, BindlessEstablish mode, bool batch_textures)
+{
+    const U32 id = (mode == BindlessEstablish::Authored)
+                       ? buildAndOverrideScenePerDrawSet(&params, batch_textures)
+                       : establishPerDrawId(&params, LLGLSLShader::sCurBoundShaderPtr, batch_textures);
+    params.mVertexBuffer->setBuffer();
+    params.mVertexBuffer->drawRange(LLRender::TRIANGLES, params.mStart, params.mEnd, params.mCount, params.mOffset, id);
+    vkcVerifyDrawModelview(params);
 }
 
 void LLRenderPass::pushBatches(U32 type, bool texture, bool batch_textures)
@@ -1262,6 +1242,8 @@ static bool pushIndirectSpans(LLVKBucket::Bucket& bucket, VkBuffer ring_buf, VkD
                                  sizeof(VkDrawIndexedIndirectCommand));
         ++LLVKLoader::gVkPerf.mdi_call;
     }
+    LLVKContract::checkPerDrawIDFreshnessAtFire(true, shader != nullptr && shader->mVkUsesSkinSet,
+                                                shader != nullptr ? shader->mName.c_str() : nullptr);
     return true;
 }
 
@@ -1791,7 +1773,6 @@ void LLRenderPass::pushBatch(LLDrawInfo& params, bool texture, bool batch_textur
             }
         }
 
-        LLRenderPass::buildAndOverrideScenePerDrawSet(&params, batch_textures);
     }
     // <FS:Beq> FIRE-34518 bugsplat access violation - place guard on unchecked mVertexBuffer access
     if (params.mVertexBuffer == nullptr)
@@ -1801,9 +1782,7 @@ void LLRenderPass::pushBatch(LLDrawInfo& params, bool texture, bool batch_textur
     }
     // </FS:Beq>
     LLVKContract::DrawScope vkc_scope(&params, "scene");
-    params.mVertexBuffer->setBuffer();
-    params.mVertexBuffer->drawRange(LLRender::TRIANGLES, params.mStart, params.mEnd, params.mCount, params.mOffset);
-    vkcVerifyDrawModelview(params);
+    LLRenderPass::drawInfoBindless(params, BindlessEstablish::Authored, batch_textures);
     if (tex_setup)
     {
         gGL.matrixMode(LLRender::MM_TEXTURE0);
@@ -1824,9 +1803,7 @@ void LLRenderPass::pushUntexturedBatch(LLDrawInfo& params)
     applyModelMatrix(params);
 
     LLVKContract::DrawScope vkc_scope(&params, "scene");
-    params.mVertexBuffer->setBuffer();
-    params.mVertexBuffer->drawRange(LLRender::TRIANGLES, params.mStart, params.mEnd, params.mCount, params.mOffset);
-    vkcVerifyDrawModelview(params);
+    LLRenderPass::drawInfoBindless(params, BindlessEstablish::Bare);
 }
 
 bool LLRenderPass::uploadMatrixPalette(LLDrawInfo& params)
@@ -2059,8 +2036,7 @@ void LLRenderPass::pushRiggedVelocityBatches(U32 type)
         applyModelMatrix(params);
 
         LLVKContract::DrawScope vkc_scope(&params, "scene");
-        params.mVertexBuffer->setBuffer();
-        params.mVertexBuffer->drawRange(LLRender::TRIANGLES, params.mStart, params.mEnd, params.mCount, params.mOffset);
+        LLRenderPass::drawInfoBindless(params, BindlessEstablish::Bare);
     }
 }
 
@@ -2113,11 +2089,8 @@ void LLRenderPass::pushVelocityBatchesTextured(U32 type)
             }
         }
 
-        LLRenderPass::buildAndOverrideScenePerDrawSet(&params, false);
-
         LLVKContract::DrawScope vkc_scope(&params, "scene");
-        params.mVertexBuffer->setBuffer();
-        params.mVertexBuffer->drawRange(LLRender::TRIANGLES, params.mStart, params.mEnd, params.mCount, params.mOffset);
+        LLRenderPass::drawInfoBindless(params, BindlessEstablish::Authored, false);
 
         const LLMatrix4* current_mat = params.mModelMatrix ? params.mModelMatrix : &identity;
         if (params.mLastModelMatrix)
@@ -2168,11 +2141,8 @@ void LLRenderPass::pushRiggedVelocityBatchesTextured(U32 type)
             gGL.getTexUnit(0)->bindFast(params.mTexture);
         }
 
-        LLRenderPass::buildAndOverrideScenePerDrawSet(&params, false);
-
         LLVKContract::DrawScope vkc_scope(&params, "scene");
-        params.mVertexBuffer->setBuffer();
-        params.mVertexBuffer->drawRange(LLRender::TRIANGLES, params.mStart, params.mEnd, params.mCount, params.mOffset);
+        LLRenderPass::drawInfoBindless(params, BindlessEstablish::Authored, false);
     }
 }
 
@@ -2282,10 +2252,7 @@ void LLRenderPass::pushGLTFBatch(LLDrawInfo& params)
     // </FS:AYA>
 
     LLVKContract::DrawScope vkc_scope(&params, "scene");
-    params.mVertexBuffer->setBuffer();
-
-    params.mVertexBuffer->drawRange(LLRender::TRIANGLES, params.mStart, params.mEnd, params.mCount, params.mOffset);
-    vkcVerifyDrawModelview(params);
+    LLRenderPass::drawInfoBindless(params, BindlessEstablish::Bare);
 
     teardown_texture_matrix(params);
 }
@@ -2304,9 +2271,7 @@ void LLRenderPass::pushUntexturedGLTFBatch(LLDrawInfo& params)
     applyModelMatrix(params);
 
     LLVKContract::DrawScope vkc_scope(&params, "scene");
-    params.mVertexBuffer->setBuffer();
-    params.mVertexBuffer->drawRange(LLRender::TRIANGLES, params.mStart, params.mEnd, params.mCount, params.mOffset);
-    vkcVerifyDrawModelview(params);
+    LLRenderPass::drawInfoBindless(params, BindlessEstablish::Bare);
 }
 
 void LLRenderPass::pushRiggedGLTFBatches(U32 type, bool textured)

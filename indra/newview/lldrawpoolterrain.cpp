@@ -285,7 +285,7 @@ void appendTerrainRunCmd(TerrainRun& run, LLFace* facep)
     dc.instanceCount = 1;
     dc.firstIndex    = is.offset / vb->getIndicesStride() + facep->getIndicesStart();
     dc.vertexOffset  = (S32)vs.first;
-    dc.firstInstance = LLVKLoader::getCurrentDrawDataID();
+    dc.firstInstance = 0u;
     run.mCmds.push_back(dc);
 }
 

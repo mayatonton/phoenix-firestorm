@@ -378,23 +378,6 @@ void LLDrawPoolBump::endFullbrightShiny()
     shiny = false;
 }
 
-void LLDrawPoolBump::renderGroup(LLSpatialGroup* group, U32 type, bool texture = true)
-{
-    group->mVkLastFireFrame = gFrameCount;
-    LLSpatialGroup::drawmap_elem_t& draw_info = group->mDrawMap[type];
-
-    for (LLSpatialGroup::drawmap_elem_t::iterator k = draw_info.begin(); k != draw_info.end(); ++k)
-    {
-        LLDrawInfo& params = **k;
-
-        applyModelMatrix(params);
-
-        params.mVertexBuffer->setBuffer();
-        params.mVertexBuffer->drawRange(LLRender::TRIANGLES, params.mStart, params.mEnd, params.mCount, params.mOffset);
-    }
-}
-
-
 bool LLDrawPoolBump::bindBumpMap(LLDrawInfo& params, S32 channel)
 {
     U8 bump_code = params.mBump;
@@ -1027,8 +1010,7 @@ void LLRenderPass::pushBumpBatch(LLDrawInfo& params, bool texture, bool batch_te
         }
     }
 
-    params.mVertexBuffer->setBuffer();
-    params.mVertexBuffer->drawRange(LLRender::TRIANGLES, params.mStart, params.mEnd, params.mCount, params.mOffset);
+    drawInfoBindless(params, BindlessEstablish::Bare);
 
     if (tex_setup)
     {

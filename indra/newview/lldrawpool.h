@@ -397,11 +397,17 @@ public:
     static void pushUntexturedGLTFBatch(LLDrawInfo& params);
     static void pushUntexturedRiggedGLTFBatch(LLDrawInfo& params, const LLVOAvatar*& lastAvatar, U64& lastMeshId, bool& skipLastSkin);
 
-    static void buildAndOverrideScenePerDrawSet(LLDrawInfo* params, bool batch_textures,
+    static U32  establishPerDrawId(LLDrawInfo* params, LLGLSLShader* cur, bool batch_textures = false);
+
+    static U32  buildAndOverrideScenePerDrawSet(LLDrawInfo* params, bool batch_textures,
                                                  U64      gltf_materials_ubo  = 0,
                                                  U32      gltf_materials_size = 0,
                                                  U64      gltf_geometry_ubo   = 0,
                                                  U32      gltf_geometry_size  = 0);
+
+    enum class BindlessEstablish { Authored, Bare };
+
+    static void drawInfoBindless(LLDrawInfo& params, BindlessEstablish mode, bool batch_textures = false);
 
     static thread_local F32 sShadowBatchCullRadius;
 
@@ -419,8 +425,6 @@ public:
     static bool uploadMatrixPalette(LLVOAvatar* avatar, const LLMeshSkinInfo* skinInfo);
     static bool uploadMatrixPalette(LLVOAvatar* avatar, const LLMeshSkinInfo* skinInfo, const LLVOAvatar*& lastAvatar, U64& lastMeshId, bool& skipLastSkin, bool allow_dedup = true);
     static bool uploadMatrixPalette(LLVOAvatar* avatar, const LLMeshSkinInfo* skinInfo, const LLVOAvatar*& lastAvatar, U64& lastMeshId, const LLGLSLShader*& lastAvatarShader, bool& skipLastSkin);
-    virtual void renderGroup(LLSpatialGroup* group, U32 type, bool texture = true);
-    virtual void renderRiggedGroup(LLSpatialGroup* group, U32 type, bool texture = true);
 
     // <AYAstorm r30 P2> Velocity-buffer batch push (BD lineage). Iterate the
     // render map for the given pool type, upload per-object last/current

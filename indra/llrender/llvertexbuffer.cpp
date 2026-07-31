@@ -546,7 +546,7 @@ void LLVertexBuffer::clone(LLVertexBuffer& target) const
     }
 }
 
-void LLVertexBuffer::drawRange(U32 mode, U32 start, U32 end, U32 count, U32 indices_offset) const
+void LLVertexBuffer::drawRange(U32 mode, U32 start, U32 end, U32 count, U32 indices_offset, U32 draw_data_slot) const
 {
     llassert(validateRange(start, end, count, indices_offset));
     gGL.syncMatrices();
@@ -558,12 +558,13 @@ void LLVertexBuffer::drawRange(U32 mode, U32 start, U32 end, U32 count, U32 indi
         VkCommandBuffer cmd = VK_NULL_HANDLE;
         if (LLVKLoader::beginShaderDrawOrSkip(LLGLSLShader::sCurBoundShaderPtr, mode, cmd))
         {
+            const U32 fi = (draw_data_slot == LLVKLoader::PERDRAW_SLOT_INHERIT) ? 0u : draw_data_slot;
             if (LLGLSLShader::sCurBoundShaderPtr->mVkUsesHeapSet
                 || LLGLSLShader::sCurBoundShaderPtr->mVkUsesSkinSet)
             {
-                LLVKContract::checkDrawDataIDAtFire(LLVKLoader::getCurrentDrawDataID());
+                LLVKContract::checkDrawDataIDAtFire(fi);
             }
-            vkCmdDrawIndexed(cmd, count, 1, mVkIndexSlice.offset / mIndicesStride + indices_offset, (S32)mVkVertexSlice.first, LLVKLoader::getCurrentDrawDataID());
+            vkCmdDrawIndexed(cmd, count, 1, mVkIndexSlice.offset / mIndicesStride + indices_offset, (S32)mVkVertexSlice.first, fi);
             ++sVkDrawCallCount;
             vk_fired = true;
             LLVKContract::drawFired();
@@ -590,7 +591,7 @@ void LLVertexBuffer::drawRange(U32 mode, U32 start, U32 end, U32 count, U32 indi
     }
 }
 
-void LLVertexBuffer::drawRangeFast(U32 mode, U32 start, U32 end, U32 count, U32 indices_offset) const
+void LLVertexBuffer::drawRangeFast(U32 mode, U32 start, U32 end, U32 count, U32 indices_offset, U32 draw_data_slot) const
 {
     if (LLVKLoader::shouldUseVulkanRender())
     {
@@ -600,12 +601,13 @@ void LLVertexBuffer::drawRangeFast(U32 mode, U32 start, U32 end, U32 count, U32 
             VkCommandBuffer cmd = VK_NULL_HANDLE;
             if (LLVKLoader::beginShaderDrawOrSkip(LLGLSLShader::sCurBoundShaderPtr, mode, cmd))
             {
+                const U32 fi = (draw_data_slot == LLVKLoader::PERDRAW_SLOT_INHERIT) ? 0u : draw_data_slot;
                 if (LLGLSLShader::sCurBoundShaderPtr->mVkUsesHeapSet
                     || LLGLSLShader::sCurBoundShaderPtr->mVkUsesSkinSet)
                 {
-                    LLVKContract::checkDrawDataIDAtFire(LLVKLoader::getCurrentDrawDataID());
+                    LLVKContract::checkDrawDataIDAtFire(fi);
                 }
-                vkCmdDrawIndexed(cmd, count, 1, mVkIndexSlice.offset / mIndicesStride + indices_offset, (S32)mVkVertexSlice.first, LLVKLoader::getCurrentDrawDataID());
+                vkCmdDrawIndexed(cmd, count, 1, mVkIndexSlice.offset / mIndicesStride + indices_offset, (S32)mVkVertexSlice.first, fi);
                 ++sVkDrawCallCount;
                 vk_fired = true;
                 LLVKContract::drawFired();
@@ -628,13 +630,13 @@ void LLVertexBuffer::drawRangeFast(U32 mode, U32 start, U32 end, U32 count, U32 
 }
 
 
-void LLVertexBuffer::draw(U32 mode, U32 count, U32 indices_offset) const
+void LLVertexBuffer::draw(U32 mode, U32 count, U32 indices_offset, U32 draw_data_slot) const
 {
-    drawRange(mode, 0, mNumVerts-1, count, indices_offset);
+    drawRange(mode, 0, mNumVerts-1, count, indices_offset, draw_data_slot);
 }
 
 
-void LLVertexBuffer::drawArrays(U32 mode, U32 first, U32 count) const
+void LLVertexBuffer::drawArrays(U32 mode, U32 first, U32 count, U32 draw_data_slot) const
 {
     llassert(first + count <= mNumVerts);
 
@@ -647,12 +649,13 @@ void LLVertexBuffer::drawArrays(U32 mode, U32 first, U32 count) const
         VkCommandBuffer cmd = VK_NULL_HANDLE;
         if (LLVKLoader::beginShaderDrawOrSkip(LLGLSLShader::sCurBoundShaderPtr, mode, cmd))
         {
+            const U32 fi = (draw_data_slot == LLVKLoader::PERDRAW_SLOT_INHERIT) ? 0u : draw_data_slot;
             if (LLGLSLShader::sCurBoundShaderPtr->mVkUsesHeapSet
                 || LLGLSLShader::sCurBoundShaderPtr->mVkUsesSkinSet)
             {
-                LLVKContract::checkDrawDataIDAtFire(LLVKLoader::getCurrentDrawDataID());
+                LLVKContract::checkDrawDataIDAtFire(fi);
             }
-            vkCmdDraw(cmd, count, 1, mVkVertexSlice.first + first, LLVKLoader::getCurrentDrawDataID());
+            vkCmdDraw(cmd, count, 1, mVkVertexSlice.first + first, fi);
             ++sVkDrawCallCount;
             vk_fired = true;
             LLVKContract::drawFired();

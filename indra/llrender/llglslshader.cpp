@@ -3509,7 +3509,7 @@ VkDescriptorSet LLGLSLShader::vkResolvePerCallSetForDraw()
     if (!authored)
     {
         sCurPerCallVkDescriptorSet = VK_NULL_HANDLE;
-        populateAndBindUniversalDescriptorSet(false);
+        populateAndBindUniversalDescriptorSet();
         return sCurPerCallVkDescriptorSet;
     }
     VkDescriptorSet set = sCurPerCallVkDescriptorSet;
@@ -3533,13 +3533,13 @@ VkDescriptorSet LLGLSLShader::vkResolvePerCallSetForDraw()
                                          ? sCurBoundShaderPtr->mName
                                          : std::string("(no-shader)"));
         }
-        populateAndBindUniversalDescriptorSet(authored);
+        populateAndBindUniversalDescriptorSet();
         set = sCurPerCallVkDescriptorSet;
     }
     return set;
 }
 
-void LLGLSLShader::populateAndBindUniversalDescriptorSet(bool preserve_drawdata)
+void LLGLSLShader::populateAndBindUniversalDescriptorSet()
 {
     if (!LLVKLoader::isVulkanInitialized())
     {
@@ -3638,30 +3638,6 @@ void LLGLSLShader::populateAndBindUniversalDescriptorSet(bool preserve_drawdata)
     bindings.layout_binding_mask = cur->mVkSet1LayoutBindingMask;
 
     U32 per_program_dynamic_offset = 0;
-
-    if ((cur->mVkUsesHeapSet || cur->mVkUsesSkinSet) && !preserve_drawdata)
-    {
-        U32 slots[LLVKLoader::DRAWDATA_SLOT_UINTS] = {};
-        if (cur->mVkUsesHeapSet)
-        {
-            const U32 n = llmin((U32)cur->mFeatures.mIndexedTextureChannels, 4u);
-            if (n > 0)
-            {
-                for (U32 i = 0; i < n; ++i)
-                {
-                    slots[i] = gGL.getTexUnit((S32)i)->currVkHeapSlotOrDefault();
-                }
-            }
-            else
-            {
-                slots[0] = gGL.getTexUnit(0)->currVkHeapSlotOrDefault();
-            }
-        }
-        {
-            const U32 scratch_id = LLVKLoader::drawDataWriteScratch(slots);
-            LLVKLoader::commitPerDrawID(scratch_id, false, nullptr, 0);
-        }
-    }
 
     VkImageView fallback_view = LLVKLoader::getDefaultFallbackVkImageView();
 

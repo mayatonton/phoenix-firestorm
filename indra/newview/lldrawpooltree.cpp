@@ -117,8 +117,8 @@ void LLDrawPoolTree::renderDeferred(S32 pass)
 
             LLVKContract::DrawScope vkc_scope(nullptr, "tree");
             buff->setBuffer();
-            LLRenderPass::buildAndOverrideScenePerDrawSet(nullptr, false);
-            buff->drawRange(LLRender::TRIANGLES, 0, buff->getNumVerts() - 1, buff->getNumIndices(), 0);
+            const U32 id = LLRenderPass::buildAndOverrideScenePerDrawSet(nullptr, false);
+            buff->drawRange(LLRender::TRIANGLES, 0, buff->getNumVerts() - 1, buff->getNumIndices(), 0, id);
         }
     }
 }
@@ -205,8 +205,8 @@ void LLDrawPoolTree::renderMotionBlur(S32 pass)
         }
 
         buff->setBuffer();
-        LLRenderPass::buildAndOverrideScenePerDrawSet(nullptr, false);
-        buff->drawRange(LLRender::TRIANGLES, 0, buff->getNumVerts() - 1, buff->getNumIndices(), 0);
+        const U32 id = LLRenderPass::buildAndOverrideScenePerDrawSet(nullptr, false);
+        buff->drawRange(LLRender::TRIANGLES, 0, buff->getNumVerts() - 1, buff->getNumIndices(), 0, id);
     }
 }
 // </AYAstorm r30 P2>

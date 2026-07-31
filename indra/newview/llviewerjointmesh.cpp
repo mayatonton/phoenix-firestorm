@@ -251,8 +251,8 @@ U32 LLViewerJointMesh::drawShape( F32 pixelArea, bool first_pass, bool is_dummy)
         }
 
         buff->setBuffer();
-        LLRenderPass::buildAndOverrideScenePerDrawSet(nullptr, false);
-        buff->drawRange(LLRender::TRIANGLES, start, end, count, offset);
+        const U32 id = LLRenderPass::buildAndOverrideScenePerDrawSet(nullptr, false);
+        buff->drawRange(LLRender::TRIANGLES, start, end, count, offset, id);
     }
     else
     {
@@ -260,8 +260,8 @@ U32 LLViewerJointMesh::drawShape( F32 pixelArea, bool first_pass, bool is_dummy)
         LLMatrix4 jointToWorld = getWorldMatrix();
         gGL.multMatrix((GLfloat*)jointToWorld.mMatrix);
         buff->setBuffer();
-        LLRenderPass::buildAndOverrideScenePerDrawSet(nullptr, false);
-        buff->drawRange(LLRender::TRIANGLES, start, end, count, offset);
+        const U32 id = LLRenderPass::buildAndOverrideScenePerDrawSet(nullptr, false);
+        buff->drawRange(LLRender::TRIANGLES, start, end, count, offset, id);
         gGL.popMatrix();
     }
     gPipeline.addTrianglesDrawn(count);

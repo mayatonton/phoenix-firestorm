@@ -1357,6 +1357,7 @@ namespace LLVKLoader
     bool isGeometryShaderEnabledVk();
 
     constexpr U32 BINDLESS_INVALID_SLOT = 0xFFFFFFFFu;
+    constexpr U32 PERDRAW_SLOT_INHERIT = 0xFFFFFFFEu;
 
     bool isBindlessActiveVk();
     bool skinBindlessEnabled();
@@ -1381,10 +1382,6 @@ namespace LLVKLoader
     void setThreadAllocDomain(U32 id);
 
     U32  drawDataWriteScratch(const U32* slots4);
-
-    void setCurrentDrawDataID(U32 id);
-
-    U32  getCurrentDrawDataID();
 
     void commitPerDrawID(U32 id, bool publish_skin, const void* avatar, U64 skin_hash);
 

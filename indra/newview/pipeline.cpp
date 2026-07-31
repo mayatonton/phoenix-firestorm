@@ -11630,7 +11630,7 @@ namespace
     LLUUID sFSOtherRiggedPickerAvatarID;
 
     // All PASS_*_RIGGED types in the LL render map. The visible deferred opaque
-    // pass dispatches rigged geometry through these via renderRiggedGroup /
+    // pass dispatches rigged geometry through these via
     // pushRiggedBatches (see lldrawpool.cpp:410, 466). Iterating the same set
     // gives pixel-perfect agreement with what the user actually sees.
     const U32 kFSRiggedPasses[] = {
@@ -11774,10 +11774,11 @@ bool LLPipeline::renderRiggedObjectIDBufferForAvatar(LLVOAvatar* target_avatar,
                 continue;
             }
 
+            const U32 draw_id = LLRenderPass::establishPerDrawId(info, &gFSObjectIDShader);
             info->mVertexBuffer->setBuffer();
             info->mVertexBuffer->drawRange(LLRender::TRIANGLES,
                                            info->mStart, info->mEnd,
-                                           info->mCount, info->mOffset);
+                                           info->mCount, info->mOffset, draw_id);
             draw_calls = next_draw_calls;
             triangles = next_triangles;
         }
@@ -15143,36 +15144,6 @@ void LLPipeline::generateSunShadow(LLCamera& camera)
     if (!skip_avatar_update)
     {
         gAgentAvatarp->updateAttachmentVisibility(gAgentCamera.getCameraMode());
-    }
-}
-
-void LLPipeline::renderGroups(LLRenderPass* pass, U32 type, bool texture)
-{
-    for (LLCullResult::sg_iterator i = getFrameCull()->beginVisibleGroups(); i != getFrameCull()->endVisibleGroups(); ++i)
-    {
-        LLSpatialGroup* group = *i;
-        if (!group->isDead() &&
-            (!sUseOcclusion || !group->isOcclusionState(LLSpatialGroup::OCCLUDED)) &&
-            gPipeline.hasRenderType(group->getSpatialPartition()->mDrawableType) &&
-            group->mDrawMap.find(type) != group->mDrawMap.end())
-        {
-            pass->renderGroup(group,type,texture);
-        }
-    }
-}
-
-void LLPipeline::renderRiggedGroups(LLRenderPass* pass, U32 type, bool texture)
-{
-    for (LLCullResult::sg_iterator i = getFrameCull()->beginVisibleGroups(); i != getFrameCull()->endVisibleGroups(); ++i)
-    {
-        LLSpatialGroup* group = *i;
-        if (!group->isDead() &&
-            (!sUseOcclusion || !group->isOcclusionState(LLSpatialGroup::OCCLUDED)) &&
-            gPipeline.hasRenderType(group->getSpatialPartition()->mDrawableType) &&
-            group->mDrawMap.find(type) != group->mDrawMap.end())
-        {
-            pass->renderRiggedGroup(group, type, texture);
-        }
     }
 }
 

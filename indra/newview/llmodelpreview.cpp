@@ -5018,8 +5018,9 @@ bool LLModelPreview::render()
                             // Zero this variable for an obligatory buffer initialization
                             // See https://github.com/secondlife/viewer/issues/912
                             LLVertexBuffer* buffer = mVertexBuffer[mPreviewLOD][model][i];
+                            const U32 id = LLRenderPass::establishPerDrawId(nullptr, LLGLSLShader::sCurBoundShaderPtr);
                             buffer->setBuffer();
-                            buffer->draw(LLRender::TRIANGLES, buffer->getNumIndices(), 0);
+                            buffer->draw(LLRender::TRIANGLES, buffer->getNumIndices(), 0, id);
 
                             if (show_edges)
                             {
@@ -5031,7 +5032,7 @@ bool LLModelPreview::render()
                                 gGL.setLineWidth(edge_width());
                                 // </FS:Beq>
                                 LLGLState::setPolygonMode(GL_LINE);
-                                buffer->draw(LLRender::TRIANGLES, buffer->getNumIndices(), 0);
+                                buffer->draw(LLRender::TRIANGLES, buffer->getNumIndices(), 0, id);
                                 LLGLState::setPolygonMode(GL_FILL);
                                 gGL.setLineWidth(1.f); // <FS> Line width OGL core profile fix by Rye Mutt
                             }

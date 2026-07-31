@@ -379,7 +379,7 @@ public:
     bool            mVkAccessorBindingListBuiltLanes[LLVKLoader::MAX_RECORD_LANES] = {};
     bool            mVkSigListLogged = false;
 
-    static void populateAndBindUniversalDescriptorSet(bool preserve_drawdata = false);
+    static void populateAndBindUniversalDescriptorSet();
 
 public:
     static bool vkCaptureRegimeActive();

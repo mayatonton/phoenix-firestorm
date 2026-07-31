@@ -237,9 +237,7 @@ void LLDrawPoolMaterials::renderDeferred(S32 pass)
         }
 
         LLVKContract::DrawScope vkc_scope(&params, "materials");
-        LLRenderPass::buildAndOverrideScenePerDrawSet(&params, false);
-        params.mVertexBuffer->setBuffer();
-        params.mVertexBuffer->drawRange(LLRender::TRIANGLES, params.mStart, params.mEnd, params.mCount, params.mOffset);
+        LLRenderPass::drawInfoBindless(params, LLRenderPass::BindlessEstablish::Authored, false);
 
         if (tex_setup)
         {

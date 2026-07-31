@@ -1655,9 +1655,7 @@ S32 LLSpatialPartition::cull(LLCamera &camera, bool do_occlusion)
 void pushVerts(LLDrawInfo* params)
 {
     LLRenderPass::applyModelMatrix(*params);
-    params->mVertexBuffer->setBuffer();
-    params->mVertexBuffer->drawRange(LLRender::TRIANGLES,
-                                params->mStart, params->mEnd, params->mCount, params->mOffset);
+    LLRenderPass::drawInfoBindless(*params, LLRenderPass::BindlessEstablish::Bare);
 }
 
 void pushVerts(LLSpatialGroup* group)
@@ -1936,8 +1934,9 @@ void renderOctree(LLSpatialGroup* group)
                             continue;
                         }
 
+                        const U32 id = LLRenderPass::establishPerDrawId(nullptr, LLGLSLShader::sCurBoundShaderPtr);
                         face->getVertexBuffer()->setBuffer();
-                        face->getVertexBuffer()->draw(LLRender::TRIANGLES, face->getIndicesCount(), face->getIndicesStart());
+                        face->getVertexBuffer()->draw(LLRender::TRIANGLES, face->getIndicesCount(), face->getIndicesStart(), id);
                     }
                 }
 

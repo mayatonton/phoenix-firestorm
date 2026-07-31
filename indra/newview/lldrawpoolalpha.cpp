@@ -581,8 +581,7 @@ void LLDrawPoolAlpha::renderAlphaHighlight()
                     // </FS:Beq>
                     gGL.diffuseColor4f(1, 0, 0, 1);
                     LLRenderPass::applyModelMatrix(params);
-                    params.mVertexBuffer->setBuffer();
-                    params.mVertexBuffer->drawRange(LLRender::TRIANGLES, params.mStart, params.mEnd, params.mCount, params.mOffset);
+                    LLRenderPass::drawInfoBindless(params, LLRenderPass::BindlessEstablish::Bare);
                 }
             }
         }
@@ -605,15 +604,6 @@ inline bool IsMaterial(LLDrawInfo& params)
 inline bool IsEmissive(LLDrawInfo& params)
 {
     return params.mVertexBuffer->hasDataType(LLVertexBuffer::TYPE_EMISSIVE);
-}
-
-inline void Draw(LLDrawInfo* draw, U32 mask)
-{
-    LLVKContract::DrawScope vkc_scope(draw, "alpha");
-    draw->mVertexBuffer->setBuffer();
-    LLRenderPass::applyModelMatrix(*draw);
-    draw->mVertexBuffer->drawRange(LLRender::TRIANGLES, draw->mStart, draw->mEnd, draw->mCount, draw->mOffset);
-    LLRenderPass::vkcVerifyDrawModelview(*draw);
 }
 
 bool LLDrawPoolAlpha::TexSetup(LLDrawInfo* draw, bool use_material)
@@ -709,10 +699,8 @@ void LLDrawPoolAlpha::drawEmissive(LLDrawInfo* draw)
     const bool ep = LLVKLoader::perfLogEnabled();
     U64 t0 = ep ? (U64)LLTimer::getTotalTime() : 0;
     LLRenderPass::applyModelMatrix(*draw);
-    draw->mVertexBuffer->setBuffer();
     U64 t1 = ep ? (U64)LLTimer::getTotalTime() : 0;
-    draw->mVertexBuffer->drawRange(LLRender::TRIANGLES, draw->mStart, draw->mEnd, draw->mCount, draw->mOffset);
-    LLRenderPass::vkcVerifyDrawModelview(*draw);
+    LLRenderPass::drawInfoBindless(*draw, LLRenderPass::BindlessEstablish::Bare);
     if (ep)
     {
         U64 t2 = (U64)LLTimer::getTotalTime();
@@ -839,10 +827,8 @@ void LLDrawPoolAlpha::renderRiggedPbrEmissives(std::vector<LLDrawInfo*>& emissiv
         draw->mGLTFMaterial->bind(draw->mTexture);
         U64 t3 = ep ? (U64)LLTimer::getTotalTime() : 0;
         LLVKContract::DrawScope vkc_scope(draw, "alphaPbrEmi");
-        draw->mVertexBuffer->setBuffer();
         U64 t4 = ep ? (U64)LLTimer::getTotalTime() : 0;
-        draw->mVertexBuffer->drawRange(LLRender::TRIANGLES, draw->mStart, draw->mEnd, draw->mCount, draw->mOffset);
-        LLRenderPass::vkcVerifyDrawModelview(*draw);
+        LLRenderPass::drawInfoBindless(*draw, LLRenderPass::BindlessEstablish::Bare);
         if (ep)
         {
             U64 t5 = (U64)LLTimer::getTotalTime();
@@ -968,7 +954,7 @@ void writeAlphaPerProgramUBO(bool reset_minimum_alpha)
     }
 }
 
-void appendAlphaRunCmd(AlphaRun& run, LLDrawInfo& params)
+void appendAlphaRunCmd(AlphaRun& run, LLDrawInfo& params, U32 id)
 {
     LLVertexBuffer* vb = params.mVertexBuffer.get();
     const LLVKLoader::MegaSliceV& vs = vb->getVkVertexSlice();
@@ -993,8 +979,12 @@ void appendAlphaRunCmd(AlphaRun& run, LLDrawInfo& params)
     dc.instanceCount = 1;
     dc.firstIndex    = is.offset / vb->getIndicesStride() + params.mOffset;
     dc.vertexOffset  = (S32)vs.first;
-    dc.firstInstance = LLVKLoader::getCurrentDrawDataID();
+    dc.firstInstance = id;
     run.mCmds.push_back(dc);
+
+    LLGLSLShader* sh = LLGLSLShader::sCurBoundShaderPtr;
+    LLVKContract::checkPerDrawIDFreshnessAtFire(true, sh != nullptr && sh->mVkUsesSkinSet,
+                                                sh != nullptr ? sh->mName.c_str() : nullptr);
 }
 
 void flushAlphaRun(AlphaRun& run)
@@ -1124,8 +1114,8 @@ void LLDrawPoolAlpha::renderEmissives(std::vector<LLDrawInfo*>& emissives)
                 run.mShader = emissive_shader;
                 run.mModelMatrix = draw->mModelMatrix;
             }
-            LLRenderPass::buildAndOverrideScenePerDrawSet(draw, true);
-            appendAlphaRunCmd(run, *draw);
+            const U32 id = LLRenderPass::buildAndOverrideScenePerDrawSet(draw, true);
+            appendAlphaRunCmd(run, *draw, id);
             ++LLVKLoader::gVkPerf.alp_col;
             if (run.mCmds.size() >= ALPHA_RUN_MAX_CMDS)
             {
@@ -1560,7 +1550,7 @@ void LLDrawPoolAlpha::renderAlpha(U32 mask, bool depth_only, bool rigged, bool u
                             writeAlphaPerProgramUBO(reset_minimum_alpha);
                         }
                         { U64 t2 = alp_now(); alp_us[5] += t2 - alp_t; alp_t = t2; }
-                        LLRenderPass::buildAndOverrideScenePerDrawSet(&params, true);
+                        const U32 id = LLRenderPass::buildAndOverrideScenePerDrawSet(&params, true);
                         { U64 t2 = alp_now(); alp_us[6] += t2 - alp_t;
                           const U32 sp = LLVKLoader::gVkPerfSetPath;
                           ++LLVKLoader::gVkPerf.als_n[sp];
@@ -1578,7 +1568,7 @@ void LLDrawPoolAlpha::renderAlpha(U32 mask, bool depth_only, bool rigged, bool u
                               }
                           }
                           alp_t = t2; }
-                        appendAlphaRunCmd(run, params);
+                        appendAlphaRunCmd(run, params, id);
                         ++LLVKLoader::gVkPerf.alp_col;
                         if (run.mCmds.size() >= ALPHA_RUN_MAX_CMDS)
                         {
@@ -1599,7 +1589,7 @@ void LLDrawPoolAlpha::renderAlpha(U32 mask, bool depth_only, bool rigged, bool u
                         { U64 t2 = alp_now(); alp_us[5] += t2 - alp_t; alp_t = t2; }
 
                         LLVKContract::DrawScope vkc_scope(&params, "alpha");
-                        LLRenderPass::buildAndOverrideScenePerDrawSet(&params, true);
+                        const U32 id = LLRenderPass::buildAndOverrideScenePerDrawSet(&params, true);
 
                         { U64 t2 = alp_now(); alp_us[6] += t2 - alp_t;
                           const U32 sp = LLVKLoader::gVkPerfSetPath;
@@ -1619,7 +1609,7 @@ void LLDrawPoolAlpha::renderAlpha(U32 mask, bool depth_only, bool rigged, bool u
                           }
                           alp_t = t2; }
 
-                        params.mVertexBuffer->drawRange(LLRender::TRIANGLES, params.mStart, params.mEnd, params.mCount, params.mOffset);
+                        params.mVertexBuffer->drawRange(LLRender::TRIANGLES, params.mStart, params.mEnd, params.mCount, params.mOffset, id);
                         LLRenderPass::vkcVerifyDrawModelview(params);
                         ++LLVKLoader::gVkPerf.alp_inl;
                         alp_us[7] += alp_now() - alp_t;
