@@ -12794,22 +12794,6 @@ fdf83015-1f61-6862-f465-131be3ac31ed
     <integer>0</integer>
   </map>
   
-  <key>RenderShadowResolution</key>
-  <map>
-    <key>Comment</key>
-    <string>Raw shadow width and height of each of the four shadow maps, closest (X), mid (Y), far (Z) furthest (W). Cinematic mode のみ。</string>
-    <key>Persist</key>
-    <integer>1</integer>
-    <key>Type</key>
-    <string>Vector4</string>
-    <key>Value</key>
-    <array>
-      <real>1024.0</real>
-      <real>1024.0</real>
-      <real>1024.0</real>
-      <real>1024.0</real>
-    </array>
-  </map>
   <key>RenderShadowDistance</key>
   <map>
     <key>Comment</key>
@@ -12826,22 +12810,6 @@ fdf83015-1f61-6862-f465-131be3ac31ed
       <real>96.0</real>
     </array>
   </map>
-  <key>RenderProjectorShadowResolution</key>
-  <map>
-    <key>Comment</key>
-    <string>Raw projector shadow width of the two available spot shadow maps. Cinematic mode のみ。</string>
-    <key>Persist</key>
-    <integer>1</integer>
-    <key>Type</key>
-    <string>Vector2</string>
-    <key>Value</key>
-    <array>
-      <real>1024.0</real>
-      <real>1024.0</real>
-    </array>
-  </map>
-  
-  
   <key>RenderShadowFarClip</key>
   <map>
     <key>Comment</key>

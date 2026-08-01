@@ -12721,25 +12721,6 @@ Change of this parameter will affect the layout of buttons in notification toast
     <key>Backup</key>
     <integer>0</integer>
   </map>
-  <!-- <FS:AYAstorm:r30-bd-port> Phase 6 step 1: per-channel shadow 3 cvar を AY pipeline に配線。
-       Cinematic mode (AYAVisualRealismEnabled == 2) の時 BD per-channel allocator / clip plane が走る。
-       mode 0/1 では従来通り RenderShadowResolutionScale (scalar) を消費。 -->
-  <key>RenderShadowResolution</key>
-  <map>
-    <key>Comment</key>
-    <string>Raw shadow width and height of each of the four shadow maps, closest (X), mid (Y), far (Z) furthest (W). Cinematic mode のみ。</string>
-    <key>Persist</key>
-    <integer>1</integer>
-    <key>Type</key>
-    <string>Vector4</string>
-    <key>Value</key>
-    <array>
-      <real>1024.0</real>
-      <real>1024.0</real>
-      <real>1024.0</real>
-      <real>1024.0</real>
-    </array>
-  </map>
   <key>RenderShadowDistance</key>
   <map>
     <key>Comment</key>
@@ -12756,21 +12737,6 @@ Change of this parameter will affect the layout of buttons in notification toast
       <real>96.0</real>
     </array>
   </map>
-  <key>RenderProjectorShadowResolution</key>
-  <map>
-    <key>Comment</key>
-    <string>Raw projector shadow width of the two available spot shadow maps. Cinematic mode のみ。</string>
-    <key>Persist</key>
-    <integer>1</integer>
-    <key>Type</key>
-    <string>Vector2</string>
-    <key>Value</key>
-    <array>
-      <real>1024.0</real>
-      <real>1024.0</real>
-    </array>
-  </map>
-  <!-- </FS:AYAstorm:r30-bd-port> -->
   <!-- <FS:AYAstorm:r30-bd-port> Phase 6 step 2: live BD cvar (Cinematic 限定 / 一部 global)。
        BD 995a1354d8 settings_blackdragon.xml verbatim defaults。
        global 採用 (mode dispatch なし): RenderEnableFullbright (llprimitive 直結) -->

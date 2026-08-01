@@ -1284,9 +1284,7 @@ public:
     static bool RenderShadowAutomaticDistance;
     // </FS:AYAstorm:r30-bd-port>
     // <FS:AYAstorm:r30-bd-port> Phase 6 step 1: BD per-channel shadow allocation (Cinematic only)
-    static LLVector4 RenderShadowResolution;
     static LLVector4 RenderShadowFarClipVec;  // cvar: RenderShadowDistance
-    static LLVector2 RenderProjectorShadowResolution;
     // </FS:AYAstorm:r30-bd-port>
     // <FS:AYAstorm:r30-bd-port> Phase 6 step 2: BD live scalar cvar (Cinematic only)
     static F32 RenderShadowFarClip;

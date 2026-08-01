@@ -226,9 +226,7 @@ F32 LLPipeline::RenderShadowResolutionScale;
 bool LLPipeline::RenderShadowAutomaticDistance;
 // </FS:AYAstorm:r30-bd-port>
 // <FS:AYAstorm:r30-bd-port> Phase 6 step 1: BD per-channel shadow allocation (Cinematic only)
-LLVector4 LLPipeline::RenderShadowResolution;
 LLVector4 LLPipeline::RenderShadowFarClipVec;
-LLVector2 LLPipeline::RenderProjectorShadowResolution;
 // </FS:AYAstorm:r30-bd-port>
 // <FS:AYAstorm:r30-bd-port> Phase 6 step 2: BD live scalar cvar (Cinematic only)
 F32 LLPipeline::RenderShadowFarClip;
@@ -734,9 +732,7 @@ void LLPipeline::init()
     connectRefreshCachedSettingsSafe("RenderShadowAutomaticDistance");
     // </FS:AYAstorm:r30-bd-port>
     // <FS:AYAstorm:r30-bd-port> Phase 6 step 1
-    connectRefreshCachedSettingsSafe("RenderShadowResolution");
     connectRefreshCachedSettingsSafe("RenderShadowDistance");
-    connectRefreshCachedSettingsSafe("RenderProjectorShadowResolution");
     // </FS:AYAstorm:r30-bd-port>
     // <FS:AYAstorm:r30-bd-port> Phase 6 step 2
     connectRefreshCachedSettingsSafe("RenderShadowFarClip");
@@ -1343,31 +1339,10 @@ bool LLPipeline::allocateShadowBuffer(U32 resX, U32 resY)
     U32 sun_shadow_map_width = BlurHappySize(resX, scale);
     U32 sun_shadow_map_height = BlurHappySize(resY, scale);
 
-    // <FS:AYAstorm:r30-bd-port> Phase 6 step 1: BD per-cascade shadow allocation (Cinematic only)
-    const bool cinematic_per_channel_shadow = isCinematicMode() && !gCubeSnapshot;
-    // </FS:AYAstorm:r30-bd-port>
-
     if (shadow_detail > 0)
     { //allocate 4 sun shadow maps
         for (U32 i = 0; i < LLPipeline::kSunShadowCount; i++)
         {
-            // <FS:AYAstorm:r30-bd-port> Phase 6 step 1
-            // <FS:AYAstorm r30 cleanup A.3> Apply RenderShadowResolutionScale uniformly to
-            // the per-cascade Vector4. Without this, the scale slider was inert in Cinematic.
-            // llmax(64.f, ...) prevents 0-size allocation when scale is set to 0.
-            if (cinematic_per_channel_shadow)
-            {
-                U32 res = (U32)llmax(64.f, RenderShadowResolution.mV[i] * scale);
-                if (getFrameRT()->shadow[i].getWidth() != res)
-                {
-                    if (!getFrameRT()->shadow[i].allocate(res, res, 0, true))
-                    {
-                        return false;
-                    }
-                }
-                continue;
-            }
-            // </FS:AYAstorm:r30-bd-port>
             if (!getFrameRT()->shadow[i].allocate(sun_shadow_map_width, sun_shadow_map_height, 0, true))
             {
                 return false;
@@ -1393,18 +1368,6 @@ bool LLPipeline::allocateShadowBuffer(U32 resX, U32 resY)
             U32 spot_shadow_map_height = height;
             for (U32 i = 0; i < 2; i++)
             {
-                // <FS:AYAstorm:r30-bd-port> Phase 6 step 1
-                // <FS:AYAstorm r30 cleanup A.3> Scale applied for symmetry with sun cascades.
-                if (cinematic_per_channel_shadow)
-                {
-                    U32 res = (U32)llmax(64.f, RenderProjectorShadowResolution.mV[i] * scale);
-                    if (!mSpotShadow[i].allocate(res, res, 0, true))
-                    {
-                        return false;
-                    }
-                    continue;
-                }
-                // </FS:AYAstorm:r30-bd-port>
                 if (!mSpotShadow[i].allocate(spot_shadow_map_width, spot_shadow_map_height, 0, true))
                 {
                     return false;
@@ -1414,6 +1377,53 @@ bool LLPipeline::allocateShadowBuffer(U32 resX, U32 resY)
         else
         {
             releaseSpotShadowTargets();
+        }
+    }
+
+    {
+        static const bool s_res_oracle = []() -> bool {
+            const char* e = getenv("AYASTORM_SHADOW_RES_ORACLE");
+            return (e != nullptr) && (atof(e) != 0.0);
+        }();
+        if (s_res_oracle)
+        {
+            U32 mism = 0;
+            if (shadow_detail > 0)
+            {
+                for (U32 i = 0; i < LLPipeline::kSunShadowCount; i++)
+                {
+                    LLRenderTarget* t = getSunShadowTarget(i);
+                    if (!t || t->getWidth() != sun_shadow_map_width || t->getHeight() != sun_shadow_map_height)
+                    {
+                        ++mism;
+                    }
+                }
+            }
+            U32 spot_expected = (U32)(resX * scale);
+            if (!gCubeSnapshot && shadow_detail > 1)
+            {
+                for (U32 i = 0; i < 2; i++)
+                {
+                    if (mSpotShadow[i].getWidth() != spot_expected || mSpotShadow[i].getHeight() != spot_expected)
+                    {
+                        ++mism;
+                    }
+                }
+            }
+            if (mism == 0)
+            {
+                LL_INFOS("ShadowResOracle") << "shadow_res_oracle detail=" << shadow_detail
+                    << " cinematic=" << (isCinematicMode() ? 1 : 0)
+                    << " sun=" << sun_shadow_map_width << "x" << sun_shadow_map_height
+                    << " spot=" << spot_expected << " mismatch=0" << LL_ENDL;
+            }
+            else
+            {
+                LL_WARNS("ShadowResOracle") << "shadow_res_oracle detail=" << shadow_detail
+                    << " cinematic=" << (isCinematicMode() ? 1 : 0)
+                    << " sun=" << sun_shadow_map_width << "x" << sun_shadow_map_height
+                    << " spot=" << spot_expected << " mismatch=" << mism << LL_ENDL;
+            }
         }
     }
 
@@ -1526,9 +1536,7 @@ void LLPipeline::refreshCachedSettings()
     RenderShadowAutomaticDistance = gSavedSettings.getBOOL("RenderShadowAutomaticDistance");
     // </FS:AYAstorm:r30-bd-port>
     // <FS:AYAstorm:r30-bd-port> Phase 6 step 1: BD per-channel shadow allocation
-    RenderShadowResolution = gSavedSettings.getVector4("RenderShadowResolution");
     RenderShadowFarClipVec = gSavedSettings.getVector4("RenderShadowDistance");
-    RenderProjectorShadowResolution = gSavedSettings.getVector2("RenderProjectorShadowResolution");
     // </FS:AYAstorm:r30-bd-port>
     // <FS:AYAstorm:r30-bd-port> Phase 6 step 2: BD live scalar cvar
     RenderShadowFarClip = gSavedSettings.getF32("RenderShadowFarClip");
