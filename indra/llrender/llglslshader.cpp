@@ -2231,6 +2231,7 @@ void LLGLSLShader::vkCaptureEnumBoundView(S32 uniform_enum, S32 channel)
     e.rtp           = tu->mCurrRenderTarget;
     e.rt_attachment = tu->mCurrRTAttachment;
     e.rt_depth      = tu->mCurrRTDepth;
+    e.rt_depth_layer = tu->mCurrRTDepthLayer;
     e.sampler       = tu->getLiveVkSampler();
     e.bound         = (e.imagep.notNull() || e.cubep.notNull() || e.rtp != nullptr);
 }
@@ -2265,6 +2266,10 @@ VkImageView LLGLSLShader::vkResolveEnumBoundView(S32 uniform_enum) const
         e.rtp->bindForShaderRead(e.rt_attachment, e.rt_depth);
         if (e.rt_depth)
         {
+            if (e.rt_depth_layer != 0xFFFFFFFFu && e.rtp->getVkDepthLayerCount() > 1)
+            {
+                return e.rtp->getVkDepthLayerView(e.rt_depth_layer);
+            }
             return e.rtp->hasVkDepth() ? e.rtp->getVkDepthView() : VK_NULL_HANDLE;
         }
         return e.rtp->hasVkImage(e.rt_attachment) ? e.rtp->getVkImageView(e.rt_attachment)

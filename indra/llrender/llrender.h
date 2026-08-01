@@ -111,7 +111,7 @@ public:
 
     bool bind(LLCubeMap* cubeMap);
 
-    bool bind(LLRenderTarget * renderTarget, bool bindDepth = false);
+    bool bind(LLRenderTarget * renderTarget, bool bindDepth = false, U32 depthLayer = 0xFFFFFFFFu);
 
     bool bindManual(eTextureType type, U32 texture, bool hasMips = false);
 
@@ -138,6 +138,7 @@ public:
     LLRenderTarget*     mCurrRenderTarget = nullptr;
     U32                 mCurrRTAttachment = 0;
     bool                mCurrRTDepth = false;
+    U32                 mCurrRTDepthLayer = 0xFFFFFFFFu;
     bool                mCurrCompareMode = false;
 
     VkImageView         getLiveVkImageView() const;

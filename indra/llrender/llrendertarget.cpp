@@ -125,6 +125,17 @@ void LLRenderTarget::resize(U32 resx, U32 resy)
             {
                 LLVKLoader::destroyImageVk(mVkDepth, mVkDepthView, mVkDepthAlloc);
             }
+            if (mVkDepthArrayView != VK_NULL_HANDLE)
+            {
+                LLVKLoader::destroyImageVk(VK_NULL_HANDLE, mVkDepthArrayView, nullptr);
+                mVkDepthArrayView = VK_NULL_HANDLE;
+            }
+            for (VkImageView v : mVkDepthLayerViews)
+            {
+                LLVKLoader::destroyImageVk(VK_NULL_HANDLE, v, nullptr);
+            }
+            mVkDepthLayerViews.clear();
+            mVkDepthLayerCount  = 1;
             mVkDepth            = VK_NULL_HANDLE;
             mVkDepthView        = VK_NULL_HANDLE;
             mVkDepthAlloc       = nullptr;
@@ -366,6 +377,56 @@ void LLRenderTarget::allocateDepth()
     }
 }
 
+void LLRenderTarget::allocateLayeredDepth(U32 resx, U32 resy, U32 layerCount)
+{
+    LL_PROFILE_ZONE_SCOPED_CATEGORY_DISPLAY;
+    llassert(!isBoundInStack());
+
+    if (mResX == resx && mResY == resy && mUseDepth &&
+        mVkDepthLayerCount == layerCount && mAllocated)
+    {
+        return;
+    }
+
+    resx = llmin(resx, (U32) gGLManager.mGLMaxTextureSize);
+    resy = llmin(resy, (U32) gGLManager.mGLMaxTextureSize);
+
+    release();
+
+    mResX     = resx;
+    mResY     = resy;
+    mUsage    = LLTexUnit::TT_TEXTURE;
+    mUseDepth = true;
+    mOwnDepth = true;
+
+    sBytesAllocated += mResX*mResY*4*layerCount;
+
+    if (LLVKLoader::isVulkanInitialized())
+    {
+        VkImage                  vk_image      = VK_NULL_HANDLE;
+        VkImageView              vk_array_view = VK_NULL_HANDLE;
+        std::vector<VkImageView> vk_layer_views;
+        void*                    vk_allocation = nullptr;
+        if (LLVKLoader::createLayeredDepthAttachmentImageVk(mResX, mResY,
+                                                            VK_FORMAT_D24_UNORM_S8_UINT,
+                                                            layerCount,
+                                                            vk_image, vk_array_view,
+                                                            vk_layer_views, vk_allocation))
+        {
+            mVkDepth           = vk_image;
+            mVkDepthView       = VK_NULL_HANDLE;
+            mVkDepthArrayView  = vk_array_view;
+            mVkDepthLayerViews = vk_layer_views;
+            mVkLastBoundDepthLayerView = VK_NULL_HANDLE;
+            mVkDepthLayerCount = layerCount;
+            mVkDepthAlloc      = vk_allocation;
+            mVkDepthLayout     = VK_IMAGE_LAYOUT_UNDEFINED;
+        }
+    }
+
+    mAllocated = true;
+}
+
 void LLRenderTarget::shareDepthBuffer(LLRenderTarget& target)
 {
     llassert(!isBoundInStack());
@@ -408,7 +469,7 @@ void LLRenderTarget::release()
     {
         mOwnDepth = false;
 
-        sBytesAllocated -= mResX*mResY*4;
+        sBytesAllocated -= mResX*mResY*4*mVkDepthLayerCount;
     }
     if (mUseDepth)
     { //detach shared depth buffer
@@ -442,6 +503,18 @@ void LLRenderTarget::release()
         {
             LLVKLoader::destroyImageVk(mVkDepth, mVkDepthView, mVkDepthAlloc);
         }
+        if (mVkDepthArrayView != VK_NULL_HANDLE)
+        {
+            LLVKLoader::destroyImageVk(VK_NULL_HANDLE, mVkDepthArrayView, nullptr);
+            mVkDepthArrayView = VK_NULL_HANDLE;
+        }
+        for (VkImageView v : mVkDepthLayerViews)
+        {
+            LLVKLoader::destroyImageVk(VK_NULL_HANDLE, v, nullptr);
+        }
+        mVkDepthLayerViews.clear();
+        mVkLastBoundDepthLayerView = VK_NULL_HANDLE;
+        mVkDepthLayerCount  = 1;
         mVkDepth            = VK_NULL_HANDLE;
         mVkDepthView        = VK_NULL_HANDLE;
         mVkDepthAlloc       = nullptr;
@@ -566,6 +639,67 @@ void LLRenderTarget::bindTarget()
     }
 }
 
+void LLRenderTarget::bindTargetDepthLayer(U32 layer)
+{
+    LL_PROFILE_GPU_ZONE("bindTargetDepthLayer");
+    llassert(mAllocated);
+    llassert(!isBoundInStack());
+    llassert(layer < mVkDepthLayerViews.size());
+
+    mLastBoundMonotonicFrame = LLVKLoader::getMonotonicFrameCount();
+
+    llSetGLViewport(0, 0, mResX, mResY);
+    sCurResX = mResX;
+    sCurResY = mResY;
+
+    mPreviousRT = sBoundTarget;
+    sBoundTarget = this;
+
+    if (LLVKLoader::isVulkanInitialized() && mVkDepth != VK_NULL_HANDLE &&
+        layer < mVkDepthLayerViews.size())
+    {
+        const VkImageLayout cur = getCurDepthLayout();
+        VkPipelineStageFlags src_stage;
+        VkAccessFlags        src_access;
+        if (cur == VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL)
+        {
+            src_stage  = VK_PIPELINE_STAGE_LATE_FRAGMENT_TESTS_BIT;
+            src_access = VK_ACCESS_DEPTH_STENCIL_ATTACHMENT_WRITE_BIT;
+        }
+        else if (cur == VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL)
+        {
+            src_stage  = VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT;
+            src_access = VK_ACCESS_SHADER_READ_BIT;
+        }
+        else
+        {
+            src_stage  = VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT;
+            src_access = 0;
+        }
+
+        LLVKLoader::transitionImageLayoutVk(
+            mVkDepth,
+            VK_IMAGE_ASPECT_DEPTH_BIT | VK_IMAGE_ASPECT_STENCIL_BIT,
+            cur,
+            VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL,
+            src_stage,
+            VK_PIPELINE_STAGE_EARLY_FRAGMENT_TESTS_BIT | VK_PIPELINE_STAGE_LATE_FRAGMENT_TESTS_BIT,
+            src_access,
+            VK_ACCESS_DEPTH_STENCIL_ATTACHMENT_READ_BIT | VK_ACCESS_DEPTH_STENCIL_ATTACHMENT_WRITE_BIT,
+            mVkDepthLayerCount);
+        setCurDepthLayout(VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL);
+
+        LLVKLoader::DynamicRenderingAttachment depth_attachment = {};
+        depth_attachment.image_view   = mVkDepthLayerViews[layer];
+        mVkLastBoundDepthLayerView    = depth_attachment.image_view;
+        depth_attachment.image_layout = VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL;
+        depth_attachment.load_op      = VK_ATTACHMENT_LOAD_OP_LOAD;
+        depth_attachment.store_op     = VK_ATTACHMENT_STORE_OP_STORE;
+
+        LLVKLoader::beginDynamicRendering(mResX, mResY, nullptr, 0, &depth_attachment);
+    }
+}
+
 void LLRenderTarget::clear(U32 mask_in)
 {
     LL_PROFILE_GPU_ZONE("clear");
@@ -653,6 +787,7 @@ void LLRenderTarget::bindTexture(U32 index, S32 channel, LLTexUnit::eTextureFilt
         tu->mCurrRenderTarget = this;
         tu->mCurrRTAttachment = index;
         tu->mCurrRTDepth      = false;
+        tu->mCurrRTDepthLayer = 0xFFFFFFFFu;
         tu->mCurrImageGL      = nullptr;
         tu->mCurrVkHeapSlot   = 0xFFFFFFFFu;
     }
@@ -710,7 +845,8 @@ void LLRenderTarget::bindForShaderRead(U32 attachment, bool depth)
             VK_PIPELINE_STAGE_LATE_FRAGMENT_TESTS_BIT,
             VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT,
             VK_ACCESS_DEPTH_STENCIL_ATTACHMENT_WRITE_BIT,
-            VK_ACCESS_SHADER_READ_BIT);
+            VK_ACCESS_SHADER_READ_BIT,
+            mVkDepthLayerCount);
         setCurDepthLayout(VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL);
     }
 }

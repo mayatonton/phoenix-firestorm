@@ -1340,21 +1340,14 @@ bool LLPipeline::allocateShadowBuffer(U32 resX, U32 resY)
     U32 sun_shadow_map_height = BlurHappySize(resY, scale);
 
     if (shadow_detail > 0)
-    { //allocate 4 sun shadow maps
-        for (U32 i = 0; i < LLPipeline::kSunShadowCount; i++)
-        {
-            if (!getFrameRT()->shadow[i].allocate(sun_shadow_map_width, sun_shadow_map_height, 0, true))
-            {
-                return false;
-            }
-        }
+    { //allocate a single 4-layer layered sun shadow map
+        getFrameRT()->sunShadowLayered.allocateLayeredDepth(sun_shadow_map_width,
+                                                            sun_shadow_map_height,
+                                                            LLPipeline::kSunShadowCount);
     }
     else
     {
-        for (U32 i = 0; i < 4; i++)
-        {
-            releaseSunShadowTarget(i);
-        }
+        releaseSunShadowTargets();
     }
 
     if (!gCubeSnapshot) // hack to not allocate spot shadow maps during ReflectionMapManager init
@@ -1428,20 +1421,17 @@ bool LLPipeline::allocateShadowBuffer(U32 resX, U32 resY)
     }
 
 
-    // set up shadow map filtering and compare modes
+    // set up shadow map filtering and compare modes (single layered RT)
     if (shadow_detail > 0)
     {
-        for (U32 i = 0; i < LLPipeline::kSunShadowCount; i++)
+        LLRenderTarget* shadow_target = getSunShadowTarget(0);
+        if (shadow_target)
         {
-            LLRenderTarget* shadow_target = getSunShadowTarget(i);
-            if (shadow_target)
-            {
-                gGL.getTexUnit(0)->bind(getSunShadowTarget(i), true);
-                gGL.getTexUnit(0)->setTextureFilteringOption(LLTexUnit::TFO_ANISOTROPIC);
-                gGL.getTexUnit(0)->setTextureAddressMode(LLTexUnit::TAM_CLAMP);
+            gGL.getTexUnit(0)->bind(shadow_target, true, /*depthLayer=*/0);
+            gGL.getTexUnit(0)->setTextureFilteringOption(LLTexUnit::TFO_ANISOTROPIC);
+            gGL.getTexUnit(0)->setTextureAddressMode(LLTexUnit::TAM_CLAMP);
 
-                shadow_target->setUseDepthCompareSampler(true);
-            }
+            shadow_target->setUseDepthCompareSampler(true);
         }
     }
 
@@ -1753,18 +1743,9 @@ void LLPipeline::releaseScreenBuffers()
     mForwardColor.release();
 }
 
-void LLPipeline::releaseSunShadowTarget(U32 index)
-{
-    llassert(index < 4);
-    getFrameRT()->shadow[index].release();
-}
-
 void LLPipeline::releaseSunShadowTargets()
 {
-    for (U32 i = 0; i < 4; i++)
-    {
-        releaseSunShadowTarget(i);
-    }
+    getFrameRT()->sunShadowLayered.release();
 }
 
 void LLPipeline::releaseSpotShadowTargets()
@@ -11381,6 +11362,28 @@ void LLPipeline::bindLightFunc(LLGLSLShader& shader)
     }
 }
 
+namespace
+{
+    bool shadowLayeredOracleEnabled()
+    {
+        static const bool s = []() -> bool {
+            const char* e = getenv("AYASTORM_SHADOW_LAYERED_ORACLE");
+            return (e != nullptr) && (atof(e) != 0.0);
+        }();
+        return s;
+    }
+    U32 s_sun_layer_render_mask   = 0; // this-frame producer: bit j = cascade j rendered via layered path
+    U32 s_sun_layer_attempt_mask  = 0; // this-frame: bit j = cascade j が bindTargetDepthLayer を呼んだ
+    U32 s_sun_layer_bound_accum   = 0; // this-frame consumer: bit i = layer i per-layer view bound
+    U32 s_sun_layer_bound_last    = 0; // prev-frame consumer snapshot
+    U64 s_sun_layer_oracle_frames = 0;
+
+    U32 popcount4(U32 m)
+    {
+        return (m & 1u) + ((m >> 1) & 1u) + ((m >> 2) & 1u) + ((m >> 3) & 1u);
+    }
+}
+
 void LLPipeline::bindShadowMaps(LLGLSLShader& shader)
 {
     for (U32 i = 0; i < LLPipeline::kSunShadowCount; i++)
@@ -11391,7 +11394,12 @@ void LLPipeline::bindShadowMaps(LLGLSLShader& shader)
             S32 channel = shader.enableTexture(LLShaderMgr::DEFERRED_SHADOW0 + i, LLTexUnit::TT_TEXTURE);
             if (channel > -1)
             {
-                gGL.getTexUnit(channel)->bind(getSunShadowTarget(i), true);
+                gGL.getTexUnit(channel)->bind(getSunShadowTarget(i), true, /*depthLayer=*/i);
+                if (shadowLayeredOracleEnabled() &&
+                    getSunShadowTarget(i)->getVkDepthLayerView(i) != VK_NULL_HANDLE)
+                {
+                    s_sun_layer_bound_accum |= (1u << i);
+                }
             }
         }
     }
@@ -12119,8 +12127,8 @@ void LLPipeline::renderDeferredLighting()
             su.moon_dir[1]     = mTransformedMoonDir.mV[1];
             su.moon_dir[2]     = mTransformedMoonDir.mV[2];
             su.shadow_offset   = RenderShadowOffset;
-            su.shadow_res[0]   = (F32)getFrameRT()->shadow[0].getWidth();
-            su.shadow_res[1]   = (F32)getFrameRT()->shadow[0].getHeight();
+            su.shadow_res[0]   = (F32)getFrameRT()->sunShadowLayered.getWidth();
+            su.shadow_res[1]   = (F32)getFrameRT()->sunShadowLayered.getHeight();
             su.proj_shadow_res[0] = (F32)mSpotShadow[0].getWidth();
             su.proj_shadow_res[1] = (F32)mSpotShadow[0].getHeight();
             su.shadow_softness    = RenderShadowSoftness;
@@ -14253,7 +14261,7 @@ void LLPipeline::renderHighlight(const LLViewerObject* obj, F32 fade)
 LLRenderTarget* LLPipeline::getSunShadowTarget(U32 i)
 {
     llassert(i < LLPipeline::kSunShadowCount);
-    return &getFrameRT()->shadow[i];
+    return &getFrameRT()->sunShadowLayered;
 }
 
 LLRenderTarget* LLPipeline::getSpotShadowTarget(U32 i)
@@ -14568,13 +14576,21 @@ void LLPipeline::generateSunShadow(LLCamera& camera)
             ++s_shadow_frame;
         }
 
+        if (shadowLayeredOracleEnabled() && !gCubeSnapshot)
+        {
+            s_sun_layer_bound_last  = s_sun_layer_bound_accum;
+            s_sun_layer_bound_accum = 0;
+            s_sun_layer_render_mask = 0;
+            s_sun_layer_attempt_mask = 0;
+        }
+
         for (S32 j = 0; j < (gCubeSnapshot ? 2 : 4); j++)
         {
             LLVKLoader::gVkPerfShadowMapIndex = (U32)j;
 
             if (s_shadow_rr && !gCubeSnapshot && j >= 2)
             {
-                const U32 cur_res = getFrameRT()->shadow[j].getWidth();
+                const U32 cur_res = getFrameRT()->sunShadowLayered.getWidth();
                 const bool cadence_skip = (j == 2) ? ((s_shadow_frame % 2u) != 0u)
                                                    : ((s_shadow_frame % 4u) != 1u);
                 if (cadence_skip && s_cascade_valid[j] && s_cascade_res[j] == cur_res)
@@ -14647,13 +14663,22 @@ void LLPipeline::generateSunShadow(LLCamera& camera)
                     mShadowCamera[j + LLPipeline::kSunShadowCount] = shadow_cam;
                 }
 
-                getFrameRT()->shadow[j].bindTarget();
+                getFrameRT()->sunShadowLayered.bindTargetDepthLayer(j);
+                if (shadowLayeredOracleEnabled())
+                {
+                    s_sun_layer_attempt_mask |= (1u << j);
+                    if (getFrameRT()->sunShadowLayered.getLastBoundDepthLayerView() ==
+                        getFrameRT()->sunShadowLayered.getVkDepthLayerView(j))
+                    {
+                        s_sun_layer_render_mask |= (1u << j);
+                    }
+                }
                 {
                     LLGLDepthTest depth(GL_TRUE);
-                    getFrameRT()->shadow[j].clear();
+                    getFrameRT()->sunShadowLayered.clear();
                 }
-                getFrameRT()->shadow[j].flush();
-                getFrameRT()->shadow[j].bindForShaderRead(0, true);
+                getFrameRT()->sunShadowLayered.flush();
+                getFrameRT()->sunShadowLayered.bindForShaderRead(0, true);
 
                 mShadowError.mV[j] = 0.f;
                 mShadowFOV.mV[j] = 0.f;
@@ -14940,15 +14965,24 @@ void LLPipeline::generateSunShadow(LLCamera& camera)
                     return (e != nullptr) ? (F32)atof(e) : 1.0f;
                 }();
                 const F32 split_span = llmax(max.mV[0] - min.mV[0], max.mV[2] - min.mV[2]);
-                const F32 map_res = (F32)getFrameRT()->shadow[j].getWidth();
+                const F32 map_res = (F32)getFrameRT()->sunShadowLayered.getWidth();
                 const F32 batch_cull_radius =
                     (s_cull_texels > 0.f && split_span > 0.f && map_res > 0.f)
                         ? s_cull_texels * split_span / map_res
                         : 0.f;
 
-                LLRenderTarget& shadow_rt = getFrameRT()->shadow[j];
+                LLRenderTarget& shadow_rt = getFrameRT()->sunShadowLayered;
 
-                shadow_rt.bindTarget();
+                shadow_rt.bindTargetDepthLayer(j);
+                if (shadowLayeredOracleEnabled())
+                {
+                    s_sun_layer_attempt_mask |= (1u << j);
+                    if (shadow_rt.getLastBoundDepthLayerView() ==
+                        shadow_rt.getVkDepthLayerView(j))
+                    {
+                        s_sun_layer_render_mask |= (1u << j);
+                    }
+                }
                 shadow_rt.getViewport(gGLViewport);
                 shadow_rt.clear();
 
@@ -14959,7 +14993,7 @@ void LLPipeline::generateSunShadow(LLCamera& camera)
                 if (!gCubeSnapshot)
                 {
                     s_cascade_valid[j] = true;
-                    s_cascade_res[j]   = getFrameRT()->shadow[j].getWidth();
+                    s_cascade_res[j]   = getFrameRT()->sunShadowLayered.getWidth();
                 }
 
                 shadow_rt.flush();
@@ -14969,6 +15003,55 @@ void LLPipeline::generateSunShadow(LLCamera& camera)
             if (!gPipeline.hasRenderDebugMask(LLPipeline::RENDER_DEBUG_SHADOW_FRUSTA) && !gCubeSnapshot)
             {
                 mShadowCamera[j + LLPipeline::kSunShadowCount] = shadow_cam;
+            }
+        }
+
+        if (shadowLayeredOracleEnabled() && !gCubeSnapshot && RenderShadowDetail > 0)
+        {
+            ++s_sun_layer_oracle_frames;
+            const U32 layers = getFrameRT()->sunShadowLayered.getVkDepthLayerCount();
+            const U32 full_mask = (1u << LLPipeline::kSunShadowCount) - 1u;
+            const bool bound_ok = (s_sun_layer_oracle_frames < 2) ||
+                                  (s_sun_layer_bound_last == full_mask);
+            bool views_distinct = true;
+            for (U32 a = 0; a < LLPipeline::kSunShadowCount && views_distinct; ++a)
+            {
+                VkImageView va = getFrameRT()->sunShadowLayered.getVkDepthLayerView(a);
+                if (va == VK_NULL_HANDLE)
+                {
+                    views_distinct = false;
+                    break;
+                }
+                for (U32 b = a + 1; b < LLPipeline::kSunShadowCount; ++b)
+                {
+                    if (va == getFrameRT()->sunShadowLayered.getVkDepthLayerView(b))
+                    {
+                        views_distinct = false;
+                        break;
+                    }
+                }
+            }
+            const bool ok = (layers == LLPipeline::kSunShadowCount) &&
+                            (s_sun_layer_attempt_mask != 0u) &&
+                            (s_sun_layer_render_mask == s_sun_layer_attempt_mask) && bound_ok &&
+                            views_distinct;
+            if (ok)
+            {
+                LL_INFOS("ShadowLayeredOracle") << "shadow_layered_oracle layers=" << layers
+                    << " render_mask=0x" << std::hex << s_sun_layer_render_mask
+                    << " attempt_mask=0x" << s_sun_layer_attempt_mask
+                    << " bound_last=0x" << s_sun_layer_bound_last << std::dec
+                    << " layer_render_pass=" << popcount4(s_sun_layer_render_mask)
+                    << " layer_view_bound=" << popcount4(s_sun_layer_bound_last)
+                    << " end_to_end=1" << LL_ENDL;
+            }
+            else
+            {
+                LL_WARNS("ShadowLayeredOracle") << "shadow_layered_oracle FAIL layers=" << layers
+                    << " render_mask=0x" << std::hex << s_sun_layer_render_mask
+                    << " attempt_mask=0x" << s_sun_layer_attempt_mask
+                    << " bound_last=0x" << s_sun_layer_bound_last << std::dec
+                    << " frames=" << s_sun_layer_oracle_frames << LL_ENDL;
             }
         }
     }
@@ -16027,10 +16110,10 @@ void LLPipeline::skipRenderingShadows()
 
     for (S32 j = 0; j < 4; j++)
     {
-        getFrameRT()->shadow[j].bindTarget();
-        getFrameRT()->shadow[j].clear();
-        getFrameRT()->shadow[j].flush();
-        getFrameRT()->shadow[j].bindForShaderRead(0, true);
+        getFrameRT()->sunShadowLayered.bindTargetDepthLayer(j);
+        getFrameRT()->sunShadowLayered.clear();
+        getFrameRT()->sunShadowLayered.flush();
+        getFrameRT()->sunShadowLayered.bindForShaderRead(0, true);
     }
 }
 

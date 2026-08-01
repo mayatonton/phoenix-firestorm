@@ -265,7 +265,6 @@ public:
     void        enableShadows(const bool enable_shadows);
     void        releaseSpotShadowTargets();
     void        releaseSunShadowTargets();
-    void        releaseSunShadowTarget(U32 index);
 
     bool        shadersLoaded();
     bool        canUseWindLightShaders() const;
@@ -858,8 +857,8 @@ public:
         LLRenderTarget          deferredScreen;
         LLRenderTarget          deferredLight;
 
-        //sun shadow map
-        LLRenderTarget          shadow[LLPipeline::kSunShadowCount];
+        //sun shadow map (single 4-layer layered depth RT)
+        LLRenderTarget          sunShadowLayered;
     };
 
     // main full resoltuion render target

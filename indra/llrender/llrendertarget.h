@@ -107,6 +107,8 @@ public:
     //allocate a depth attachment
     void allocateDepth();
 
+    void allocateLayeredDepth(U32 resx, U32 resy, U32 layerCount);
+
     //share depth buffer with provided render target
     void shareDepthBuffer(LLRenderTarget& target);
 
@@ -121,6 +123,8 @@ public:
     //  and restores previous binding on flush() (maintains a stack of Render Targets)
     //  Asserts that this target is not currently bound in the stack
     void bindTarget();
+
+    void bindTargetDepthLayer(U32 layer);
 
     //clear render targer, clears depth buffer if present,
     //uses scissor rect if in copy-to-texture mode
@@ -177,6 +181,14 @@ public:
         return (attachment < mVkTexLayout.size()) ? mVkTexLayout[attachment] : VK_IMAGE_LAYOUT_UNDEFINED;
     }
     VkImageLayout getVkDepthLayout() const { return getCurDepthLayout(); }
+
+    VkImageView getVkDepthArrayView() const { return mVkDepthArrayView; }
+    VkImageView getVkDepthLayerView(U32 k) const
+    {
+        return (k < mVkDepthLayerViews.size()) ? mVkDepthLayerViews[k] : VK_NULL_HANDLE;
+    }
+    U32 getVkDepthLayerCount() const { return mVkDepthLayerCount; }
+    VkImageView getLastBoundDepthLayerView() const { return mVkLastBoundDepthLayerView; }
 
     void bindForShaderRead(U32 attachment = 0, bool depth = false);
 
@@ -249,6 +261,11 @@ protected:
     VkImage     mVkDepth      = VK_NULL_HANDLE;
     VkImageView mVkDepthView  = VK_NULL_HANDLE;
     void*       mVkDepthAlloc = nullptr;
+
+    U32                      mVkDepthLayerCount = 1;
+    VkImageView              mVkDepthArrayView  = VK_NULL_HANDLE;
+    std::vector<VkImageView> mVkDepthLayerViews;
+    VkImageView              mVkLastBoundDepthLayerView = VK_NULL_HANDLE;
 
     std::vector<VkImageLayout> mVkTexLayout;
     VkImageLayout              mVkDepthLayout = VK_IMAGE_LAYOUT_UNDEFINED;

@@ -394,7 +394,7 @@ bool LLTexUnit::bind(LLCubeMap* cubeMap)
     return true;
 }
 
-bool LLTexUnit::bind(LLRenderTarget* renderTarget, bool bindDepth)
+bool LLTexUnit::bind(LLRenderTarget* renderTarget, bool bindDepth, U32 depthLayer)
 {
     if (mIndex < 0) return false;
 
@@ -410,6 +410,7 @@ bool LLTexUnit::bind(LLRenderTarget* renderTarget, bool bindDepth)
     mCurrRenderTarget = renderTarget;
     mCurrRTAttachment = 0;
     mCurrRTDepth      = bindDepth;
+    mCurrRTDepthLayer = depthLayer;
     mCurrCompareMode  = bindDepth && renderTarget->usesDepthCompareSampler();
     mCurrImageGL      = nullptr;
     mCurrVkHeapSlot   = 0xFFFFFFFFu;
@@ -436,6 +437,11 @@ VkImageView LLTexUnit::getLiveVkImageView() const
         mCurrRenderTarget->bindForShaderRead(mCurrRTAttachment, mCurrRTDepth);
         if (mCurrRTDepth)
         {
+            if (mCurrRTDepthLayer != 0xFFFFFFFFu &&
+                mCurrRenderTarget->getVkDepthLayerCount() > 1)
+            {
+                return mCurrRenderTarget->getVkDepthLayerView(mCurrRTDepthLayer);
+            }
             return mCurrRenderTarget->hasVkDepth() ? mCurrRenderTarget->getVkDepthView()
                                                    : VK_NULL_HANDLE;
         }

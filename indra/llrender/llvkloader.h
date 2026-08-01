@@ -1206,6 +1206,15 @@ namespace LLVKLoader
                                       VkImageView& out_view,
                                       void*&       out_allocation);
 
+    bool createLayeredDepthAttachmentImageVk(U32                       width,
+                                             U32                       height,
+                                             VkFormat                  format,
+                                             U32                       layerCount,
+                                             VkImage&                  out_image,
+                                             VkImageView&              out_array_view,
+                                             std::vector<VkImageView>& out_layer_views,
+                                             void*&                    out_allocation);
+
     void destroyImageVk(VkImage     image,
                         VkImageView view,
                         void*       allocation);
@@ -1392,7 +1401,8 @@ namespace LLVKLoader
                                  VkPipelineStageFlags src_stage_mask,
                                  VkPipelineStageFlags dst_stage_mask,
                                  VkAccessFlags        src_access_mask,
-                                 VkAccessFlags        dst_access_mask);
+                                 VkAccessFlags        dst_access_mask,
+                                 U32                  layer_count = 1);
 
     bool         initSurface(LLWindow* window);
     bool         auxWindowInitVk(void* native_display, void* native_window);

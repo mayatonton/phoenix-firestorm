@@ -356,6 +356,7 @@ public:
         LLRenderTarget*      rtp = nullptr;
         U32                  rt_attachment = 0;
         bool                 rt_depth = false;
+        U32                  rt_depth_layer = 0xFFFFFFFFu;
         VkSampler            sampler = VK_NULL_HANDLE;
         bool                 bound = false;
     };

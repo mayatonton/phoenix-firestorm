@@ -3962,7 +3962,8 @@ namespace
                                      VkImage&           out_image,
                                      VkImageView&       out_view,
                                      void*&             out_allocation,
-                                     U32                mip_levels = 1)
+                                     U32                mip_levels = 1,
+                                     U32                array_layers = 1)
     {
         out_image      = VK_NULL_HANDLE;
         out_view       = VK_NULL_HANDLE;
@@ -3985,7 +3986,7 @@ namespace
         ici.extent.height = height;
         ici.extent.depth  = 1;
         ici.mipLevels     = (mip_levels > 0) ? mip_levels : 1;
-        ici.arrayLayers   = 1;
+        ici.arrayLayers   = (array_layers > 0) ? array_layers : 1;
         ici.samples       = VK_SAMPLE_COUNT_1_BIT;
         ici.tiling        = VK_IMAGE_TILING_OPTIMAL;
         ici.usage         = usage;
@@ -4007,7 +4008,9 @@ namespace
         VkImageViewCreateInfo vci = {};
         vci.sType                           = VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO;
         vci.image                           = image;
-        vci.viewType                        = VK_IMAGE_VIEW_TYPE_2D;
+        vci.viewType                        = (array_layers > 1)
+                                                  ? VK_IMAGE_VIEW_TYPE_2D_ARRAY
+                                                  : VK_IMAGE_VIEW_TYPE_2D;
         vci.format                          = format;
         const bool is_attachment =
             (usage & (VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT
@@ -4037,7 +4040,7 @@ namespace
         vci.subresourceRange.baseMipLevel   = 0;
         vci.subresourceRange.levelCount     = (mip_levels > 0) ? mip_levels : 1;
         vci.subresourceRange.baseArrayLayer = 0;
-        vci.subresourceRange.layerCount     = 1;
+        vci.subresourceRange.layerCount     = (array_layers > 0) ? array_layers : 1;
 
         VkImageView view = VK_NULL_HANDLE;
         r = vkCreateImageView(sDevice, &vci, nullptr, &view);
@@ -9536,6 +9539,67 @@ bool createDepthAttachmentImageVk(U32          width,
                                        out_image, out_view, out_allocation);
 }
 
+void createDepthLayerViews(VkImage img, VkFormat fmt, U32 layerCount,
+                           std::vector<VkImageView>& out_layer_views)
+{
+    out_layer_views.clear();
+    if (img == VK_NULL_HANDLE || sDevice == VK_NULL_HANDLE)
+    {
+        return;
+    }
+    for (U32 k = 0; k < layerCount; ++k)
+    {
+        VkImageViewCreateInfo vci = {};
+        vci.sType                           = VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO;
+        vci.image                           = img;
+        vci.viewType                        = VK_IMAGE_VIEW_TYPE_2D;
+        vci.format                          = fmt;
+        vci.subresourceRange.aspectMask     = VK_IMAGE_ASPECT_DEPTH_BIT;
+        vci.subresourceRange.baseMipLevel   = 0;
+        vci.subresourceRange.levelCount     = 1;
+        vci.subresourceRange.baseArrayLayer = k;
+        vci.subresourceRange.layerCount     = 1;
+
+        VkImageView v = VK_NULL_HANDLE;
+        if (vkCreateImageView(sDevice, &vci, nullptr, &v) == VK_SUCCESS)
+        {
+            noteViewHandleCreated(v);
+            out_layer_views.push_back(v);
+        }
+    }
+}
+
+bool createLayeredDepthAttachmentImageVk(U32                       width,
+                                         U32                       height,
+                                         VkFormat                  format,
+                                         U32                       layerCount,
+                                         VkImage&                  out_image,
+                                         VkImageView&              out_array_view,
+                                         std::vector<VkImageView>& out_layer_views,
+                                         void*&                    out_allocation)
+{
+    out_image      = VK_NULL_HANDLE;
+    out_array_view = VK_NULL_HANDLE;
+    out_layer_views.clear();
+    out_allocation = nullptr;
+
+    constexpr VkImageUsageFlags usage =
+          VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT
+        | VK_IMAGE_USAGE_SAMPLED_BIT
+        | VK_IMAGE_USAGE_TRANSFER_SRC_BIT;
+    if (!createAttachmentImageVkImpl(width, height, format,
+                                     usage,
+                                     VK_IMAGE_ASPECT_DEPTH_BIT,
+                                     "createLayeredDepthAttachmentImageVk",
+                                     out_image, out_array_view, out_allocation,
+                                     1, layerCount))
+    {
+        return false;
+    }
+    createDepthLayerViews(out_image, format, layerCount, out_layer_views);
+    return true;
+}
+
 void destroyImageVk(VkImage image, VkImageView view, void* allocation)
 {
     if (image == VK_NULL_HANDLE && view == VK_NULL_HANDLE && allocation == nullptr)
@@ -12066,7 +12130,8 @@ void transitionImageLayoutVk(VkImage              image,
                              VkPipelineStageFlags src_stage_mask,
                              VkPipelineStageFlags dst_stage_mask,
                              VkAccessFlags        src_access_mask,
-                             VkAccessFlags        dst_access_mask)
+                             VkAccessFlags        dst_access_mask,
+                             U32                  layer_count)
 {
     if (!sInitialized || image == VK_NULL_HANDLE)
     {
@@ -12097,7 +12162,7 @@ void transitionImageLayoutVk(VkImage              image,
         oneshot_barrier.subresourceRange.baseMipLevel   = 0;
         oneshot_barrier.subresourceRange.levelCount     = 1;
         oneshot_barrier.subresourceRange.baseArrayLayer = 0;
-        oneshot_barrier.subresourceRange.layerCount     = 1;
+        oneshot_barrier.subresourceRange.layerCount     = layer_count;
         oneshot_barrier.srcAccessMask                   = VK_ACCESS_MEMORY_READ_BIT | VK_ACCESS_MEMORY_WRITE_BIT;
         oneshot_barrier.dstAccessMask                   = VK_ACCESS_MEMORY_READ_BIT | VK_ACCESS_MEMORY_WRITE_BIT;
         vkCmdPipelineBarrier(oneshot_cmd,
@@ -12120,7 +12185,7 @@ void transitionImageLayoutVk(VkImage              image,
     barrier.subresourceRange.baseMipLevel   = 0;
     barrier.subresourceRange.levelCount     = 1;
     barrier.subresourceRange.baseArrayLayer = 0;
-    barrier.subresourceRange.layerCount     = 1;
+    barrier.subresourceRange.layerCount     = layer_count;
     barrier.srcAccessMask                   = src_access_mask;
     barrier.dstAccessMask                   = dst_access_mask;
 
