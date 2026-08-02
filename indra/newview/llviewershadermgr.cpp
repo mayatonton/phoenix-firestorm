@@ -673,6 +673,7 @@ static bool make_gltf_variant(LLGLSLShader& shader, LLGLSLShader& variant, bool 
         variant.mFeatures.hasShadows = use_sun_shadow;
         variant.mFeatures.isDeferred = true; // include deferredUtils
         variant.mFeatures.hasReflectionProbes = true;
+        variant.mFeatures.hasPbrIbl = !unlit;
 
         if (use_sun_shadow)
         {
@@ -1297,9 +1298,13 @@ std::string LLViewerShaderMgr::loadBasicShaders()
     index_channels.push_back(-1);    shaders.push_back( make_pair( "environment/waterFogF.glsl",                mShaderLevel[SHADER_WATER] ) );
     index_channels.push_back(-1);    shaders.push_back( make_pair( "environment/srgbF.glsl",                    mShaderLevel[SHADER_ENVIRONMENT] ) );
     index_channels.push_back(-1);    shaders.push_back( make_pair( "deferred/deferredUtil.glsl",                    1) );
+    index_channels.push_back(-1);    shaders.push_back( make_pair( "deferred/gbufferReadUtil.glsl",                 1) );
+    index_channels.push_back(-1);    shaders.push_back( make_pair( "deferred/projectionLightUtil.glsl",             1) );
+    index_channels.push_back(-1);    shaders.push_back( make_pair( "deferred/pbrIblUtil.glsl",                      1) );
     index_channels.push_back(-1);    shaders.push_back( make_pair( "deferred/gbufferUtil.glsl",                    1) );
     index_channels.push_back(-1);    shaders.push_back( make_pair( "deferred/globalF.glsl",                          1));
     index_channels.push_back(-1);    shaders.push_back( make_pair( "deferred/shadowUtil.glsl",                      1) );
+    index_channels.push_back(-1);    shaders.push_back( make_pair( "deferred/spotShadowUtil.glsl",                  1) );
     index_channels.push_back(-1);    shaders.push_back( make_pair( "deferred/aoUtil.glsl",                          1) );
     index_channels.push_back(-1);    shaders.push_back( make_pair( "deferred/pbrterrainUtilF.glsl",                 1) );
     index_channels.push_back(-1);    shaders.push_back( make_pair( "deferred/tonemapUtilF.glsl",                    1) );
@@ -2026,6 +2031,7 @@ bool LLViewerShaderMgr::loadShadersDeferred()
         shader->mFeatures.hasGamma = true;
         shader->mFeatures.hasShadows = use_sun_shadow;
         shader->mFeatures.isDeferred = true; // include deferredUtils
+        shader->mFeatures.hasPbrIbl = true;
         shader->mFeatures.hasReflectionProbes = mShaderLevel[SHADER_DEFERRED];
 
         shader->mShaderFiles.clear();
@@ -2267,7 +2273,7 @@ bool LLViewerShaderMgr::loadShadersDeferred()
         gDeferredSpotLightProgram.mFeatures.hasSrgb = true;
         gDeferredSpotLightProgram.mFeatures.isDeferred = true;
         gDeferredSpotLightProgram.mFeatures.hasFullGBuffer = true;
-        gDeferredSpotLightProgram.mFeatures.hasShadows = true;
+        gDeferredSpotLightProgram.mFeatures.hasProjectedLight = true;
 
         gDeferredSpotLightProgram.clearPermutations();
         gDeferredSpotLightProgram.addPermutation("IS_SPOT", "1");
@@ -2291,7 +2297,7 @@ bool LLViewerShaderMgr::loadShadersDeferred()
         gDeferredMultiSpotLightProgram.mFeatures.hasSrgb = true;
         gDeferredMultiSpotLightProgram.mFeatures.isDeferred = true;
         gDeferredMultiSpotLightProgram.mFeatures.hasFullGBuffer = true;
-        gDeferredMultiSpotLightProgram.mFeatures.hasShadows = true;
+        gDeferredMultiSpotLightProgram.mFeatures.hasProjectedLight = true;
 
         gDeferredMultiSpotLightProgram.clearPermutations();
         gDeferredMultiSpotLightProgram.addPermutation("MULTI_SPOTLIGHT", "1");
@@ -2326,6 +2332,8 @@ bool LLViewerShaderMgr::loadShadersDeferred()
         gDeferredSunProgram.mName = "Deferred Sun Shader";
         gDeferredSunProgram.mFeatures.isDeferred    = true;
         gDeferredSunProgram.mFeatures.hasShadows    = true;
+        gDeferredSunProgram.mFeatures.hasSpotShadows = true;
+        gDeferredSunProgram.mFeatures.hasGBufferRead = true;
         gDeferredSunProgram.mFeatures.hasAmbientOcclusion = use_ao;
 
         gDeferredSunProgram.mShaderFiles.clear();
@@ -2348,6 +2356,8 @@ bool LLViewerShaderMgr::loadShadersDeferred()
         gDeferredSunProbeProgram.mName = "Deferred Sun Probe Shader";
         gDeferredSunProbeProgram.mFeatures.isDeferred = true;
         gDeferredSunProbeProgram.mFeatures.hasShadows = true;
+        gDeferredSunProbeProgram.mFeatures.hasSpotShadows = true;
+        gDeferredSunProbeProgram.mFeatures.hasGBufferRead = true;
 
         gDeferredSunProbeProgram.mShaderFiles.clear();
         gDeferredSunProbeProgram.mShaderFiles.push_back(make_pair("deferred/sunLightV.glsl", GL_VERTEX_SHADER));
@@ -2368,6 +2378,7 @@ bool LLViewerShaderMgr::loadShadersDeferred()
     {
         gDeferredBlurLightProgram.mName = "Deferred Blur Light Shader";
         gDeferredBlurLightProgram.mFeatures.isDeferred = true;
+        gDeferredBlurLightProgram.mFeatures.hasGBufferRead = true;
 
         gDeferredBlurLightProgram.mShaderFiles.clear();
         gDeferredBlurLightProgram.mShaderFiles.push_back(make_pair("deferred/blurLightV.glsl", GL_VERTEX_SHADER));
@@ -2806,6 +2817,7 @@ bool LLViewerShaderMgr::loadShadersDeferred()
         gDeferredSoftenProgram.mFeatures.hasGamma = true;
         gDeferredSoftenProgram.mFeatures.isDeferred = true;
         gDeferredSoftenProgram.mFeatures.hasFullGBuffer = true;
+        gDeferredSoftenProgram.mFeatures.hasPbrIbl = true;
         gDeferredSoftenProgram.mFeatures.hasShadows = use_sun_shadow;
         gDeferredSoftenProgram.mFeatures.hasReflectionProbes = mShaderLevel[SHADER_DEFERRED] > 2;
 
@@ -2847,6 +2859,7 @@ bool LLViewerShaderMgr::loadShadersDeferred()
         gHazeProgram.mFeatures.hasAtmospherics        = true;
         gHazeProgram.mFeatures.hasGamma               = true;
         gHazeProgram.mFeatures.isDeferred             = true;
+        gHazeProgram.mFeatures.hasGBufferRead         = true;
         gHazeProgram.mFeatures.hasShadows             = use_sun_shadow;
         gHazeProgram.mFeatures.hasReflectionProbes    = mShaderLevel[SHADER_DEFERRED] > 2;
 
@@ -2875,6 +2888,7 @@ bool LLViewerShaderMgr::loadShadersDeferred()
     if (success)
     {
         gDeferredGodraysProgram.mName = "Godrays Shader";
+        gDeferredGodraysProgram.mFeatures.hasGBufferRead = true;
         gDeferredGodraysProgram.mShaderFiles.clear();
         gDeferredGodraysProgram.mFeatures.isDeferred  = true;
         gDeferredGodraysProgram.mFeatures.hasShadows  = use_sun_shadow;
@@ -2969,6 +2983,7 @@ bool LLViewerShaderMgr::loadShadersDeferred()
         gHazeWaterProgram.mFeatures.hasAtmospherics        = true;
         gHazeWaterProgram.mFeatures.hasGamma               = true;
         gHazeWaterProgram.mFeatures.isDeferred             = true;
+        gHazeWaterProgram.mFeatures.hasGBufferRead         = true;
         gHazeWaterProgram.mFeatures.hasShadows             = use_sun_shadow;
         gHazeWaterProgram.mFeatures.hasReflectionProbes    = mShaderLevel[SHADER_DEFERRED] > 2;
 
@@ -4369,6 +4384,7 @@ bool LLViewerShaderMgr::loadShadersDeferred()
     {
         gVolumetricLightProgram.mName = "AYAstorm Volumetric Light Shader";
         gVolumetricLightProgram.mFeatures.isDeferred = true;
+        gVolumetricLightProgram.mFeatures.hasGBufferRead = true;
         gVolumetricLightProgram.mFeatures.calculatesAtmospherics = true;
         gVolumetricLightProgram.mFeatures.hasAtmospherics = true;
         gVolumetricLightProgram.mFeatures.hasShadows = use_sun_shadow;
@@ -4411,6 +4427,7 @@ bool LLViewerShaderMgr::loadShadersDeferred()
     {
         gRlvSphereProgram.mName = "RLVa Sphere Post Processing Shader";
         gRlvSphereProgram.mFeatures.isDeferred = true;
+        gRlvSphereProgram.mFeatures.hasGBufferRead = true;
         gRlvSphereProgram.mShaderFiles.clear();
         gRlvSphereProgram.mShaderFiles.push_back(make_pair("deferred/rlvV.glsl", GL_VERTEX_SHADER));
         gRlvSphereProgram.mShaderFiles.push_back(make_pair("deferred/rlvF.glsl", GL_FRAGMENT_SHADER));
@@ -4900,6 +4917,7 @@ bool LLViewerShaderMgr::loadShadersInterface()
     {
         gReflectionProbeDisplayProgram.mName = "Reflection Probe Display Shader";
         gReflectionProbeDisplayProgram.mFeatures.hasReflectionProbes = true;
+        gReflectionProbeDisplayProgram.mFeatures.hasGBufferRead = true;
         gReflectionProbeDisplayProgram.mFeatures.hasSrgb = true;
         gReflectionProbeDisplayProgram.mFeatures.calculatesAtmospherics = true;
         gReflectionProbeDisplayProgram.mFeatures.hasAtmospherics = true;

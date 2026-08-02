@@ -229,6 +229,30 @@ bool LLShaderMgr::attachShaderFeatures(LLGLSLShader * shader)
         }
     }
 
+    if (features->hasGBufferRead || features->hasFullGBuffer)
+    {
+        if (!shader->attachFragmentObject("deferred/gbufferReadUtil.glsl"))
+        {
+            return false;
+        }
+    }
+
+    if (features->hasProjectedLight)
+    {
+        if (!shader->attachFragmentObject("deferred/projectionLightUtil.glsl"))
+        {
+            return false;
+        }
+    }
+
+    if (features->hasPbrIbl)
+    {
+        if (!shader->attachFragmentObject("deferred/pbrIblUtil.glsl"))
+        {
+            return false;
+        }
+    }
+
     if (features->hasFullGBuffer)
     {
         if (!shader->attachFragmentObject("deferred/gbufferUtil.glsl"))
@@ -248,6 +272,14 @@ bool LLShaderMgr::attachShaderFeatures(LLGLSLShader * shader)
     if (features->hasShadows)
     {
         if (!shader->attachFragmentObject("deferred/shadowUtil.glsl"))
+        {
+            return false;
+        }
+    }
+
+    if (features->hasSpotShadows)
+    {
+        if (!shader->attachFragmentObject("deferred/spotShadowUtil.glsl"))
         {
             return false;
         }

@@ -24,21 +24,11 @@
  */
 
 #ifdef LL_VULKAN_GLSL
-#ifndef DECL_NORMAL_MAP
-#define DECL_NORMAL_MAP
-layout(set = 1, binding = 27) uniform sampler2D normalMap;
-#endif // DECL_NORMAL_MAP
-
 #if defined(SUN_SHADOW)
 layout(set = 1, binding = 32) uniform sampler2DShadow shadowMap0;
 layout(set = 1, binding = 33) uniform sampler2DShadow shadowMap1;
 layout(set = 1, binding = 34) uniform sampler2DShadow shadowMap2;
 layout(set = 1, binding = 35) uniform sampler2DShadow shadowMap3;
-#endif
-
-#if defined(SPOT_SHADOW)
-layout(set = 1, binding = 36) uniform sampler2DShadow shadowMap4;
-layout(set = 1, binding = 37) uniform sampler2DShadow shadowMap5;
 #endif
 
 layout(set = 1, binding = 31, std140) uniform ShadowUtil_PerProgramBind
@@ -105,21 +95,11 @@ layout(set = 1, binding = 8, std140) uniform WindlightAtmos_PerProgramBind
 #define _classicMode classic_mode_wl
 #endif // WINDLIGHT_ATMOS_UBO_DEFINED
 #else
-#ifndef DECL_NORMAL_MAP
-#define DECL_NORMAL_MAP
-uniform sampler2D   normalMap;
-#endif // DECL_NORMAL_MAP
-
 #if defined(SUN_SHADOW)
 uniform sampler2DShadow shadowMap0;
 uniform sampler2DShadow shadowMap1;
 uniform sampler2DShadow shadowMap2;
 uniform sampler2DShadow shadowMap3;
-#endif
-
-#if defined(SPOT_SHADOW)
-uniform sampler2DShadow shadowMap4;
-uniform sampler2DShadow shadowMap5;
 #endif
 
 uniform vec3 sun_dir;
@@ -167,17 +147,6 @@ float pcfShadow(sampler2DShadow shadowMap, vec3 norm, vec4 stc, float bias_mul, 
     stc.xyz /= stc.w;
     stc.z += offset * 2.0;
     return clamp(ayaPcf9(shadowMap, stc.xyz, 2.0 * shadow_softness / shadow_res), 0.0, 1.0);
-#else
-    return 1.0;
-#endif
-}
-
-float pcfSpotShadow(sampler2DShadow shadowMap, vec4 stc, float bias_scale, vec2 pos_screen)
-{
-#if defined(SPOT_SHADOW)
-    stc.xyz /= stc.w;
-    stc.z += spot_shadow_bias * bias_scale;
-    return clamp(ayaPcf9(shadowMap, stc.xyz, 1.5 / proj_shadow_res), 0.0, 1.0);
 #else
     return 1.0;
 #endif
@@ -278,52 +247,6 @@ float sampleDirectionalShadow(vec3 pos, vec3 norm, vec2 pos_screen)
         return 1.0f; // lit beyond the far split...
     }
     //shadow = min(dp_directional_light,shadow);
-    return shadow;
-#else
-    return 1.0;
-#endif
-}
-
-float sampleSpotShadow(vec3 pos, vec3 norm, int index, vec2 pos_screen)
-{
-#if defined(SPOT_SHADOW)
-    float shadow = 0.0f;
-    pos += norm * spot_shadow_offset;
-
-    vec4 spos = vec4(pos,1.0);
-    if (spos.z > -shadow_clip.w)
-    {
-        vec4 lpos;
-
-        vec4 near_split = shadow_clip*-0.75;
-        vec4 far_split = shadow_clip*-1.25;
-        vec4 transition_domain = near_split-far_split;
-        float weight = 0.0;
-
-        {
-            float w = 1.0;
-            w -= max(spos.z-far_split.z, 0.0)/transition_domain.z;
-
-            if (index == 0)
-            {
-                lpos = shadow_matrix[4]*spos;
-                shadow += pcfSpotShadow(shadowMap4, lpos, 0.8, spos.xy)*w;
-            }
-            else
-            {
-                lpos = shadow_matrix[5]*spos;
-                shadow += pcfSpotShadow(shadowMap5, lpos, 0.8, spos.xy)*w;
-            }
-            weight += w;
-            shadow += max((pos.z+shadow_clip.z)/(shadow_clip.z-shadow_clip.w)*2.0-1.0, 0.0);
-        }
-
-        shadow /= weight;
-    }
-    else
-    {
-        shadow = 1.0f;
-    }
     return shadow;
 #else
     return 1.0;

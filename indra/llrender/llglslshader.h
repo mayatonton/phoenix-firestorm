@@ -141,6 +141,10 @@ public:
     bool hasAtmospherics = false;
     bool hasGamma = false;
     bool hasShadows = false;
+    bool hasSpotShadows = false;
+    bool hasGBufferRead = false;
+    bool hasProjectedLight = false;
+    bool hasPbrIbl = false;
     bool hasAmbientOcclusion = false;
     bool hasSrgb = false;
     bool isDeferred = false;

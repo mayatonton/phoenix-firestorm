@@ -116,6 +116,7 @@ void noteFbSlot(const void* shader_key, const std::string& shader_name, U32 bind
 void drawSkipped(ECause fire_cause, const std::string& shader_name);
 void drawFired();
 void frameBegin();
+void noteCorrectiveAction(const char* site, U64 state_fingerprint);
 
 void sentinelEvict(U32 site, const void* drawable, U32 obj_local_id, U32 record_count, bool drawable_dead, bool eligible);
 void sentinelRegister(const void* drawable);

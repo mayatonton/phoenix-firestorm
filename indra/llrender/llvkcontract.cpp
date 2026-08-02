@@ -1180,4 +1180,38 @@ void frameBegin()
     LL_WARNS("VKContract") << os.str() << LL_ENDL;
 }
 
+namespace
+{
+struct NoProgressStreak
+{
+    U64 fp    = 0;
+    U32 count = 0;
+};
+std::mutex sNoProgressMutex;
+std::unordered_map<std::string, NoProgressStreak> sNoProgressStreaks;
+constexpr U32 NO_PROGRESS_THRESHOLD = 3;
+}
+
+void noteCorrectiveAction(const char* site, U64 state_fingerprint)
+{
+    std::lock_guard<std::mutex> lk(sNoProgressMutex);
+    NoProgressStreak& s = sNoProgressStreaks[site];
+    if (s.fp == state_fingerprint && s.count > 0)
+    {
+        ++s.count;
+    }
+    else
+    {
+        s.fp    = state_fingerprint;
+        s.count = 1;
+    }
+    if (s.count == NO_PROGRESS_THRESHOLD ||
+        (s.count > NO_PROGRESS_THRESHOLD && (s.count % 32) == 0))
+    {
+        LL_WARNS("VKContract") << "VKC no_progress site=" << site
+                               << " fp=0x" << std::hex << state_fingerprint << std::dec
+                               << " streak=" << s.count << LL_ENDL;
+    }
+}
+
 }

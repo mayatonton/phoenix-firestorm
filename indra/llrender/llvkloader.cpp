@@ -4234,6 +4234,13 @@ namespace
             return false;
         }
 
+#if LL_DARWIN
+        if (sSurfaceWindow != nullptr)
+        {
+            sSurfaceWindow->syncNativePresentationGeometry();
+        }
+#endif
+
         VkSurfaceCapabilitiesKHR caps = {};
         VkResult cres = vkGetPhysicalDeviceSurfaceCapabilitiesKHR(sPhysicalDevice,
                                                                    sSurface, &caps);
@@ -4308,27 +4315,6 @@ namespace
                              : "FIFO (vsync ON)") << LL_ENDL;
 
         VkExtent2D extent;
-#if LL_DARWIN
-        // MoltenVK may report currentExtent in logical points while the
-        // CAMetalLayer drawable is in backing pixels. Always use the native
-        // window's backing-pixel size when it is available. Otherwise a
-        // Retina display presents into one quarter of the layer and leaves
-        // input coordinates out of sync with the visible UI.
-        LLCoordWindow drawable_size;
-        const bool have_drawable_extent =
-            sSurfaceWindow != nullptr && sSurfaceWindow->getSize(&drawable_size) &&
-            drawable_size.mX > 0 && drawable_size.mY > 0;
-        if (have_drawable_extent)
-        {
-            extent.width  = (U32)drawable_size.mX;
-            extent.height = (U32)drawable_size.mY;
-            LL_INFOS("Vulkan") << "macOS swapchain drawable extent="
-                               << extent.width << "x" << extent.height
-                               << " (surface extent=" << caps.currentExtent.width
-                               << "x" << caps.currentExtent.height << ")" << LL_ENDL;
-        }
-        else
-#endif
         {
             U32 w = 1280;
             U32 h = 720;
@@ -4337,6 +4323,18 @@ namespace
                 w = caps.currentExtent.width;
                 h = caps.currentExtent.height;
             }
+#if LL_DARWIN
+            else
+            {
+                LLCoordWindow drawable_size;
+                if (sSurfaceWindow != nullptr && sSurfaceWindow->getSize(&drawable_size) &&
+                    drawable_size.mX > 0 && drawable_size.mY > 0)
+                {
+                    w = (U32)drawable_size.mX;
+                    h = (U32)drawable_size.mY;
+                }
+            }
+#endif
             if (w < caps.minImageExtent.width)  w = caps.minImageExtent.width;
             if (h < caps.minImageExtent.height) h = caps.minImageExtent.height;
             if (w > caps.maxImageExtent.width)  w = caps.maxImageExtent.width;
@@ -4345,10 +4343,18 @@ namespace
             extent.height = h;
         }
 
-        if (extent.width < caps.minImageExtent.width)  extent.width = caps.minImageExtent.width;
-        if (extent.height < caps.minImageExtent.height) extent.height = caps.minImageExtent.height;
-        if (extent.width > caps.maxImageExtent.width)  extent.width = caps.maxImageExtent.width;
-        if (extent.height > caps.maxImageExtent.height) extent.height = caps.maxImageExtent.height;
+#if LL_DARWIN
+        {
+            LLCoordWindow backing_size;
+            if (sSurfaceWindow != nullptr && sSurfaceWindow->getSize(&backing_size))
+            {
+                LL_INFOS("Vulkan") << "macOS swapchain extent=" << extent.width << "x" << extent.height
+                                   << " surface currentExtent=" << caps.currentExtent.width
+                                   << "x" << caps.currentExtent.height
+                                   << " window backing=" << backing_size.mX << "x" << backing_size.mY << LL_ENDL;
+            }
+        }
+#endif
 
         U32 image_count = caps.minImageCount + FRAMES_IN_FLIGHT - 1;
         if (caps.maxImageCount > 0 && image_count > caps.maxImageCount)
@@ -4555,6 +4561,15 @@ namespace
                            << " drain_us=" << std::chrono::duration_cast<std::chrono::microseconds>(drain_t1 - drain_t0).count()
                            << " wait_idle_us=" << std::chrono::duration_cast<std::chrono::microseconds>(drain_t2 - drain_t1).count()
                            << " ok=" << (ok ? 1 : 0) << LL_ENDL;
+
+        U64 fp = (U64)reason_mask;
+        fp = fp * 1099511628211ull + old_extent.width;
+        fp = fp * 1099511628211ull + old_extent.height;
+        fp = fp * 1099511628211ull + sSwapchainExtent.width;
+        fp = fp * 1099511628211ull + sSwapchainExtent.height;
+        fp = fp * 1099511628211ull + (U64)sActivePresentMode;
+        fp = fp * 1099511628211ull + (ok ? 1u : 0u);
+        LLVKContract::noteCorrectiveAction("swapchain_recreate", fp);
 
         return ok;
     }
@@ -12628,8 +12643,16 @@ bool auxWindowBeginUIFrameVk()
                 aw.fenceInFlight[i] = false;
             }
         }
+        const VkExtent2D aux_old = aw.extent;
         auxDestroySwapchain();
-        if (!auxCreateSwapchain() || !auxRecycleAcquireSemaphores())
+        const bool aux_ok = auxCreateSwapchain() && auxRecycleAcquireSemaphores();
+        U64 aux_fp = (U64)aux_old.width;
+        aux_fp = aux_fp * 1099511628211ull + aux_old.height;
+        aux_fp = aux_fp * 1099511628211ull + aw.extent.width;
+        aux_fp = aux_fp * 1099511628211ull + aw.extent.height;
+        aux_fp = aux_fp * 1099511628211ull + (aux_ok ? 1u : 0u);
+        LLVKContract::noteCorrectiveAction("aux_swapchain_recreate", aux_fp);
+        if (!aux_ok)
         {
             return false;
         }

@@ -49,17 +49,6 @@ SOFTWARE.
 */
 
 #ifdef LL_VULKAN_GLSL
-#ifndef DECL_NORMAL_MAP
-#define DECL_NORMAL_MAP
-layout(set = 1, binding = 27) uniform sampler2D normalMap;
-#endif // DECL_NORMAL_MAP
-#ifndef DECL_DEPTH_MAP
-#define DECL_DEPTH_MAP
-layout(set = 1, binding = 24) uniform sampler2D depthMap;
-#endif // DECL_DEPTH_MAP
-layout(set = 1, binding = 28) uniform sampler2D projectionMap; // rgba
-layout(set = 1, binding = 29) uniform sampler2D brdfLut;
-
 #ifndef PER_FRAME_MATRIX_UBO_DEFINED
 #define PER_FRAME_MATRIX_UBO_DEFINED 1
 layout(set = 0, binding = 0, std140) uniform PerFrameMatrixUBO
@@ -101,17 +90,6 @@ layout(set = 1, binding = 30, std140) uniform DeferredUtil_PerProgramBind
     float _deferredUtil_pad1;
 };
 #else
-#ifndef DECL_NORMAL_MAP
-#define DECL_NORMAL_MAP
-uniform sampler2D normalMap;
-#endif // DECL_NORMAL_MAP
-#ifndef DECL_DEPTH_MAP
-#define DECL_DEPTH_MAP
-uniform sampler2D depthMap;
-#endif // DECL_DEPTH_MAP
-uniform sampler2D projectionMap; // rgba
-uniform sampler2D brdfLut;
-
 // projected lighted params
 uniform mat4 proj_mat; //screen space to light space projector
 uniform vec3 proj_n; // projector normal
@@ -225,18 +203,6 @@ vec2 getScreenCoordinate(vec2 screenpos)
     return sc;
 }
 
-vec4 getNorm(vec2 screenpos)
-{
-    vec4 norm = decodeNormal(texture(normalMap, screenpos.xy));
-    return norm;
-}
-
-vec4 getNormRaw(vec2 screenpos)
-{
-    vec4 norm = texture(normalMap, screenpos.xy);
-    return norm;
-}
-
 // get linear depth value given a depth buffer sample d and znear and zfar values
 float linearDepth(float d, float znear, float zfar)
 {
@@ -247,137 +213,6 @@ float linearDepth(float d, float znear, float zfar)
 float linearDepth01(float d, float znear, float zfar)
 {
     return linearDepth(d, znear, zfar) / zfar;
-}
-
-float getDepth(vec2 pos_screen)
-{
-    float depth = texture(depthMap, pos_screen).r;
-    return depth;
-}
-
-vec4 getTexture2DLodAmbient(vec2 tc, float lod)
-{
-#ifndef FXAA_GLSL_120
-    vec4 ret = textureLod(projectionMap, tc, lod);
-#else
-    vec4 ret = texture(projectionMap, tc);
-#endif
-    ret.rgb = srgb_to_linear(ret.rgb);
-
-    vec2 dist = tc-vec2(0.5);
-    float d = dot(dist,dist);
-    ret *= min(clamp((0.25-d)/0.25, 0.0, 1.0), 1.0);
-
-    return ret;
-}
-
-vec4 getTexture2DLodDiffuse(vec2 tc, float lod)
-{
-#ifndef FXAA_GLSL_120
-    vec4 ret = textureLod(projectionMap, tc, lod);
-#else
-    vec4 ret = texture(projectionMap, tc);
-#endif
-    ret.rgb = srgb_to_linear(ret.rgb);
-
-    vec2 dist = vec2(0.5) - abs(tc-vec2(0.5));
-    float det = min(lod/(proj_lod*0.5), 1.0);
-    float d = min(dist.x, dist.y);
-    float edge = 0.25*det;
-    ret *= clamp(d/edge, 0.0, 1.0);
-
-    return ret;
-}
-
-// lit     This is set by the caller: if (nl > 0.0) { lit = attenuation * nl * noise; }
-// Uses:
-//   color   Projected spotlight color
-vec3 getProjectedLightAmbiance(float amb_da, float attenuation, float lit, float nl, float noise, vec2 projected_uv)
-{
-    vec4 amb_plcol = getTexture2DLodAmbient(projected_uv, proj_lod);
-    vec3 amb_rgb   = amb_plcol.rgb * amb_plcol.a;
-
-    amb_da += proj_ambiance;
-    amb_da += (nl*nl*0.5+0.5) * proj_ambiance;
-    amb_da *= attenuation * noise;
-    amb_da = min(amb_da, 1.0-lit);
-
-    return (amb_da * color.rgb * amb_rgb);
-}
-
-// Returns projected light in Linear
-// Uses global spotlight color:
-//  color
-// NOTE: projected.a will be pre-multiplied with projected.rgb
-vec3 getProjectedLightDiffuseColor(float light_distance, vec2 projected_uv)
-{
-    float diff = clamp((light_distance - proj_focus)/proj_range, 0.0, 1.0);
-    float lod = diff * proj_lod;
-    vec4 plcol = getTexture2DLodDiffuse(projected_uv.xy, lod);
-
-    return color.rgb * plcol.rgb * plcol.a;
-}
-
-vec4 texture2DLodSpecular(vec2 tc, float lod)
-{
-#ifndef FXAA_GLSL_120
-    vec4 ret = textureLod(projectionMap, tc, lod);
-#else
-    vec4 ret = texture(projectionMap, tc);
-#endif
-    ret.rgb = srgb_to_linear(ret.rgb);
-
-    vec2 dist = vec2(0.5) - abs(tc-vec2(0.5));
-    float det = min(lod/(proj_lod*0.5), 1.0);
-    float d = min(dist.x, dist.y);
-    d *= min(1, d * (proj_lod - lod)); // BUG? extra factor compared to diffuse causes N repeats
-    float edge = 0.25*det;
-    ret *= clamp(d/edge, 0.0, 1.0);
-
-    return ret;
-}
-
-// See: clipProjectedLightVars()
-vec3 getProjectedLightSpecularColor(vec3 pos, vec3 n )
-{
-    vec3 slit = vec3(0);
-    vec3 ref = reflect(normalize(pos), n);
-
-    //project from point pos in direction ref to plane proj_p, proj_n
-    vec3 pdelta = proj_p-pos;
-    float l_dist = length(pdelta);
-    float ds = dot(ref, proj_n);
-    if (ds < 0.0)
-    {
-        vec3 pfinal = pos + ref * dot(pdelta, proj_n)/ds;
-        vec4 stc = (proj_mat * vec4(pfinal.xyz, 1.0));
-        if (stc.z > 0.0)
-        {
-            stc /= stc.w;
-            slit = getProjectedLightDiffuseColor( l_dist, stc.xy ); // NOTE: Using diffuse due to texture2DLodSpecular() has extra: d *= min(1, d * (proj_lod - lod));
-        }
-    }
-    return slit; // specular light
-}
-
-vec3 getProjectedLightSpecularColor(float light_distance, vec2 projected_uv)
-{
-    float diff = clamp((light_distance - proj_focus)/proj_range, 0.0, 1.0);
-    float lod = diff * proj_lod;
-    vec4 plcol = getTexture2DLodDiffuse(projected_uv.xy, lod); // NOTE: Using diffuse due to texture2DLodSpecular() has extra: d *= min(1, d * (proj_lod - lod));
-
-    return color.rgb * plcol.rgb * plcol.a;
-}
-
-vec4 getPosition(vec2 pos_screen)
-{
-    float depth = getDepth(pos_screen);
-    vec2 sc = getScreenCoordinate(pos_screen);
-    vec4 ndc = vec4(sc.x, sc.y, 2.0*depth-1.0, 1.0);
-    vec4 pos = inv_proj * ndc;
-    pos /= pos.w;
-    pos.w = 1.0;
-    return pos;
 }
 
 // get position given a normalized device coordinate
@@ -430,35 +265,6 @@ vec3 hue_to_rgb(float hue)
 }
 
 // PBR Utils
-
-vec2 BRDF(float NoV, float roughness)
-{
-    return texture(brdfLut, vec2(NoV, roughness)).rg;
-}
-
-// set colorDiffuse and colorSpec to the results of GLTF PBR style IBL
-void pbrIbl(vec3 diffuseColor,
-            vec3 specularColor,
-            vec3 radiance, // radiance map sample
-            vec3 irradiance, // irradiance map sample
-            float ao,       // ambient occlusion factor
-            float nv,       // normal dot view vector
-            float perceptualRough,
-            out vec3 diffuseOut,
-            out vec3 specularOut)
-{
-    // retrieve a scale and bias to F0. See [1], Figure 3
-    vec2 brdf = BRDF(clamp(nv, 0, 1), 1.0-perceptualRough);
-    vec3 diffuseLight = irradiance;
-    vec3 specularLight = radiance;
-
-    vec3 diffuse = diffuseLight * diffuseColor;
-    vec3 specular = specularLight * (specularColor * brdf.x + brdf.y);
-
-    diffuseOut = diffuse * ao;
-    specularOut = specular * ao;
-}
-
 
 // Encapsulate the various inputs used by the various functions in the shading equation
 // We store values in this struct to simplify the integration of alternative implementations
@@ -633,58 +439,6 @@ void calcDiffuseSpecular(vec3 baseColor, float metallic, inout vec3 diffuseColor
     diffuseColor = baseColor*(vec3(1.0)-f0);
     diffuseColor *= 1.0 - metallic;
     specularColor = mix(f0, baseColor, metallic);
-}
-
-vec3 pbrBaseLight(vec3 diffuseColor, vec3 specularColor, float metallic, vec3 v, vec3 norm, float perceptualRoughness, vec3 light_dir, vec3 sunlit, float scol, vec3 radiance, vec3 irradiance, vec3 colorEmissive, float ao, vec3 additive, vec3 atten)
-{
-    vec3 color = vec3(0);
-
-    float NdotV = clamp(abs(dot(norm, v)), 0.001, 1.0);
-    vec3 iblDiff = vec3(0);
-    vec3 iblSpec = vec3(0);
-    pbrIbl(diffuseColor, specularColor, radiance, irradiance, ao, NdotV, perceptualRoughness, iblDiff, iblSpec);
-
-    color += iblDiff;
-
-    // For classic mode, we use a special version of pbrPunctual that basically gives us a deconstructed form of the lighting.
-    float nl = 0;
-    vec3 diffPunc = vec3(0);
-    vec3 specPunc = vec3(0);
-    pbrPunctual(diffuseColor, specularColor, perceptualRoughness, metallic, norm, v, normalize(light_dir), nl, diffPunc, specPunc);
-
-    // Depending on the sky, we combine these differently.
-    if (classic_mode > 0)
-    {
-        irradiance.rgb = srgb_to_linear(irradiance * 0.9); // BINGO
-
-        // Reconstruct the diffuse lighting that we do for blinn-phong materials here.
-        // A special note about why we do some really janky stuff for classic mode.
-        // Since adding classic mode, we've moved the lambertian diffuse multiply out from pbrPunctual and instead handle it in the different light type calcs.
-        // This will never be 100% correct, but at the very least we can make it look mostly correct with legacy skies and classic mode.
-
-        float da = pow(nl, 1.2);
-
-        vec3 sun_contrib = vec3(min(da, scol));
-
-        // Multiply by PI to account for lambertian diffuse colors.  Otherwise things will be too dark when lit by the sun on legacy skies.
-        sun_contrib = srgb_to_linear(linear_to_srgb(sun_contrib) * sunlit * 0.7) * M_PI;
-
-        // Manually recombine everything here.  We have to separate the shading to ensure that lighting is able to more closely match blinn-phong.
-        vec3 finalAmbient = irradiance.rgb * diffuseColor.rgb; // BINGO
-        vec3 finalSun = clamp(sun_contrib * ((diffPunc.rgb + specPunc.rgb) * scol), vec3(0), vec3(10)); // QUESTIONABLE BINGO?
-        color.rgb = srgb_to_linear(linear_to_srgb(finalAmbient) + (linear_to_srgb(finalSun) * 1.1));
-        //color.rgb = sun_contrib * diffuseColor.rgb;
-    }
-    else
-    {
-        color += clamp(nl * (diffPunc + specPunc), vec3(0), vec3(10)) * sunlit * 3.0 * scol;
-    }
-
-    color.rgb += iblSpec.rgb;
-
-    color += colorEmissive;
-
-    return color;
 }
 
 // discard if given position in eye space is on the wrong side of the waterPlane according to waterSign
