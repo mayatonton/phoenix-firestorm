@@ -501,8 +501,8 @@ static inline bool vkShadowCullBatch(const LLDrawInfo& params)
         if (params.mAvatar.notNull())
         {
             ++LLVKLoader::gVkPerf.shadow_rigged;
-            ++LLVKLoader::gVkPerf.shadow_rigged_map[LLVKLoader::gVkPerfShadowMapIndex < 6u
-                                                        ? LLVKLoader::gVkPerfShadowMapIndex : 5u];
+            ++LLVKLoader::gVkPerf.shadow_rigged_map[LLVKLoader::gVkPerfShadowMapIndex < 7u
+                                                        ? LLVKLoader::gVkPerfShadowMapIndex : 6u];
             return false;
         }
         if (params.mBoundRadius >= 0.f
@@ -1642,7 +1642,10 @@ void LLRenderPass::pushMaskBatches(U32 type, bool texture, bool batch_textures)
     {
         LLDrawInfo* pparams = *i;
         LLCullResult::increment_iterator(i, end);
-        LLGLSLShader::sCurBoundShaderPtr->setMinimumAlpha(pparams->mAlphaMaskCutoff);
+        if (!LLGLSLShader::sCurBoundShaderPtr->mVkShadowCutoffFromSlot)
+        {
+            LLGLSLShader::sCurBoundShaderPtr->setMinimumAlpha(pparams->mAlphaMaskCutoff);
+        }
         pushBatch(*pparams, texture, batch_textures);
     }
 }
@@ -1665,7 +1668,10 @@ void LLRenderPass::pushRiggedMaskBatches(U32 type, bool texture, bool batch_text
 
         llassert(pparams);
 
-        LLGLSLShader::sCurBoundShaderPtr->setMinimumAlpha(pparams->mAlphaMaskCutoff);
+        if (!LLGLSLShader::sCurBoundShaderPtr->mVkShadowCutoffFromSlot)
+        {
+            LLGLSLShader::sCurBoundShaderPtr->setMinimumAlpha(pparams->mAlphaMaskCutoff);
+        }
 
         if (uploadMatrixPalette(pparams->mAvatar, pparams->mSkinInfo, lastAvatar, lastMeshId, skipLastSkin))
         {

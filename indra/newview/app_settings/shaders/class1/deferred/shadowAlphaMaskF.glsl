@@ -65,9 +65,14 @@ void bayerDitherDiscard(float alpha, float threshold);
 
 void main()
 {
+#if defined(LL_MULTIVIEW_SHADOW) && defined(AYA_BINDLESS)
+    float cutoff = (minimum_alpha >= 0.0) ? minimum_alpha : aya_dd[aya_draw_id].misc.z;
+#else
+    float cutoff = minimum_alpha;
+#endif
     float alpha = diffuseLookup(vary_texcoord0.xy).a;
 
-    if (alpha < minimum_alpha)
+    if (alpha < cutoff)
     {
         discard;
     }
@@ -76,7 +81,7 @@ void main()
 #if !defined(IS_FULLBRIGHT)
     alpha *= vertex_color.a;
 #endif
-    bayerDitherDiscard(alpha, minimum_alpha);
+    bayerDitherDiscard(alpha, cutoff);
 #else
 #ifdef LL_VULKAN_GLSL
     if (object_alpha < 0.996)

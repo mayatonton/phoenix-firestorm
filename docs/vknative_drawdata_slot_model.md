@@ -22,6 +22,8 @@
 
 D 以前の [4..11] は全 writer 常ゼロ(予約)。**欄の追加・意味変更は本表の改訂 = 設計者+AYA 承認事項**(shader と C++ の暗黙結合点のため)。
 
+改訂 2026-08-02(AYA 承認・**予約のみ・未実装**): 影 alpha 節の MDI 段で slot を 16 uint(64B・uvec4×4)へ拡幅し、**[12] = object_alpha(mObjectAlpha)**・[13..15] = 予約とする。現行実装は 12 uint のまま。実装トリガー = 台帳「影 alpha 節の MDI/bucketize 段」の採択(indirect span 内の per-draw 値は slot 経由のみ可 = object_alpha が前提)。
+
 ## 3. 不変条件(契約)
 - **INV-1(純関数)**: slot 内容は **LLDrawInfo(+ batch_textures フラグ)の純関数**。shader・pass・pool・呼び手に依存してはならない。material でない draw にも [4..11] は無条件に充填する(読まない shader には無害・byte 安定が目的)。
 - **INV-2(単一正準 compute)**: slot 内容を組む関数は**単一**(`computeDrawDataSlots`・Material D Brief §D2-a で実装)。writer 全列挙(現 3 箇所)= ①establishPerDrawId(lldrawpool.cpp:540-568)②rigged-MDI(lldrawpool.cpp:1456-1477)③llvkbucket record template(llvkbucket.cpp:300-336)。**writer 追加 = 正準関数の呼び出しのみ可**(独自組みは INV-3 違反経路)。

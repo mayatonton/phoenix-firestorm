@@ -168,6 +168,12 @@ LLGLSLShader            gDeferredShadowGLTFAlphaBlendProgram;
 LLGLSLShader            gDeferredSkinnedShadowGLTFAlphaBlendProgram;
 LLGLSLShader            gDeferredShadowFullbrightAlphaMaskProgram;
 LLGLSLShader            gDeferredSkinnedShadowFullbrightAlphaMaskProgram;
+LLGLSLShader            gDeferredShadowAlphaMaskMultiviewProgram;
+LLGLSLShader            gDeferredSkinnedShadowAlphaMaskMultiviewProgram;
+LLGLSLShader            gDeferredShadowGLTFAlphaMaskMultiviewProgram;
+LLGLSLShader            gDeferredSkinnedShadowGLTFAlphaMaskMultiviewProgram;
+LLGLSLShader            gDeferredShadowGLTFAlphaBlendMultiviewProgram;
+LLGLSLShader            gDeferredSkinnedShadowGLTFAlphaBlendMultiviewProgram;
 LLGLSLShader            gDeferredAvatarShadowProgram;
 LLGLSLShader            gDeferredAvatarAlphaShadowProgram;
 LLGLSLShader            gDeferredAvatarAlphaMaskShadowProgram;
@@ -1560,6 +1566,12 @@ bool LLViewerShaderMgr::loadShadersDeferred()
         gDeferredSkinnedShadowGLTFAlphaMaskProgram.unload();
         gDeferredShadowFullbrightAlphaMaskProgram.unload();
         gDeferredSkinnedShadowFullbrightAlphaMaskProgram.unload();
+        gDeferredShadowAlphaMaskMultiviewProgram.unload();
+        gDeferredSkinnedShadowAlphaMaskMultiviewProgram.unload();
+        gDeferredShadowGLTFAlphaMaskMultiviewProgram.unload();
+        gDeferredSkinnedShadowGLTFAlphaMaskMultiviewProgram.unload();
+        gDeferredShadowGLTFAlphaBlendMultiviewProgram.unload();
+        gDeferredSkinnedShadowGLTFAlphaBlendMultiviewProgram.unload();
         gDeferredAvatarShadowProgram.unload();
         gDeferredAvatarAlphaShadowProgram.unload();
         gDeferredAvatarAlphaMaskShadowProgram.unload();
@@ -3148,6 +3160,71 @@ bool LLViewerShaderMgr::loadShadersDeferred()
         {
             gDeferredShadowGLTFAlphaBlendProgram.createVkPipeline(0);
             gDeferredSkinnedShadowGLTFAlphaBlendProgram.createVkPipeline(0);
+        }
+    }
+
+    if (success && LLVKLoader::isMultiviewEnabled())
+    {
+        gDeferredShadowAlphaMaskMultiviewProgram.mName = "Deferred Shadow Alpha Mask Multiview Shader";
+        gDeferredShadowAlphaMaskMultiviewProgram.mFeatures.mIndexedTextureChannels = LLGLSLShader::sIndexedTextureChannels;
+        gDeferredShadowAlphaMaskMultiviewProgram.mShaderFiles.clear();
+        gDeferredShadowAlphaMaskMultiviewProgram.mShaderFiles.push_back(make_pair("deferred/shadowAlphaMaskV.glsl", GL_VERTEX_SHADER));
+        gDeferredShadowAlphaMaskMultiviewProgram.mShaderFiles.push_back(make_pair("deferred/shadowAlphaMaskF.glsl", GL_FRAGMENT_SHADER));
+        gDeferredShadowAlphaMaskMultiviewProgram.mShaderLevel = mShaderLevel[SHADER_DEFERRED];
+        gDeferredShadowAlphaMaskMultiviewProgram.mDefines["LL_MULTIVIEW_SHADOW"] = "1";
+        success = make_rigged_variant(gDeferredShadowAlphaMaskMultiviewProgram, gDeferredSkinnedShadowAlphaMaskMultiviewProgram);
+        success = success && gDeferredShadowAlphaMaskMultiviewProgram.createShader();
+        llassert(success);
+
+        gDeferredShadowAlphaMaskMultiviewProgram.mVkShadowCutoffFromSlot = true;
+        gDeferredSkinnedShadowAlphaMaskMultiviewProgram.mVkShadowCutoffFromSlot = true;
+
+        if (success && LLVKLoader::isVulkanInitialized())
+        {
+            gDeferredShadowAlphaMaskMultiviewProgram.createVkPipeline(16);
+            gDeferredSkinnedShadowAlphaMaskMultiviewProgram.createVkPipeline(16);
+        }
+    }
+
+    if (success && LLVKLoader::isMultiviewEnabled())
+    {
+        gDeferredShadowGLTFAlphaMaskMultiviewProgram.mName = "Deferred GLTF Shadow Alpha Mask Multiview Shader";
+        gDeferredShadowGLTFAlphaMaskMultiviewProgram.mShaderFiles.clear();
+        gDeferredShadowGLTFAlphaMaskMultiviewProgram.mShaderFiles.push_back(make_pair("deferred/pbrShadowAlphaMaskV.glsl", GL_VERTEX_SHADER));
+        gDeferredShadowGLTFAlphaMaskMultiviewProgram.mShaderFiles.push_back(make_pair("deferred/pbrShadowAlphaMaskF.glsl", GL_FRAGMENT_SHADER));
+        gDeferredShadowGLTFAlphaMaskMultiviewProgram.mShaderLevel = mShaderLevel[SHADER_DEFERRED];
+        gDeferredShadowGLTFAlphaMaskMultiviewProgram.clearPermutations();
+        gDeferredShadowGLTFAlphaMaskMultiviewProgram.mDefines["LL_MULTIVIEW_SHADOW"] = "1";
+        add_common_permutations(&gDeferredShadowGLTFAlphaMaskMultiviewProgram);
+        success = make_rigged_variant(gDeferredShadowGLTFAlphaMaskMultiviewProgram, gDeferredSkinnedShadowGLTFAlphaMaskMultiviewProgram);
+        success = success && gDeferredShadowGLTFAlphaMaskMultiviewProgram.createShader();
+        llassert(success);
+
+        if (success && LLVKLoader::isVulkanInitialized())
+        {
+            gDeferredShadowGLTFAlphaMaskMultiviewProgram.createVkPipeline(0);
+            gDeferredSkinnedShadowGLTFAlphaMaskMultiviewProgram.createVkPipeline(0);
+        }
+    }
+
+    if (success && LLVKLoader::isMultiviewEnabled())
+    {
+        gDeferredShadowGLTFAlphaBlendMultiviewProgram.mName = "Deferred GLTF Shadow Alpha Blend Multiview Shader";
+        gDeferredShadowGLTFAlphaBlendMultiviewProgram.mShaderFiles.clear();
+        gDeferredShadowGLTFAlphaBlendMultiviewProgram.mShaderFiles.push_back(make_pair("deferred/pbrShadowAlphaMaskV.glsl", GL_VERTEX_SHADER));
+        gDeferredShadowGLTFAlphaBlendMultiviewProgram.mShaderFiles.push_back(make_pair("deferred/pbrShadowAlphaBlendF.glsl", GL_FRAGMENT_SHADER));
+        gDeferredShadowGLTFAlphaBlendMultiviewProgram.mShaderLevel = mShaderLevel[SHADER_DEFERRED];
+        gDeferredShadowGLTFAlphaBlendMultiviewProgram.clearPermutations();
+        gDeferredShadowGLTFAlphaBlendMultiviewProgram.mDefines["LL_MULTIVIEW_SHADOW"] = "1";
+        add_common_permutations(&gDeferredShadowGLTFAlphaBlendMultiviewProgram);
+        success = make_rigged_variant(gDeferredShadowGLTFAlphaBlendMultiviewProgram, gDeferredSkinnedShadowGLTFAlphaBlendMultiviewProgram);
+        success = success && gDeferredShadowGLTFAlphaBlendMultiviewProgram.createShader();
+        llassert(success);
+
+        if (success && LLVKLoader::isVulkanInitialized())
+        {
+            gDeferredShadowGLTFAlphaBlendMultiviewProgram.createVkPipeline(0);
+            gDeferredSkinnedShadowGLTFAlphaBlendMultiviewProgram.createVkPipeline(0);
         }
     }
 

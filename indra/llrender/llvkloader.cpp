@@ -5525,6 +5525,8 @@ U32 perfPassBucket()
            : (gVkPerfPassTag < 3u ? gVkPerfPassTag : 0u);
 }
 thread_local U32 gVkPerfShadowMapIndex = 0;
+thread_local U32 gVkPerfShadowCtx = 0;
+thread_local U32 gVkPerfShadowSection = 0;
 
 std::atomic<U64> gVkPerDrawTopologyGen{1};
 std::atomic<U64> gVkViewDestroyGen{1};
@@ -5638,6 +5640,7 @@ bool endFrame()
                                    << "/" << gVkPerf.draws_shadow_map[1].load()
                                    << "/" << gVkPerf.draws_shadow_map[2].load()
                                    << "/" << gVkPerf.draws_shadow_map[3].load()
+                                   << " mv=" << gVkPerf.draws_shadow_map[6].load()
                                    << " spot " << gVkPerf.draws_shadow_map[4].load()
                                    << "/" << gVkPerf.draws_shadow_map[5].load()
                                    << " culled=" << gVkPerf.shadow_cull.load()
@@ -5646,8 +5649,26 @@ bool endFrame()
                                    << "/" << gVkPerf.shadow_rigged_map[1].load()
                                    << "/" << gVkPerf.shadow_rigged_map[2].load()
                                    << "/" << gVkPerf.shadow_rigged_map[3].load()
+                                   << " mv=" << gVkPerf.shadow_rigged_map[6].load()
                                    << " spot " << gVkPerf.shadow_rigged_map[4].load()
                                    << "/" << gVkPerf.shadow_rigged_map[5].load()
+                                   << [](){ std::string s;
+                                        static const char* ctx_names[VKPERF_SHCTX_COUNT] = {
+                                            "?", "mv", "rest", "fb", "spot" };
+                                        static const char* sec_names[VKPERF_SHSEC_COUNT] = {
+                                            "other","op","opR","ter","tree","av",
+                                            "am","amR","ab","abR","fbm","fbmR",
+                                            "gm","gmR","ga","gaR","pbr","pbrR" };
+                                        for (U32 c = 0; c < VKPERF_SHCTX_COUNT; ++c) {
+                                            for (U32 k = 0; k < VKPERF_SHSEC_COUNT; ++k) {
+                                                const U64 n = gVkPerf.draws_shadow_site[c][k].load();
+                                                if (n == 0) continue;
+                                                s += s.empty() ? " | shsite " : " ";
+                                                s += ctx_names[c]; s += "."; s += sec_names[k];
+                                                s += "="; s += std::to_string(n);
+                                            }
+                                        }
+                                        return s; }()
                                    << " | bkt patch=" << gVkPerf.bkt_patch.load()
                                    << " range=" << gVkPerf.bkt_range.load()
                                    << " rec=" << gVkPerf.bkt_rec.load()
@@ -13147,7 +13168,10 @@ void bindDrawDescriptorSetsOnce(VkCommandBuffer cmd, VkPipelineLayout layout,
     ++gVkPerf.draws_pass[pass_bucket];
     if (pass_bucket == 1u)
     {
-        ++gVkPerf.draws_shadow_map[gVkPerfShadowMapIndex < 6u ? gVkPerfShadowMapIndex : 5u];
+        ++gVkPerf.draws_shadow_map[gVkPerfShadowMapIndex < 7u ? gVkPerfShadowMapIndex : 6u];
+        const U32 sctx = gVkPerfShadowCtx < VKPERF_SHCTX_COUNT ? gVkPerfShadowCtx : 0u;
+        const U32 ssec = gVkPerfShadowSection < VKPERF_SHSEC_COUNT ? gVkPerfShadowSection : 0u;
+        ++gVkPerf.draws_shadow_site[sctx][ssec];
     }
     VkDescriptorSet set2 = VK_NULL_HANDLE;
     VkDescriptorSet set3 = VK_NULL_HANDLE;

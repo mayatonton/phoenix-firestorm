@@ -454,6 +454,8 @@ public:
 
     bool                       mWritePerProgramUBOMinimumAlpha = false;
 
+    bool                       mVkShadowCutoffFromSlot = false;
+
     bool createVkPipeline(U32 perProgramUBOSize = 0, bool needsSharedWaterVUBO = false);
 
     VkPipeline getOrCreateVkPipelineForBoundRT(U32 mode = 0 );

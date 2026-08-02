@@ -308,6 +308,7 @@ public:
     void renderGLTFObjects(U32 type, bool texture = true, bool rigged = false, bool scene_manager = true);
 
     void renderAlphaObjects(bool rigged = false, S32 gltf_mode = 0);
+    void renderAlphaObjectsMultiview(bool rigged);
     void renderFocusPoint(); // <FS:Beq/> FIRE-32023 Add focus point rendering
     void renderMaskedObjects(U32 type, bool texture = true, bool batch_texture = false, bool rigged = false);
     void renderFullbrightMaskedObjects(U32 type, bool texture = true, bool batch_texture = false, bool rigged = false);
@@ -425,7 +426,8 @@ public:
 
     void renderHighlight(const LLViewerObject* obj, F32 fade);
 
-    void renderShadow(const glm::mat4& view, const glm::mat4& proj, LLCamera& camera, LLCullResult& result, bool depth_clamp, bool render_opaque_bucketized = true);
+    void renderShadow(const glm::mat4& view, const glm::mat4& proj, LLCamera& camera, LLCullResult& result, bool depth_clamp, bool render_opaque_bucketized = true, bool render_alpha = true);
+    void renderShadowAlphaMultiview(LLCamera& camera, LLCullResult& result);
     void renderShadowOpaqueBucketized(LLCamera& camera, LLCullResult& result);
     void renderShadowOpaqueBucketizedMultiview(LLCamera& camera, LLCullResult& result);
     void renderSelectedFaces(const LLColor4& color);

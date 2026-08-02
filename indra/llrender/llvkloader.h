@@ -1449,6 +1449,29 @@ namespace LLVKLoader
     void        pushModelviewOnce(VkCommandBuffer cmd, VkPipelineLayout layout, const float* mv16);
     bool        perFrameMatrixNeedsWrite();
 
+    enum : U32
+    {
+        VKPERF_SHCTX_NONE     = 0,
+        VKPERF_SHCTX_MV       = 1,
+        VKPERF_SHCTX_REST     = 2,
+        VKPERF_SHCTX_FALLBACK = 3,
+        VKPERF_SHCTX_SPOT     = 4,
+        VKPERF_SHCTX_COUNT    = 5,
+
+        VKPERF_SHSEC_OTHER        = 0,
+        VKPERF_SHSEC_OPAQUE       = 1,
+        VKPERF_SHSEC_GEOM_TERRAIN = 3,
+        VKPERF_SHSEC_GEOM_TREE    = 4,
+        VKPERF_SHSEC_GEOM_AVATAR  = 5,
+        VKPERF_SHSEC_AMASK        = 6,
+        VKPERF_SHSEC_ABLEND       = 8,
+        VKPERF_SHSEC_FBMASK       = 10,
+        VKPERF_SHSEC_GRASSMAT     = 12,
+        VKPERF_SHSEC_GLTF_AMASK   = 14,
+        VKPERF_SHSEC_GLTF_PBR     = 16,
+        VKPERF_SHSEC_COUNT        = 18,
+    };
+
     struct VkPerfCounters
     {
         std::atomic<U64> pipe_bind{0};
@@ -1476,10 +1499,11 @@ namespace LLVKLoader
         std::atomic<U64> ib_bind{0};
         std::atomic<U64> ib_skip{0};
         std::atomic<U64> draws_pass[5] = {};
-        std::atomic<U64> draws_shadow_map[6] = {};
+        std::atomic<U64> draws_shadow_map[7] = {};
+        std::atomic<U64> draws_shadow_site[VKPERF_SHCTX_COUNT][VKPERF_SHSEC_COUNT] = {};
         std::atomic<U64> shadow_cull{0};
         std::atomic<U64> shadow_rigged{0};
-        std::atomic<U64> shadow_rigged_map[6] = {};
+        std::atomic<U64> shadow_rigged_map[7] = {};
         std::atomic<U64> bkt_patch{0};
         std::atomic<U64> bkt_range{0};
         std::atomic<U64> bkt_rec{0};
@@ -1568,6 +1592,7 @@ namespace LLVKLoader
             vb_bind = 0; vb_skip = 0; ib_bind = 0; ib_skip = 0;
             for (auto& v : draws_pass) v = 0;
             for (auto& v : draws_shadow_map) v = 0;
+            for (auto& row : draws_shadow_site) for (auto& v : row) v = 0;
             shadow_cull = 0; shadow_rigged = 0;
             for (auto& v : shadow_rigged_map) v = 0;
             bkt_patch = 0; bkt_range = 0; bkt_rec = 0; bkt_skip = 0; mat_draws = 0; mat_bindless_draws = 0;
@@ -1614,6 +1639,8 @@ namespace LLVKLoader
     extern std::atomic<U64> gVkGeoInflightBytes;
     extern thread_local U32 gVkPerfPassTag;
     extern thread_local U32 gVkPerfShadowMapIndex;
+    extern thread_local U32 gVkPerfShadowCtx;
+    extern thread_local U32 gVkPerfShadowSection;
     extern thread_local U32 gVkPerfSetPath;
     extern thread_local U32 gVkPerfSetCause;
     extern thread_local U32 gVkPerfValFailKind;
@@ -1689,6 +1716,20 @@ namespace LLVKLoader
         U32 mPrev;
         VkPerfPassScope(U32 tag) : mPrev(gVkPerfPassTag) { gVkPerfPassTag = tag; }
         ~VkPerfPassScope() { gVkPerfPassTag = mPrev; }
+    };
+
+    struct VkPerfShadowCtxScope
+    {
+        U32 mPrev;
+        VkPerfShadowCtxScope(U32 ctx) : mPrev(gVkPerfShadowCtx) { gVkPerfShadowCtx = ctx; }
+        ~VkPerfShadowCtxScope() { gVkPerfShadowCtx = mPrev; }
+    };
+
+    struct VkPerfShadowSectionScope
+    {
+        U32 mPrev;
+        VkPerfShadowSectionScope(U32 sec) : mPrev(gVkPerfShadowSection) { gVkPerfShadowSection = sec; }
+        ~VkPerfShadowSectionScope() { gVkPerfShadowSection = mPrev; }
     };
 
     struct VkPerfPhaseScope

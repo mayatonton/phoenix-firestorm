@@ -23,6 +23,10 @@
  * $/LicenseInfo$
  */
 
+#ifdef LL_MULTIVIEW_SHADOW
+#extension GL_EXT_multiview : enable
+#endif
+
 #ifdef LL_VULKAN_GLSL
 layout(set = 0, binding = 1, std140) uniform TextureMatrixUBO
 {
@@ -55,6 +59,10 @@ uniform mat4 modelview_projection_matrix;
 #endif
 #if defined(HAS_SKIN)
 mat4 getObjectSkinnedTransform();
+#endif
+
+#ifdef LL_MULTIVIEW_SHADOW
+layout(set = 1, binding = 54, std140) uniform ShadowViewProjUBO { mat4 shadow_viewproj[4]; };
 #endif
 
 #ifdef LL_VULKAN_GLSL
@@ -107,15 +115,22 @@ void passTextureIndex();
 void main()
 {
     //transform vertex
-#if defined(HAS_SKIN)
     vec4 pre_pos = vec4(position.xyz, 1.0);
+#if defined(HAS_SKIN)
     mat4 mat = getObjectSkinnedTransform();
     mat = modelview_matrix * mat;
+#ifdef LL_MULTIVIEW_SHADOW
+    vec4 pos = shadow_viewproj[gl_ViewIndex] * mat * pre_pos;
+#else
     vec4 pos = mat * pre_pos;
     pos = projection_matrix * pos;
+#endif
 #else
-    vec4 pre_pos = vec4(position.xyz, 1.0);
+#ifdef LL_MULTIVIEW_SHADOW
+    vec4 pos = shadow_viewproj[gl_ViewIndex] * modelview_matrix * pre_pos;
+#else
     vec4 pos = modelview_projection_matrix * pre_pos;
+#endif
 #endif
 
     target_pos_x = 0.5 * (shadow_target_width - 1.0) * pos.x;

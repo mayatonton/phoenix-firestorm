@@ -6103,6 +6103,17 @@ void LLPipeline::renderGeomShadow(LLCamera& camera)
         pool_set_t::iterator iter2 = iter1;
         if (hasRenderType(poolp->getType()) && poolp->getNumShadowPasses() > 0)
         {
+            U32 geom_sec = LLVKLoader::VKPERF_SHSEC_OTHER;
+            switch (cur_type)
+            {
+            case LLDrawPool::POOL_TERRAIN:    geom_sec = LLVKLoader::VKPERF_SHSEC_GEOM_TERRAIN; break;
+            case LLDrawPool::POOL_TREE:       geom_sec = LLVKLoader::VKPERF_SHSEC_GEOM_TREE;    break;
+            case LLDrawPool::POOL_AVATAR:
+            case LLDrawPool::POOL_CONTROL_AV: geom_sec = LLVKLoader::VKPERF_SHSEC_GEOM_AVATAR;  break;
+            default: break;
+            }
+            LLVKLoader::VkPerfShadowSectionScope geom_scope(geom_sec);
+
             poolp->prerender() ;
 
             gGLLastMatrix = NULL;
@@ -13874,6 +13885,11 @@ namespace
     };
 }
 
+static bool sShadowAlphaMvEnabled()
+{
+    return LLVKLoader::isBindlessActiveVk();
+}
+
 void LLPipeline::renderShadowOpaqueBucketizedMultiview(LLCamera& cam, LLCullResult& result)
 {
     LL_PROFILE_ZONE_SCOPED_CATEGORY_PIPELINE;
@@ -13881,6 +13897,9 @@ void LLPipeline::renderShadowOpaqueBucketizedMultiview(LLCamera& cam, LLCullResu
     LLVKLoader::gpuCheckpoint("renderShadowOpaqueBucketizedMultiview");
 
     LLPipelineFrameContext::getInstance().setShadowPass(true);
+
+    LLVKLoader::VkPerfShadowCtxScope shadow_ctx_scope(LLVKLoader::VKPERF_SHCTX_MV);
+    LLVKLoader::gVkPerfShadowMapIndex = 6u;
 
     U32 saved_occlusion = sUseOcclusion;
     sUseOcclusion = 0;
@@ -13909,20 +13928,224 @@ void LLPipeline::renderShadowOpaqueBucketizedMultiview(LLCamera& cam, LLCullResu
 
         gGL.getTexUnit(0)->disable();
 
-        for (U32 ti = 0; ti < LLVKBucket::kBucketizedPassCount; ++ti)
         {
-            renderObjects(LLVKBucket::kBucketizedPasses[ti], false, false, rigged);
+            LLVKLoader::VkPerfShadowSectionScope sec_scope(LLVKLoader::VKPERF_SHSEC_OPAQUE + (rigged ? 1u : 0u));
+            for (U32 ti = 0; ti < LLVKBucket::kBucketizedPassCount; ++ti)
+            {
+                renderObjects(LLVKBucket::kBucketizedPasses[ti], false, false, rigged);
+            }
         }
 
-        renderGLTFObjects(LLRenderPass::PASS_GLTF_PBR, false, rigged);
+        {
+            LLVKLoader::VkPerfShadowSectionScope sec_scope(LLVKLoader::VKPERF_SHSEC_GLTF_PBR + (rigged ? 1u : 0u));
+            renderGLTFObjects(LLRenderPass::PASS_GLTF_PBR, false, rigged);
+        }
 
         gGL.getTexUnit(0)->enable(LLTexUnit::TT_TEXTURE);
+    }
+
+    if (sShadowAlphaMvEnabled())
+    {
+        renderShadowAlphaMultiview(cam, result);
     }
 
     gGL.setColorMask(true, true);
 
     sUseOcclusion = saved_occlusion;
     LLPipelineFrameContext::getInstance().setShadowPass(false);
+}
+
+void LLPipeline::renderShadowAlphaMultiview(LLCamera& shadow_cam, LLCullResult& result)
+{
+    LL_PROFILE_ZONE_SCOPED_CATEGORY_PIPELINE;
+    LL_PROFILE_GPU_ZONE("renderShadowAlphaMultiview");
+
+    U32 target_width = LLRenderTarget::sCurResX;
+
+    for (int i = 0; i < 2; ++i)
+    {
+        bool rigged = i == 1;
+
+        {
+            LLVKLoader::VkPerfShadowSectionScope sec_scope(LLVKLoader::VKPERF_SHSEC_AMASK + (rigged ? 1u : 0u));
+            gDeferredShadowAlphaMaskMultiviewProgram.bind(rigged);
+            LLGLSLShader::sCurBoundShaderPtr->setMinimumAlpha(-1.f);
+            LLGLSLShader::sCurBoundShaderPtr->setObjectAlpha(1.f);
+            if (LLVKLoader::isVulkanInitialized())
+            {
+                LLVKLoader::ShadowParams_PerShaderBind shadow_params = {};
+                shadow_params.shadow_target_width = (float)target_width;
+                LLVKLoader::writeCurrentShadowParamsUBO(shadow_params);
+            }
+            renderMaskedObjects(LLRenderPass::PASS_ALPHA_MASK, true, true, rigged);
+        }
+
+        {
+            LLVKLoader::VkPerfShadowSectionScope sec_scope(LLVKLoader::VKPERF_SHSEC_ABLEND + (rigged ? 1u : 0u));
+            renderAlphaObjectsMultiview(rigged);
+        }
+
+        {
+            LLVKLoader::VkPerfShadowSectionScope sec_scope(LLVKLoader::VKPERF_SHSEC_FBMASK + (rigged ? 1u : 0u));
+            gDeferredShadowAlphaMaskMultiviewProgram.bind(rigged);
+            LLGLSLShader::sCurBoundShaderPtr->setMinimumAlpha(-1.f);
+            LLGLSLShader::sCurBoundShaderPtr->setObjectAlpha(1.f);
+            if (LLVKLoader::isVulkanInitialized())
+            {
+                LLVKLoader::ShadowParams_PerShaderBind shadow_params = {};
+                shadow_params.shadow_target_width = (float)target_width;
+                LLVKLoader::writeCurrentShadowParamsUBO(shadow_params);
+            }
+            renderFullbrightMaskedObjects(LLRenderPass::PASS_FULLBRIGHT_ALPHA_MASK, true, true, rigged);
+        }
+
+        {
+            LLVKLoader::VkPerfShadowSectionScope sec_scope(LLVKLoader::VKPERF_SHSEC_GRASSMAT + (rigged ? 1u : 0u));
+            gDeferredShadowAlphaMaskMultiviewProgram.bind(rigged);
+            LLGLSLShader::sCurBoundShaderPtr->setObjectAlpha(1.f);
+
+            if (i == 0)
+            {
+                LLGLSLShader::sCurBoundShaderPtr->setMinimumAlpha(ALPHA_BLEND_CUTOFF);
+                renderObjects(LLRenderPass::PASS_GRASS, true);
+            }
+
+            LLGLSLShader::sCurBoundShaderPtr->setMinimumAlpha(-1.f);
+            renderMaskedObjects(LLRenderPass::PASS_NORMSPEC_MASK, true, false, rigged);
+            renderMaskedObjects(LLRenderPass::PASS_MATERIAL_ALPHA_MASK, true, false, rigged);
+            renderMaskedObjects(LLRenderPass::PASS_SPECMAP_MASK, true, false, rigged);
+            renderMaskedObjects(LLRenderPass::PASS_NORMMAP_MASK, true, false, rigged);
+        }
+    }
+
+    for (int i = 0; i < 2; ++i)
+    {
+        bool rigged = i == 1;
+        LLVKLoader::VkPerfShadowSectionScope sec_scope(LLVKLoader::VKPERF_SHSEC_GLTF_AMASK + (rigged ? 1u : 0u));
+        gDeferredShadowGLTFAlphaMaskMultiviewProgram.bind(rigged);
+        LLGLSLShader::sCurBoundShaderPtr->setMinimumAlpha(ALPHA_BLEND_CUTOFF);
+        LLGLSLShader::sCurBoundShaderPtr->setObjectAlpha(1.f);
+        if (LLVKLoader::isVulkanInitialized())
+        {
+            LLVKLoader::ShadowParams_PerShaderBind shadow_params = {};
+            shadow_params.shadow_target_width = (float)target_width;
+            LLVKLoader::writeCurrentShadowParamsUBO(shadow_params);
+        }
+
+        gGL.loadMatrix(gGLModelView);
+        gGLLastMatrix = NULL;
+
+        U32 type = LLRenderPass::PASS_GLTF_PBR_ALPHA_MASK;
+
+        if (rigged)
+        {
+            mAlphaMaskPool->pushRiggedGLTFBatches(type + 1);
+        }
+        else
+        {
+            mAlphaMaskPool->pushGLTFBatches(type);
+        }
+
+        gGL.loadMatrix(gGLModelView);
+        gGLLastMatrix = NULL;
+    }
+}
+
+void LLPipeline::renderAlphaObjectsMultiview(bool rigged)
+{
+    LL_PROFILE_ZONE_SCOPED_CATEGORY_PIPELINE;
+    assertInitialized();
+
+    U32 target_width = LLRenderTarget::sCurResX;
+    U32 type = LLRenderPass::PASS_ALPHA;
+
+    {
+        gDeferredShadowAlphaMaskMultiviewProgram.bind(rigged);
+        if (LLVKLoader::isVulkanInitialized())
+        {
+            LLVKLoader::ShadowParams_PerShaderBind shadow_params = {};
+            shadow_params.shadow_target_width = (float)target_width;
+            LLVKLoader::writeCurrentShadowParamsUBO(shadow_params);
+        }
+        LLGLSLShader::sCurBoundShaderPtr->setMinimumAlpha(ALPHA_BLEND_CUTOFF);
+        gGL.loadMatrix(gGLModelView);
+        gGLLastMatrix = NULL;
+
+        const LLVOAvatar* lastAvatar = nullptr;
+        U64 lastMeshId = 0;
+        bool skipLastSkin = false;
+        auto* begin = gPipeline.beginRenderMap(type);
+        auto* end = gPipeline.endRenderMap(type);
+        for (LLCullResult::drawinfo_iterator i = begin; i != end; )
+        {
+            LLDrawInfo* pparams = *i;
+            LLCullResult::increment_iterator(i, end);
+            if (rigged != (pparams->mAvatar != nullptr))
+            {
+                continue;
+            }
+            if (pparams->mGLTFMaterial != nullptr)
+            {
+                continue;
+            }
+            LLGLSLShader::sCurBoundShaderPtr->setObjectAlpha(pparams->mObjectAlpha);
+            if (rigged)
+            {
+                if (mSimplePool->uploadMatrixPalette(pparams->mAvatar, pparams->mSkinInfo, lastAvatar, lastMeshId, skipLastSkin))
+                {
+                    mSimplePool->pushBatch(*pparams, true, true);
+                }
+            }
+            else
+            {
+                mSimplePool->pushBatch(*pparams, true, true);
+            }
+        }
+    }
+
+    {
+        gDeferredShadowGLTFAlphaBlendMultiviewProgram.bind(rigged);
+        if (LLVKLoader::isVulkanInitialized())
+        {
+            LLVKLoader::ShadowParams_PerShaderBind shadow_params = {};
+            shadow_params.shadow_target_width = (float)target_width;
+            LLVKLoader::writeCurrentShadowParamsUBO(shadow_params);
+        }
+        LLGLSLShader::sCurBoundShaderPtr->setMinimumAlpha(ALPHA_BLEND_CUTOFF);
+        gGL.loadMatrix(gGLModelView);
+        gGLLastMatrix = NULL;
+
+        const LLVOAvatar* lastAvatarGLTF = nullptr;
+        U64 lastMeshIdGLTF = 0;
+        bool skipLastSkinGLTF = false;
+        auto* begin = gPipeline.beginRenderMap(type);
+        auto* end = gPipeline.endRenderMap(type);
+        for (LLCullResult::drawinfo_iterator i = begin; i != end; )
+        {
+            LLDrawInfo* pparams = *i;
+            LLCullResult::increment_iterator(i, end);
+            if (rigged != (pparams->mAvatar != nullptr))
+            {
+                continue;
+            }
+            if (pparams->mGLTFMaterial == nullptr)
+            {
+                continue;
+            }
+            LLGLSLShader::sCurBoundShaderPtr->setObjectAlpha(pparams->mObjectAlpha);
+            if (rigged)
+            {
+                LLRenderPass::pushRiggedGLTFBatch(*pparams, lastAvatarGLTF, lastMeshIdGLTF, skipLastSkinGLTF);
+            }
+            else
+            {
+                LLRenderPass::pushGLTFBatch(*pparams);
+            }
+        }
+    }
+
+    gGL.loadMatrix(gGLModelView);
+    gGLLastMatrix = NULL;
 }
 
 void LLPipeline::renderShadowOpaqueBucketized(LLCamera& cam, LLCullResult& result)
@@ -13943,18 +14166,24 @@ void LLPipeline::renderShadowOpaqueBucketized(LLCamera& cam, LLCullResult& resul
 
         gGL.getTexUnit(0)->disable();
 
-        for (U32 ti = 0; ti < LLVKBucket::kBucketizedPassCount; ++ti)
         {
-            renderObjects(LLVKBucket::kBucketizedPasses[ti], false, false, rigged);
+            LLVKLoader::VkPerfShadowSectionScope sec_scope(LLVKLoader::VKPERF_SHSEC_OPAQUE + (rigged ? 1u : 0u));
+            for (U32 ti = 0; ti < LLVKBucket::kBucketizedPassCount; ++ti)
+            {
+                renderObjects(LLVKBucket::kBucketizedPasses[ti], false, false, rigged);
+            }
         }
 
-        renderGLTFObjects(LLRenderPass::PASS_GLTF_PBR, false, rigged);
+        {
+            LLVKLoader::VkPerfShadowSectionScope sec_scope(LLVKLoader::VKPERF_SHSEC_GLTF_PBR + (rigged ? 1u : 0u));
+            renderGLTFObjects(LLRenderPass::PASS_GLTF_PBR, false, rigged);
+        }
 
         gGL.getTexUnit(0)->enable(LLTexUnit::TT_TEXTURE);
     }
 }
 
-void LLPipeline::renderShadow(const glm::mat4& view, const glm::mat4& proj, LLCamera& shadow_cam, LLCullResult& result, bool depth_clamp, bool render_opaque_bucketized)
+void LLPipeline::renderShadow(const glm::mat4& view, const glm::mat4& proj, LLCamera& shadow_cam, LLCullResult& result, bool depth_clamp, bool render_opaque_bucketized, bool render_alpha)
 {
     LL_PROFILE_ZONE_SCOPED_CATEGORY_PIPELINE; //LL_RECORD_BLOCK_TIME(FTM_SHADOW_RENDER);
     LL_PROFILE_GPU_ZONE("renderShadow");
@@ -14023,6 +14252,7 @@ void LLPipeline::renderShadow(const glm::mat4& view, const glm::mat4& proj, LLCa
         renderGeomShadow(shadow_cam);
     }
 
+    if (render_alpha)
     {
         LL_PROFILE_ZONE_NAMED_CATEGORY_PIPELINE("shadow alpha");
         LL_PROFILE_GPU_ZONE("shadow alpha");
@@ -14035,6 +14265,7 @@ void LLPipeline::renderShadow(const glm::mat4& view, const glm::mat4& proj, LLCa
             {
                 LL_PROFILE_ZONE_NAMED_CATEGORY_PIPELINE("shadow alpha masked");
                 LL_PROFILE_GPU_ZONE("shadow alpha masked");
+                LLVKLoader::VkPerfShadowSectionScope sec_scope(LLVKLoader::VKPERF_SHSEC_AMASK + (rigged ? 1u : 0u));
                 gDeferredShadowAlphaMaskProgram.bind(rigged);
                 LLGLSLShader::sCurBoundShaderPtr->setMinimumAlpha(ALPHA_BLEND_CUTOFF);
                 LLGLSLShader::sCurBoundShaderPtr->setObjectAlpha(1.f);
@@ -14050,12 +14281,14 @@ void LLPipeline::renderShadow(const glm::mat4& view, const glm::mat4& proj, LLCa
             {
                 LL_PROFILE_ZONE_NAMED_CATEGORY_PIPELINE("shadow alpha blend");
                 LL_PROFILE_GPU_ZONE("shadow alpha blend");
+                LLVKLoader::VkPerfShadowSectionScope sec_scope(LLVKLoader::VKPERF_SHSEC_ABLEND + (rigged ? 1u : 0u));
                 renderAlphaObjects(rigged, 0);
             }
 
             {
                 LL_PROFILE_ZONE_NAMED_CATEGORY_PIPELINE("shadow fullbright alpha masked");
                 LL_PROFILE_GPU_ZONE("shadow alpha masked");
+                LLVKLoader::VkPerfShadowSectionScope sec_scope(LLVKLoader::VKPERF_SHSEC_FBMASK + (rigged ? 1u : 0u));
                 gDeferredShadowFullbrightAlphaMaskProgram.bind(rigged);
                 LLGLSLShader::sCurBoundShaderPtr->setMinimumAlpha(ALPHA_BLEND_CUTOFF);
                 LLGLSLShader::sCurBoundShaderPtr->setObjectAlpha(1.f);
@@ -14071,6 +14304,7 @@ void LLPipeline::renderShadow(const glm::mat4& view, const glm::mat4& proj, LLCa
             {
                 LL_PROFILE_ZONE_NAMED_CATEGORY_PIPELINE("shadow alpha grass");
                 LL_PROFILE_GPU_ZONE("shadow alpha grass");
+                LLVKLoader::VkPerfShadowSectionScope sec_scope(LLVKLoader::VKPERF_SHSEC_GRASSMAT + (rigged ? 1u : 0u));
                 gDeferredTreeShadowProgram.bind(rigged);
                 LLGLSLShader::sCurBoundShaderPtr->setMinimumAlpha(ALPHA_BLEND_CUTOFF);
 
@@ -14093,6 +14327,7 @@ void LLPipeline::renderShadow(const glm::mat4& view, const glm::mat4& proj, LLCa
         for (int i = 0; i < 2; ++i)
         {
             bool rigged = i == 1;
+            LLVKLoader::VkPerfShadowSectionScope sec_scope(LLVKLoader::VKPERF_SHSEC_GLTF_AMASK + (rigged ? 1u : 0u));
             gDeferredShadowGLTFAlphaMaskProgram.bind(rigged);
             LLGLSLShader::sCurBoundShaderPtr->setMinimumAlpha(ALPHA_BLEND_CUTOFF);
             LLGLSLShader::sCurBoundShaderPtr->setObjectAlpha(1.f);
@@ -15122,8 +15357,10 @@ void LLPipeline::generateSunShadow(LLCamera& camera)
             set_current_modelview(view[j]);
             set_current_projection(proj[j]);
             {
+                LLVKLoader::VkPerfShadowCtxScope shadow_ctx_scope(LLVKLoader::VKPERF_SHCTX_REST);
+                LLVKLoader::gVkPerfShadowMapIndex = (U32)j;
                 ScopedShadowBatchCull cull_scope(cascade_batch_cull_radius[j]);
-                renderShadow(view[j], proj[j], tight_shadow_cam[j], union_result, true, false);
+                renderShadow(view[j], proj[j], tight_shadow_cam[j], union_result, true, false, !sShadowAlphaMvEnabled());
             }
             getFrameRT()->sunShadowLayered.flush();
         }
@@ -15176,8 +15413,12 @@ void LLPipeline::generateSunShadow(LLCamera& camera)
                 getFrameRT()->sunShadowLayered.getViewport(gGLViewport);
                 set_current_modelview(view[j]);
                 set_current_projection(proj[j]);
-                ScopedShadowBatchCull cull_scope(cascade_batch_cull_radius[j]);
-                renderShadow(view[j], proj[j], tight_shadow_cam[j], sun_result[j], true, true);
+                {
+                    LLVKLoader::VkPerfShadowCtxScope shadow_ctx_scope(LLVKLoader::VKPERF_SHCTX_FALLBACK);
+                    LLVKLoader::gVkPerfShadowMapIndex = (U32)j;
+                    ScopedShadowBatchCull cull_scope(cascade_batch_cull_radius[j]);
+                    renderShadow(view[j], proj[j], tight_shadow_cam[j], sun_result[j], true, true);
+                }
                 getFrameRT()->sunShadowLayered.flush();
             }
             getFrameRT()->sunShadowLayered.bindForShaderRead(0, true);
@@ -15325,7 +15566,10 @@ void LLPipeline::generateSunShadow(LLCamera& camera)
                 spot_rt.getViewport(gGLViewport);
                 spot_rt.clear();
 
-                renderShadow(view[i + 4], proj[i + 4], shadow_cam, spot_result[i], false);
+                {
+                    LLVKLoader::VkPerfShadowCtxScope shadow_ctx_scope(LLVKLoader::VKPERF_SHCTX_SPOT);
+                    renderShadow(view[i + 4], proj[i + 4], shadow_cam, spot_result[i], false);
+                }
 
                 RenderSpotLight = nullptr;
 
