@@ -302,36 +302,10 @@ void onRegionDestroyed(LLViewerRegion* region)
 
 namespace
 {
-    U32 heapSlotFor(LLTexture* t)
-    {
-        return LLImageGL::vkHeapSlotOrDefault(t ? t->getGLTexture() : nullptr);
-    }
-
-    void computeRecordSlots(LLDrawInfo* info, U32* slots)
-    {
-        slots[0] = slots[1] = slots[2] = slots[3] = 0;
-        if (info->mTextureList.size() > 1)
-        {
-            const U32 n = llmin((U32)info->mTextureList.size(), 4u);
-            for (U32 i = 0; i < n; ++i)
-            {
-                slots[i] = heapSlotFor(info->mTextureList[i].get());
-            }
-        }
-        else if (info->mTexture.notNull())
-        {
-            slots[0] = heapSlotFor(info->mTexture.get());
-        }
-        else
-        {
-            slots[0] = heapSlotFor(nullptr);
-        }
-    }
-
     bool ensureRecordDrawDataSlot(LLDrawInfo* info)
     {
         U32 slots[LLVKLoader::DRAWDATA_SLOT_UINTS] = {};
-        computeRecordSlots(info, slots);
+        LLRenderPass::computeDrawDataSlots(info, true, slots);
         return info->ensureVkDrawDataSlot(slots);
     }
 

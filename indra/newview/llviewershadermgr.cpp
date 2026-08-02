@@ -1869,8 +1869,31 @@ bool LLViewerShaderMgr::loadShadersDeferred()
         for (U32 i = 0; i < LLMaterial::SHADER_COUNT; ++i)
         {
             computeMaterialFLayoutOffsets(i, use_sun_shadow, has_emissive, g_material_f_layouts[i]);
-            gDeferredMaterialProgram[i].createVkPipeline(g_material_f_layouts[i].ubo_size);
-            gDeferredMaterialProgram[i + LLMaterial::SHADER_COUNT].createVkPipeline(g_material_f_layouts[i].ubo_size);
+            const U32 pp = (LLVKLoader::isBindlessActiveVk() && (i & 0x3) != 1) ? 0 : g_material_f_layouts[i].ubo_size;
+            gDeferredMaterialProgram[i].createVkPipeline(pp);
+            gDeferredMaterialProgram[i + LLMaterial::SHADER_COUNT].createVkPipeline(pp);
+        }
+        if (LLVKLoader::isBindlessActiveVk())
+        {
+            for (U32 i = 0; i < LLMaterial::SHADER_COUNT; ++i)
+            {
+                if ((i & 0x3) == 1)
+                {
+                    continue;
+                }
+                for (U32 v = 0; v < 2; ++v)
+                {
+                    LLGLSLShader& mprog = gDeferredMaterialProgram[i + v * LLMaterial::SHADER_COUNT];
+                    if (mprog.mVkPerProgramUBO != VK_NULL_HANDLE || !mprog.mVkReflUsesHeapSet)
+                    {
+                        LL_WARNS("Vulkan") << "Material D structural oracle violated: " << mprog.mName
+                                           << " perProgUBO_present=" << (mprog.mVkPerProgramUBO != VK_NULL_HANDLE ? 1 : 0)
+                                           << " reflUsesHeapSet=" << (mprog.mVkReflUsesHeapSet ? 1 : 0)
+                                           << LL_ENDL;
+                        llassert(mprog.mVkPerProgramUBO == VK_NULL_HANDLE && mprog.mVkReflUsesHeapSet);
+                    }
+                }
+            }
         }
     }
 

@@ -40,6 +40,13 @@ uniform int sun_up_factor;
 uniform int classic_mode;
 #endif
 #ifdef LL_VULKAN_GLSL
+#if defined(AYA_BINDLESS_MAT) && (DIFFUSE_ALPHA_MODE != DIFFUSE_ALPHA_MODE_BLEND)
+#define specular_color       aya_dd[aya_draw_id].spec_color
+#define emissive_brightness  aya_dd[aya_draw_id].misc.x
+#define env_intensity        aya_dd[aya_draw_id].misc.y
+#define minimum_alpha        aya_dd[aya_draw_id].misc.z
+#define aya_sss_skin_flag    aya_dd[aya_draw_id].misc.w
+#else
 layout(set = 1, binding = 0, std140) uniform MaterialF_PerProgramBind
 {
     float emissive_brightness;
@@ -111,6 +118,7 @@ layout(set = 1, binding = 0, std140) uniform MaterialF_PerProgramBind
 layout(push_constant) uniform MaterialF_FragPC {
     layout(offset = 72) float waterSign;
 };
+#endif
 #endif
 #endif
 
@@ -301,11 +309,13 @@ out vec4 frag_data[4];
 #endif
 
 #ifdef LL_VULKAN_GLSL
-#ifdef AYA_MAT_HEAP
-layout(set = 2, binding = 1) uniform sampler2D ayaTexHeap[];
+#if defined(AYA_MAT_HEAP) || (defined(AYA_BINDLESS_MAT) && (DIFFUSE_ALPHA_MODE != DIFFUSE_ALPHA_MODE_BLEND))
 struct AyaDrawData { uvec4 tex_slots; vec4 spec_color; vec4 misc; };
 layout(set = 2, binding = 0, std430) readonly buffer AyaDrawDataBlock { AyaDrawData aya_dd[]; };
 layout(location = 19) flat in int aya_draw_id;
+#endif
+#ifdef AYA_MAT_HEAP
+layout(set = 2, binding = 1) uniform sampler2D ayaTexHeap[];
 #define diffuseMap ayaTexHeap[nonuniformEXT(aya_dd[aya_draw_id].tex_slots.x)]
 #else
 layout(set = 1, binding = 2) uniform sampler2D diffuseMap;  //always in sRGB space

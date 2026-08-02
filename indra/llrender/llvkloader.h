@@ -65,13 +65,9 @@ namespace LLVKLoader
     void endOffscreenFrameVk();
     VkCommandBuffer getCurrentCommandBuffer();
 
-    constexpr U32 MAX_RECORD_LANES = 8;
+    constexpr U32 MAX_RECORD_LANES = 1;
 
     U32  recordWorkerCount();
-    U32  getCurrentRecordLane();
-    // III-0 window-mutation guard (redesign §1.3/§5.2)。
-    bool isRecordWindowActive();
-    void recordWindowMutationGuard(const char* site, U32 localid);
 
     uint32_t acquireOcclusionQueryVk();
     void     releaseOcclusionQueryVk(uint32_t handle);

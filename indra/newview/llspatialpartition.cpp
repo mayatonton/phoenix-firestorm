@@ -515,7 +515,6 @@ void LLSpatialGroup::rebuildMesh()
 {
     if (!isDead())
     {
-        LLVKLoader::recordWindowMutationGuard("rebuildMesh", 0);
         getSpatialPartition()->rebuildMesh(this);
     }
 }

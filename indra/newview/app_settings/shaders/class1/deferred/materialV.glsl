@@ -130,7 +130,7 @@ out vec2 vary_texcoord2;
 #ifdef LL_VULKAN_GLSL
 layout(location = 6) out vec4 vertex_color;
 layout(location = 7) out vec2 vary_texcoord0;
-#ifdef AYA_MAT_HEAP
+#if defined(AYA_MAT_HEAP) || (defined(AYA_BINDLESS_MAT) && DIFFUSE_ALPHA_MODE != DIFFUSE_ALPHA_MODE_BLEND)
 layout(location = 19) flat out int aya_draw_id;
 #endif
 #else
@@ -140,7 +140,7 @@ out vec2 vary_texcoord0;
 
 void main()
 {
-#if defined(LL_VULKAN_GLSL) && defined(AYA_MAT_HEAP)
+#if defined(LL_VULKAN_GLSL) && (defined(AYA_MAT_HEAP) || (defined(AYA_BINDLESS_MAT) && DIFFUSE_ALPHA_MODE != DIFFUSE_ALPHA_MODE_BLEND))
     aya_draw_id = gl_InstanceIndex;
 #endif
 #ifdef HAS_SKIN

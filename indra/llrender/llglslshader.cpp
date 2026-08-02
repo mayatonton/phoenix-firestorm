@@ -2335,7 +2335,7 @@ void LLGLSLShader::vkWarnL3Fallback(LLGLSLShader* shader, U32 binding, S32 enum_
 U64 LLGLSLShader::vkComputePerDrawRingSig(LLGLSLShader* cur)
 {
     U64 ring_sig = 0;
-    for (U8 b : cur->mVkAccessorBindingListLanes[LLVKLoader::getCurrentRecordLane()])
+    for (U8 b : cur->mVkAccessorBindingListLanes[0])
     {
         VkBuffer rb = VK_NULL_HANDLE;
         void*    rm = nullptr;
@@ -3575,7 +3575,7 @@ void LLGLSLShader::populateAndBindUniversalDescriptorSet()
     } populate_cost_timer;
 
     const bool imm_cache = !cur->mVkUsesHeapSet;
-    const U32  imm_lane  = LLVKLoader::getCurrentRecordLane();
+    const U32  imm_lane  = 0;
     const U32  imm_frame = LLVKLoader::getCurrentFrameIndex();
 
     if (LLVKLoader::perfLogEnabled())

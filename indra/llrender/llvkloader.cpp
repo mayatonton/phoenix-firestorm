@@ -485,8 +485,6 @@ namespace
         U32             enqueue_frame;
     };
 
-    thread_local U32 tRecordLaneIndex = 0;
-
     struct PerDrawDescLane
     {
         std::vector<VkDescriptorPool> pools;
@@ -889,7 +887,6 @@ namespace
 
     struct PEJob
     {
-        std::vector<VkCommandBuffer> pre_cmds;
         VkCommandBuffer cmd              = VK_NULL_HANDLE;
         VkFence         fence            = VK_NULL_HANDLE;
         VkSemaphore     wait_semaphore   = VK_NULL_HANDLE;
@@ -1032,18 +1029,7 @@ namespace
         }
         VkSubmitInfo si = {};
         si.sType = VK_STRUCTURE_TYPE_SUBMIT_INFO;
-        std::vector<VkCommandBuffer> submit_cmds;
-        if (!job.pre_cmds.empty())
-        {
-            submit_cmds = job.pre_cmds;
-            if (job.cmd != VK_NULL_HANDLE)
-            {
-                submit_cmds.push_back(job.cmd);
-            }
-            si.commandBufferCount = (U32)submit_cmds.size();
-            si.pCommandBuffers    = submit_cmds.data();
-        }
-        else if (job.cmd != VK_NULL_HANDLE)
+        if (job.cmd != VK_NULL_HANDLE)
         {
             si.commandBufferCount = 1;
             si.pCommandBuffers    = &job.cmd;
@@ -1320,11 +1306,6 @@ namespace
         sPEThreaded = false;
     }
 
-    std::vector<VkCommandBuffer> sPendingPreFrameCmds;
-
-    // III-0 window-mutation guard: worker record 窓が開いている間 (worker 並走中) true。
-    // freeze 契約 (redesign §1.3) の正のオラクル = 窓中に main が geometry を変異させたら検出。
-    std::atomic<bool>            sRecordWindowActive{false};
 
     U32 rwDesiredWorkerCount()
     {
@@ -5575,35 +5556,6 @@ U32 recordWorkerCount()
     return rwDesiredWorkerCount();
 }
 
-U32 getCurrentRecordLane()
-{
-    return tRecordLaneIndex;
-}
-
-bool isRecordWindowActive()
-{
-    return sRecordWindowActive.load(std::memory_order_acquire);
-}
-
-// III-0 window-mutation guard 本体。redesign §1.3/§5.2。
-// 通常起動は無音 (VKC 診断 off なら即 return = コストゼロ)。診断起動 (AYASTORM_VKC) で
-// worker record 窓中に main が geometry を変異させた発生点を採取する = freeze 契約破りの正のオラクル。
-// III-0 は観測 (現状 shadow cascade interleave の S8-b は発火が期待値)。III-1 で freeze 実装後は
-// 沈黙が gate。将来 fail-closed 化 (default-deny) はここを起点にする。
-void recordWindowMutationGuard(const char* site, U32 localid)
-{
-    if (!LLVKContract::verboseEnabled())
-    {
-        return;
-    }
-    if (!sRecordWindowActive.load(std::memory_order_acquire))
-    {
-        return;
-    }
-    LLVKContract::watchStageEvent(localid, site);
-    LLVKContract::cause(LLVKContract::C_PAR_CONCURRENT);
-}
-
 bool endFrame()
 {
     if (!sInitialized || !sInFrame)
@@ -6032,8 +5984,6 @@ bool endFrame()
         PEJob cjob;
         cjob.is_frame = true;
         cjob.slot     = sFrameIndex;
-        cjob.pre_cmds = std::move(sPendingPreFrameCmds);
-        sPendingPreFrameCmds.clear();
         cjob.cmd      = sConsumerCommandBuffers[sFrameIndex];
         cjob.fence    = sInFlightFences[sFrameIndex];
         if (sImageAcquired)
@@ -6082,8 +6032,6 @@ bool endFrame()
         PEJob job;
         job.is_frame = true;
         job.slot     = sFrameIndex;
-        job.pre_cmds = std::move(sPendingPreFrameCmds);
-        sPendingPreFrameCmds.clear();
         job.cmd      = sCommandBuffers[sFrameIndex];
         job.fence    = sInFlightFences[sFrameIndex];
         if (sImageAcquired)
@@ -6199,8 +6147,6 @@ void endOffscreenFrameVk()
     {
         PESyncPoint sync;
         PEJob job;
-        job.pre_cmds  = std::move(sPendingPreFrameCmds);
-        sPendingPreFrameCmds.clear();
         job.cmd       = sCommandBuffers[sFrameIndex];
         job.fence     = sInFlightFences[sFrameIndex];
         job.wait_idle = true;
@@ -6504,7 +6450,7 @@ bool ensureScenePerDrawDescriptorSet(const ScenePerDrawBindings& b,
         *out_token = nullptr;
     }
 
-    PerDrawDescLane& lane = sPerDrawDescLanes[tRecordLaneIndex];
+    PerDrawDescLane& lane = sPerDrawDescLanes[0];
     if (sInitialized && lane.pools.empty())
     {
         VkDescriptorPool lazy_pool = VK_NULL_HANDLE;

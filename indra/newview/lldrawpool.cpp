@@ -526,6 +526,51 @@ LLRenderPass::~LLRenderPass()
 
 }
 
+void LLRenderPass::computeDrawDataSlots(const LLDrawInfo* params, bool batch_textures, U32* slots)
+{
+    slots[0] = slots[1] = slots[2] = slots[3] = 0;
+    if (params != nullptr && batch_textures && params->mTextureList.size() > 1)
+    {
+        const U32 n = llmin((U32)params->mTextureList.size(), 4u);
+        for (U32 i = 0; i < n; ++i)
+        {
+            LLTexture* t = params->mTextureList[i].get();
+            slots[i] = LLImageGL::vkHeapSlotOrDefault(t ? t->getGLTexture() : nullptr);
+        }
+    }
+    else if (params != nullptr && params->mTexture.notNull())
+    {
+        slots[0] = LLImageGL::vkHeapSlotOrDefault(params->mTexture->getGLTexture());
+        if (params->mNormalMap.notNull())
+        {
+            slots[1] = LLImageGL::vkHeapSlotOrDefault(params->mNormalMap->getGLTexture());
+        }
+        if (params->mSpecularMap.notNull())
+        {
+            slots[2] = LLImageGL::vkHeapSlotOrDefault(params->mSpecularMap->getGLTexture());
+        }
+    }
+    else
+    {
+        slots[0] = LLImageGL::vkHeapSlotOrDefault(nullptr);
+    }
+
+    slots[4] = slots[5] = slots[6] = slots[7] = 0;
+    slots[8] = slots[9] = slots[10] = slots[11] = 0;
+    if (params != nullptr)
+    {
+        memcpy(&slots[4], params->mSpecColor.mV, sizeof(F32) * 4);
+        const F32 emissive_brightness = params->mFullbright ? 1.f : 0.f;
+        const F32 env_intensity       = params->mEnvIntensity;
+        const F32 minimum_alpha       = params->mAlphaMaskCutoff;
+        const F32 aya_sss_skin_flag   = params->mIsSSSTarget ? 1.f : 0.f;
+        memcpy(&slots[8],  &emissive_brightness, sizeof(F32));
+        memcpy(&slots[9],  &env_intensity,       sizeof(F32));
+        memcpy(&slots[10], &minimum_alpha,       sizeof(F32));
+        memcpy(&slots[11], &aya_sss_skin_flag,   sizeof(F32));
+    }
+}
+
 U32 LLRenderPass::establishPerDrawId(LLDrawInfo* params, LLGLSLShader* cur, bool batch_textures)
 {
     if (!LLVKLoader::isVulkanInitialized() || cur == nullptr)
@@ -538,33 +583,13 @@ U32 LLRenderPass::establishPerDrawId(LLDrawInfo* params, LLGLSLShader* cur, bool
     }
 
     U32 slots[LLVKLoader::DRAWDATA_SLOT_UINTS] = {};
-    if (cur->mVkUsesHeapSet)
+    if (params != nullptr)
     {
-        if (params != nullptr && batch_textures && params->mTextureList.size() > 1)
-        {
-            const U32 n = llmin((U32)params->mTextureList.size(), 4u);
-            for (U32 i = 0; i < n; ++i)
-            {
-                LLTexture* t = params->mTextureList[i].get();
-                slots[i] = LLImageGL::vkHeapSlotOrDefault(t ? t->getGLTexture() : nullptr);
-            }
-        }
-        else if (params != nullptr && params->mTexture.notNull())
-        {
-            slots[0] = LLImageGL::vkHeapSlotOrDefault(params->mTexture->getGLTexture());
-            if (params->mNormalMap.notNull())
-            {
-                slots[1] = LLImageGL::vkHeapSlotOrDefault(params->mNormalMap->getGLTexture());
-            }
-            if (params->mSpecularMap.notNull())
-            {
-                slots[2] = LLImageGL::vkHeapSlotOrDefault(params->mSpecularMap->getGLTexture());
-            }
-        }
-        else
-        {
-            slots[0] = gGL.getTexUnit(0)->currVkHeapSlotOrDefault();
-        }
+        computeDrawDataSlots(params, batch_textures, slots);
+    }
+    else if (cur->mVkUsesHeapSet)
+    {
+        slots[0] = gGL.getTexUnit(0)->currVkHeapSlotOrDefault();
     }
     U32 id = 0;
     if (params != nullptr)
@@ -621,7 +646,7 @@ U32 LLRenderPass::buildAndOverrideScenePerDrawSet(LLDrawInfo* params, bool batch
     const bool memo_eligible = (params != nullptr && is_indexed && set_shape >= 1
                                 && gltf_materials_ubo == 0 && gltf_geometry_ubo == 0);
     const U32  memo_frame    = LLVKLoader::getCurrentFrameIndex();
-    const U32  lane          = LLVKLoader::getCurrentRecordLane();
+    const U32  lane          = 0;
 
     if (cur->mVkUsesHeapSet)
     {
@@ -1454,27 +1479,7 @@ namespace
             else
             {
                 U32 slots[LLVKLoader::DRAWDATA_SLOT_UINTS] = {};
-                if (batch_textures && p->mTextureList.size() > 1)
-                {
-                    const U32 n = llmin((U32)p->mTextureList.size(), 4u);
-                    for (U32 s = 0; s < n; ++s)
-                    {
-                        LLTexture* t = p->mTextureList[s].get();
-                        slots[s] = LLImageGL::vkHeapSlotOrDefault(t ? t->getGLTexture() : nullptr);
-                    }
-                }
-                else if (p->mTexture.notNull())
-                {
-                    slots[0] = LLImageGL::vkHeapSlotOrDefault(p->mTexture->getGLTexture());
-                    if (p->mNormalMap.notNull())
-                    {
-                        slots[1] = LLImageGL::vkHeapSlotOrDefault(p->mNormalMap->getGLTexture());
-                    }
-                    if (p->mSpecularMap.notNull())
-                    {
-                        slots[2] = LLImageGL::vkHeapSlotOrDefault(p->mSpecularMap->getGLTexture());
-                    }
-                }
+                LLRenderPass::computeDrawDataSlots(p, batch_textures, slots);
                 if (!p->ensureVkDrawDataSlot(slots))
                 {
                     return false;

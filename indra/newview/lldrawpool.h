@@ -399,6 +399,8 @@ public:
 
     static U32  establishPerDrawId(LLDrawInfo* params, LLGLSLShader* cur, bool batch_textures = false);
 
+    static void computeDrawDataSlots(const LLDrawInfo* params, bool batch_textures, U32* slots);
+
     static U32  buildAndOverrideScenePerDrawSet(LLDrawInfo* params, bool batch_textures,
                                                  U64      gltf_materials_ubo  = 0,
                                                  U32      gltf_materials_size = 0,

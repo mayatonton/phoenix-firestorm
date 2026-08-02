@@ -5852,7 +5852,6 @@ namespace
 
     bool applyGeoStaged(LLSpatialGroup* group, LLGeoStagedRebuild& staged, built_map_t* prebuilt = nullptr)
     {
-        LLVKLoader::recordWindowMutationGuard("applyGeoStaged", 0);
         auto watch_id = [](const LLGeoFaceApply& e) -> U32
         {
             const LLViewerObject* vo = e.mDrawable.notNull() ? e.mDrawable->getVObj() : nullptr;
