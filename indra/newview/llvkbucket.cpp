@@ -157,6 +157,20 @@ bool isBucketizedPass(U32 pass)
 bool isCameraMdiPass(U32 pass)
 {
     return pass == LLRenderPass::PASS_SIMPLE
+        || pass == LLRenderPass::PASS_FULLBRIGHT
+        || pass == LLRenderPass::PASS_MATERIAL
+        || pass == LLRenderPass::PASS_MATERIAL_ALPHA_EMISSIVE
+        || pass == LLRenderPass::PASS_SPECMAP
+        || pass == LLRenderPass::PASS_SPECMAP_EMISSIVE
+        || pass == LLRenderPass::PASS_NORMMAP
+        || pass == LLRenderPass::PASS_NORMMAP_EMISSIVE
+        || pass == LLRenderPass::PASS_NORMSPEC
+        || pass == LLRenderPass::PASS_NORMSPEC_EMISSIVE;
+}
+
+bool mdiBatchTextures(U32 pass)
+{
+    return pass == LLRenderPass::PASS_SIMPLE
         || pass == LLRenderPass::PASS_FULLBRIGHT;
 }
 
@@ -302,10 +316,10 @@ void onRegionDestroyed(LLViewerRegion* region)
 
 namespace
 {
-    bool ensureRecordDrawDataSlot(LLDrawInfo* info)
+    bool ensureRecordDrawDataSlot(LLDrawInfo* info, U32 pass)
     {
         U32 slots[LLVKLoader::DRAWDATA_SLOT_UINTS] = {};
-        LLRenderPass::computeDrawDataSlots(info, true, slots);
+        LLRenderPass::computeDrawDataSlots(info, mdiBatchTextures(pass), slots);
         return info->ensureVkDrawDataSlot(slots);
     }
 
@@ -354,7 +368,7 @@ void rebuildTemplateIfDirty(Bucket& bucket)
                 && vb->getVkIndexSlice().buffer != VK_NULL_HANDLE;
             if (is_static && camera_mdi)
             {
-                is_static = ensureRecordDrawDataSlot(info);
+                is_static = ensureRecordDrawDataSlot(info, bucket.mPass);
             }
             if (is_static)
             {

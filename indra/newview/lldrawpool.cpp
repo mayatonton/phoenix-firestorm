@@ -1345,7 +1345,7 @@ void LLRenderPass::pushIndirectBucket(LLVKBucket::Bucket& bucket, const std::vec
                 {
                     if (textured)
                     {
-                        pushBatch(*bucket.mTplRecords[c], true, true);
+                        pushBatch(*bucket.mTplRecords[c], true, LLVKBucket::mdiBatchTextures(bucket.mPass));
                     }
                     else
                     {
@@ -1362,7 +1362,7 @@ void LLRenderPass::pushIndirectBucket(LLVKBucket::Bucket& bucket, const std::vec
         {
             if (textured)
             {
-                pushBatch(*bucket.mTplDyn[d], true, true);
+                pushBatch(*bucket.mTplDyn[d], true, LLVKBucket::mdiBatchTextures(bucket.mPass));
             }
             else
             {

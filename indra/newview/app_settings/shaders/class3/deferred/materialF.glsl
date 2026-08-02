@@ -304,7 +304,7 @@ out vec4 frag_data[4];
 #endif
 #endif
 
-#if defined(AYA_BINDLESS_MAT) && (defined(HAS_NORMAL_MAP) || defined(HAS_SPECULAR_MAP))
+#if defined(AYA_BINDLESS_MAT) && (DIFFUSE_ALPHA_MODE != DIFFUSE_ALPHA_MODE_BLEND)
 #define AYA_MAT_HEAP 1
 #endif
 

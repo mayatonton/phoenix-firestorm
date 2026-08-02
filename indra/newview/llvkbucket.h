@@ -65,6 +65,7 @@ namespace LLVKBucket
 
     bool isBucketizedPass(U32 pass);
     bool isCameraMdiPass(U32 pass);
+    bool mdiBatchTextures(U32 pass);
     bool emitActive(U32 pass);
     U32  visWordCount();
 

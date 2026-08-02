@@ -5674,6 +5674,19 @@ bool endFrame()
                                    << " rec=" << gVkPerf.bkt_rec.load()
                                    << " skip=" << gVkPerf.bkt_skip.load()
                                    << " | mat=" << gVkPerf.mat_draws.load() << "/" << gVkPerf.mat_bindless_draws.load()
+                                   << [](){ std::string s;
+                                        static const char* cen_names[12] = {
+                                            "m","am","ae","s","sm","se",
+                                            "n","nm","ne","ns","nsm","nse" };
+                                        for (U32 i = 0; i < 12; ++i) {
+                                            const U64 tot = gVkPerf.mat_cen[i][0].load();
+                                            if (tot == 0) continue;
+                                            s += s.empty() ? " | matcen " : " ";
+                                            s += cen_names[i];
+                                            s += "="; s += std::to_string(tot);
+                                            s += "/"; s += std::to_string(gVkPerf.mat_cen[i][1].load());
+                                        }
+                                        return s; }()
                                    << " | mdi call=" << gVkPerf.mdi_call.load()
                                    << " rec=" << gVkPerf.mdi_rec.load()
                                    << " zero=" << gVkPerf.mdi_zero.load()
