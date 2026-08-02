@@ -30,8 +30,11 @@ class LLViewerRegion;
 namespace LLVKBucket
 {
     constexpr U32 INVALID_GROUP_ID = 0xFFFFFFFFu;
-    constexpr U32 kBucketizedPassCount = 13;
+    constexpr U32 kBucketizedPassCount = 21;
     extern const U32 kBucketizedPasses[kBucketizedPassCount];
+
+    constexpr U32 kOpaqueShadowPassCount = 13;
+    extern const U32 kOpaqueShadowPasses[kOpaqueShadowPassCount];
 
     struct Range
     {
@@ -65,6 +68,7 @@ namespace LLVKBucket
 
     bool isBucketizedPass(U32 pass);
     bool isCameraMdiPass(U32 pass);
+    bool isShadowMdiPass(U32 pass);
     bool mdiBatchTextures(U32 pass);
     bool emitActive(U32 pass);
     U32  visWordCount();

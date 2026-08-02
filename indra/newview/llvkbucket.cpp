@@ -46,6 +46,30 @@ const U32 kBucketizedPasses[kBucketizedPassCount] = {
     LLRenderPass::PASS_NORMMAP_EMISSIVE,
     LLRenderPass::PASS_NORMSPEC,
     LLRenderPass::PASS_NORMSPEC_EMISSIVE,
+    LLRenderPass::PASS_ALPHA_MASK,
+    LLRenderPass::PASS_FULLBRIGHT_ALPHA_MASK,
+    LLRenderPass::PASS_MATERIAL_ALPHA_MASK,
+    LLRenderPass::PASS_SPECMAP_MASK,
+    LLRenderPass::PASS_NORMMAP_MASK,
+    LLRenderPass::PASS_NORMSPEC_MASK,
+    LLRenderPass::PASS_GRASS,
+    LLRenderPass::PASS_ALPHA,
+};
+
+const U32 kOpaqueShadowPasses[kOpaqueShadowPassCount] = {
+    LLRenderPass::PASS_SIMPLE,
+    LLRenderPass::PASS_FULLBRIGHT,
+    LLRenderPass::PASS_SHINY,
+    LLRenderPass::PASS_BUMP,
+    LLRenderPass::PASS_FULLBRIGHT_SHINY,
+    LLRenderPass::PASS_MATERIAL,
+    LLRenderPass::PASS_MATERIAL_ALPHA_EMISSIVE,
+    LLRenderPass::PASS_SPECMAP,
+    LLRenderPass::PASS_SPECMAP_EMISSIVE,
+    LLRenderPass::PASS_NORMMAP,
+    LLRenderPass::PASS_NORMMAP_EMISSIVE,
+    LLRenderPass::PASS_NORMSPEC,
+    LLRenderPass::PASS_NORMSPEC_EMISSIVE,
 };
 
 namespace
@@ -168,10 +192,26 @@ bool isCameraMdiPass(U32 pass)
         || pass == LLRenderPass::PASS_NORMSPEC_EMISSIVE;
 }
 
+bool isShadowMdiPass(U32 pass)
+{
+    return pass == LLRenderPass::PASS_ALPHA_MASK
+        || pass == LLRenderPass::PASS_FULLBRIGHT_ALPHA_MASK
+        || pass == LLRenderPass::PASS_MATERIAL_ALPHA_MASK
+        || pass == LLRenderPass::PASS_SPECMAP_MASK
+        || pass == LLRenderPass::PASS_NORMMAP_MASK
+        || pass == LLRenderPass::PASS_NORMSPEC_MASK
+        || pass == LLRenderPass::PASS_GRASS
+        || pass == LLRenderPass::PASS_ALPHA;
+}
+
 bool mdiBatchTextures(U32 pass)
 {
     return pass == LLRenderPass::PASS_SIMPLE
-        || pass == LLRenderPass::PASS_FULLBRIGHT;
+        || pass == LLRenderPass::PASS_FULLBRIGHT
+        || pass == LLRenderPass::PASS_ALPHA_MASK
+        || pass == LLRenderPass::PASS_FULLBRIGHT_ALPHA_MASK
+        || pass == LLRenderPass::PASS_GRASS
+        || pass == LLRenderPass::PASS_ALPHA;
 }
 
 bool emitActive(U32 pass)
@@ -342,6 +382,7 @@ void rebuildTemplateIfDirty(Bucket& bucket)
 
     const LLMatrix4* region_matrix = bucket.mRegion ? &bucket.mRegion->mRenderMatrix : nullptr;
     const bool camera_mdi = isCameraMdiPass(bucket.mPass);
+    const bool mdi_pass   = camera_mdi || isShadowMdiPass(bucket.mPass);
 
     struct StaticEntry
     {
@@ -366,7 +407,11 @@ void rebuildTemplateIfDirty(Bucket& bucket)
                 && info->mAvatar.isNull()
                 && vb->getVkVertexSlice().buffer != VK_NULL_HANDLE
                 && vb->getVkIndexSlice().buffer != VK_NULL_HANDLE;
-            if (is_static && camera_mdi)
+            if (bucket.mPass == LLRenderPass::PASS_ALPHA && info->mGLTFMaterial != nullptr)
+            {
+                is_static = false;
+            }
+            if (is_static && mdi_pass)
             {
                 is_static = ensureRecordDrawDataSlot(info, bucket.mPass);
             }

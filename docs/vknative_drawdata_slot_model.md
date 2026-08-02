@@ -6,11 +6,11 @@
 **DrawData slot は「draw の自己記述データ」(self-describing per-draw data・direction.md §0)の物理実体である。1 slot = 12 uint(48B)・per-draw ID がそのまま slot index・GPU からは set2 b0 の SSBO として全 shader に一様に見える。内容の意味と書込規約が暗黙だったのを本書が確定する。**
 
 ## 1. 物理実体
-- **単一 persistent mapped buffer**(llvkloader.cpp:3044 生成・`DRAWDATA_TOTAL_SLOTS × DRAWDATA_SLOT_UINTS(=12) × 4B`・llvkloader.h:156)。slot 0 は生成時ゼロ化(:3050)。
+- **単一 persistent mapped buffer**(llvkloader.cpp:3044 生成・`DRAWDATA_TOTAL_SLOTS × DRAWDATA_SLOT_UINTS(=16) × 4B`・llvkloader.h:152)。slot 0 は生成時ゼロ化(:3050)。
 - **領域 2 分**: ①persistent 域 = domain allocator(`drawDataAcquireSlot` :11943-11978 = free-list + slab grow・枯渇 = `C_DRAWDATA_EXHAUSTED` fail-closed・`VkcRaceProbe` = `C_DRAWDATA_RACE`)②scratch 域 = frame ring(`drawDataWriteScratch` :12079-12108 = `DRAWDATA_PERSISTENT_SLOTS + frame_region × DRAWDATA_SCRATCH_PER_FRAME`・巻き戻り = `C_DRAWDATA_SCRATCH_WRAP`・thread-local memo で同値再利用)。
-- **GPU 視点**: set2 binding0 std430 readonly `AyaDrawDataBlock { AyaDrawData aya_dd[]; }`・`struct AyaDrawData { uvec4 tex_slots; vec4 spec_color; vec4 misc; }`(materialF.glsl:306-307 ほか)。index = `aya_draw_id`(= `gl_InstanceIndex` ← `firstInstance` ← per-draw ID・§8 鎖)。
+- **GPU 視点**: set2 binding0 std430 readonly `AyaDrawDataBlock { AyaDrawData aya_dd[]; }`・`struct AyaDrawData { uvec4 tex_slots; vec4 spec_color; vec4 misc; vec4 misc2; }`(materialF.glsl:313 ほか・llshadermgr.cpp:645 注入)。index = `aya_draw_id`(= `gl_InstanceIndex` ← `firstInstance` ← per-draw ID・§8 鎖)。
 
-## 2. slot layout 登記簿(12 uint の意味・正)
+## 2. slot layout 登記簿(16 uint の意味・正)
 | uint | GLSL view | 内容 | 書き手の値源(LLDrawInfo) |
 |---|---|---|---|
 | [0..3] | `tex_slots` | bindless texture heap slot(single: diffuse/normal/specular/0・batch: list 先頭 4)| mTexture/mNormalMap/mSpecularMap or mTextureList |
@@ -19,13 +19,15 @@
 | [9] | `misc.y` | **(D)** env_intensity | mEnvIntensity |
 | [10] | `misc.z` | **(D)** minimum_alpha | mAlphaMaskCutoff |
 | [11] | `misc.w` | **(D)** aya_sss_skin_flag | mIsSSSTarget ? 1 : 0 |
+| [12] | `misc2.x` | **(影 alpha MDI 段)** object_alpha | mObjectAlpha |
+| [13..15] | `misc2.yzw` | 予約(全 writer 常ゼロ)| — |
 
 D 以前の [4..11] は全 writer 常ゼロ(予約)。**欄の追加・意味変更は本表の改訂 = 設計者+AYA 承認事項**(shader と C++ の暗黙結合点のため)。
 
-改訂 2026-08-02(AYA 承認・**予約のみ・未実装**): 影 alpha 節の MDI 段で slot を 16 uint(64B・uvec4×4)へ拡幅し、**[12] = object_alpha(mObjectAlpha)**・[13..15] = 予約とする。現行実装は 12 uint のまま。実装トリガー = 台帳「影 alpha 節の MDI/bucketize 段」の採択(indirect span 内の per-draw 値は slot 経由のみ可 = object_alpha が前提)。
+改訂 2026-08-03(影 alpha MDI 段で実装): slot を 16 uint(64B・uvec4×4)へ拡幅(DRAWDATA_SLOT_UINTS 12→16)し、**[12] = object_alpha(mObjectAlpha)**・[13..15] = 予約とした。computeDrawDataSlots(lldrawpool.cpp)が [12] を無条件充填(INV-1)・shader struct は misc2 追加(llshadermgr.cpp:645 / materialF.glsl:313)。object_alpha を読むのは shadowAlphaMaskF の MV 変種のみ(PC override 方式)。
 
 ## 3. 不変条件(契約)
-- **INV-1(純関数)**: slot 内容は **LLDrawInfo(+ batch_textures フラグ)の純関数**。shader・pass・pool・呼び手に依存してはならない。material でない draw にも [4..11] は無条件に充填する(読まない shader には無害・byte 安定が目的)。
+- **INV-1(純関数)**: slot 内容は **LLDrawInfo(+ batch_textures フラグ)の純関数**。shader・pass・pool・呼び手に依存してはならない。material でない draw にも [4..15] は無条件に充填する(読まない shader には無害・byte 安定が目的)。
 - **INV-2(単一正準 compute)**: slot 内容を組む関数は**単一**(`computeDrawDataSlots`・Material D Brief §D2-a で実装)。writer 全列挙(現 3 箇所)= ①establishPerDrawId(lldrawpool.cpp:540-568)②rigged-MDI(lldrawpool.cpp:1456-1477)③llvkbucket record template(llvkbucket.cpp:300-336)。**writer 追加 = 正準関数の呼び出しのみ可**(独自組みは INV-3 違反経路)。
 - **INV-3(copy-on-write)**: 内容変化 ⇒ **新 slot 取得 + 旧 slot 遅延解放**(`ensureVkDrawDataSlot` llspatialpartition.cpp:4249-4264)= in-flight GPU read と衝突しない。系: **writer 間 byte 不一致 ⇒ 毎フレーム slot churn ⇒ INV-2 で構造的に禁止**(INV-2 の存在理由)。
 - **INV-4(寿命)**: persistent slot の所有者 = LLDrawInfo(dtor で遅延解放 llspatialpartition.cpp:4224-4231・変化時解放 :4258)。解放は deferred(:11980-11993 = frame 猶予)。slot 0 と `BINDLESS_INVALID_SLOT` は解放対象外(:11982)。

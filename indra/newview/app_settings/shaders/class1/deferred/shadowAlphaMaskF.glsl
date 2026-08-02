@@ -84,12 +84,17 @@ void main()
     bayerDitherDiscard(alpha, cutoff);
 #else
 #ifdef LL_VULKAN_GLSL
-    if (object_alpha < 0.996)
+#if defined(LL_MULTIVIEW_SHADOW) && defined(AYA_BINDLESS)
+    float obj_a = (object_alpha >= 0.0) ? object_alpha : aya_dd[aya_draw_id].misc2.x;
+#else
+    float obj_a = object_alpha;
+#endif
+    if (obj_a < 0.996)
     {
         int bx = int(gl_FragCoord.x) & 3;
         int by = int(gl_FragCoord.y) & 3;
         float t = (aya_bayer4x4[by * 4 + bx] + 0.5) * (1.0 / 16.0);
-        if (object_alpha < t)
+        if (obj_a < t)
         {
             discard;
         }

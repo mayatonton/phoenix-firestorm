@@ -5687,6 +5687,20 @@ bool endFrame()
                                             s += "/"; s += std::to_string(gVkPerf.mat_cen[i][1].load());
                                         }
                                         return s; }()
+                                   << [](){ std::string s;
+                                        static const char* sn[4] = { "am","fbm","gm","ab" };
+                                        for (U32 i = 0; i < 4; ++i) {
+                                            const U64 sp = gVkPerf.shamdi[i][0].load();
+                                            const U64 dy = gVkPerf.shamdi[i][1].load();
+                                            const U64 wk = gVkPerf.shamdi[i][2].load();
+                                            if (sp == 0 && dy == 0 && wk == 0) continue;
+                                            s += s.empty() ? " | shamdi " : " ";
+                                            s += sn[i];
+                                            s += "="; s += std::to_string(sp);
+                                            s += "/"; s += std::to_string(dy);
+                                            s += "/"; s += std::to_string(wk);
+                                        }
+                                        return s; }()
                                    << " | mdi call=" << gVkPerf.mdi_call.load()
                                    << " rec=" << gVkPerf.mdi_rec.load()
                                    << " zero=" << gVkPerf.mdi_zero.load()

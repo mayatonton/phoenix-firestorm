@@ -149,7 +149,7 @@ namespace LLVKLoader
 
     constexpr U32 FRAMES_IN_FLIGHT = 3;
 
-    constexpr U32 DRAWDATA_SLOT_UINTS = 12;
+    constexpr U32 DRAWDATA_SLOT_UINTS = 16;
 
     U32 getCurrentFrameIndex();
     U32 getMonotonicFrameCount();
@@ -1511,6 +1511,7 @@ namespace LLVKLoader
         std::atomic<U64> mat_draws{0};
         std::atomic<U64> mat_bindless_draws{0};
         std::atomic<U64> mat_cen[12][2] = {};
+        std::atomic<U64> shamdi[4][3] = {};
         std::atomic<U64> mdi_call{0};
         std::atomic<U64> mdi_rec{0};
         std::atomic<U64> mdi_zero{0};
@@ -1598,6 +1599,7 @@ namespace LLVKLoader
             for (auto& v : shadow_rigged_map) v = 0;
             bkt_patch = 0; bkt_range = 0; bkt_rec = 0; bkt_skip = 0; mat_draws = 0; mat_bindless_draws = 0;
             for (auto& row : mat_cen) for (auto& v : row) v = 0;
+            for (auto& row : shamdi) for (auto& v : row) v = 0;
             mdi_call = 0; mdi_rec = 0; mdi_zero = 0; mdi_dyn = 0; mdi_full = 0;
             alp_run = 0; alp_col = 0; alp_inl = 0;
             for (auto& v : alpha_us) v = 0;

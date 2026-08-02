@@ -9255,25 +9255,22 @@ void LLPipeline::renderAlphaObjects(bool rigged, S32 gltf_mode)
     const LLVOAvatar* lastAvatarGLTF = nullptr;
     U64 lastMeshIdGLTF = 0;
     bool skipLastSkinGLTF;
-    auto* begin = gPipeline.beginRenderMap(type);
-    auto* end = gPipeline.endRenderMap(type);
 
-    for (LLCullResult::drawinfo_iterator i = begin; i != end; )
+    LLVKBucket::forEachSource(type, [&](LLDrawInfo& params)
     {
-        LLDrawInfo* pparams = *i;
-        LLCullResult::increment_iterator(i, end);
+        LLDrawInfo* pparams = &params;
 
         if (rigged != (pparams->mAvatar != nullptr))
         {
             // Pool contains both rigged and non-rigged DrawInfos. Only draw
             // the objects we're interested in in this pass.
-            continue;
+            return;
         }
 
         const bool is_gltf = (pparams->mGLTFMaterial != nullptr);
         if ((gltf_mode == 1 && is_gltf) || (gltf_mode == 2 && !is_gltf))
         {
-            continue;
+            return;
         }
 
         if (rigged)
@@ -9337,7 +9334,7 @@ void LLPipeline::renderAlphaObjects(bool rigged, S32 gltf_mode)
                 mSimplePool->pushBatch(*pparams, true, true);
             }
         }
-    }
+    });
 
     gGL.loadMatrix(gGLModelView);
     gGLLastMatrix = NULL;
@@ -13930,9 +13927,9 @@ void LLPipeline::renderShadowOpaqueBucketizedMultiview(LLCamera& cam, LLCullResu
 
         {
             LLVKLoader::VkPerfShadowSectionScope sec_scope(LLVKLoader::VKPERF_SHSEC_OPAQUE + (rigged ? 1u : 0u));
-            for (U32 ti = 0; ti < LLVKBucket::kBucketizedPassCount; ++ti)
+            for (U32 ti = 0; ti < LLVKBucket::kOpaqueShadowPassCount; ++ti)
             {
-                renderObjects(LLVKBucket::kBucketizedPasses[ti], false, false, rigged);
+                renderObjects(LLVKBucket::kOpaqueShadowPasses[ti], false, false, rigged);
             }
         }
 
@@ -14007,7 +14004,7 @@ void LLPipeline::renderShadowAlphaMultiview(LLCamera& shadow_cam, LLCullResult& 
             if (i == 0)
             {
                 LLGLSLShader::sCurBoundShaderPtr->setMinimumAlpha(ALPHA_BLEND_CUTOFF);
-                renderObjects(LLRenderPass::PASS_GRASS, true);
+                renderObjects(LLRenderPass::PASS_GRASS, true, true);
             }
 
             LLGLSLShader::sCurBoundShaderPtr->setMinimumAlpha(-1.f);
@@ -14068,29 +14065,56 @@ void LLPipeline::renderAlphaObjectsMultiview(bool rigged)
             LLVKLoader::writeCurrentShadowParamsUBO(shadow_params);
         }
         LLGLSLShader::sCurBoundShaderPtr->setMinimumAlpha(ALPHA_BLEND_CUTOFF);
+        LLGLSLShader::sCurBoundShaderPtr->setObjectAlpha(-1.f);
         gGL.loadMatrix(gGLModelView);
         gGLLastMatrix = NULL;
+
+        bool mdi_ran = false;
+        if (!rigged
+            && LLVKBucket::isShadowMdiPass(type)
+            && LLVKBucket::emitActive(type)
+            && LLVKLoader::isIndirectDrawEnabled()
+            && LLGLSLShader::sCurBoundShaderPtr != nullptr
+            && LLGLSLShader::sCurBoundShaderPtr->mVkUsesHeapSet
+            && LLGLSLShader::sCurBoundShaderPtr->mVkShadowCutoffFromSlot
+            && !gSnapshot)
+        {
+            const std::vector<U64>* bits = LLVKBucket::currentVisBits();
+            if (bits != nullptr)
+            {
+                const U64 r0 = LLVKLoader::gVkPerf.mdi_rec.load();
+                const U64 d0 = LLVKLoader::gVkPerf.mdi_dyn.load();
+                for (LLVKBucket::Bucket* bucket : LLVKBucket::bucketsForPass(type))
+                {
+                    mSimplePool->pushIndirectBucket(*bucket, *bits, true, false);
+                }
+                LLVKLoader::gVkPerf.shamdi[3][0] += LLVKLoader::gVkPerf.mdi_rec.load() - r0;
+                LLVKLoader::gVkPerf.shamdi[3][1] += LLVKLoader::gVkPerf.mdi_dyn.load() - d0;
+                mdi_ran = true;
+            }
+        }
 
         const LLVOAvatar* lastAvatar = nullptr;
         U64 lastMeshId = 0;
         bool skipLastSkin = false;
-        auto* begin = gPipeline.beginRenderMap(type);
-        auto* end = gPipeline.endRenderMap(type);
-        for (LLCullResult::drawinfo_iterator i = begin; i != end; )
+        LLVKBucket::forEachSource(type, [&](LLDrawInfo& params)
         {
-            LLDrawInfo* pparams = *i;
-            LLCullResult::increment_iterator(i, end);
+            LLDrawInfo* pparams = &params;
             if (rigged != (pparams->mAvatar != nullptr))
             {
-                continue;
+                return;
             }
             if (pparams->mGLTFMaterial != nullptr)
             {
-                continue;
+                return;
             }
-            LLGLSLShader::sCurBoundShaderPtr->setObjectAlpha(pparams->mObjectAlpha);
+            if (mdi_ran && pparams->mVkTplBucket != nullptr)
+            {
+                return;
+            }
             if (rigged)
             {
+                LLGLSLShader::sCurBoundShaderPtr->setObjectAlpha(pparams->mObjectAlpha);
                 if (mSimplePool->uploadMatrixPalette(pparams->mAvatar, pparams->mSkinInfo, lastAvatar, lastMeshId, skipLastSkin))
                 {
                     mSimplePool->pushBatch(*pparams, true, true);
@@ -14098,9 +14122,10 @@ void LLPipeline::renderAlphaObjectsMultiview(bool rigged)
             }
             else
             {
+                ++LLVKLoader::gVkPerf.shamdi[3][2];
                 mSimplePool->pushBatch(*pparams, true, true);
             }
-        }
+        });
     }
 
     {
@@ -14118,19 +14143,16 @@ void LLPipeline::renderAlphaObjectsMultiview(bool rigged)
         const LLVOAvatar* lastAvatarGLTF = nullptr;
         U64 lastMeshIdGLTF = 0;
         bool skipLastSkinGLTF = false;
-        auto* begin = gPipeline.beginRenderMap(type);
-        auto* end = gPipeline.endRenderMap(type);
-        for (LLCullResult::drawinfo_iterator i = begin; i != end; )
+        LLVKBucket::forEachSource(type, [&](LLDrawInfo& params)
         {
-            LLDrawInfo* pparams = *i;
-            LLCullResult::increment_iterator(i, end);
+            LLDrawInfo* pparams = &params;
             if (rigged != (pparams->mAvatar != nullptr))
             {
-                continue;
+                return;
             }
             if (pparams->mGLTFMaterial == nullptr)
             {
-                continue;
+                return;
             }
             LLGLSLShader::sCurBoundShaderPtr->setObjectAlpha(pparams->mObjectAlpha);
             if (rigged)
@@ -14141,7 +14163,7 @@ void LLPipeline::renderAlphaObjectsMultiview(bool rigged)
             {
                 LLRenderPass::pushGLTFBatch(*pparams);
             }
-        }
+        });
     }
 
     gGL.loadMatrix(gGLModelView);
@@ -14168,9 +14190,9 @@ void LLPipeline::renderShadowOpaqueBucketized(LLCamera& cam, LLCullResult& resul
 
         {
             LLVKLoader::VkPerfShadowSectionScope sec_scope(LLVKLoader::VKPERF_SHSEC_OPAQUE + (rigged ? 1u : 0u));
-            for (U32 ti = 0; ti < LLVKBucket::kBucketizedPassCount; ++ti)
+            for (U32 ti = 0; ti < LLVKBucket::kOpaqueShadowPassCount; ++ti)
             {
-                renderObjects(LLVKBucket::kBucketizedPasses[ti], false, false, rigged);
+                renderObjects(LLVKBucket::kOpaqueShadowPasses[ti], false, false, rigged);
             }
         }
 
