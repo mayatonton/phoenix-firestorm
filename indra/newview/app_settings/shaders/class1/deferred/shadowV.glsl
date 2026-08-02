@@ -23,6 +23,11 @@
  * $/LicenseInfo$
  */
 
+#ifdef LL_MULTIVIEW_SHADOW
+#extension GL_EXT_multiview : enable
+layout(set = 1, binding = 54, std140) uniform ShadowViewProjUBO { mat4 shadow_viewproj[4]; };
+#endif
+
 #ifdef LL_VULKAN_GLSL
 #ifndef PER_FRAME_MATRIX_UBO_DEFINED
 #define PER_FRAME_MATRIX_UBO_DEFINED 1
@@ -52,5 +57,9 @@ in vec3 position;
 void main()
 {
     //transform vertex
+#ifdef LL_MULTIVIEW_SHADOW
+    gl_Position = shadow_viewproj[gl_ViewIndex] * modelview_matrix * vec4(position.xyz, 1.0);
+#else
     gl_Position = modelview_projection_matrix*vec4(position.xyz, 1.0);
+#endif
 }

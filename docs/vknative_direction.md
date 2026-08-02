@@ -50,6 +50,10 @@ crowd で描画の 90% は rigged avatar mesh。それが **透過(alpha)・影(
 - **static model matrix SSBO(3b)は critical path 上にない任意の下流**: view 分離後、static の model matrix は object→world = view 非依存 = per-draw の model 専用 PC のままで replay 可能。SSBO 化は static ~10% の PC push を消す最適化に過ぎない。**捨てるのでなく格下げ**(理由は速さでなく構造 = 指針1 の cost 撤退でない)。
 - **multiview は「壁」でない**: `apiVersion = VK_API_VERSION_1_3`(llvkloader.cpp:1621)+ device<1.3 reject(:1710)= multiview(VK1.1 core)必ず可。実測不要。device 依存は maxMultiviewViewCount のみ = 既存 init の query で解決(cap 超は分割 fallback)。
 
+### 0.6 影 multiview(Slice2)実装状況 + F2 foundation(2026-08-02)
+- **F2 = pass interrupt/resume 契約を foundation として確立**(正本 = `docs/vknative_pass_resume_contract.md`)。旧来 resume が RT 静的構成から逆算する未設計(layered RT で誤形状再開)を「begin 原子性・sSaved* 単一 source・逆算禁止・membership 検査」で根治。**layered RT / resume / aux / cmd 切替を触る工事は同 doc 必読**。
+- **影 multiview(sun opaque bucketized を 1 record ×4 view に畳む・record 数レバーの第1段)= 設計・実装・多重監査済**(詳細 = `vknative_bind_redesign.md` §7 指示書 S)。linchpin = MV pass 中 gGLModelView=identity(static=model / rigged=world skin の空間統一)。**MV 化は機構1(bucketized static/rigged+GLTF opaque)のみ・機構2(terrain/tree/classic avatar = renderGeomShadow)と alpha は per-cascade 据置**。cadence RR は MV が包摂して廃止(遠方影 stale 解消 = 品質向上)。capability は `isMultiviewEnabled()` gate + per-cascade full fallback(codebase の capability gating 契約に整合)。
+
 ## 1. 確定した事実(実測・この会話で確定)
 - **ガン = CPU の per-draw 記録コスト**。VK なのに GL 比 約 6 倍遅い。lockstep でも draw 数でも GPU 待ちでもない。
 - 実測(Safe Hub・vsync OFF/IMMEDIATE・RTX5090):fps≈23.7 / frame≈42ms / **cpu main=95%** / draws/f≈18,304。

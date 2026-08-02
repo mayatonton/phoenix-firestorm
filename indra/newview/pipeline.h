@@ -425,7 +425,9 @@ public:
 
     void renderHighlight(const LLViewerObject* obj, F32 fade);
 
-    void renderShadow(const glm::mat4& view, const glm::mat4& proj, LLCamera& camera, LLCullResult& result, bool depth_clamp);
+    void renderShadow(const glm::mat4& view, const glm::mat4& proj, LLCamera& camera, LLCullResult& result, bool depth_clamp, bool render_opaque_bucketized = true);
+    void renderShadowOpaqueBucketized(LLCamera& camera, LLCullResult& result);
+    void renderShadowOpaqueBucketizedMultiview(LLCamera& camera, LLCullResult& result);
     void renderSelectedFaces(const LLColor4& color);
     void renderHighlights();
     bool renderVignette(LLRenderTarget* src, LLRenderTarget* dst);

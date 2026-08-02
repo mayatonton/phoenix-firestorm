@@ -94,6 +94,11 @@ namespace LLVKLoader
 
     F32 getMaxLineWidth();
 
+    U32 currentRenderViewMask();
+    VkImageView currentRenderDepthView();
+    U32 currentRenderColorCount();
+    VkImageView currentRenderColorView(U32 i);
+
     struct DeviceCapsVk
     {
         std::string device_name;
@@ -168,6 +173,11 @@ namespace LLVKLoader
 
     void writeCurrentShadowParamsUBO(const ShadowParams_PerShaderBind& data);
     bool getSharedShadowParamsUBO(VkBuffer& out_buffer, void*& out_mapped);
+
+    struct ShadowViewProj_PerPass { float shadow_viewproj[4][16]; };
+    static_assert(sizeof(ShadowViewProj_PerPass) == 256, "ShadowViewProj std140 256B");
+    void writeCurrentShadowViewProjUBO(const ShadowViewProj_PerPass& data);
+    bool getSharedShadowViewProjUBO(VkBuffer& out_buffer, void*& out_mapped);
 
     struct PBRMaterial_PerMaterial
     {
@@ -268,10 +278,10 @@ namespace LLVKLoader
                                U32                               height,
                                const DynamicRenderingAttachment* color_attachments,
                                U32                               color_count,
-                               const DynamicRenderingAttachment* depth_attachment);
+                               const DynamicRenderingAttachment* depth_attachment,
+                               U32                               view_mask = 0);
     void endDynamicRendering();
-    void cmdShadowDepthWawBarrierVk(VkCommandBuffer cmd, VkImage depth_image);
-    void cmdCameraGbufferBarrierVk(VkCommandBuffer cmd, const VkImage* color_images, U32 color_count, VkImage depth_image);
+    void resumeSavedPass();
 
     VkShaderModule loadSpirvShaderModuleFromMemory(const std::vector<unsigned int>& spirv);
 
@@ -1364,6 +1374,8 @@ namespace LLVKLoader
     bool isProvokingVertexLastEnabled();
 
     bool isGeometryShaderEnabledVk();
+
+    bool isMultiviewEnabled();
 
     constexpr U32 BINDLESS_INVALID_SLOT = 0xFFFFFFFFu;
     constexpr U32 PERDRAW_SLOT_INHERIT = 0xFFFFFFFEu;

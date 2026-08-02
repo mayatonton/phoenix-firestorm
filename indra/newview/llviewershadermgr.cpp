@@ -158,6 +158,8 @@ LLGLSLShader            gDeferredBlurLightProgram;
 LLGLSLShader            gDeferredSoftenProgram;
 LLGLSLShader            gDeferredShadowProgram;
 LLGLSLShader            gDeferredSkinnedShadowProgram;
+LLGLSLShader            gDeferredShadowMultiviewProgram;
+LLGLSLShader            gDeferredSkinnedShadowMultiviewProgram;
 LLGLSLShader            gDeferredShadowAlphaMaskProgram;
 LLGLSLShader            gDeferredSkinnedShadowAlphaMaskProgram;
 LLGLSLShader            gDeferredShadowGLTFAlphaMaskProgram;
@@ -1550,6 +1552,8 @@ bool LLViewerShaderMgr::loadShadersDeferred()
         gDeferredSoftenProgram.unload();
         gDeferredShadowProgram.unload();
         gDeferredSkinnedShadowProgram.unload();
+        gDeferredShadowMultiviewProgram.unload();
+        gDeferredSkinnedShadowMultiviewProgram.unload();
         gDeferredShadowAlphaMaskProgram.unload();
         gDeferredSkinnedShadowAlphaMaskProgram.unload();
         gDeferredShadowGLTFAlphaMaskProgram.unload();
@@ -2988,6 +2992,47 @@ bool LLViewerShaderMgr::loadShadersDeferred()
         if (success && LLVKLoader::isVulkanInitialized())
         {
             gDeferredSkinnedShadowProgram.createVkPipeline(0);
+        }
+    }
+
+    if (success && LLVKLoader::isMultiviewEnabled())
+    {
+        gDeferredSkinnedShadowMultiviewProgram.mName = "Deferred Skinned Shadow Multiview Shader";
+        gDeferredSkinnedShadowMultiviewProgram.mFeatures.isDeferred = true;
+        gDeferredSkinnedShadowMultiviewProgram.mFeatures.hasShadows = true;
+        gDeferredSkinnedShadowMultiviewProgram.mFeatures.hasObjectSkinning = true;
+        gDeferredSkinnedShadowMultiviewProgram.mShaderFiles.clear();
+        gDeferredSkinnedShadowMultiviewProgram.mShaderFiles.push_back(make_pair("deferred/shadowSkinnedV.glsl", GL_VERTEX_SHADER));
+        gDeferredSkinnedShadowMultiviewProgram.mShaderFiles.push_back(make_pair("deferred/shadowF.glsl", GL_FRAGMENT_SHADER));
+        gDeferredSkinnedShadowMultiviewProgram.mShaderLevel = mShaderLevel[SHADER_DEFERRED];
+        gDeferredSkinnedShadowMultiviewProgram.mDefines["LL_MULTIVIEW_SHADOW"] = "1";
+
+        add_common_permutations(&gDeferredSkinnedShadowMultiviewProgram);
+
+        success = gDeferredSkinnedShadowMultiviewProgram.createShader();
+        llassert(success);
+
+        if (success && LLVKLoader::isVulkanInitialized())
+        {
+            gDeferredSkinnedShadowMultiviewProgram.createVkPipeline(0);
+        }
+    }
+
+    if (success && LLVKLoader::isMultiviewEnabled())
+    {
+        gDeferredShadowMultiviewProgram.mName = "Deferred Shadow Multiview Shader";
+        gDeferredShadowMultiviewProgram.mShaderFiles.clear();
+        gDeferredShadowMultiviewProgram.mShaderFiles.push_back(make_pair("deferred/shadowV.glsl", GL_VERTEX_SHADER));
+        gDeferredShadowMultiviewProgram.mShaderFiles.push_back(make_pair("deferred/shadowF.glsl", GL_FRAGMENT_SHADER));
+        gDeferredShadowMultiviewProgram.mShaderLevel = mShaderLevel[SHADER_DEFERRED];
+        gDeferredShadowMultiviewProgram.mDefines["LL_MULTIVIEW_SHADOW"] = "1";
+        gDeferredShadowMultiviewProgram.mRiggedVariant = &gDeferredSkinnedShadowMultiviewProgram;
+        success = gDeferredShadowMultiviewProgram.createShader();
+        llassert(success);
+
+        if (success && LLVKLoader::isVulkanInitialized())
+        {
+            gDeferredShadowMultiviewProgram.createVkPipeline(0);
         }
     }
 

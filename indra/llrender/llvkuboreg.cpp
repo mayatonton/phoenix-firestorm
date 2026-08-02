@@ -57,6 +57,10 @@ namespace
         UBOREG_M(ShadowParams_PerShaderBind, _pad2),
     };
 
+    constexpr MemberEntry kM_ShadowViewProj[] = {
+        UBOREG_M(ShadowViewProj_PerPass, shadow_viewproj),
+    };
+
     constexpr MemberEntry kM_PreviewAmbient[] = {
         UBOREG_M(PreviewAmbient_PerShaderBind, ambient_color),
     };
@@ -600,6 +604,7 @@ namespace
         UBOREG_BLOCK(0, "PerFrameMatrixUBO",                    PerFrameMatrixUBO,                    kM_PerFrameMatrixUBO),
         UBOREG_BLOCK(0, "TextureMatrixUBO",                     TextureMatrixUBO,                     kM_TextureMatrixUBO),
         UBOREG_BLOCK(1, "ShadowParams_PerShaderBind",           ShadowParams_PerShaderBind,           kM_ShadowParams),
+        UBOREG_BLOCK(1, "ShadowViewProjUBO",                    ShadowViewProj_PerPass,               kM_ShadowViewProj),
         UBOREG_BLOCK(0, "PreviewAmbient_PerShaderBind",         PreviewAmbient_PerShaderBind,         kM_PreviewAmbient),
         UBOREG_BLOCK(1, "PbrTerrain_PerShaderBind",             PbrTerrain_PerShaderBind,             kM_PbrTerrain),
         UBOREG_BLOCK(0, "StarTime_PerShaderBind",               StarTime_PerShaderBind,               kM_StarTime),

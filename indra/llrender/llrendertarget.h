@@ -124,7 +124,9 @@ public:
     //  Asserts that this target is not currently bound in the stack
     void bindTarget();
 
-    void bindTargetDepthLayer(U32 layer);
+    void bindTargetDepthLayer(U32 layer, bool clear = false);
+
+    void bindTargetDepthArray();
 
     //clear render targer, clears depth buffer if present,
     //uses scissor rect if in copy-to-texture mode
@@ -188,7 +190,6 @@ public:
         return (k < mVkDepthLayerViews.size()) ? mVkDepthLayerViews[k] : VK_NULL_HANDLE;
     }
     U32 getVkDepthLayerCount() const { return mVkDepthLayerCount; }
-    VkImageView getLastBoundDepthLayerView() const { return mVkLastBoundDepthLayerView; }
 
     void bindForShaderRead(U32 attachment = 0, bool depth = false);
 
@@ -238,6 +239,8 @@ public:
     static thread_local LLRenderTarget* sBoundTarget;
 
 protected:
+    bool ownsSavedPass() const;
+
     U32 mResX;
     U32 mResY;
     U32 mLastBoundMonotonicFrame = 0;
@@ -265,7 +268,6 @@ protected:
     U32                      mVkDepthLayerCount = 1;
     VkImageView              mVkDepthArrayView  = VK_NULL_HANDLE;
     std::vector<VkImageView> mVkDepthLayerViews;
-    VkImageView              mVkLastBoundDepthLayerView = VK_NULL_HANDLE;
 
     std::vector<VkImageLayout> mVkTexLayout;
     VkImageLayout              mVkDepthLayout = VK_IMAGE_LAYOUT_UNDEFINED;

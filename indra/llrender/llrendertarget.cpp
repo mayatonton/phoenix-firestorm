@@ -417,7 +417,6 @@ void LLRenderTarget::allocateLayeredDepth(U32 resx, U32 resy, U32 layerCount)
             mVkDepthView       = VK_NULL_HANDLE;
             mVkDepthArrayView  = vk_array_view;
             mVkDepthLayerViews = vk_layer_views;
-            mVkLastBoundDepthLayerView = VK_NULL_HANDLE;
             mVkDepthLayerCount = layerCount;
             mVkDepthAlloc      = vk_allocation;
             mVkDepthLayout     = VK_IMAGE_LAYOUT_UNDEFINED;
@@ -513,7 +512,6 @@ void LLRenderTarget::release()
             LLVKLoader::destroyImageVk(VK_NULL_HANDLE, v, nullptr);
         }
         mVkDepthLayerViews.clear();
-        mVkLastBoundDepthLayerView = VK_NULL_HANDLE;
         mVkDepthLayerCount  = 1;
         mVkDepth            = VK_NULL_HANDLE;
         mVkDepthView        = VK_NULL_HANDLE;
@@ -639,7 +637,7 @@ void LLRenderTarget::bindTarget()
     }
 }
 
-void LLRenderTarget::bindTargetDepthLayer(U32 layer)
+void LLRenderTarget::bindTargetDepthLayer(U32 layer, bool clear)
 {
     LL_PROFILE_GPU_ZONE("bindTargetDepthLayer");
     llassert(mAllocated);
@@ -691,12 +689,78 @@ void LLRenderTarget::bindTargetDepthLayer(U32 layer)
 
         LLVKLoader::DynamicRenderingAttachment depth_attachment = {};
         depth_attachment.image_view   = mVkDepthLayerViews[layer];
-        mVkLastBoundDepthLayerView    = depth_attachment.image_view;
         depth_attachment.image_layout = VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL;
-        depth_attachment.load_op      = VK_ATTACHMENT_LOAD_OP_LOAD;
+        depth_attachment.load_op      = clear ? VK_ATTACHMENT_LOAD_OP_CLEAR : VK_ATTACHMENT_LOAD_OP_LOAD;
         depth_attachment.store_op     = VK_ATTACHMENT_STORE_OP_STORE;
+        if (clear)
+        {
+            depth_attachment.clear_value.depthStencil.depth   = 1.0f;
+            depth_attachment.clear_value.depthStencil.stencil = 0;
+        }
 
         LLVKLoader::beginDynamicRendering(mResX, mResY, nullptr, 0, &depth_attachment);
+    }
+}
+
+void LLRenderTarget::bindTargetDepthArray()
+{
+    LL_PROFILE_GPU_ZONE("bindTargetDepthArray");
+    llassert(mAllocated);
+    llassert(!isBoundInStack());
+    llassert(mVkDepthArrayView != VK_NULL_HANDLE);
+
+    mLastBoundMonotonicFrame = LLVKLoader::getMonotonicFrameCount();
+
+    llSetGLViewport(0, 0, mResX, mResY);
+    sCurResX = mResX;
+    sCurResY = mResY;
+
+    mPreviousRT = sBoundTarget;
+    sBoundTarget = this;
+
+    if (LLVKLoader::isVulkanInitialized() && mVkDepth != VK_NULL_HANDLE)
+    {
+        const VkImageLayout cur = getCurDepthLayout();
+        VkPipelineStageFlags src_stage;
+        VkAccessFlags        src_access;
+        if (cur == VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL)
+        {
+            src_stage  = VK_PIPELINE_STAGE_LATE_FRAGMENT_TESTS_BIT;
+            src_access = VK_ACCESS_DEPTH_STENCIL_ATTACHMENT_WRITE_BIT;
+        }
+        else if (cur == VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL)
+        {
+            src_stage  = VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT;
+            src_access = VK_ACCESS_SHADER_READ_BIT;
+        }
+        else
+        {
+            src_stage  = VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT;
+            src_access = 0;
+        }
+
+        LLVKLoader::transitionImageLayoutVk(
+            mVkDepth,
+            VK_IMAGE_ASPECT_DEPTH_BIT | VK_IMAGE_ASPECT_STENCIL_BIT,
+            cur,
+            VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL,
+            src_stage,
+            VK_PIPELINE_STAGE_EARLY_FRAGMENT_TESTS_BIT | VK_PIPELINE_STAGE_LATE_FRAGMENT_TESTS_BIT,
+            src_access,
+            VK_ACCESS_DEPTH_STENCIL_ATTACHMENT_READ_BIT | VK_ACCESS_DEPTH_STENCIL_ATTACHMENT_WRITE_BIT,
+            mVkDepthLayerCount);
+        setCurDepthLayout(VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL);
+
+        LLVKLoader::DynamicRenderingAttachment depth = {};
+        depth.image_view   = mVkDepthArrayView;
+        depth.image_layout = VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL;
+        depth.load_op      = VK_ATTACHMENT_LOAD_OP_CLEAR;
+        depth.store_op     = VK_ATTACHMENT_STORE_OP_STORE;
+        depth.clear_value.depthStencil.depth   = 1.0f;
+        depth.clear_value.depthStencil.stencil = 0;
+
+        const U32 vm = (mVkDepthLayerCount > 1u) ? ((1u << mVkDepthLayerCount) - 1u) : 0u;
+        LLVKLoader::beginDynamicRendering(mResX, mResY, nullptr, 0, &depth, vm);
     }
 }
 
@@ -981,35 +1045,57 @@ void LLRenderTarget::flush()
     }
 }
 
+bool LLRenderTarget::ownsSavedPass() const
+{
+    const U32 color_count = LLVKLoader::currentRenderColorCount();
+    for (U32 i = 0; i < color_count; ++i)
+    {
+        const VkImageView v = LLVKLoader::currentRenderColorView(i);
+        bool found = false;
+        for (size_t j = 0; j < mVkTexView.size(); ++j)
+        {
+            if (mVkTexView[j] == v)
+            {
+                found = true;
+                break;
+            }
+        }
+        if (!found)
+        {
+            return false;
+        }
+    }
+    const VkImageView dv = LLVKLoader::currentRenderDepthView();
+    if (dv != VK_NULL_HANDLE)
+    {
+        if (dv == mVkDepthView || dv == mVkDepthArrayView)
+        {
+            return true;
+        }
+        for (size_t j = 0; j < mVkDepthLayerViews.size(); ++j)
+        {
+            if (mVkDepthLayerViews[j] == dv)
+            {
+                return true;
+            }
+        }
+        return false;
+    }
+    return true;
+}
+
 void LLRenderTarget::resumeVkDynamicRendering()
 {
     if (!LLVKLoader::isVulkanInitialized())
     {
         return;
     }
-
-    U32 color_count = static_cast<U32>(mInternalFormat.size() < 4 ? mInternalFormat.size() : 4);
-
-    LLVKLoader::DynamicRenderingAttachment color_attachments[4] = {};
-    for (U32 i = 0; i < color_count; ++i)
+    if (!ownsSavedPass())
     {
-        color_attachments[i].image_view   = (i < mVkTexView.size()) ? mVkTexView[i] : VK_NULL_HANDLE;
-        color_attachments[i].image_layout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
-        color_attachments[i].load_op      = VK_ATTACHMENT_LOAD_OP_LOAD;
-        color_attachments[i].store_op     = VK_ATTACHMENT_STORE_OP_STORE;
+        LL_WARNS("Vulkan") << "resumeVkDynamicRendering: saved pass does not belong to this RT; skipping resume" << LL_ENDL;
+        return;
     }
-
-    LLVKLoader::DynamicRenderingAttachment depth_attachment = {};
-    depth_attachment.image_view   = mVkDepthView;
-    depth_attachment.image_layout = VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL;
-    depth_attachment.load_op      = VK_ATTACHMENT_LOAD_OP_LOAD;
-    depth_attachment.store_op     = VK_ATTACHMENT_STORE_OP_STORE;
-
-    LLVKLoader::beginDynamicRendering(
-        mResX, mResY,
-        color_count > 0 ? color_attachments : nullptr,
-        color_count,
-        mUseDepth ? &depth_attachment : nullptr);
+    LLVKLoader::resumeSavedPass();
 }
 
 bool LLRenderTarget::isComplete() const

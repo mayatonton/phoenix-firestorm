@@ -85,6 +85,8 @@ struct VkPipelineStateKey
     U32 stencil_write_mask;
     U32 stencil_reference;
 
+    U8  view_mask;
+
     bool operator==(const VkPipelineStateKey& other) const
     {
         return std::memcmp(this, &other, sizeof(*this)) == 0;

@@ -2947,6 +2947,8 @@ bool LLGLSLShader::createVkPipeline(U32 perProgramUBOSize, bool needsSharedWater
                     VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER_DYNAMIC);
     add_ubo    (53, VK_SHADER_STAGE_VERTEX_BIT, LLVKLoader::getSharedShadowParamsUBO,
                     VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER_DYNAMIC);
+    add_ubo    (54, VK_SHADER_STAGE_VERTEX_BIT, LLVKLoader::getSharedShadowViewProjUBO,
+                    VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER_DYNAMIC);
     add_sampler(50, VK_SHADER_STAGE_FRAGMENT_BIT, LLShaderMgr::DEFERRED_LIGHTFUNC);
 
     mVkUsesHeapSet = (LLVKLoader::isBindlessActiveVk() && mVkReflUsesHeapSet);
@@ -3488,6 +3490,7 @@ VkDeviceSize LLGLSLShader::sharedUBOBindingSize(U32 binding) const
         case 51: return sizeof(LLVKLoader::DrawColor_PerShaderBind);
         case 52: return sizeof(LLVKLoader::PbrTerrain_PerShaderBind);
         case 53: return sizeof(LLVKLoader::ShadowParams_PerShaderBind);
+        case 54: return sizeof(LLVKLoader::ShadowViewProj_PerPass);
         default: return 0;
     }
 }
@@ -3964,6 +3967,7 @@ VkPipeline LLGLSLShader::getOrCreateVkPipelineForBoundRT(U32 mode)
     std::memset(&key, 0, sizeof(key));
     key.mode = static_cast<U8>(mode & 0x3Fu);
     key.cube_snapshot = vkCaptureRegimeActive() ? 1u : 0u;
+    key.view_mask = (U8)LLVKLoader::currentRenderViewMask();
     if (rt)
     {
         color_count = rt->getNumTextures();
@@ -4364,6 +4368,7 @@ VkPipeline LLGLSLShader::getOrCreateVkPipelineForBoundRT(U32 mode)
     rendering_info.pColorAttachmentFormats = color_formats;
     rendering_info.depthAttachmentFormat   = depth_format;
     rendering_info.stencilAttachmentFormat = depth_format;
+    rendering_info.viewMask = key.view_mask;
 
     VkGraphicsPipelineCreateInfo ci = {};
     ci.sType               = VK_STRUCTURE_TYPE_GRAPHICS_PIPELINE_CREATE_INFO;

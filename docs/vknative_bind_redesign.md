@@ -431,6 +431,20 @@ per-draw ID の commit が **2 経路で競合**する:
 - **不変条件**: 視覚同一 + per-draw 記録コスト実測減。
 - **注意**: shadow の複数カスケードは**正当な並列(独立視錐台)**= 撤去しない(`vknative_direction.md`)。
 
+### 指示書 S(影 multiview 第1段 = Slice2・設計確定 2026-08-02・実装済/検収中)= sun opaque bucketized 影を multiview 1 record ×4 view に畳む
+> 指示書 F の第1段実体(record 数レバー・material-free 境界で staging = `vknative_direction.md` §0.5)。F2 foundation(`vknative_pass_resume_contract.md`)の上に載る。
+
+- **linchpin(全体を貫く 1 不変条件)**: MV opaque pass 中 `gGLModelView = identity`(RAII scope)。static = identity×model = model / rigged mesh = ObjectSkin palette が world 空間(invBind×worldJoint)= 両群 world 統一 → `gl_Position = shadow_viewproj[gl_ViewIndex] × (model|skin) × pos`。view/proj は UBO b54(`ShadowViewProjUBO{mat4 shadow_viewproj[4]}`・std140 256B・z 補正込み)。
+- **opaque 影記録は 2 機構(トレース確定)**: 機構1 = renderShadow 内 bucketized loop(static/rigged + GLTF PBR opaque)= **MV 化対象・payoff 本体** / 機構2 = renderGeomShadow(terrain/tree/**classic avatar**)= **per-cascade 据置**(classic avatar は AvatarSkin 空間問題を single-view 留置で構造回避)。alpha も per-cascade 据置(順序 bound)。
+- **renderShadow の契約(不変条件)**: 「**単一 view の完全な影マップを描く**」共有関数(spot/projector と sun per-cascade rest が共有)。第6引数 `render_opaque_bucketized`(既定 true = 自前 cull+sort+opaque)で sun rest のみ opt-out(MV pass 済のため)。**共有関数 restructure は全 caller 列挙必須**(spot 喪失 F-NEW の教訓)。
+- **pass 形状**: MV pass = `bindTargetDepthArray()`(2D_ARRAY 全4層・viewMask 0xF・CLEAR)→ MV record → **`flush()` で閉じる**(raw end は sBoundTarget を戻さない = R1#1 の教訓)→ per-cascade j = `bindTargetDepthLayer(j)`(単層・viewMask 0・LOAD)→ rest(geom+alpha)→ flush。cadence RR は MV が包摂して廃止(遠方 stale 解消)。空 cascade = viewproj[j] に clip-everything 行列(層は CLEAR のまま・stray GPU op なし)。
+- **capability 契約**: MV path は `isMultiviewEnabled()`(device 作成の query+flag)を gate とし、false 枝 = per-cascade full fallback(`bindTargetDepthLayer(j, clear=true)` + renderShadow full ×4)。bindless/MDI と同じ codebase capability gating 契約。MV program 2 本(LL_MULTIVIEW_SHADOW variant)の作成も同 gate。
+- **ambient state 禁止(§0.2 整合)**: sShadowBatchCullRadius / gGLModelView identity は RAII scope 所有(手動 set/reset 禁)。batch cull radius は最細 cascade の値で union に適用。
+- **オラクル(fail-closed・保険)**: CPU record 時に実 bind identity 検証 = ①viewMask==0xF ②depth attachment == getVkDepthArrayView()(実ハンドル等値)③viewproj[0..3] pairwise distinct+finite。「disabled で MV 実行」の自己矛盾は **gate 一本化(単一の MV 入口)で構造排除**(オラクル内 enabled 項は gate 内配置ゆえ tautology = 冗長防御・検出能力は claim しない)。正しさは完全トレース+不変条件で確立・オラクルは保険。
+- **per-cascade rest / fallback の cull camera = ループ local の最終 tight camera(light 空間・無条件格納の `tight_shadow_cam[j]`)**。`mShadowCamera[j]` は wide viewer split(tight 化前)・`[j+4]` は debug guard 内格納で stale し得る = **どちらも cull に使うな**(監査 Finding #1 の教訓)。
+- **union cull の不変条件 =「いずれかの cascade の light frustum に入る全 caster を含む volume」= light 空間で構築**(4 つの tight cascade frustum の light 空間 AABB 合併 → 8 corner → calcAgentFrustumPlanes・origin(0,0,0))。**viewer 視錐台の引き伸ばしで cull するな** — カメラ背後/側方の caster が刈られ「カメラの向きで影が消える」(視覚 gate FAIL 2026-08-02 の教訓・cull は視空間でなく光空間)。
+- **検証履歴**: 5 ラウンド監査(RT bind lifecycle / batch cull 喪失 / matrix stack / spot 喪失 F-NEW / resume 誤形状 F-1 / capability gate F-2)→ F-1 は F2 foundation で根治・他は設計置換で是正。**5 回監査 = 設計の構造シグナル → パッチ反復せず foundation(F2)確立に転回した**のが決着の形。
+
 ### (段階5+)draw 連鎖の分離・分散 = **まだ設計しない**
 - per-draw が完全に SSBO/MDI 化して初めて分解可能性を再評価。ここで指示書を新規に起こす。**先回り設計は禁**(過去の失敗パターン)。
 

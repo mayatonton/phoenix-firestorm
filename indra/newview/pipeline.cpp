@@ -11372,16 +11372,6 @@ namespace
         }();
         return s;
     }
-    U32 s_sun_layer_render_mask   = 0; // this-frame producer: bit j = cascade j rendered via layered path
-    U32 s_sun_layer_attempt_mask  = 0; // this-frame: bit j = cascade j が bindTargetDepthLayer を呼んだ
-    U32 s_sun_layer_bound_accum   = 0; // this-frame consumer: bit i = layer i per-layer view bound
-    U32 s_sun_layer_bound_last    = 0; // prev-frame consumer snapshot
-    U64 s_sun_layer_oracle_frames = 0;
-
-    U32 popcount4(U32 m)
-    {
-        return (m & 1u) + ((m >> 1) & 1u) + ((m >> 2) & 1u) + ((m >> 3) & 1u);
-    }
 }
 
 void LLPipeline::bindShadowMaps(LLGLSLShader& shader)
@@ -11395,11 +11385,6 @@ void LLPipeline::bindShadowMaps(LLGLSLShader& shader)
             if (channel > -1)
             {
                 gGL.getTexUnit(channel)->bind(getSunShadowTarget(i), true, /*depthLayer=*/i);
-                if (shadowLayeredOracleEnabled() &&
-                    getSunShadowTarget(i)->getVkDepthLayerView(i) != VK_NULL_HANDLE)
-                {
-                    s_sun_layer_bound_accum |= (1u << i);
-                }
             }
         }
     }
@@ -13854,7 +13839,122 @@ static bool shadowMatricesFinite(const glm::mat4& view, const glm::mat4& proj)
     return true;
 }
 
-void LLPipeline::renderShadow(const glm::mat4& view, const glm::mat4& proj, LLCamera& shadow_cam, LLCullResult& result, bool depth_clamp)
+namespace
+{
+    struct ScopedShadowBatchCull
+    {
+        F32 mPrev;
+        ScopedShadowBatchCull(F32 radius) : mPrev(LLRenderPass::sShadowBatchCullRadius)
+        {
+            LLRenderPass::sShadowBatchCullRadius = radius;
+        }
+        ~ScopedShadowBatchCull()
+        {
+            LLRenderPass::sShadowBatchCullRadius = mPrev;
+        }
+    };
+
+    struct ScopedIdentityModelView
+    {
+        F32 mSaved[16];
+        ScopedIdentityModelView()
+        {
+            memcpy(mSaved, gGLModelView, sizeof(mSaved));
+            glm::mat4 id = glm::identity<glm::mat4>();
+            memcpy(gGLModelView, glm::value_ptr(id), sizeof(mSaved));
+            gGL.matrixMode(LLRender::MM_MODELVIEW);
+            gGL.loadMatrix(glm::value_ptr(id));
+            gGLLastMatrix = NULL;
+        }
+        ~ScopedIdentityModelView()
+        {
+            memcpy(gGLModelView, mSaved, sizeof(mSaved));
+            gGLLastMatrix = NULL;
+        }
+    };
+}
+
+void LLPipeline::renderShadowOpaqueBucketizedMultiview(LLCamera& cam, LLCullResult& result)
+{
+    LL_PROFILE_ZONE_SCOPED_CATEGORY_PIPELINE;
+    LL_PROFILE_GPU_ZONE("renderShadowOpaqueBucketizedMultiview");
+    LLVKLoader::gpuCheckpoint("renderShadowOpaqueBucketizedMultiview");
+
+    LLPipelineFrameContext::getInstance().setShadowPass(true);
+
+    U32 saved_occlusion = sUseOcclusion;
+    sUseOcclusion = 0;
+
+    LLGLEnable cull(GL_CULL_FACE);
+    LLGLEnable clamp_depth(GL_DEPTH_CLAMP);
+    LLGLDepthTest depth_test(GL_TRUE, GL_TRUE, GL_LESS);
+
+    updateCull(cam, result);
+    stateSort(cam, result);
+
+    ScopedIdentityModelView mv_scope;
+
+    LLVertexBuffer::unbind();
+    for (int jj = 0; jj < 2; ++jj)
+    {
+        bool rigged = jj == 1;
+        gDeferredShadowMultiviewProgram.bind(rigged);
+
+        gGL.diffuseColor4f(1, 1, 1, 1);
+
+        if (RenderShadowDetail <= 2)
+        {
+            gGL.setColorMask(false, false);
+        }
+
+        gGL.getTexUnit(0)->disable();
+
+        for (U32 ti = 0; ti < LLVKBucket::kBucketizedPassCount; ++ti)
+        {
+            renderObjects(LLVKBucket::kBucketizedPasses[ti], false, false, rigged);
+        }
+
+        renderGLTFObjects(LLRenderPass::PASS_GLTF_PBR, false, rigged);
+
+        gGL.getTexUnit(0)->enable(LLTexUnit::TT_TEXTURE);
+    }
+
+    gGL.setColorMask(true, true);
+
+    sUseOcclusion = saved_occlusion;
+    LLPipelineFrameContext::getInstance().setShadowPass(false);
+}
+
+void LLPipeline::renderShadowOpaqueBucketized(LLCamera& cam, LLCullResult& result)
+{
+    LL_PROFILE_ZONE_SCOPED_CATEGORY_PIPELINE;
+    LL_PROFILE_GPU_ZONE("renderShadowOpaqueBucketized");
+
+    updateCull(cam, result);
+    stateSort(cam, result);
+
+    LLVertexBuffer::unbind();
+    for (int jj = 0; jj < 2; ++jj)
+    {
+        bool rigged = jj == 1;
+        gDeferredShadowProgram.bind(rigged);
+
+        gGL.diffuseColor4f(1, 1, 1, 1);
+
+        gGL.getTexUnit(0)->disable();
+
+        for (U32 ti = 0; ti < LLVKBucket::kBucketizedPassCount; ++ti)
+        {
+            renderObjects(LLVKBucket::kBucketizedPasses[ti], false, false, rigged);
+        }
+
+        renderGLTFObjects(LLRenderPass::PASS_GLTF_PBR, false, rigged);
+
+        gGL.getTexUnit(0)->enable(LLTexUnit::TT_TEXTURE);
+    }
+}
+
+void LLPipeline::renderShadow(const glm::mat4& view, const glm::mat4& proj, LLCamera& shadow_cam, LLCullResult& result, bool depth_clamp, bool render_opaque_bucketized)
 {
     LL_PROFILE_ZONE_SCOPED_CATEGORY_PIPELINE; //LL_RECORD_BLOCK_TIME(FTM_SHADOW_RENDER);
     LL_PROFILE_GPU_ZONE("renderShadow");
@@ -13871,21 +13971,12 @@ void LLPipeline::renderShadow(const glm::mat4& view, const glm::mat4& proj, LLCa
     U32 saved_occlusion = sUseOcclusion;
     sUseOcclusion = 0;
 
-    // List of render pass types that use the prim volume as the shadow,
-    // ignoring textures.
-    const U32* types = LLVKBucket::kBucketizedPasses;
-    const U32 types_count = LLVKBucket::kBucketizedPassCount;
-
     LLGLEnable cull(GL_CULL_FACE);
 
     //enable depth clamping if available
     LLGLEnable clamp_depth(depth_clamp ? GL_DEPTH_CLAMP : 0);
 
     LLGLDepthTest depth_test(GL_TRUE, GL_TRUE, GL_LESS);
-
-    updateCull(shadow_cam, result);
-
-    stateSort(shadow_cam, result);
 
     //generate shadow map
     gGL.matrixMode(LLRender::MM_PROJECTION);
@@ -13910,33 +14001,15 @@ void LLPipeline::renderShadow(const glm::mat4& view, const glm::mat4& proj, LLCa
 
 
     LLVertexBuffer::unbind();
-    for (int j = 0; j < 2; ++j) // 0 -- static, 1 -- rigged
+
+    if (RenderShadowDetail <= 2)
     {
-        bool rigged = j == 1;
-        gDeferredShadowProgram.bind(rigged);
+        gGL.setColorMask(false, false);
+    }
 
-        gGL.diffuseColor4f(1, 1, 1, 1);
-
-        S32 shadow_detail = RenderShadowDetail;
-
-        // if not using VSM, disable color writes
-        if (shadow_detail <= 2)
-        {
-            gGL.setColorMask(false, false);
-        }
-
-        LL_PROFILE_ZONE_NAMED_CATEGORY_PIPELINE("shadow simple"); //LL_RECORD_BLOCK_TIME(FTM_SHADOW_SIMPLE);
-        LL_PROFILE_GPU_ZONE("shadow simple");
-        gGL.getTexUnit(0)->disable();
-
-        for (U32 ti = 0; ti < types_count; ++ti)
-        {
-            renderObjects(types[ti], false, false, rigged);
-        }
-
-        renderGLTFObjects(LLRenderPass::PASS_GLTF_PBR, false, rigged);
-
-        gGL.getTexUnit(0)->enable(LLTexUnit::TT_TEXTURE);
+    if (render_opaque_bucketized)
+    {
+        renderShadowOpaqueBucketized(shadow_cam, result);
     }
 
     if (LLPipeline::sUseOcclusion > 1)
@@ -14555,10 +14628,16 @@ void LLPipeline::generateSunShadow(LLCamera& camera)
     // convenience array of 4 near clip plane distances
     F32 dist[] = { near_clip, mSunClipPlanes.mV[0], mSunClipPlanes.mV[1], mSunClipPlanes.mV[2], mSunClipPlanes.mV[3] };
 
-    static LLCullResult sun_result[4];
     static LLCullResult spot_result[2];
-    static bool s_cascade_valid[4] = { false, false, false, false };
-    static U32 s_cascade_res[4] = { 0, 0, 0, 0 };
+    bool cascade_valid[4] = { false, false, false, false };
+
+    static const F32 s_cull_texels = []() -> F32 {
+        const char* e = getenv("AYASTORM_SHADOW_CULL_TEXELS");
+        return (e != nullptr) ? (F32)atof(e) : 1.0f;
+    }();
+    F32 mv_batch_cull_radius = 0.f;
+    F32 cascade_batch_cull_radius[4] = { 0.f, 0.f, 0.f, 0.f };
+    LLCamera tight_shadow_cam[4];
 
     if (mSunDiffuse == LLColor4::black)
     { //sun diffuse is totally black shadows don't matter
@@ -14566,41 +14645,9 @@ void LLPipeline::generateSunShadow(LLCamera& camera)
     }
     else
     {
-        static const bool s_shadow_rr = []() -> bool {
-            const char* e = getenv("AYASTORM_SHADOW_RR");
-            return (e == nullptr) || (atof(e) != 0.0);
-        }();
-        static U32 s_shadow_frame = 0;
-        if (!gCubeSnapshot)
-        {
-            ++s_shadow_frame;
-        }
-
-        if (shadowLayeredOracleEnabled() && !gCubeSnapshot)
-        {
-            s_sun_layer_bound_last  = s_sun_layer_bound_accum;
-            s_sun_layer_bound_accum = 0;
-            s_sun_layer_render_mask = 0;
-            s_sun_layer_attempt_mask = 0;
-        }
-
         for (S32 j = 0; j < (gCubeSnapshot ? 2 : 4); j++)
         {
             LLVKLoader::gVkPerfShadowMapIndex = (U32)j;
-
-            if (s_shadow_rr && !gCubeSnapshot && j >= 2)
-            {
-                const U32 cur_res = getFrameRT()->sunShadowLayered.getWidth();
-                const bool cadence_skip = (j == 2) ? ((s_shadow_frame % 2u) != 0u)
-                                                   : ((s_shadow_frame % 4u) != 1u);
-                if (cadence_skip && s_cascade_valid[j] && s_cascade_res[j] == cur_res)
-                {
-                    view[j] = mShadowModelview[j];
-                    proj[j] = mShadowProjection[j];
-                    mSunShadowMatrix[j] = sGlNdcToSampleBias * proj[j] * view[j] * inv_view;
-                    continue;
-                }
-            }
 
             if (!hasRenderDebugMask(RENDER_DEBUG_SHADOW_FRUSTA) && !gCubeSnapshot)
             {
@@ -14663,23 +14710,6 @@ void LLPipeline::generateSunShadow(LLCamera& camera)
                     mShadowCamera[j + LLPipeline::kSunShadowCount] = shadow_cam;
                 }
 
-                getFrameRT()->sunShadowLayered.bindTargetDepthLayer(j);
-                if (shadowLayeredOracleEnabled())
-                {
-                    s_sun_layer_attempt_mask |= (1u << j);
-                    if (getFrameRT()->sunShadowLayered.getLastBoundDepthLayerView() ==
-                        getFrameRT()->sunShadowLayered.getVkDepthLayerView(j))
-                    {
-                        s_sun_layer_render_mask |= (1u << j);
-                    }
-                }
-                {
-                    LLGLDepthTest depth(GL_TRUE);
-                    getFrameRT()->sunShadowLayered.clear();
-                }
-                getFrameRT()->sunShadowLayered.flush();
-                getFrameRT()->sunShadowLayered.bindForShaderRead(0, true);
-
                 mShadowError.mV[j] = 0.f;
                 mShadowFOV.mV[j] = 0.f;
 
@@ -14715,6 +14745,13 @@ void LLPipeline::generateSunShadow(LLCamera& camera)
             for (U32 i = 0; i < fp.size(); ++i)
             { //get AABB in camera space
                 update_min_max(min, max, wpf[i]);
+            }
+
+            {
+                const F32 split_span = llmax(max.mV[0]-min.mV[0], max.mV[2]-min.mV[2]);
+                const F32 map_res = (F32)getFrameRT()->sunShadowLayered.getWidth();
+                cascade_batch_cull_radius[j] = (split_span > 0.f && map_res > 0.f)
+                                       ? (s_cull_texels * split_span / map_res) : 0.f;
             }
 
             // Construct a perspective transform with perspective along y-axis that contains
@@ -14959,46 +14996,9 @@ void LLPipeline::generateSunShadow(LLCamera& camera)
             }
 
 
-            {
-                static const F32 s_cull_texels = []() -> F32 {
-                    const char* e = getenv("AYASTORM_SHADOW_CULL_TEXELS");
-                    return (e != nullptr) ? (F32)atof(e) : 1.0f;
-                }();
-                const F32 split_span = llmax(max.mV[0] - min.mV[0], max.mV[2] - min.mV[2]);
-                const F32 map_res = (F32)getFrameRT()->sunShadowLayered.getWidth();
-                const F32 batch_cull_radius =
-                    (s_cull_texels > 0.f && split_span > 0.f && map_res > 0.f)
-                        ? s_cull_texels * split_span / map_res
-                        : 0.f;
+            cascade_valid[j] = shadowMatricesFinite(view[j], proj[j]);
 
-                LLRenderTarget& shadow_rt = getFrameRT()->sunShadowLayered;
-
-                shadow_rt.bindTargetDepthLayer(j);
-                if (shadowLayeredOracleEnabled())
-                {
-                    s_sun_layer_attempt_mask |= (1u << j);
-                    if (shadow_rt.getLastBoundDepthLayerView() ==
-                        shadow_rt.getVkDepthLayerView(j))
-                    {
-                        s_sun_layer_render_mask |= (1u << j);
-                    }
-                }
-                shadow_rt.getViewport(gGLViewport);
-                shadow_rt.clear();
-
-                LLRenderPass::sShadowBatchCullRadius = batch_cull_radius;
-                renderShadow(view[j], proj[j], shadow_cam, sun_result[j], true);
-                LLRenderPass::sShadowBatchCullRadius = 0.f;
-
-                if (!gCubeSnapshot)
-                {
-                    s_cascade_valid[j] = true;
-                    s_cascade_res[j]   = getFrameRT()->sunShadowLayered.getWidth();
-                }
-
-                shadow_rt.flush();
-                shadow_rt.bindForShaderRead(0, true);
-            }
+            tight_shadow_cam[j] = shadow_cam;
 
             if (!gPipeline.hasRenderDebugMask(LLPipeline::RENDER_DEBUG_SHADOW_FRUSTA) && !gCubeSnapshot)
             {
@@ -15006,53 +15006,181 @@ void LLPipeline::generateSunShadow(LLCamera& camera)
             }
         }
 
-        if (shadowLayeredOracleEnabled() && !gCubeSnapshot && RenderShadowDetail > 0)
+        if (LLVKLoader::isMultiviewEnabled())
         {
-            ++s_sun_layer_oracle_frames;
-            const U32 layers = getFrameRT()->sunShadowLayered.getVkDepthLayerCount();
-            const U32 full_mask = (1u << LLPipeline::kSunShadowCount) - 1u;
-            const bool bound_ok = (s_sun_layer_oracle_frames < 2) ||
-                                  (s_sun_layer_bound_last == full_mask);
-            bool views_distinct = true;
-            for (U32 a = 0; a < LLPipeline::kSunShadowCount && views_distinct; ++a)
+        LLVKLoader::ShadowViewProj_PerPass vp = {};
+        for (int j = 0; j < 4; ++j)
+        {
+            if (!cascade_valid[j])
             {
-                VkImageView va = getFrameRT()->sunShadowLayered.getVkDepthLayerView(a);
-                if (va == VK_NULL_HANDLE)
-                {
-                    views_distinct = false;
-                    break;
-                }
-                for (U32 b = a + 1; b < LLPipeline::kSunShadowCount; ++b)
-                {
-                    if (va == getFrameRT()->sunShadowLayered.getVkDepthLayerView(b))
-                    {
-                        views_distinct = false;
-                        break;
-                    }
-                }
-            }
-            const bool ok = (layers == LLPipeline::kSunShadowCount) &&
-                            (s_sun_layer_attempt_mask != 0u) &&
-                            (s_sun_layer_render_mask == s_sun_layer_attempt_mask) && bound_ok &&
-                            views_distinct;
-            if (ok)
-            {
-                LL_INFOS("ShadowLayeredOracle") << "shadow_layered_oracle layers=" << layers
-                    << " render_mask=0x" << std::hex << s_sun_layer_render_mask
-                    << " attempt_mask=0x" << s_sun_layer_attempt_mask
-                    << " bound_last=0x" << s_sun_layer_bound_last << std::dec
-                    << " layer_render_pass=" << popcount4(s_sun_layer_render_mask)
-                    << " layer_view_bound=" << popcount4(s_sun_layer_bound_last)
-                    << " end_to_end=1" << LL_ENDL;
+                glm::mat4 m(0.0f);
+                m[3][3] = -1.0f - (F32)j;
+                memcpy(vp.shadow_viewproj[j], glm::value_ptr(m), sizeof(vp.shadow_viewproj[j]));
             }
             else
             {
-                LL_WARNS("ShadowLayeredOracle") << "shadow_layered_oracle FAIL layers=" << layers
-                    << " render_mask=0x" << std::hex << s_sun_layer_render_mask
-                    << " attempt_mask=0x" << s_sun_layer_attempt_mask
-                    << " bound_last=0x" << s_sun_layer_bound_last << std::dec
-                    << " frames=" << s_sun_layer_oracle_frames << LL_ENDL;
+                glm::mat4 z = glm::identity<glm::mat4>();
+                z[2][2] = 0.5f;
+                z[3][2] = 0.5f;
+                glm::mat4 m = z * proj[j] * view[j];
+                memcpy(vp.shadow_viewproj[j], glm::value_ptr(m), sizeof(vp.shadow_viewproj[j]));
             }
+        }
+        LLVKLoader::writeCurrentShadowViewProjUBO(vp);
+
+        bool union_valid = false;
+        int first_valid = -1;
+        for (int j = 0; j < 4; ++j)
+        {
+            if (cascade_valid[j])
+            {
+                union_valid = true;
+                if (first_valid < 0) { first_valid = j; }
+            }
+        }
+
+        LLCamera union_cam = camera;
+        if (union_valid)
+        {
+            glm::mat4 lbasis = view[first_valid];
+            glm::mat4 linv   = glm::inverse(lbasis);
+            LLVector3 bmin, bmax;
+            bool first_pt = true;
+            for (int j = 0; j < 4; ++j)
+            {
+                if (!cascade_valid[j])
+                {
+                    continue;
+                }
+                for (int c = 0; c < 8; ++c)
+                {
+                    glm::vec3 p = mul_mat4_vec3(lbasis, glm::vec3(tight_shadow_cam[j].mAgentFrustum[c]));
+                    if (first_pt)
+                    {
+                        bmin.setVec(p.x, p.y, p.z);
+                        bmax.setVec(p.x, p.y, p.z);
+                        first_pt = false;
+                    }
+                    else
+                    {
+                        bmin.mV[0] = llmin(bmin.mV[0], p.x); bmin.mV[1] = llmin(bmin.mV[1], p.y); bmin.mV[2] = llmin(bmin.mV[2], p.z);
+                        bmax.mV[0] = llmax(bmax.mV[0], p.x); bmax.mV[1] = llmax(bmax.mV[1], p.y); bmax.mV[2] = llmax(bmax.mV[2], p.z);
+                    }
+                }
+            }
+
+            glm::vec3 near_ref = mul_mat4_vec3(lbasis, glm::vec3(camera.getOrigin() + caster_dir * RenderFarClip * 2.f));
+            bmax.mV[2] = llmax(bmax.mV[2], near_ref.z);
+
+            LLVector3* frust = union_cam.mAgentFrustum;
+            const F32 xs[4] = { bmin.mV[0], bmax.mV[0], bmax.mV[0], bmin.mV[0] };
+            const F32 ys[4] = { bmin.mV[1], bmin.mV[1], bmax.mV[1], bmax.mV[1] };
+            for (int i = 0; i < 4; ++i)
+            {
+                glm::vec3 pn = mul_mat4_vec3(linv, glm::vec3(xs[i], ys[i], bmax.mV[2]));
+                glm::vec3 pf = mul_mat4_vec3(linv, glm::vec3(xs[i], ys[i], bmin.mV[2]));
+                frust[i].setVec(pn.x, pn.y, pn.z);
+                frust[i + 4].setVec(pf.x, pf.y, pf.z);
+            }
+            union_cam.calcAgentFrustumPlanes(frust);
+            union_cam.setOrigin(0, 0, 0);
+            union_cam.mFrustumCornerDist = 0.f;
+        }
+        static LLCullResult union_result;
+
+        for (int j = 0; j < 4; ++j)
+        {
+            if (cascade_valid[j] && cascade_batch_cull_radius[j] > 0.f)
+            {
+                mv_batch_cull_radius = (mv_batch_cull_radius > 0.f)
+                    ? llmin(mv_batch_cull_radius, cascade_batch_cull_radius[j])
+                    : cascade_batch_cull_radius[j];
+            }
+        }
+
+        getFrameRT()->sunShadowLayered.bindTargetDepthArray();
+        getFrameRT()->sunShadowLayered.getViewport(gGLViewport);
+        if (union_valid)
+        {
+            ScopedShadowBatchCull cull_scope(mv_batch_cull_radius);
+            renderShadowOpaqueBucketizedMultiview(union_cam, union_result);
+        }
+
+        const U32 mv_view_mask = LLVKLoader::currentRenderViewMask();
+        const VkImageView mv_depth_view = LLVKLoader::currentRenderDepthView();
+
+        getFrameRT()->sunShadowLayered.flush();
+
+        for (int j = 0; j < 4; ++j)
+        {
+            if (!cascade_valid[j])
+            {
+                continue;
+            }
+            getFrameRT()->sunShadowLayered.bindTargetDepthLayer(j);
+            getFrameRT()->sunShadowLayered.getViewport(gGLViewport);
+            set_current_modelview(view[j]);
+            set_current_projection(proj[j]);
+            {
+                ScopedShadowBatchCull cull_scope(cascade_batch_cull_radius[j]);
+                renderShadow(view[j], proj[j], tight_shadow_cam[j], union_result, true, false);
+            }
+            getFrameRT()->sunShadowLayered.flush();
+        }
+        getFrameRT()->sunShadowLayered.bindForShaderRead(0, true);
+
+        if (shadowLayeredOracleEnabled() && !gCubeSnapshot && RenderShadowDetail > 0)
+        {
+            const VkImageView arr = getFrameRT()->sunShadowLayered.getVkDepthArrayView();
+            bool vp_ok = true;
+            for (int a = 0; a < 4 && vp_ok; a++)
+            {
+                for (int k = 0; k < 16; k++)
+                {
+                    if (!std::isfinite(vp.shadow_viewproj[a][k]))
+                    {
+                        vp_ok = false;
+                    }
+                }
+                for (int b = a + 1; b < 4 && vp_ok; b++)
+                {
+                    if (memcmp(vp.shadow_viewproj[a], vp.shadow_viewproj[b], 64) == 0)
+                    {
+                        vp_ok = false;
+                    }
+                }
+            }
+            const bool ok = LLVKLoader::isMultiviewEnabled() &&
+                            (mv_view_mask == 0xFu) && (mv_depth_view == arr) &&
+                            (arr != VK_NULL_HANDLE) && vp_ok;
+            if (ok)
+            {
+                LL_INFOS("ShadowMultiviewOracle") << "shadow_mv_oracle view_mask=0x" << std::hex << mv_view_mask
+                    << std::dec << " depth_array_ok=1 viewproj_distinct=1 end_to_end=1" << LL_ENDL;
+            }
+            else
+            {
+                LL_WARNS("ShadowMultiviewOracle") << "shadow_mv_oracle FAIL view_mask=0x" << std::hex << mv_view_mask
+                    << std::dec << " depth_match=" << (mv_depth_view == arr) << " vp_ok=" << vp_ok
+                    << " enabled=" << LLVKLoader::isMultiviewEnabled() << LL_ENDL;
+            }
+        }
+        }
+        else
+        {
+            static LLCullResult sun_result[4];
+            for (int j = 0; j < 4; ++j)
+            {
+                if (!cascade_valid[j]) { continue; }
+                getFrameRT()->sunShadowLayered.bindTargetDepthLayer(j, true);
+                getFrameRT()->sunShadowLayered.getViewport(gGLViewport);
+                set_current_modelview(view[j]);
+                set_current_projection(proj[j]);
+                ScopedShadowBatchCull cull_scope(cascade_batch_cull_radius[j]);
+                renderShadow(view[j], proj[j], tight_shadow_cam[j], sun_result[j], true, true);
+                getFrameRT()->sunShadowLayered.flush();
+            }
+            getFrameRT()->sunShadowLayered.bindForShaderRead(0, true);
         }
     }
 

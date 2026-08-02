@@ -151,6 +151,8 @@ namespace
     thread_local bool                      sSavedHasDepth      = false;
     thread_local U32                       sSavedRenderWidth   = 0;
     thread_local U32                       sSavedRenderHeight  = 0;
+    thread_local U32                       sSavedViewMask   = 0;
+    thread_local U32                       sSavedLayerCount = 1;
 
     VmaAllocator sAllocator = VK_NULL_HANDLE;
     constexpr VkDeviceSize PERFRAME_UBO_SIZE         = sizeof(PerFrameMatrixUBO);
@@ -284,6 +286,7 @@ namespace
     bool                     sProvokingVertexLastEnabled             = false;
 
     bool                     sBindlessCapable                        = false;
+    bool                     sMultiviewEnabled                       = false;
     U32                      sBindlessHeapCapacity                   = 0;
     bool                     sMultiDrawIndirectEnabled               = false;
     bool                     sDrawIndirectFirstInstanceEnabled       = false;
@@ -2078,6 +2081,32 @@ namespace
             }
         }
 
+        VkPhysicalDeviceVulkan11Features vk11_features_enable = {};
+        vk11_features_enable.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_VULKAN_1_1_FEATURES;
+        U32 multiview_max_view_count = 0;
+        {
+            VkPhysicalDeviceVulkan11Features vk11_query = {};
+            vk11_query.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_VULKAN_1_1_FEATURES;
+            VkPhysicalDeviceFeatures2 vk11_f2 = {};
+            vk11_f2.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_FEATURES_2;
+            vk11_f2.pNext = &vk11_query;
+            vkGetPhysicalDeviceFeatures2(sPhysicalDevice, &vk11_f2);
+
+            VkPhysicalDeviceMultiviewProperties mv_props = {};
+            mv_props.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_MULTIVIEW_PROPERTIES;
+            VkPhysicalDeviceProperties2 mv_p2 = {};
+            mv_p2.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_PROPERTIES_2;
+            mv_p2.pNext = &mv_props;
+            vkGetPhysicalDeviceProperties2(sPhysicalDevice, &mv_p2);
+            multiview_max_view_count = mv_props.maxMultiviewViewCount;
+
+            if (vk11_query.multiview && multiview_max_view_count >= 4u)
+            {
+                vk11_features_enable.multiview = VK_TRUE;
+                sMultiviewEnabled = true;
+            }
+        }
+
         VkDeviceCreateInfo device_info = {};
         device_info.sType = VK_STRUCTURE_TYPE_DEVICE_CREATE_INFO;
         if (sBindlessCapable)
@@ -2112,6 +2141,11 @@ namespace
             fault_features_enable.pNext = const_cast<void*>(device_info.pNext);
             device_info.pNext           = &fault_features_enable;
         }
+        if (sMultiviewEnabled)
+        {
+            vk11_features_enable.pNext = const_cast<void*>(device_info.pNext);
+            device_info.pNext          = &vk11_features_enable;
+        }
         device_info.queueCreateInfoCount = 1;
         device_info.pQueueCreateInfos = &queue_info;
         device_info.enabledExtensionCount = (U32)device_extensions.size();
@@ -2128,6 +2162,7 @@ namespace
                            << " heap=" << sBindlessHeapCapacity
                            << " mdi=" << (sMultiDrawIndirectEnabled ? 1 : 0)
                            << " mdi_fi=" << (sDrawIndirectFirstInstanceEnabled ? 1 : 0)
+                           << " multiview=" << (sMultiviewEnabled?1:0) << " mvMaxViews=" << multiview_max_view_count
                            << " dynUBO=" << sPhysicalDeviceProperties.limits.maxDescriptorSetUniformBuffersDynamic
                            << LL_ENDL;
         if (sPhysicalDeviceProperties.limits.maxDescriptorSetUniformBuffersDynamic < LLGLSLShader::MAX_VK_DYNAMIC_BINDINGS)
@@ -5569,84 +5604,6 @@ void recordWindowMutationGuard(const char* site, U32 localid)
     LLVKContract::cause(LLVKContract::C_PAR_CONCURRENT);
 }
 
-void cmdShadowDepthWawBarrierVk(VkCommandBuffer cmd, VkImage depth_image)
-{
-    if (cmd == VK_NULL_HANDLE || depth_image == VK_NULL_HANDLE)
-    {
-        return;
-    }
-    VkImageMemoryBarrier b = {};
-    b.sType                           = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER;
-    b.oldLayout                       = VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL;
-    b.newLayout                       = VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL;
-    b.srcQueueFamilyIndex             = VK_QUEUE_FAMILY_IGNORED;
-    b.dstQueueFamilyIndex             = VK_QUEUE_FAMILY_IGNORED;
-    b.image                           = depth_image;
-    b.srcAccessMask                   = VK_ACCESS_DEPTH_STENCIL_ATTACHMENT_WRITE_BIT;
-    b.dstAccessMask                   = VK_ACCESS_DEPTH_STENCIL_ATTACHMENT_READ_BIT | VK_ACCESS_DEPTH_STENCIL_ATTACHMENT_WRITE_BIT;
-    b.subresourceRange.aspectMask     = VK_IMAGE_ASPECT_DEPTH_BIT | VK_IMAGE_ASPECT_STENCIL_BIT;
-    b.subresourceRange.baseMipLevel   = 0;
-    b.subresourceRange.levelCount     = 1;
-    b.subresourceRange.baseArrayLayer = 0;
-    b.subresourceRange.layerCount     = 1;
-    vkCmdPipelineBarrier(cmd,
-                         VK_PIPELINE_STAGE_LATE_FRAGMENT_TESTS_BIT,
-                         VK_PIPELINE_STAGE_EARLY_FRAGMENT_TESTS_BIT | VK_PIPELINE_STAGE_LATE_FRAGMENT_TESTS_BIT,
-                         0, 0, nullptr, 0, nullptr, 1, &b);
-}
-
-void cmdCameraGbufferBarrierVk(VkCommandBuffer cmd, const VkImage* color_images, U32 color_count, VkImage depth_image)
-{
-    if (cmd == VK_NULL_HANDLE)
-    {
-        return;
-    }
-    VkImageMemoryBarrier barriers[5] = {};
-    U32 n = 0;
-    for (U32 i = 0; i < color_count && i < 4; ++i)
-    {
-        if (color_images[i] == VK_NULL_HANDLE)
-        {
-            continue;
-        }
-        VkImageMemoryBarrier& b = barriers[n++];
-        b.sType                           = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER;
-        b.oldLayout                       = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
-        b.newLayout                       = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
-        b.srcQueueFamilyIndex             = VK_QUEUE_FAMILY_IGNORED;
-        b.dstQueueFamilyIndex             = VK_QUEUE_FAMILY_IGNORED;
-        b.image                           = color_images[i];
-        b.srcAccessMask                   = VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT;
-        b.dstAccessMask                   = VK_ACCESS_COLOR_ATTACHMENT_READ_BIT | VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT;
-        b.subresourceRange.aspectMask     = VK_IMAGE_ASPECT_COLOR_BIT;
-        b.subresourceRange.levelCount     = 1;
-        b.subresourceRange.layerCount     = 1;
-    }
-    if (depth_image != VK_NULL_HANDLE)
-    {
-        VkImageMemoryBarrier& b = barriers[n++];
-        b.sType                           = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER;
-        b.oldLayout                       = VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL;
-        b.newLayout                       = VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL;
-        b.srcQueueFamilyIndex             = VK_QUEUE_FAMILY_IGNORED;
-        b.dstQueueFamilyIndex             = VK_QUEUE_FAMILY_IGNORED;
-        b.image                           = depth_image;
-        b.srcAccessMask                   = VK_ACCESS_DEPTH_STENCIL_ATTACHMENT_WRITE_BIT;
-        b.dstAccessMask                   = VK_ACCESS_DEPTH_STENCIL_ATTACHMENT_READ_BIT | VK_ACCESS_DEPTH_STENCIL_ATTACHMENT_WRITE_BIT;
-        b.subresourceRange.aspectMask     = VK_IMAGE_ASPECT_DEPTH_BIT | VK_IMAGE_ASPECT_STENCIL_BIT;
-        b.subresourceRange.levelCount     = 1;
-        b.subresourceRange.layerCount     = 1;
-    }
-    if (n == 0)
-    {
-        return;
-    }
-    vkCmdPipelineBarrier(cmd,
-                         VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT | VK_PIPELINE_STAGE_LATE_FRAGMENT_TESTS_BIT,
-                         VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT | VK_PIPELINE_STAGE_EARLY_FRAGMENT_TESTS_BIT | VK_PIPELINE_STAGE_LATE_FRAGMENT_TESTS_BIT,
-                         0, 0, nullptr, 0, nullptr, n, barriers);
-}
-
 bool endFrame()
 {
     if (!sInitialized || !sInFrame)
@@ -7086,7 +7043,8 @@ void beginDynamicRendering(U32                               width,
                            U32                               height,
                            const DynamicRenderingAttachment* color_attachments,
                            U32                               color_count,
-                           const DynamicRenderingAttachment* depth_attachment)
+                           const DynamicRenderingAttachment* depth_attachment,
+                           U32                               view_mask)
 {
     VkCommandBuffer rec_cmd = currentRecordCmd();
     if (!sInitialized || rec_cmd == VK_NULL_HANDLE)
@@ -7145,7 +7103,7 @@ void beginDynamicRendering(U32                               width,
     rendering_info.renderArea.offset    = { 0, 0 };
     rendering_info.renderArea.extent    = { width, height };
     rendering_info.layerCount           = 1;
-    rendering_info.viewMask             = 0;
+    rendering_info.viewMask             = view_mask;
     rendering_info.colorAttachmentCount = valid_color_count;
     rendering_info.pColorAttachments    = (valid_color_count > 0 ? color_infos : nullptr);
     rendering_info.pDepthAttachment     = (has_depth ? &depth_info : nullptr);
@@ -7166,6 +7124,8 @@ void beginDynamicRendering(U32                               width,
     sSavedDepthInfo    = depth_info;
     sSavedRenderWidth  = width;
     sSavedRenderHeight = height;
+    sSavedViewMask = view_mask;
+    sSavedLayerCount = rendering_info.layerCount;
 
     sCurrentRenderAreaHeight = height;
 
@@ -7184,6 +7144,42 @@ void endDynamicRendering()
 
     vkCmdEndRendering(rec_cmd);
     sInDynamicRendering = false;
+}
+
+void resumeSavedPass()
+{
+    VkCommandBuffer rec_cmd = currentRecordCmd();
+    if (!sInitialized || rec_cmd == VK_NULL_HANDLE || sInDynamicRendering)
+    {
+        return;
+    }
+    if (!(sSavedColorCount > 0 || sSavedHasDepth))
+    {
+        return;
+    }
+
+    VkRenderingAttachmentInfo color_resume[4] = {};
+    for (U32 i = 0; i < sSavedColorCount && i < 4; ++i)
+    {
+        color_resume[i]        = sSavedColorInfos[i];
+        color_resume[i].loadOp = VK_ATTACHMENT_LOAD_OP_LOAD;
+    }
+    VkRenderingAttachmentInfo depth_resume = sSavedDepthInfo;
+    depth_resume.loadOp = VK_ATTACHMENT_LOAD_OP_LOAD;
+
+    VkRenderingInfo resume_info      = {};
+    resume_info.sType                = VK_STRUCTURE_TYPE_RENDERING_INFO;
+    resume_info.renderArea.offset    = { 0, 0 };
+    resume_info.renderArea.extent    = { sSavedRenderWidth, sSavedRenderHeight };
+    resume_info.layerCount           = sSavedLayerCount;
+    resume_info.viewMask             = sSavedViewMask;
+    resume_info.colorAttachmentCount = sSavedColorCount;
+    resume_info.pColorAttachments    = (sSavedColorCount > 0 ? color_resume : nullptr);
+    resume_info.pDepthAttachment     = (sSavedHasDepth ? &depth_resume : nullptr);
+    resume_info.pStencilAttachment   = nullptr;
+
+    vkCmdBeginRendering(rec_cmd, &resume_info);
+    sInDynamicRendering = true;
 }
 
 void beginSwapchainRendering()
@@ -7962,6 +7958,7 @@ LLVK_SHARED_UBO_DYNAMIC_IMPL(AvatarSkin,       AvatarSkin_PerProgramBind)
 LLVK_SHARED_UBO_DYNAMIC_IMPL(PBRMaterial,      PBRMaterial_PerMaterial)
 LLVK_SHARED_UBO_DYNAMIC_IMPL(DrawColor,        DrawColor_PerShaderBind)
 LLVK_SHARED_UBO_DYNAMIC_IMPL(ShadowParams,     ShadowParams_PerShaderBind)
+LLVK_SHARED_UBO_DYNAMIC_IMPL(ShadowViewProj,   ShadowViewProj_PerPass)
 #undef LLVK_SHARED_UBO_DYNAMIC_IMPL
 
 static constexpr U32 kSharedUBOPersistentInitialWrites = 256;
@@ -8275,6 +8272,7 @@ bool getSharedDynamicUBOForBinding(U32 binding, VkBuffer& out_buf, U32& out_off)
         case 49: return ensureSSRUtilUploaded(out_buf, out_off);
         case 51: return ensureDrawColorUploaded(out_buf, out_off);
         case 53: return ensureShadowParamsUploaded(out_buf, out_off);
+        case 54: return ensureShadowViewProjUploaded(out_buf, out_off);
         default: return false;
     }
 }
@@ -8310,6 +8308,7 @@ bool peekSharedDynamicUBO(U32 binding, const void*& out_shadow, U32& out_size,
         case 49: return peekSSRUtilState(out_shadow, out_size, out_off, out_current, out_up_hash);
         case 51: return peekDrawColorState(out_shadow, out_size, out_off, out_current, out_up_hash);
         case 53: return peekShadowParamsState(out_shadow, out_size, out_off, out_current, out_up_hash);
+        case 54: return peekShadowViewProjState(out_shadow, out_size, out_off, out_current, out_up_hash);
         default: return false;
     }
 }
@@ -11732,6 +11731,11 @@ bool isGeometryShaderEnabledVk()
     return sGeometryShaderEnabled;
 }
 
+bool isMultiviewEnabled()
+{
+    return sMultiviewEnabled;
+}
+
 static U64 phaseNowUs()
 {
     return (U64)std::chrono::duration_cast<std::chrono::microseconds>(
@@ -12223,30 +12227,9 @@ void transitionImageLayoutVk(VkImage              image,
                          0, nullptr,
                          1, &barrier);
 
-    if (was_rendering && (sSavedColorCount > 0 || sSavedHasDepth))
+    if (was_rendering)
     {
-        VkRenderingAttachmentInfo color_resume[4] = {};
-        for (U32 i = 0; i < sSavedColorCount && i < 4; ++i)
-        {
-            color_resume[i]        = sSavedColorInfos[i];
-            color_resume[i].loadOp = VK_ATTACHMENT_LOAD_OP_LOAD;
-        }
-        VkRenderingAttachmentInfo depth_resume = sSavedDepthInfo;
-        depth_resume.loadOp = VK_ATTACHMENT_LOAD_OP_LOAD;
-
-        VkRenderingInfo resume_info       = {};
-        resume_info.sType                 = VK_STRUCTURE_TYPE_RENDERING_INFO;
-        resume_info.renderArea.offset     = { 0, 0 };
-        resume_info.renderArea.extent     = { sSavedRenderWidth, sSavedRenderHeight };
-        resume_info.layerCount            = 1;
-        resume_info.viewMask              = 0;
-        resume_info.colorAttachmentCount  = sSavedColorCount;
-        resume_info.pColorAttachments     = (sSavedColorCount > 0 ? color_resume : nullptr);
-        resume_info.pDepthAttachment      = (sSavedHasDepth ? &depth_resume : nullptr);
-        resume_info.pStencilAttachment    = nullptr;
-
-        vkCmdBeginRendering(rec_cmd, &resume_info);
-        sInDynamicRendering = true;
+        resumeSavedPass();
     }
 }
 
@@ -12629,6 +12612,8 @@ static VkRenderingAttachmentInfo  sAuxUISavedDepth      = {};
 static U32                        sAuxUISavedAreaHeight = 0;
 static U32                        sAuxUISavedRenderW    = 0;
 static U32                        sAuxUISavedRenderH    = 0;
+static U32                        sAuxUISavedViewMask   = 0;
+static U32                        sAuxUISavedLayerCount = 1;
 
 bool auxWindowBeginUIFrameVk()
 {
@@ -12726,6 +12711,8 @@ bool auxWindowBeginUIFrameVk()
     sAuxUISavedAreaHeight = sCurrentRenderAreaHeight;
     sAuxUISavedRenderW    = sSavedRenderWidth;
     sAuxUISavedRenderH    = sSavedRenderHeight;
+    sAuxUISavedViewMask   = sSavedViewMask;
+    sAuxUISavedLayerCount = sSavedLayerCount;
     for (U32 i = 0; i < 4; ++i)
     {
         sAuxUISavedColor[i] = sSavedColorInfos[i];
@@ -12752,6 +12739,8 @@ bool auxWindowBeginUIFrameVk()
         sCurrentRenderAreaHeight = sAuxUISavedAreaHeight;
         sSavedRenderWidth   = sAuxUISavedRenderW;
         sSavedRenderHeight  = sAuxUISavedRenderH;
+        sSavedViewMask      = sAuxUISavedViewMask;
+        sSavedLayerCount    = sAuxUISavedLayerCount;
         for (U32 i = 0; i < 4; ++i)
         {
             sSavedColorInfos[i] = sAuxUISavedColor[i];
@@ -12799,6 +12788,8 @@ bool auxWindowEndUIFrameVk()
     sCurrentRenderAreaHeight = sAuxUISavedAreaHeight;
     sSavedRenderWidth   = sAuxUISavedRenderW;
     sSavedRenderHeight  = sAuxUISavedRenderH;
+    sSavedViewMask      = sAuxUISavedViewMask;
+    sSavedLayerCount    = sAuxUISavedLayerCount;
     for (U32 i = 0; i < 4; ++i)
     {
         sSavedColorInfos[i] = sAuxUISavedColor[i];
@@ -12964,6 +12955,11 @@ bool beginShaderDrawOrSkip(LLGLSLShader* shader, U32 render_mode, VkCommandBuffe
                                    << "' count=" << s_rt_resume_count << LL_ENDL;
             }
             bound_rt->resumeVkDynamicRendering();
+            if (!isInRenderPassScope())
+            {
+                LLVKContract::drawSkipped(LLVKContract::C_CMD_NULL, shader->mName);
+                return false;
+            }
         }
     }
     bindGraphicsPipelineOnce(cmd, pipeline);
@@ -13034,6 +13030,26 @@ void setRenderViewport(S32 x, S32 y, S32 w, S32 h)
 F32 getMaxLineWidth()
 {
     return sMaxLineWidth;
+}
+
+U32 currentRenderViewMask()
+{
+    return sSavedViewMask;
+}
+
+VkImageView currentRenderDepthView()
+{
+    return sSavedHasDepth ? sSavedDepthInfo.imageView : VK_NULL_HANDLE;
+}
+
+U32 currentRenderColorCount()
+{
+    return sSavedColorCount;
+}
+
+VkImageView currentRenderColorView(U32 i)
+{
+    return (i < sSavedColorCount && i < 4) ? sSavedColorInfos[i].imageView : VK_NULL_HANDLE;
 }
 
 bool getDeviceCapsVk(DeviceCapsVk& out)
