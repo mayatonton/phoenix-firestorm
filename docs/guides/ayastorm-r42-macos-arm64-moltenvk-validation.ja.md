@@ -199,13 +199,18 @@ OpenGL の数値 enum ではない。従って旧比較は、診断する compil
 
 ここでの `GL_TEXTURE_2D` は比較誤りの元になった OpenGL の数値定数であり、GL fallback
 を対象にする記述ではない。この変更は Vulkan 側の `mCurrVkHeapSlot` の記録だけを直す。
-Vulkan と bindless が有効な場合、2D texture が default slot ではなく自分の heap slot を
-後段の DrawData に渡すようになる。そのため macOS だけの shadow 結果を Linux / Windows
-の実行証拠とみなしてはならない。
+実行時の影響範囲は **LLDrawInfo を伴わない即時 draw(scratch 経路・establishPerDrawId の
+params==nullptr 分岐)に限られる** — 通常の draw(LLDrawInfo 経由)は texture から直接
+heap slot を引くため、この比較誤りの影響を受けておらず従来から正常である。また
+`vkHeapSlotOrDefault` 内部に GL target と residency の二重チェックが残るため、修正後も
+不正な slot が漏れる経路はない。もう 1 つの実効修正は `non2d_bind` 検出器の条件是正で、
+旧条件は型違いにより**正常な 2D texture へ恒常誤発火**していた(修正後は本物の非 2D
+bind のみ報告される)。macOS だけの shadow 結果を Linux / Windows の実行証拠と
+みなしてはならない点は変わらない。
 
 | プラットフォーム | 予想される影響 | プラットフォーム担当者の確認項目 | 状態 |
 | --- | --- | --- | --- |
-| Linux | `eTextureType` と OpenGL 数値 enum の不正比較による compiler failure を回避する。Vulkan + bindless では通常 2D texture の heap slot が有効になる。 | Vulkan 構成の Linux build と Vulkan 起動を行い、device / presentation surface の初期化、texture、alpha / mask、shadow を確認する。 | OPEN |
+| Linux | `eTextureType` と OpenGL 数値 enum の不正比較による compiler failure を回避する。Vulkan + bindless では scratch 経路の 2D texture heap slot が有効になる。 | Vulkan 構成の Linux build と Vulkan 起動を行い、device / presentation surface の初期化、texture、alpha / mask、shadow を確認する。 | **検証済 2026-08-03**(本流 merge `b02b13e4aa2`・build 0 error・診断走行 = texture / alpha mask / alpha blend / shadow 視覚正常・fail-closed 検出器沈黙・`non2d_bind` の旧誤発火署名(tgt=0x0)消滅を確認) |
 | Windows | Linux と同じ共通ソースを compile する。Vulkan + bindless 時の heap slot 選択が変わる。 | `build_ayastorm.bat` による Vulkan 構成の build と Vulkan 起動を行い、device / presentation surface の初期化、texture、alpha / mask、shadow を確認する。 | OPEN |
 
 Linux / Windows とも Vulkan 前提で検証する。Vulkan + bindless run では、default texture
