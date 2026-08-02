@@ -182,7 +182,7 @@ void LLTexUnit::bindFast(LLTexture* texture)
         setTextureFilteringOptionFast(gl_tex->mFilterOption, gl_tex->getTarget());
     }
     mCurrImageGL = gl_tex;
-    mCurrVkHeapSlot = (gl_tex->getTarget() == GL_TEXTURE_2D)
+    mCurrVkHeapSlot = (gl_tex->getTarget() == TT_TEXTURE)
                           ? LLImageGL::vkHeapSlotOrDefault(gl_tex)
                           : 0xFFFFFFFFu;
     mCurrRenderTarget = nullptr;
@@ -235,7 +235,7 @@ bool LLTexUnit::bind(LLTexture* texture, bool for_rendering, bool forceBind)
                     }
                 }
                 mCurrImageGL = gl_tex;
-                mCurrVkHeapSlot = (gl_tex->getTarget() == GL_TEXTURE_2D)
+                mCurrVkHeapSlot = (gl_tex->getTarget() == TT_TEXTURE)
                                       ? LLImageGL::vkHeapSlotOrDefault(gl_tex)
                                       : 0xFFFFFFFFu;
                 mCurrRenderTarget = nullptr;
@@ -311,7 +311,7 @@ bool LLTexUnit::bind(LLImageGL* texture, bool for_rendering, bool forceBind)
     }
 
     mCurrImageGL = texture;
-    mCurrVkHeapSlot = (texture->getTarget() == GL_TEXTURE_2D)
+    mCurrVkHeapSlot = (texture->getTarget() == TT_TEXTURE)
                           ? LLImageGL::vkHeapSlotOrDefault(texture)
                           : 0xFFFFFFFFu;
     mCurrRenderTarget = nullptr;
@@ -320,7 +320,7 @@ bool LLTexUnit::bind(LLImageGL* texture, bool for_rendering, bool forceBind)
     mCurrAddressMode  = texture->getAddressMode();
     mCurrFilterOption = texture->getFilteringOption();
 
-    if (LLVKContract::verboseEnabled() && mIndex < 4 && texture->getTarget() != GL_TEXTURE_2D)
+    if (LLVKContract::verboseEnabled() && mIndex < 4 && texture->getTarget() != TT_TEXTURE)
     {
         static std::atomic<U32> s_non2d_bind{0};
         const U32 n = ++s_non2d_bind;
