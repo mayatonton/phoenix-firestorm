@@ -8,6 +8,8 @@
 - **配布用 DMG**: 「環境変数」以降の配布手順を使う。
 - **MoltenVK の通常起動仕様・失敗ログ**:
   [`docs/specs/ayastorm-r42-macos-moltenvk-runtime-bootstrap.md`](../specs/ayastorm-r42-macos-moltenvk-runtime-bootstrap.md)
+- **R42 shadow multiview の実機検証**:
+  [`docs/guides/ayastorm-r42-macos-arm64-moltenvk-validation.ja.md`](../guides/ayastorm-r42-macos-arm64-moltenvk-validation.ja.md)
 
 出力例: `Phoenix-FirestormOS-AYAstorm-release_arm64-7-2-4-80834.dmg`
 

@@ -1,0 +1,302 @@
+# AYAstorm R42 macOS arm64 / MoltenVK 検証手順
+
+## 目的
+
+`feature/ayastorm-r42-phase2` を起点にした開発用 app で、MoltenVK の shadow
+multiview 経路、描画品質、および P0 の性能・安定性計器を再現可能な形で確認する。
+
+- 対象 app: `build-darwin-universal/newview/Release/AYAstorm.app`
+- 対象環境: Apple Silicon（arm64）の macOS
+- 開発用 profile: `~/Library/Application Support/AYAstorm-dev/`
+- 対象外: DMG 配布物、Intel Mac、OpenGL fallback
+
+通常の開発 app の configure / build は
+[macOS ビルド手順](../build/building_ayastorm_macos.md)を、bundle runtime の成立条件は
+[MoltenVK 実行時ブートストラップ仕様](../specs/ayastorm-r42-macos-moltenvk-runtime-bootstrap.md)を参照する。
+
+## 1. ビルド成果物の確認
+
+開発 app をビルドしてから、次を確認する。DMG / `llpackage` は使わない。
+
+```bash
+export REPO="/path/to/phoenix-firestorm-mayatonton"
+export APP="$REPO/build-darwin-universal/newview/Release/AYAstorm.app"
+
+test -x "$APP/Contents/MacOS/AYAstorm"
+lipo -archs "$APP/Contents/MacOS/AYAstorm"
+codesign --verify --deep --strict --verbose=2 "$APP"
+test -e "$APP/Contents/Frameworks/libvulkan.dylib"
+test -e "$APP/Contents/Frameworks/libMoltenVK.dylib"
+test -f "$APP/Contents/Resources/vulkan/icd.d/MoltenVK_icd.json"
+```
+
+期待値は executable が `arm64` であり、codesign と 3 つの runtime artifact
+確認が成功することである。
+
+## 2. 起動前に必ず cache を消去する
+
+すべての AYAstorm 開発 app を終了してから実行する。今回 shader が変わっているため、
+旧 SPIR-V や pipeline cache を残したままの起動は未定義動作として扱い、検証結果に
+用いてはならない。
+
+```bash
+export AYA_DEV_PROFILE="$HOME/Library/Application Support/AYAstorm-dev"
+rm -rf "$AYA_DEV_PROFILE/cache/shader_cache"
+rm -f "$AYA_DEV_PROFILE/cache/pipeline_cache.bin"
+```
+
+削除対象は上記 2 項目だけである。`AYAstorm-dev` profile 全体、通常版の
+`AYAstorm` profile、または他の cache を削除しない。
+
+## 3. 診断起動とログ採取
+
+`AYASTORM_PERF_LOG=5` を付け、Vulkan / MoltenVK の Loader 環境変数を追加せずに
+開発 app を起動する。ログイン後、影を含む場面でカメラを動かしながら 2〜3 分使用する。
+
+```bash
+export REPO="/path/to/phoenix-firestorm-mayatonton"
+export APP="$REPO/build-darwin-universal/newview/Release/AYAstorm.app"
+export AYA_DEV_PROFILE="$HOME/Library/Application Support/AYAstorm-dev"
+
+AYASTORM_PERF_LOG=5 "$APP/Contents/MacOS/AYAstorm"
+```
+
+ログは次に出力される。
+
+```bash
+export LOG="$AYA_DEV_PROFILE/logs/AYAstorm.log"
+rg '#VkPerf#|FRAMETIME ms:|recreateSwapchain|WARNING|ERROR|VUID|device lost' "$LOG"
+```
+
+`AYASTORM_PERF_LOG=5` は `#VkPerf#` を約 5 秒周期で出す。P0 の `FRAMETIME ms:`
+は 10 秒周期で、平均値・p95・p99・最大値を記録する。
+
+## 4. `shsite` による shadow 経路判定
+
+`#VkPerf#` 行に含まれる `shsite` 欄を、最低 1 行以上そのまま記録する。判定は次の通り。
+
+| `shsite` の観測 | 判定 |
+| --- | --- |
+| `mv.am=...` がある | multiview フル経路 |
+| `mv.op=...` はあるが `rest.am` が非ゼロ | bindless なしへの降格 |
+| `fb.` で始まる項目がある | multiview なし fallback |
+
+単一のカウンタだけで「正常」としない。下記の視覚確認と、P0 の性能・安定性ログを
+同じ run から揃える。
+
+## 5. 視覚確認チェックリスト
+
+影が十分に見える場所・時刻・カメラ角度を選び、次を確認する。
+
+- 髪の透過影が正しく出る。
+- 植生・木の葉の影が正しく出る。
+- 格子・金網など alpha mask material の影が正しく出る。
+- 草の影が正しく出る。
+- 半透明オブジェクトの影が点描（dither）状に正常に出る。
+- カメラを回しても影が消えない。
+- spot light の影が正しく出る。
+
+各項目を `OK` / `NG` / `未確認` で記録し、`NG` では再現場所、時刻、カメラ操作、
+スクリーンショットの有無を添える。
+
+### 実施結果 — 2026-08-02
+
+| 確認項目 | 結果 |
+| --- | --- |
+| 髪の透過影 | OK |
+| 植生・木の葉の影 | OK |
+| 格子・金網など alpha mask material の影 | OK |
+| 草の影 | OK |
+| 半透明オブジェクトの影が点描（dither）状に出ること | **NG** |
+| カメラを回しても影が消えないこと | OK |
+| spot light の影 | OK |
+
+半透明オブジェクトの NG は、透明度段階を並べた検証シーンで、期待する点描状ではない影を
+確認したもの。スクリーンショットは有り（この task に添付された
+`codex-clipboard-5ef5d7d3-9b79-401b-a0ae-faaae31d421e.png`）。再現場所、ワールド時刻、
+カメラ位置・回転操作の詳細は未記録であるため、修正確認時はこれらを採取して同一条件で
+再試験する。この NG により、視覚受入は **FAIL** とする。
+
+### 追加視覚事象: メッシュボディ alpha の再有効化 — 2026-08-02
+
+メッシュボディの alpha 関連操作のうち、**alpha を有効にして透明度を 100% に戻す操作**が
+その場では反映されなかった。alpha を無効にする操作ではなく、この「再有効化」の反映が
+失敗することが主事象である。しかしテレポート後には反映された。従って「完全に描画
+されない」ではなく、外観更新の即時反映に失敗し、テレポートが更新を回復させる事象として
+記録する。
+
+- 結果: **NG（テレポートで一時回復）**。特に alpha を有効化して透明度 100% に戻す操作が、
+  テレポートを必要とせず反映されるまで受入にしない。
+- 視覚証拠: [Gyazo capture](https://gyazo.com/9aca27980c7b8cfe7d32c78580340724)
+  （2026-08-02 21:35 JST にアップロード）。
+- 関連ログ: 12:34:27--12:34:29 UTC に `forced full rebake`、COF
+  `210360 -> 210361 -> 210362`、旧 appearance `#210360` の破棄が連続している。
+  これは操作に伴う外観更新と時刻が整合するが、alpha 再有効化失敗を直接示すログではない。
+- 再試験時の合格条件: alpha を無効化した後、alpha を有効にして透明度 100% に戻す。これが
+  テレポートせずに反映されること。操作開始・終了時刻、COF version、`Stale appearance` の
+  有無を併記すること。
+
+## 6. 半透明 dither shadow NG の修正方針（未実装）
+
+この節は §5 の半透明オブジェクト shadow NG に対する**修正方針**であり、shader の修正が
+この branch に含まれることを示すものではない。現時点の視覚受入は NG のままである。
+
+### 現状の確認結果
+
+Vulkan の PBR alpha-blend shadow shader
+[`pbrShadowAlphaBlendF.glsl`](../../indra/newview/app_settings/shaders/class1/deferred/pbrShadowAlphaBlendF.glsl)
+では、texture alpha を `0.05` 未満で discard する判定に使う一方、Bayer 点描の密度は
+`object_alpha` だけで決めている。`object_alpha` は `LLDrawInfo::mObjectAlpha` 経由の face
+alpha である。したがって、材質または texture の alpha だけで半透明にした物体では、その
+透明度が点描密度に反映されない可能性がある。
+
+この確認は source 上の事実であり、今回の NG の直接原因がこれであることはまだ**未確定**
+である。特に `vertex_color.a` と `object_alpha` が同じ face alpha を重複して表すかは、
+実装前に draw data の生成経路で確認する。
+
+### 修正案
+
+対象は OpenGL との見た目合わせではなく、Vulkan の alpha-blend shadow における有効な
+不透明度を正しく Bayer 判定へ渡すことである。PBR alpha-blend shadow shader で、相互に
+独立していることを確認できた alpha 要素だけから `effective_shadow_alpha` を作り、次の
+順序で使う。
+
+1. `effective_shadow_alpha < 0.05` は discard する。
+2. `effective_shadow_alpha < 0.996` の場合、4×4 Bayer threshold と比較して discard する。
+3. それ以外は shadow caster として残す。
+
+候補となる入力は texture/material alpha、face alpha (`object_alpha`)、および独立した
+vertex alpha である。値が二重に含まれる経路では乗算しない。alpha mask material の
+cutout shadow は対象外とし、輪郭を保つ既存経路を変更しない。
+
+この shader は `LL_VULKAN_GLSL` 経路で共有されるため、修正時は macOS MoltenVK だけでなく
+Linux Vulkan と Windows Vulkan を同一 scope とする。
+
+### 修正後の受入条件
+
+同じ light、地面、カメラ距離で、次の4行を別々に比較する。
+
+| 行 | 透明度の与え方 | 検証値 |
+| --- | --- | --- |
+| A | face alpha | 25% / 50% / 75% |
+| B | texture/material alpha | 25% / 50% / 75% |
+| C | 独立した vertex alpha（存在する場合） | 25% / 50% / 75% |
+| D | alpha mask control | cutout が従来どおり明瞭であること |
+
+各行で、透明度に応じて shadow の点描密度が変わること、camera 回転で影が消えないこと、
+`AYASTORM_PERF_LOG=5` の `shsite` が `mv.am` を維持し `rest.am` / `fb.*` を出さないことを
+確認する。修正前後の screenshot と run 全体の log を保存し、VUID / device lost の有無も
+併記する。
+
+## 7. 共通 texture type 修正の Linux / Windows 影響
+
+この検証ブランチでは、`indra/llrender/llrender.cpp` の `LLImageGL::getTarget()`
+との比較を `GL_TEXTURE_2D` から `LLTexUnit::TT_TEXTURE` に直している。
+`getTarget()` の戻り値は全プラットフォーム共通の `LLTexUnit::eTextureType` であり、
+OpenGL の数値 enum ではない。従って旧比較は、診断する compiler では定数比較警告を
+`-Werror` として build failure にし、実行時には通常の 2D texture でも
+`mCurrVkHeapSlot` を invalid のままにしていた。
+
+ここでの `GL_TEXTURE_2D` は比較誤りの元になった OpenGL の数値定数であり、GL fallback
+を対象にする記述ではない。この変更は Vulkan 側の `mCurrVkHeapSlot` の記録だけを直す。
+Vulkan と bindless が有効な場合、2D texture が default slot ではなく自分の heap slot を
+後段の DrawData に渡すようになる。そのため macOS だけの shadow 結果を Linux / Windows
+の実行証拠とみなしてはならない。
+
+| プラットフォーム | 予想される影響 | プラットフォーム担当者の確認項目 | 状態 |
+| --- | --- | --- | --- |
+| Linux | `eTextureType` と OpenGL 数値 enum の不正比較による compiler failure を回避する。Vulkan + bindless では通常 2D texture の heap slot が有効になる。 | Vulkan 構成の Linux build と Vulkan 起動を行い、device / presentation surface の初期化、texture、alpha / mask、shadow を確認する。 | OPEN |
+| Windows | Linux と同じ共通ソースを compile する。Vulkan + bindless 時の heap slot 選択が変わる。 | `build_ayastorm.bat` による Vulkan 構成の build と Vulkan 起動を行い、device / presentation surface の初期化、texture、alpha / mask、shadow を確認する。 | OPEN |
+
+Linux / Windows とも Vulkan 前提で検証する。Vulkan + bindless run では、default texture
+への意図しない置換、欠落 texture、alpha mask / alpha blend の欠落、shadow の変化がない
+ことを確認する。各プラットフォームの build log と検証結果を、この macOS 検証記録とは
+別に残す。
+
+## 8. 提出物
+
+次をひとまとまりで共有する。ログ全体が最優先である。
+
+1. `AYAstorm.log` 全体（最低でもこの run の開始から終了まで）。
+2. `#VkPerf#` 行、とくに `shsite` 欄。
+3. `FRAMETIME ms:` の全行（10 秒周期、p95 / p99 を含む）。
+4. `recreateSwapchain` 行。存在する場合は必ず `reason=` を残す。
+5. `WARNING`、`ERROR`、`VUID`、`device lost` の有無。存在する場合は該当行の前後も含める。
+6. 視覚確認チェックリストの結果と、NG があれば再現情報。
+
+起動確認では、`initialized device=...`、`Vulkan presentation surface initialized`、
+`Initializing Login Screen` が順に出ることも確認する。これらが不足している場合は、
+影の検証を開始せず、起動失敗として log 全体を共有する。
+
+## 9. 実測記録 — 2026-08-02 macOS arm64 / MoltenVK
+
+この記録は `feature/ayastorm-r42-macos-arm64-moltenvk-validation` の開発 app を、
+shader cache と `pipeline_cache.bin` を削除してから
+`AYASTORM_PERF_LOG=5` で起動した run のものである。この run は終了時に log rotate
+されたため、原本は次に残る（その後の再起動分は `AYAstorm.log`）。
+
+```text
+~/Library/Application Support/AYAstorm-dev/logs/AYAstorm.old
+```
+
+### 起動成立
+
+次の順序で記録されたため、MoltenVK の Loader / surface / login screen 初期化は
+**VERIFIED** とする。
+
+```text
+2026-08-02T12:00:19Z initialized device=Apple M2 Pro
+2026-08-02T12:00:20Z Vulkan presentation surface initialized
+2026-08-02T12:00:22Z Initializing Login Screen
+```
+
+### shadow 経路
+
+`#VkPerf#` は 5 秒周期で出力された。次は 2026-08-02T12:06:43Z より前の最新の
+`shsite` 抜粋である。
+
+```text
+shsite mv.op=850 mv.opR=374 mv.am=102 mv.ab=646 mv.gm=102 mv.gmR=8874 mv.gaR=34 mv.pbrR=136
+```
+
+`mv.am` が非ゼロで、`rest.am` と `fb.*` はこの観測にない。従って shadow multiview
+フル経路は **VERIFIED**。ただし、これは visual acceptance の代替ではない。
+
+### P0 / 安定性計器
+
+10 秒周期 `FRAMETIME ms:` は run 全体で 50 行出た。p95 の全範囲は
+50.92--216.34 ms、p99 の全範囲は 52.40--302.82 ms である。下表は、性能が悪化した
+12:02 UTC の連続観測と、終了直前の観測を併記する。従来記載した 12:06 UTC の 4 行だけを
+この run 全体の P0 値として扱ってはならない。
+
+| 時刻 (UTC) | avg ms | p95 ms | p99 ms | max ms |
+| --- | ---: | ---: | ---: | ---: |
+| 12:02:17 | 52.54 | 179.74 | 211.06 | 213.73 |
+| 12:02:27 | 43.43 | 155.13 | 168.73 | 187.79 |
+| 12:02:37 | 41.74 | 149.58 | 170.97 | 223.34 |
+| 12:02:47 | 46.64 | 150.58 | 157.11 | 161.22 |
+| 12:08:49 | 41.89 | 111.67 | 118.61 | 135.39 |
+| 12:08:59 | 37.62 | 111.90 | 138.67 | 143.66 |
+| 12:09:09 | 34.60 | 102.12 | 123.68 | 286.99 |
+
+`recreateSwapchain` は継続して出ており、理由はいずれも
+`acq-suboptimal,present-suboptimal` だった。これは **OPEN** であり、通常の受入結果と
+混同しない。直近例:
+
+```text
+2026-08-02T12:06:42Z recreateSwapchain: reason=acq-suboptimal,present-suboptimal old=2560x1387 new=2560x1387 frames_since_last=30 drain_us=0 wait_idle_us=37 ok=1
+```
+
+### 警告・未完了項目
+
+- `VUID` とログレベル `ERROR` は検出していない。ただし 12:09:10 UTC に
+  `PresentEngine: device lost`、続いて `GPU device lost (VK_ERROR_DEVICE_LOST)` が出て
+  graceful shutdown した。したがって、この run の安定性は **FAIL** であり、
+  「device lost なし」と報告してはならない。
+- `VKGeo stateSort` の `visible empty-drawmap groups` 警告は継続している。
+- HTTP 403/503 と、それに続く GLTF material asset 取得失敗、Voice account provisioning
+  失敗がある。これらは network / asset 配信系の警告として分離し、shadow 経路の合否には
+  用いない。
+- 視覚確認は [§5](#5-視覚確認チェックリスト) に記録済み。髪、植生・木の葉、金網、草、
+  カメラ回転、spot light は OK だが、半透明 dither shadow は NG のため、視覚受入は
+  **FAIL** である。
