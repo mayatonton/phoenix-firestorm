@@ -871,6 +871,20 @@ void LLPipeline::cleanup()
 
     mGroupQ1.clear() ;
 
+    mBuildQ1.clear();
+    mPartitionQ.clear();
+    mCreateQ.clear();
+    mMeshDirtyGroup.clear();
+    mLights.clear();
+    mNearbyLights.clear();
+    mRetexturedList.clear();
+    mGroupSaveQ1.clear();
+    for (U32 i = 0; i < kSpotShadowCount; ++i)
+    {
+        mShadowSpotLight[i] = NULL;
+        mTargetShadowSpotLight[i] = NULL;
+    }
+
     for(pool_set_t::iterator iter = mPools.begin();
         iter != mPools.end(); )
     {
