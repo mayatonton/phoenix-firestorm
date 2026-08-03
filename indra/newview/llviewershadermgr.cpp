@@ -1298,7 +1298,8 @@ std::string LLViewerShaderMgr::loadBasicShaders()
     index_channels.push_back(-1);    shaders.push_back( make_pair( "environment/waterFogF.glsl",                mShaderLevel[SHADER_WATER] ) );
     index_channels.push_back(-1);    shaders.push_back( make_pair( "environment/srgbF.glsl",                    mShaderLevel[SHADER_ENVIRONMENT] ) );
     index_channels.push_back(-1);    shaders.push_back( make_pair( "deferred/deferredUtil.glsl",                    1) );
-    index_channels.push_back(-1);    shaders.push_back( make_pair( "deferred/gbufferReadUtil.glsl",                 1) );
+    index_channels.push_back(-1);    shaders.push_back( make_pair( "deferred/depthReadUtil.glsl",                   1) );
+    index_channels.push_back(-1);    shaders.push_back( make_pair( "deferred/normalReadUtil.glsl",                  1) );
     index_channels.push_back(-1);    shaders.push_back( make_pair( "deferred/projectionLightUtil.glsl",             1) );
     index_channels.push_back(-1);    shaders.push_back( make_pair( "deferred/pbrIblUtil.glsl",                      1) );
     index_channels.push_back(-1);    shaders.push_back( make_pair( "deferred/gbufferUtil.glsl",                    1) );
@@ -2888,7 +2889,7 @@ bool LLViewerShaderMgr::loadShadersDeferred()
     if (success)
     {
         gDeferredGodraysProgram.mName = "Godrays Shader";
-        gDeferredGodraysProgram.mFeatures.hasGBufferRead = true;
+        gDeferredGodraysProgram.mFeatures.hasDepthRead = true;
         gDeferredGodraysProgram.mShaderFiles.clear();
         gDeferredGodraysProgram.mFeatures.isDeferred  = true;
         gDeferredGodraysProgram.mFeatures.hasShadows  = use_sun_shadow;
@@ -2983,7 +2984,7 @@ bool LLViewerShaderMgr::loadShadersDeferred()
         gHazeWaterProgram.mFeatures.hasAtmospherics        = true;
         gHazeWaterProgram.mFeatures.hasGamma               = true;
         gHazeWaterProgram.mFeatures.isDeferred             = true;
-        gHazeWaterProgram.mFeatures.hasGBufferRead         = true;
+        gHazeWaterProgram.mFeatures.hasDepthRead         = true;
 
         gHazeWaterProgram.clearPermutations();
         gHazeWaterProgram.mShaderFiles.push_back(make_pair("deferred/waterHazeV.glsl", GL_VERTEX_SHADER));
@@ -4380,7 +4381,7 @@ bool LLViewerShaderMgr::loadShadersDeferred()
     {
         gVolumetricLightProgram.mName = "AYAstorm Volumetric Light Shader";
         gVolumetricLightProgram.mFeatures.isDeferred = true;
-        gVolumetricLightProgram.mFeatures.hasGBufferRead = true;
+        gVolumetricLightProgram.mFeatures.hasDepthRead = true;
         gVolumetricLightProgram.mFeatures.calculatesAtmospherics = true;
         gVolumetricLightProgram.mFeatures.hasAtmospherics = true;
         gVolumetricLightProgram.mFeatures.hasShadows = use_sun_shadow;
@@ -4423,7 +4424,7 @@ bool LLViewerShaderMgr::loadShadersDeferred()
     {
         gRlvSphereProgram.mName = "RLVa Sphere Post Processing Shader";
         gRlvSphereProgram.mFeatures.isDeferred = true;
-        gRlvSphereProgram.mFeatures.hasGBufferRead = true;
+        gRlvSphereProgram.mFeatures.hasDepthRead = true;
         gRlvSphereProgram.mShaderFiles.clear();
         gRlvSphereProgram.mShaderFiles.push_back(make_pair("deferred/rlvV.glsl", GL_VERTEX_SHADER));
         gRlvSphereProgram.mShaderFiles.push_back(make_pair("deferred/rlvF.glsl", GL_FRAGMENT_SHADER));
@@ -4913,7 +4914,7 @@ bool LLViewerShaderMgr::loadShadersInterface()
     {
         gReflectionProbeDisplayProgram.mName = "Reflection Probe Display Shader";
         gReflectionProbeDisplayProgram.mFeatures.hasReflectionProbes = true;
-        gReflectionProbeDisplayProgram.mFeatures.hasGBufferRead = true;
+        gReflectionProbeDisplayProgram.mFeatures.hasDepthRead = true;
         gReflectionProbeDisplayProgram.mFeatures.hasSrgb = true;
         gReflectionProbeDisplayProgram.mFeatures.calculatesAtmospherics = true;
         gReflectionProbeDisplayProgram.mFeatures.hasAtmospherics = true;

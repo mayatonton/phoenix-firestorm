@@ -143,6 +143,7 @@ public:
     bool hasShadows = false;
     bool hasSpotShadows = false;
     bool hasGBufferRead = false;
+    bool hasDepthRead = false;
     bool hasProjectedLight = false;
     bool hasPbrIbl = false;
     bool hasAmbientOcclusion = false;

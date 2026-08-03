@@ -39,7 +39,6 @@
 #ifdef LL_VULKAN_GLSL
 layout(location = 0) out vec4 frag_color;
 
-layout(set = 1, binding = 1) uniform sampler2D diffuseRect;
 #ifndef DECL_DEPTH_MAP
 #define DECL_DEPTH_MAP
 layout(set = 1, binding = 24) uniform sampler2D depthMap;
@@ -57,7 +56,6 @@ layout(set = 1, binding = 0, std140) uniform VolumetricLightF_PerProgramBind
 #else
 out vec4 frag_color;
 
-uniform sampler2D diffuseRect;
 #ifndef DECL_DEPTH_MAP
 #define DECL_DEPTH_MAP
 uniform sampler2D depthMap;

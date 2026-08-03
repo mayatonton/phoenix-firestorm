@@ -1,5 +1,5 @@
 /**
- * @file class1/deferred/gbufferReadUtil.glsl
+ * @file class1/deferred/depthReadUtil.glsl
  *
  * $LicenseInfo:firstyear=2007&license=viewerlgpl$
  * Second Life Viewer Source Code
@@ -24,39 +24,18 @@
  */
 
 #ifdef LL_VULKAN_GLSL
-#ifndef DECL_NORMAL_MAP
-#define DECL_NORMAL_MAP
-layout(set = 1, binding = 27) uniform sampler2D normalMap;
-#endif // DECL_NORMAL_MAP
 #ifndef DECL_DEPTH_MAP
 #define DECL_DEPTH_MAP
 layout(set = 1, binding = 24) uniform sampler2D depthMap;
 #endif // DECL_DEPTH_MAP
 #else
-#ifndef DECL_NORMAL_MAP
-#define DECL_NORMAL_MAP
-uniform sampler2D normalMap;
-#endif // DECL_NORMAL_MAP
 #ifndef DECL_DEPTH_MAP
 #define DECL_DEPTH_MAP
 uniform sampler2D depthMap;
 #endif // DECL_DEPTH_MAP
 #endif
 
-vec4 decodeNormal(vec4 norm);
 vec2 getScreenCoordinate(vec2 screenpos);
-
-vec4 getNorm(vec2 screenpos)
-{
-    vec4 norm = decodeNormal(texture(normalMap, screenpos.xy));
-    return norm;
-}
-
-vec4 getNormRaw(vec2 screenpos)
-{
-    vec4 norm = texture(normalMap, screenpos.xy);
-    return norm;
-}
 
 float getDepth(vec2 pos_screen)
 {

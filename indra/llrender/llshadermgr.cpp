@@ -229,9 +229,17 @@ bool LLShaderMgr::attachShaderFeatures(LLGLSLShader * shader)
         }
     }
 
+    if (features->hasDepthRead || features->hasGBufferRead || features->hasFullGBuffer)
+    {
+        if (!shader->attachFragmentObject("deferred/depthReadUtil.glsl"))
+        {
+            return false;
+        }
+    }
+
     if (features->hasGBufferRead || features->hasFullGBuffer)
     {
-        if (!shader->attachFragmentObject("deferred/gbufferReadUtil.glsl"))
+        if (!shader->attachFragmentObject("deferred/normalReadUtil.glsl"))
         {
             return false;
         }

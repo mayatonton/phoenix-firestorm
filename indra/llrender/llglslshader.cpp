@@ -2833,7 +2833,8 @@ bool LLGLSLShader::createVkPipeline(U32 perProgramUBOSize, bool needsSharedWater
         const bool keep = (enum_value == -2);
         const bool declared = (binding < MAX_VK_BINDING)
                               && (mVkBindingDeclaredType[binding] & VKBD_SAMPLER) != 0;
-        if (!keep && !declared)
+        if (!keep && (!declared
+            || (mVkBindingDeclaredType[binding] == VKBD_SAMPLER && !mVkBindingSamplerUsed[binding])))
         {
             return;
         }
@@ -2984,6 +2985,7 @@ bool LLGLSLShader::createVkPipeline(U32 perProgramUBOSize, bool needsSharedWater
         {
             if (mVkBindingDeclaredType[bnd] != VKBD_SAMPLER && mVkBindingDeclaredType[bnd] != VKBD_UBO) continue;
             if (present[bnd]) continue;
+            if (mVkBindingDeclaredType[bnd] == VKBD_SAMPLER && !mVkBindingSamplerUsed[bnd]) continue;
             VkDescriptorSetLayoutBinding b = {};
             b.binding         = bnd;
             b.descriptorType  = (mVkBindingDeclaredType[bnd] == VKBD_UBO)

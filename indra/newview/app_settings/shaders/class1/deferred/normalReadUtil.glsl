@@ -1,5 +1,5 @@
 /**
- * @file volumetricLightF.glsl
+ * @file class1/deferred/normalReadUtil.glsl
  *
  * $LicenseInfo:firstyear=2007&license=viewerlgpl$
  * Second Life Viewer Source Code
@@ -23,25 +23,28 @@
  * $/LicenseInfo$
  */
 
-// AYAstorm r30 P3: imported from BlackDragon Viewer (NiranV Dean), 995a1354d8, 2026-04-19
-// Source: https://github.com/NiranV/Black-Dragon-Viewer @ indra/newview/app_settings/shaders/class1/deferred/volumetricLightF.glsl
-// License: LGPL-2.1-only (same as Second Life Viewer Source Code, no relicensing)
-
-/*[EXTRA_CODE_HERE]*/
-
 #ifdef LL_VULKAN_GLSL
-layout(location = 0) out vec4 frag_color;
-layout(location = 0) in vec2 vary_fragcoord;
+#ifndef DECL_NORMAL_MAP
+#define DECL_NORMAL_MAP
+layout(set = 1, binding = 27) uniform sampler2D normalMap;
+#endif // DECL_NORMAL_MAP
 #else
-out vec4 frag_color;
-
-in vec2 vary_fragcoord;
+#ifndef DECL_NORMAL_MAP
+#define DECL_NORMAL_MAP
+uniform sampler2D normalMap;
+#endif // DECL_NORMAL_MAP
 #endif
 
-void main()
+vec4 decodeNormal(vec4 norm);
+
+vec4 getNorm(vec2 screenpos)
 {
-    // volumetric は additive overlay 化された (class3 参照)。
-    //   class1 = 低 shaderLevel fallback stub ゆえ散乱計算なし → additive identity (vec4(0)) を出力。
-    //   旧 diffuseRect 1:1 copy のままだと host blendFunc ONE/ONE 下で screen を二重加算する bug。
-    frag_color = vec4(0.0);
+    vec4 norm = decodeNormal(texture(normalMap, screenpos.xy));
+    return norm;
+}
+
+vec4 getNormRaw(vec2 screenpos)
+{
+    vec4 norm = texture(normalMap, screenpos.xy);
+    return norm;
 }
