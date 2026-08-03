@@ -91,7 +91,7 @@ void LLCubeMap::initGL()
             #endif
                 mImages[i]->setTarget(mTargets[i], LLTexUnit::TT_CUBE_MAP);
                 mRawImages[i] = new LLImageRaw(RESOLUTION, RESOLUTION, 4);
-                if (!mImages[i]->createGLTexture(0, mRawImages[i]))
+                if (!mImages[i]->createGLTexture(0, mRawImages[i], false))
                 {
                     LL_WARNS() << "Failed to create GL texture for environment cubemap face " << i << LL_ENDL;
                 }
@@ -158,10 +158,6 @@ void LLCubeMap::initRawData(const std::vector<LLPointer<LLImageRaw> >& rawimages
 void LLCubeMap::initGLData()
 {
     LL_PROFILE_ZONE_SCOPED;
-    for (int i = 0; i < 6; i++)
-    {
-        mImages[i]->setSubImage(mRawImages[i], 0, 0, RESOLUTION, RESOLUTION);
-    }
 
     if (LLVKLoader::isVulkanInitialized())
     {
@@ -208,58 +204,6 @@ void LLCubeMap::init(const std::vector<LLPointer<LLImageRaw> >& rawimages)
         initRawData(rawimages);
         initGLData();
     }
-}
-
-void LLCubeMap::initReflectionMap(U32 resolution, U32 components)
-{
-    mImages[0] = new LLImageGL(resolution, resolution, components, true);
-    mImages[0]->setTarget(mTargets[0], LLTexUnit::TT_CUBE_MAP);
-    mImages[0]->setAddressMode(LLTexUnit::TAM_CLAMP);
-}
-
-void LLCubeMap::initEnvironmentMap(const std::vector<LLPointer<LLImageRaw> >& rawimages)
-{
-    llassert(rawimages.size() == 6);
-
-    U32 resolution = rawimages[0]->getWidth();
-    U32 components = rawimages[0]->getComponents();
-
-    for (int i = 0; i < 6; i++)
-    {
-        llassert(rawimages[i]->getWidth() == resolution);
-        llassert(rawimages[i]->getHeight() == resolution);
-        llassert(rawimages[i]->getComponents() == components);
-
-        mImages[i] = new LLImageGL(resolution, resolution, components, true);
-        mImages[i]->setTarget(mTargets[i], LLTexUnit::TT_CUBE_MAP);
-        mRawImages[i] = rawimages[i];
-        if (!mImages[i]->createGLTexture(0, mRawImages[i]))
-        {
-            LL_WARNS() << "Failed to create GL texture for environment cubemap face " << i << LL_ENDL;
-        }
-
-        mImages[i]->setAddressMode(LLTexUnit::TAM_CLAMP);
-
-        mImages[i]->setSubImage(mRawImages[i], 0, 0, resolution, resolution);
-    }
-    enableTexture(0);
-    bind();
-    mImages[0]->setFilteringOption(LLTexUnit::TFO_ANISOTROPIC);
-    gGL.getTexUnit(0)->disable();
-    disable();
-}
-
-void LLCubeMap::generateMipMaps()
-{
-    LL_PROFILE_ZONE_SCOPED_CATEGORY_TEXTURE;
-
-    mImages[0]->setUseMipMaps(true);
-    mImages[0]->setHasMipMaps(true);
-    enableTexture(0);
-    bind();
-    mImages[0]->setFilteringOption(LLTexUnit::TFO_BILINEAR);
-    gGL.getTexUnit(0)->disable();
-    disable();
 }
 
 void LLCubeMap::bind()

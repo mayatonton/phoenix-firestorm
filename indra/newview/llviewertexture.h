@@ -359,6 +359,7 @@ public:
      // ONLY call from LLViewerTextureList or ImageGL background thread
     bool createTexture();
     void postCreateTexture();
+    void postCreateTextureFailed();
     void scheduleCreateTexture();
 
     void destroyTexture() ;

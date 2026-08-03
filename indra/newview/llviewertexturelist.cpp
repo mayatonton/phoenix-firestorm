@@ -973,6 +973,7 @@ void LLViewerTextureList::updateImageDecodePriority(LLViewerFetchedTexture* imag
 
     constexpr F32 BIAS_TRS_OUT_OF_SCREEN = 1.5f;
     constexpr F32 BIAS_TRS_ON_SCREEN = 1.f;
+    constexpr F32 SHADOW_DEMAND_FLOOR = 4096.f;
 
     if (imagep->getBoostLevel() < LLViewerFetchedTexture::BOOST_HIGH)  // don't bother checking face list for boosted textures
     {
@@ -1001,6 +1002,7 @@ void LLViewerTextureList::updateImageDecodePriority(LLViewerFetchedTexture* imag
         ++LLVKLoader::gVkPerf.img_pri_full;
         F32 max_vsize = 0.f;
         bool on_screen = false;
+        bool shadow_seen = false;
         bool had_rigged = false;
 
         U32 face_count = 0;
@@ -1041,6 +1043,24 @@ void LLViewerTextureList::updateImageDecodePriority(LLViewerFetchedTexture* imag
                     F32 vsize = face->getPixelArea();
 
                     on_screen |= face->mInFrustum;
+
+                    if (!shadow_seen)
+                    {
+                        LLDrawable* drawable = face->getDrawable();
+                        LLSpatialGroup* fgroup = drawable ? drawable->getSpatialGroup() : nullptr;
+                        if (fgroup)
+                        {
+                            const S32 cur = LLViewerOctreeEntryData::getCurrentFrame();
+                            for (S32 cid = LLViewerCamera::CAMERA_SUN_SHADOW0; cid <= LLViewerCamera::CAMERA_SPOT_SHADOW1; ++cid)
+                            {
+                                if (fgroup->getVisible((LLViewerCamera::eCameraID)cid) >= cur - 2)
+                                {
+                                    shadow_seen = true;
+                                    break;
+                                }
+                            }
+                        }
+                    }
 
                     // Scale desired texture resolution higher or lower depending on texture scale
                     //
@@ -1093,6 +1113,12 @@ void LLViewerTextureList::updateImageDecodePriority(LLViewerFetchedTexture* imag
         { // this texture is used in so many places we should just boost it and not bother checking its vsize
             // this is especially important because the above is not time sliced and can hit multiple ms for a single texture
             max_vsize = MAX_IMAGE_AREA;
+        }
+
+        if (shadow_seen)
+        {
+            max_vsize = llmax(max_vsize, SHADOW_DEMAND_FLOOR);
+            on_screen = true;
         }
 
         if (imagep->getType() == LLViewerTexture::LOD_TEXTURE && imagep->getBoostLevel() == LLViewerTexture::BOOST_NONE)
@@ -1214,12 +1240,20 @@ F32 LLViewerTextureList::updateImagesCreateTextures(F32 max_time)
         // should
         bool redundant_load = imagep->hasGLTexture() && imagep->getDiscardLevel() <= imagep->getDesiredDiscardLevel();
 
+        bool created = true;
         if (!redundant_load)
         {
-           imagep->createTexture();
+           created = imagep->createTexture();
         }
 
-        imagep->postCreateTexture();
+        if (created)
+        {
+            imagep->postCreateTexture();
+        }
+        else
+        {
+            imagep->postCreateTextureFailed();
+        }
         imagep->mCreatePending = false;
 
         if (imagep->hasGLTexture() && imagep->getDiscardLevel() < imagep->getDesiredDiscardLevel() &&

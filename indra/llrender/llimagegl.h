@@ -98,7 +98,7 @@ public:
     bool createGLTexture(S32 discard_level, const LLImageRaw* imageraw, bool to_create = true,
         S32 category = sMaxCategories-1, bool defer_copy = false);
     bool createGLTexture(S32 discard_level, const U8* data, bool data_hasmips = false, bool defer_copy = false);
-    void setImage(const LLImageRaw* imageraw);
+    bool setImage(const LLImageRaw* imageraw);
     bool setImage(const U8* data_in, bool data_hasmips = false);
     bool setSubImage(const LLImageRaw* imageraw, S32 x_pos, S32 y_pos, S32 width, S32 height, bool force_fast_update = false);
     bool setSubImage(const U8* datap, S32 data_width, S32 data_height, S32 x_pos, S32 y_pos, S32 width, S32 height, bool force_fast_update = false);
@@ -143,9 +143,9 @@ public:
 
     void setExternalVkBacking(VkImage image, VkImageView view, void* allocation, U32 w, U32 h, VkFormat format, U32 mip_levels = 1);
 
-    void syncVulkan3DImage(U32 intformat, U32 primary, U32 type, S32 w, S32 h, S32 depth, const void* data);
+    bool syncVulkan3DImage(U32 intformat, U32 primary, U32 type, S32 w, S32 h, S32 depth, const void* data);
 
-    void syncVulkanMip0Image(U32 intformat, U32 primary, U32 type, S32 w, S32 h, const void* data, bool is_compressed,
+    bool syncVulkanMip0Image(U32 intformat, U32 primary, U32 type, S32 w, S32 h, const void* data, bool is_compressed,
                              S32 mip_level = 0, S32 mip_count = 1);
 
     static bool computeIsMask(const void* data_in, U32 w, U32 h, S8 alpha_stride, S8 alpha_offset);

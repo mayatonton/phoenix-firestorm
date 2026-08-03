@@ -1638,6 +1638,7 @@ void LLViewerFetchedTexture::postCreateTexture()
         mHadFetchFailures = false;
         ++gAssetOracleTexRecovered;
     }
+    mCreateFailCount = 0;
 #if LL_IMAGEGL_THREAD_CHECK
     mGLTexturep->checkActiveThread();
 #endif
@@ -1662,6 +1663,24 @@ void LLViewerFetchedTexture::postCreateTexture()
     destroyRawImage(); // will save raw image if needed
 
     mNeedsCreateTexture = false;
+}
+
+void LLViewerFetchedTexture::postCreateTextureFailed()
+{
+    LL_PROFILE_ZONE_SCOPED_CATEGORY_TEXTURE;
+    ++mCreateFailCount;
+    mNeedsCreateTexture = false;
+    destroyRawImage();
+    if (mCreateFailCount >= ASSET_RETRY_LIMIT)
+    {
+        setIsMissingAsset();
+    }
+    else
+    {
+        mHadFetchFailures = true;
+        mCreateFailTimer.reset();
+        mCreateFailTimer.setTimerExpirySec(assetRetryDelaySec(mCreateFailCount));
+    }
 }
 
 void LLViewerFetchedTexture::scheduleCreateTexture()
@@ -1689,11 +1708,12 @@ void LLViewerFetchedTexture::scheduleCreateTexture()
             if (mainq)
             {
                 ref();
+                auto created = std::make_shared<bool>(true);
                 mainq->postTo(
                     mImageQueue,
                     // work to be done on LLImageGL worker thread
 #if LL_IMAGEGL_THREAD_CHECK
-                    [this, data, data_copy, size]()
+                    [this, created, data, data_copy, size]()
                     {
                         mGLTexturep->mActiveThread = LLThread::currentID();
                         //verify data is unmodified
@@ -1701,11 +1721,11 @@ void LLViewerFetchedTexture::scheduleCreateTexture()
                         llassert(mRawImage->getDataSize() == size);
                         llassert(memcmp(data, data_copy, size) == 0);
 #else
-                    [this]()
+                    [this, created]()
                     {
 #endif
                         //actually create the texture on a background thread
-                        createTexture();
+                        *created = createTexture();
 
 #if LL_IMAGEGL_THREAD_CHECK
                         //verify data is unmodified
@@ -1716,7 +1736,7 @@ void LLViewerFetchedTexture::scheduleCreateTexture()
                     },
                     // callback to be run on main thread
 #if LL_IMAGEGL_THREAD_CHECK
-                        [this, data, data_copy, size]()
+                        [this, created, data, data_copy, size]()
                     {
                         mGLTexturep->mActiveThread = LLThread::currentID();
                         llassert(data == mRawImage->getData());
@@ -1724,11 +1744,18 @@ void LLViewerFetchedTexture::scheduleCreateTexture()
                         llassert(memcmp(data, data_copy, size) == 0);
                         delete[] data_copy;
 #else
-                        [this]()
+                        [this, created]()
                         {
 #endif
                         //finalize on main thread
-                        postCreateTexture();
+                        if (*created)
+                        {
+                            postCreateTexture();
+                        }
+                        else
+                        {
+                            postCreateTextureFailed();
+                        }
                         unref();
                     });
             }
@@ -2226,7 +2253,8 @@ bool LLViewerFetchedTexture::updateFetch()
         LL_PROFILE_ZONE_NAMED_CATEGORY_TEXTURE("vftuf - create or missing");
         make_request = false;
     }
-    else if (mFetchFailCount > 0 && !mFetchFailTimer.hasExpired())
+    else if ((mFetchFailCount > 0 && !mFetchFailTimer.hasExpired()) ||
+             (mCreateFailCount > 0 && !mCreateFailTimer.hasExpired()))
     {
         LL_PROFILE_ZONE_NAMED_CATEGORY_TEXTURE("vftuf - retry backoff");
         make_request = false;
