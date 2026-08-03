@@ -2807,12 +2807,15 @@ LLViewerFetchedTexture *LLVOAvatar::getBakedTextureImage(const U8 te, const LLUU
                 uuid, FTT_HOST_BAKE, true, LLGLTexture::BOOST_NONE, LLViewerTexture::LOD_TEXTURE, 0, 0, host);
             // </FS:Ansariel> [Legacy Bake]
         }
-        LL_DEBUGS("Avatar") << avString() << "get server-bake image from URL " << url << LL_ENDL;
-        result = LLViewerTextureManager::getFetchedTextureFromUrl(
-            url, FTT_SERVER_BAKE, true, LLGLTexture::BOOST_NONE, LLViewerTexture::LOD_TEXTURE, 0, 0, uuid);
-        if (result->isMissingAsset())
+        else
         {
-            result->setIsMissingAsset(false);
+            LL_DEBUGS("Avatar") << avString() << "get server-bake image from URL " << url << LL_ENDL;
+            result = LLViewerTextureManager::getFetchedTextureFromUrl(
+                url, FTT_SERVER_BAKE, true, LLGLTexture::BOOST_NONE, LLViewerTexture::LOD_TEXTURE, 0, 0, uuid);
+            if (result->isMissingAsset())
+            {
+                result->setIsMissingAsset(false);
+            }
         }
 
     }
@@ -9669,19 +9672,30 @@ void LLVOAvatar::updateMeshTextures()
         if (use_lkg_baked_layer[i] && !isUsingLocalAppearance() )
         {
             // use last known good layer (no new one)
-            LLViewerFetchedTexture* baked_img = LLViewerTextureManager::getFetchedTexture(mBakedTextureDatas[i].mLastTextureID);
-            mBakedTextureDatas[i].mIsUsed = true;
-
-            debugColorizeSubMeshes(i,LLColor4::red);
-
-            avatar_joint_mesh_list_t::iterator iter = mBakedTextureDatas[i].mJointMeshes.begin();
-            avatar_joint_mesh_list_t::iterator end  = mBakedTextureDatas[i].mJointMeshes.end();
-            for (; iter != end; ++iter)
+            LLViewerFetchedTexture* baked_img = nullptr;
+            if (isUsingServerBakes())
             {
-                LLAvatarJointMesh* mesh = (*iter);
-                if (mesh)
+                baked_img = gTextureList.findImage(mBakedTextureDatas[i].mLastTextureID, TEX_LIST_STANDARD);
+            }
+            else
+            {
+                baked_img = LLViewerTextureManager::getFetchedTexture(mBakedTextureDatas[i].mLastTextureID);
+            }
+            if (baked_img)
+            {
+                mBakedTextureDatas[i].mIsUsed = true;
+
+                debugColorizeSubMeshes(i,LLColor4::red);
+
+                avatar_joint_mesh_list_t::iterator iter = mBakedTextureDatas[i].mJointMeshes.begin();
+                avatar_joint_mesh_list_t::iterator end  = mBakedTextureDatas[i].mJointMeshes.end();
+                for (; iter != end; ++iter)
                 {
-                    mesh->setTexture( baked_img );
+                    LLAvatarJointMesh* mesh = (*iter);
+                    if (mesh)
+                    {
+                        mesh->setTexture( baked_img );
+                    }
                 }
             }
         }
@@ -10586,8 +10600,19 @@ void LLVOAvatar::applyParsedAppearanceMessage(LLAppearanceMessageContents& conte
             // <FS:Ansariel> [Legacy Bake]
             //LL_DEBUGS("Avatar") << avString() << " baked_index " << (S32) baked_index << " using mLastTextureID " << mBakedTextureDatas[baked_index].mLastTextureID << LL_ENDL;
             LL_DEBUGS("Avatar") << avString() << "sb " << (S32) isUsingServerBakes() << " baked_index " << (S32) baked_index << " using mLastTextureID " << mBakedTextureDatas[baked_index].mLastTextureID << LL_ENDL;
-            setTEImage(mBakedTextureDatas[baked_index].mTextureIndex,
-                LLViewerTextureManager::getFetchedTexture(mBakedTextureDatas[baked_index].mLastTextureID, FTT_DEFAULT, true, LLGLTexture::BOOST_NONE, LLViewerTexture::LOD_TEXTURE));
+            LLViewerFetchedTexture* last_img = nullptr;
+            if (isUsingServerBakes())
+            {
+                last_img = gTextureList.findImage(mBakedTextureDatas[baked_index].mLastTextureID, TEX_LIST_STANDARD);
+            }
+            else
+            {
+                last_img = LLViewerTextureManager::getFetchedTexture(mBakedTextureDatas[baked_index].mLastTextureID, FTT_DEFAULT, true, LLGLTexture::BOOST_NONE, LLViewerTexture::LOD_TEXTURE);
+            }
+            if (last_img)
+            {
+                setTEImage(mBakedTextureDatas[baked_index].mTextureIndex, last_img);
+            }
         }
         else
         {

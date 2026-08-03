@@ -48,6 +48,7 @@
 #include "llnotificationsutil.h"
 
 #include "llimagegl.h"
+#include "llvkloader.h"
 #include "lldrawpool.h"
 #include "lltexturefetch.h"
 #include "llviewertexturelist.h"
@@ -2440,6 +2441,21 @@ void LLViewerFetchedTexture::setIsMissingAsset(bool is_missing)
             mLastPacketTimer.reset();
             mFetchState = 0;
             mFetchPriority = 0;
+        }
+        if (LLVKLoader::isVulkanInitialized()
+            && mGLTexturep.notNull()
+            && !mGLTexturep->hasVkImage())
+        {
+            LLPointer<LLImageRaw> gray = new LLImageRaw(4, 4, 4);
+            U8* d = gray->getData();
+            for (S32 i = 0; i < 4 * 4; ++i)
+            {
+                *d++ = 0x7f; *d++ = 0x7f; *d++ = 0x7f; *d++ = 0xff;
+            }
+            if (!mGLTexturep->createGLTexture(0, gray))
+            {
+                LL_WARNS("Texture") << mID << ": missing-asset substitute creation failed" << LL_ENDL;
+            }
         }
     }
     else
