@@ -393,6 +393,7 @@ public:
 
     void setIsMissingAsset(bool is_missing = true);
     /*virtual*/ bool isMissingAsset() const override { return mIsMissingAsset; }
+    const char* getVkSupplyClass() const override;
     bool isFetchRetryStuck() const
     {
         return mFetchFailCount > 0 && !mIsMissingAsset && !mIsFetching

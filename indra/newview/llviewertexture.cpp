@@ -1615,6 +1615,16 @@ std::string LLViewerFetchedTexture::fetchRetryStuckInfo() const
                     (S32)mBoostLevel, (S32)mHasFetcher);
 }
 
+const char* LLViewerFetchedTexture::getVkSupplyClass() const
+{
+    if (isMissingAsset())                       return "missing";
+    if (mMaxVirtualSize <= 0.f)                 return "nodemand";
+    if (mIsFetching || mHasFetcher)             return "fetching";
+    if (mNeedsCreateTexture.CurrentValue())     return "creating";
+    if (mFetchFailCount > 0 || mCreateFailCount > 0) return "retrywait";
+    return "stalled";
+}
+
 bool LLViewerFetchedTexture::createTexture()
 {
     if (!mNeedsCreateTexture)
