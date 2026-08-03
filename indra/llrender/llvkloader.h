@@ -1440,6 +1440,7 @@ namespace LLVKLoader
     bool        isInRenderPassScope();
     bool        beginShaderDrawOrSkip(LLGLSLShader* shader, U32 render_mode, VkCommandBuffer& out_cmd);
     bool        isImageViewActivePassAttachment(VkImageView view);
+    bool        isImageViewCurrentAttachment(VkImageView view);
     U64         currentPassAttachmentSig();
     void        setupViewportAndScissor(VkCommandBuffer cmd, bool screen_space_copy = false);
     void        bindGraphicsPipelineOnce(VkCommandBuffer cmd, VkPipeline pipeline);
@@ -1816,6 +1817,7 @@ namespace LLVKLoader
     void notifyWindowResize(U32 width, U32 height);
 
     VkImageView getDefaultFallbackVkImageView();
+    VkImageView getWhiteVkImageView();
     VkImageView getDefaultFallbackCubeArrayVkImageView();
     VkImageView getDefaultFallbackCubeVkImageView();
     VkImageView getDefaultFallback3DVkImageView();

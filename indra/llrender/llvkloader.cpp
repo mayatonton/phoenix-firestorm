@@ -122,6 +122,9 @@ namespace
     VkImage        sDefaultFallbackImage     = VK_NULL_HANDLE;
     VkDeviceMemory sDefaultFallbackMemory    = VK_NULL_HANDLE;
     VkImageView    sDefaultFallbackImageView = VK_NULL_HANDLE;
+    VkImage        sWhiteImage     = VK_NULL_HANDLE;
+    VkDeviceMemory sWhiteMemory    = VK_NULL_HANDLE;
+    VkImageView    sWhiteImageView = VK_NULL_HANDLE;
     VkImage        sDefaultFallbackCubeArrayImage     = VK_NULL_HANDLE;
     VkImageView    sDefaultFallbackCubeArrayImageView = VK_NULL_HANDLE;
     void*          sDefaultFallbackCubeArrayAlloc     = nullptr;
@@ -2436,6 +2439,153 @@ namespace
         return true;
     }
 
+    bool createWhiteImage()
+    {
+        VkImageCreateInfo image_info = {};
+        image_info.sType         = VK_STRUCTURE_TYPE_IMAGE_CREATE_INFO;
+        image_info.imageType     = VK_IMAGE_TYPE_2D;
+        image_info.format        = VK_FORMAT_R8G8B8A8_UNORM;
+        image_info.extent        = { 1, 1, 1 };
+        image_info.mipLevels     = 1;
+        image_info.arrayLayers   = 1;
+        image_info.samples       = VK_SAMPLE_COUNT_1_BIT;
+        image_info.tiling        = VK_IMAGE_TILING_OPTIMAL;
+        image_info.usage         = VK_IMAGE_USAGE_TRANSFER_DST_BIT | VK_IMAGE_USAGE_SAMPLED_BIT;
+        image_info.sharingMode   = VK_SHARING_MODE_EXCLUSIVE;
+        image_info.initialLayout = VK_IMAGE_LAYOUT_UNDEFINED;
+
+        VkResult result = vkCreateImage(sDevice, &image_info, nullptr, &sWhiteImage);
+        if (result != VK_SUCCESS)
+        {
+            return false;
+        }
+
+        VkMemoryRequirements mem_req;
+        vkGetImageMemoryRequirements(sDevice, sWhiteImage, &mem_req);
+
+        S32 mem_type = findMemoryType(mem_req.memoryTypeBits, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT);
+        if (mem_type < 0)
+        {
+            return false;
+        }
+
+        VkMemoryAllocateInfo alloc_info = {};
+        alloc_info.sType           = VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO;
+        alloc_info.allocationSize  = mem_req.size;
+        alloc_info.memoryTypeIndex = (U32)mem_type;
+
+        result = vkAllocateMemory(sDevice, &alloc_info, nullptr, &sWhiteMemory);
+        if (result != VK_SUCCESS)
+        {
+            return false;
+        }
+        vkBindImageMemory(sDevice, sWhiteImage, sWhiteMemory, 0);
+
+        VkBuffer staging_buf = VK_NULL_HANDLE;
+        VkDeviceMemory staging_mem = VK_NULL_HANDLE;
+        {
+            VkBufferCreateInfo bi = {};
+            bi.sType       = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO;
+            bi.size        = 4;
+            bi.usage       = VK_BUFFER_USAGE_TRANSFER_SRC_BIT;
+            bi.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
+            if (vkCreateBuffer(sDevice, &bi, nullptr, &staging_buf) != VK_SUCCESS)
+            {
+                return false;
+            }
+            VkMemoryRequirements smr;
+            vkGetBufferMemoryRequirements(sDevice, staging_buf, &smr);
+            S32 smt = findMemoryType(smr.memoryTypeBits,
+                                     VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT |
+                                     VK_MEMORY_PROPERTY_HOST_COHERENT_BIT);
+            if (smt < 0)
+            {
+                return false;
+            }
+            VkMemoryAllocateInfo sai = {};
+            sai.sType           = VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO;
+            sai.allocationSize  = smr.size;
+            sai.memoryTypeIndex = (U32)smt;
+            if (vkAllocateMemory(sDevice, &sai, nullptr, &staging_mem) != VK_SUCCESS)
+            {
+                return false;
+            }
+            vkBindBufferMemory(sDevice, staging_buf, staging_mem, 0);
+            void* mapped = nullptr;
+            vkMapMemory(sDevice, staging_mem, 0, 4, 0, &mapped);
+            const U32 white_pixel = 0xFFFFFFFFu;
+            memcpy(mapped, &white_pixel, 4);
+            vkUnmapMemory(sDevice, staging_mem);
+        }
+
+        {
+            VkCommandBufferAllocateInfo cba = {};
+            cba.sType              = VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO;
+            cba.commandPool        = sCommandPool;
+            cba.level              = VK_COMMAND_BUFFER_LEVEL_PRIMARY;
+            cba.commandBufferCount = 1;
+            VkCommandBuffer one_cmd = VK_NULL_HANDLE;
+            vkAllocateCommandBuffers(sDevice, &cba, &one_cmd);
+
+            VkCommandBufferBeginInfo cbbi = {};
+            cbbi.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO;
+            cbbi.flags = VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT;
+            vkBeginCommandBuffer(one_cmd, &cbbi);
+
+            VkImageMemoryBarrier b1 = {};
+            b1.sType               = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER;
+            b1.oldLayout           = VK_IMAGE_LAYOUT_UNDEFINED;
+            b1.newLayout           = VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL;
+            b1.srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+            b1.dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+            b1.image               = sWhiteImage;
+            b1.subresourceRange    = { VK_IMAGE_ASPECT_COLOR_BIT, 0, 1, 0, 1 };
+            b1.srcAccessMask       = 0;
+            b1.dstAccessMask       = VK_ACCESS_TRANSFER_WRITE_BIT;
+            vkCmdPipelineBarrier(one_cmd,
+                                 VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT, VK_PIPELINE_STAGE_TRANSFER_BIT,
+                                 0, 0, nullptr, 0, nullptr, 1, &b1);
+
+            VkBufferImageCopy region = {};
+            region.bufferOffset      = 0;
+            region.imageSubresource  = { VK_IMAGE_ASPECT_COLOR_BIT, 0, 0, 1 };
+            region.imageExtent       = { 1, 1, 1 };
+            vkCmdCopyBufferToImage(one_cmd, staging_buf, sWhiteImage,
+                                   VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, 1, &region);
+
+            VkImageMemoryBarrier b2 = b1;
+            b2.oldLayout     = VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL;
+            b2.newLayout     = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
+            b2.srcAccessMask = VK_ACCESS_TRANSFER_WRITE_BIT;
+            b2.dstAccessMask = VK_ACCESS_SHADER_READ_BIT;
+            vkCmdPipelineBarrier(one_cmd,
+                                 VK_PIPELINE_STAGE_TRANSFER_BIT, VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT,
+                                 0, 0, nullptr, 0, nullptr, 1, &b2);
+
+            vkEndCommandBuffer(one_cmd);
+
+            peSubmitBlocking(one_cmd, VK_NULL_HANDLE, true);
+
+            vkFreeCommandBuffers(sDevice, sCommandPool, 1, &one_cmd);
+            vkDestroyBuffer(sDevice, staging_buf, nullptr);
+            vkFreeMemory(sDevice, staging_mem, nullptr);
+        }
+
+        VkImageViewCreateInfo vci = {};
+        vci.sType                 = VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO;
+        vci.image                 = sWhiteImage;
+        vci.viewType              = VK_IMAGE_VIEW_TYPE_2D;
+        vci.format                = VK_FORMAT_R8G8B8A8_UNORM;
+        vci.subresourceRange      = { VK_IMAGE_ASPECT_COLOR_BIT, 0, 1, 0, 1 };
+        if (vkCreateImageView(sDevice, &vci, nullptr, &sWhiteImageView) != VK_SUCCESS)
+        {
+            return false;
+        }
+        noteViewHandleCreated(sWhiteImageView);
+
+        return true;
+    }
+
     bool createDefaultFallbackShadowImage()
     {
         VkImageCreateInfo image_info = {};
@@ -4674,6 +4824,12 @@ bool initVulkan()
         shutdownVulkan();
         return false;
     }
+    if (!createWhiteImage())
+    {
+        LL_WARNS("Vulkan") << "initialization failed: white image" << LL_ENDL;
+        shutdownVulkan();
+        return false;
+    }
     if (!createPipelineCache())
     {
         LL_WARNS("Vulkan") << "initialization failed: pipeline cache" << LL_ENDL;
@@ -4842,6 +4998,21 @@ void shutdownVulkan(bool device_lost)
         {
             vkFreeMemory(sDevice, sDefaultFallbackMemory, nullptr);
             sDefaultFallbackMemory = VK_NULL_HANDLE;
+        }
+        if (sWhiteImageView != VK_NULL_HANDLE)
+        {
+            vkDestroyImageView(sDevice, sWhiteImageView, nullptr);
+            sWhiteImageView = VK_NULL_HANDLE;
+        }
+        if (sWhiteImage != VK_NULL_HANDLE)
+        {
+            vkDestroyImage(sDevice, sWhiteImage, nullptr);
+            sWhiteImage = VK_NULL_HANDLE;
+        }
+        if (sWhiteMemory != VK_NULL_HANDLE)
+        {
+            vkFreeMemory(sDevice, sWhiteMemory, nullptr);
+            sWhiteMemory = VK_NULL_HANDLE;
         }
         if (sDefaultFallbackShadowImageView != VK_NULL_HANDLE)
         {
@@ -6805,7 +6976,12 @@ bool ensureScenePerDrawDescriptorSet(const ScenePerDrawBindings& b,
 
             image_infos[i].sampler     = (b.sampler_samplers[i] != VK_NULL_HANDLE) ? b.sampler_samplers[i] : b.sampler;
             image_infos[i].imageView   = b.sampler_views[i];
-            image_infos[i].imageLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
+            image_infos[i].imageLayout =
+                (sInDynamicRendering && sSavedHasDepth &&
+                 b.sampler_views[i] == sSavedDepthInfo.imageView &&
+                 sSavedDepthInfo.imageLayout == VK_IMAGE_LAYOUT_DEPTH_STENCIL_READ_ONLY_OPTIMAL)
+                    ? VK_IMAGE_LAYOUT_DEPTH_STENCIL_READ_ONLY_OPTIMAL
+                    : VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
 
             writes[write_count].sType           = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
             writes[write_count].dstSet          = target_set;
@@ -13016,7 +13192,7 @@ U64 currentPassAttachmentSig()
     return sig;
 }
 
-bool isImageViewActivePassAttachment(VkImageView view)
+bool isImageViewCurrentAttachment(VkImageView view)
 {
     if (!sInDynamicRendering || view == VK_NULL_HANDLE)
     {
@@ -13025,6 +13201,26 @@ bool isImageViewActivePassAttachment(VkImageView view)
     if (sSavedHasDepth && sSavedDepthInfo.imageView == view)
     {
         return true;
+    }
+    for (U32 i = 0; i < sSavedColorCount && i < 4; ++i)
+    {
+        if (sSavedColorInfos[i].imageView == view)
+        {
+            return true;
+        }
+    }
+    return false;
+}
+
+bool isImageViewActivePassAttachment(VkImageView view)
+{
+    if (!sInDynamicRendering || view == VK_NULL_HANDLE)
+    {
+        return false;
+    }
+    if (sSavedHasDepth && sSavedDepthInfo.imageView == view)
+    {
+        return sSavedDepthInfo.imageLayout != VK_IMAGE_LAYOUT_DEPTH_STENCIL_READ_ONLY_OPTIMAL;
     }
     for (U32 i = 0; i < sSavedColorCount && i < 4; ++i)
     {
@@ -13362,6 +13558,11 @@ void notifyWindowResize(U32 width, U32 height)
 VkImageView getDefaultFallbackVkImageView()
 {
     return sDefaultFallbackImageView;
+}
+
+VkImageView getWhiteVkImageView()
+{
+    return sWhiteImageView;
 }
 
 VkImageView getDefaultFallbackCubeArrayVkImageView()

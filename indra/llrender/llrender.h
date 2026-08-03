@@ -140,6 +140,7 @@ public:
     bool                mCurrRTDepth = false;
     U32                 mCurrRTDepthLayer = 0xFFFFFFFFu;
     bool                mCurrCompareMode = false;
+    bool                mCurrVkWhite = false;
 
     VkImageView         getLiveVkImageView() const;
 

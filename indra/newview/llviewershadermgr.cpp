@@ -1355,7 +1355,6 @@ bool LLViewerShaderMgr::loadShadersWater()
         gWaterProgram.mFeatures.hasGamma = true;
         gWaterProgram.mFeatures.hasSrgb = true;
         gWaterProgram.mFeatures.hasReflectionProbes = true;
-        gWaterProgram.mFeatures.hasTonemap = true;
         gWaterProgram.mFeatures.hasShadows = use_sun_shadow;
         gWaterProgram.mShaderFiles.clear();
         gWaterProgram.mShaderFiles.push_back(make_pair("environment/waterV.glsl", GL_VERTEX_SHADER));
@@ -1852,8 +1851,16 @@ bool LLViewerShaderMgr::loadShadersDeferred()
             gDeferredMaterialProgram[i].mFeatures.calculatesAtmospherics = true;
             gDeferredMaterialProgram[i].mFeatures.hasAtmospherics = true;
             gDeferredMaterialProgram[i].mFeatures.hasGamma = true;
-            gDeferredMaterialProgram[i].mFeatures.hasShadows = use_sun_shadow;
-            gDeferredMaterialProgram[i].mFeatures.hasReflectionProbes = true;
+            if (alpha_mode == LLMaterial::DIFFUSE_ALPHA_MODE_BLEND)
+            {
+                gDeferredMaterialProgram[i].mFeatures.hasShadows = use_sun_shadow;
+                gDeferredMaterialProgram[i].mFeatures.hasReflectionProbes = true;
+            }
+            else
+            {
+                gDeferredMaterialProgram[i].mFeatures.hasShadows = false;
+                gDeferredMaterialProgram[i].mFeatures.hasReflectionProbes = false;
+            }
 
             if (has_skin)
             {
@@ -2218,7 +2225,6 @@ bool LLViewerShaderMgr::loadShadersDeferred()
         gDeferredLightProgram.mName = "Deferred Light Shader";
         gDeferredLightProgram.mFeatures.isDeferred = true;
         gDeferredLightProgram.mFeatures.hasFullGBuffer = true;
-        gDeferredLightProgram.mFeatures.hasShadows = true;
         gDeferredLightProgram.mFeatures.hasSrgb = true;
 
         gDeferredLightProgram.mShaderFiles.clear();
@@ -2245,7 +2251,6 @@ bool LLViewerShaderMgr::loadShadersDeferred()
             gDeferredMultiLightProgram[i].mName = llformat("Deferred MultiLight Shader %d", i);
             gDeferredMultiLightProgram[i].mFeatures.isDeferred = true;
             gDeferredMultiLightProgram[i].mFeatures.hasFullGBuffer = true;
-            gDeferredMultiLightProgram[i].mFeatures.hasShadows = true;
             gDeferredMultiLightProgram[i].mFeatures.hasSrgb = true;
 
             gDeferredMultiLightProgram[i].clearPermutations();
@@ -2549,7 +2554,6 @@ bool LLViewerShaderMgr::loadShadersDeferred()
         gDeferredAvatarEyesProgram.mFeatures.hasGamma = true;
         gDeferredAvatarEyesProgram.mFeatures.hasAtmospherics = true;
         gDeferredAvatarEyesProgram.mFeatures.hasSrgb = true;
-        gDeferredAvatarEyesProgram.mFeatures.hasShadows = true;
 
         gDeferredAvatarEyesProgram.mShaderFiles.clear();
         gDeferredAvatarEyesProgram.mShaderFiles.push_back(make_pair("deferred/avatarEyesV.glsl", GL_VERTEX_SHADER));
@@ -2818,7 +2822,6 @@ bool LLViewerShaderMgr::loadShadersDeferred()
         gDeferredSoftenProgram.mFeatures.isDeferred = true;
         gDeferredSoftenProgram.mFeatures.hasFullGBuffer = true;
         gDeferredSoftenProgram.mFeatures.hasPbrIbl = true;
-        gDeferredSoftenProgram.mFeatures.hasShadows = use_sun_shadow;
         gDeferredSoftenProgram.mFeatures.hasReflectionProbes = mShaderLevel[SHADER_DEFERRED] > 2;
 
         gDeferredSoftenProgram.clearPermutations();
@@ -2843,8 +2846,7 @@ bool LLViewerShaderMgr::loadShadersDeferred()
         llassert(success);
         if (success && LLVKLoader::isVulkanInitialized())
         {
-            U32 softenSize = 32;
-            if (!use_sun_shadow) softenSize += 32;
+            U32 softenSize = 64;
             if (gSavedSettings.getBOOL("RenderDeferredSSAO")) softenSize += 64;
             gDeferredSoftenProgram.createVkPipeline(softenSize);
         }
@@ -2860,8 +2862,6 @@ bool LLViewerShaderMgr::loadShadersDeferred()
         gHazeProgram.mFeatures.hasGamma               = true;
         gHazeProgram.mFeatures.isDeferred             = true;
         gHazeProgram.mFeatures.hasGBufferRead         = true;
-        gHazeProgram.mFeatures.hasShadows             = use_sun_shadow;
-        gHazeProgram.mFeatures.hasReflectionProbes    = mShaderLevel[SHADER_DEFERRED] > 2;
 
         gHazeProgram.clearPermutations();
         gHazeProgram.mShaderFiles.push_back(make_pair("deferred/softenLightV.glsl", GL_VERTEX_SHADER));
@@ -2984,8 +2984,6 @@ bool LLViewerShaderMgr::loadShadersDeferred()
         gHazeWaterProgram.mFeatures.hasGamma               = true;
         gHazeWaterProgram.mFeatures.isDeferred             = true;
         gHazeWaterProgram.mFeatures.hasGBufferRead         = true;
-        gHazeWaterProgram.mFeatures.hasShadows             = use_sun_shadow;
-        gHazeWaterProgram.mFeatures.hasReflectionProbes    = mShaderLevel[SHADER_DEFERRED] > 2;
 
         gHazeWaterProgram.clearPermutations();
         gHazeWaterProgram.mShaderFiles.push_back(make_pair("deferred/waterHazeV.glsl", GL_VERTEX_SHADER));
@@ -3026,7 +3024,6 @@ bool LLViewerShaderMgr::loadShadersDeferred()
     {
         gDeferredSkinnedShadowProgram.mName = "Deferred Skinned Shadow Shader";
         gDeferredSkinnedShadowProgram.mFeatures.isDeferred = true;
-        gDeferredSkinnedShadowProgram.mFeatures.hasShadows = true;
         gDeferredSkinnedShadowProgram.mFeatures.hasObjectSkinning = true;
         gDeferredSkinnedShadowProgram.mShaderFiles.clear();
         gDeferredSkinnedShadowProgram.mShaderFiles.push_back(make_pair("deferred/shadowSkinnedV.glsl", GL_VERTEX_SHADER));
@@ -3049,7 +3046,6 @@ bool LLViewerShaderMgr::loadShadersDeferred()
     {
         gDeferredSkinnedShadowMultiviewProgram.mName = "Deferred Skinned Shadow Multiview Shader";
         gDeferredSkinnedShadowMultiviewProgram.mFeatures.isDeferred = true;
-        gDeferredSkinnedShadowMultiviewProgram.mFeatures.hasShadows = true;
         gDeferredSkinnedShadowMultiviewProgram.mFeatures.hasObjectSkinning = true;
         gDeferredSkinnedShadowMultiviewProgram.mShaderFiles.clear();
         gDeferredSkinnedShadowMultiviewProgram.mShaderFiles.push_back(make_pair("deferred/shadowSkinnedV.glsl", GL_VERTEX_SHADER));

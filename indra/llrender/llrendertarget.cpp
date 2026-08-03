@@ -524,7 +524,7 @@ void LLRenderTarget::release()
     mAllocated = false;
 }
 
-void LLRenderTarget::bindTarget()
+void LLRenderTarget::bindTarget(bool depth_read_only)
 {
     LL_PROFILE_GPU_ZONE("bindTarget");
     llassert(mAllocated);
@@ -541,6 +541,8 @@ void LLRenderTarget::bindTarget()
 
     if (LLVKLoader::isVulkanInitialized())
     {
+        mLastBindDepthReadOnly = depth_read_only;
+
         U32 color_count = static_cast<U32>(mInternalFormat.size() < 4 ? mInternalFormat.size() : 4);
 
         for (U32 i = 0; i < color_count && i < mVkTex.size(); ++i)
@@ -584,6 +586,9 @@ void LLRenderTarget::bindTarget()
         if (mUseDepth && mVkDepth != VK_NULL_HANDLE)
         {
             const VkImageLayout cur = getCurDepthLayout();
+            const VkImageLayout dst = depth_read_only
+                                          ? VK_IMAGE_LAYOUT_DEPTH_STENCIL_READ_ONLY_OPTIMAL
+                                          : VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL;
             VkPipelineStageFlags src_stage;
             VkAccessFlags        src_access;
             if (cur == VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL)
@@ -596,22 +601,39 @@ void LLRenderTarget::bindTarget()
                 src_stage  = VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT;
                 src_access = VK_ACCESS_SHADER_READ_BIT;
             }
+            else if (cur == VK_IMAGE_LAYOUT_DEPTH_STENCIL_READ_ONLY_OPTIMAL)
+            {
+                src_stage  = VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT |
+                             VK_PIPELINE_STAGE_EARLY_FRAGMENT_TESTS_BIT |
+                             VK_PIPELINE_STAGE_LATE_FRAGMENT_TESTS_BIT;
+                src_access = VK_ACCESS_SHADER_READ_BIT |
+                             VK_ACCESS_DEPTH_STENCIL_ATTACHMENT_READ_BIT;
+            }
             else
             {
                 src_stage  = VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT;
                 src_access = 0;
             }
 
+            const VkPipelineStageFlags dst_stage =
+                depth_read_only
+                    ? (VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT | VK_PIPELINE_STAGE_EARLY_FRAGMENT_TESTS_BIT)
+                    : (VK_PIPELINE_STAGE_EARLY_FRAGMENT_TESTS_BIT | VK_PIPELINE_STAGE_LATE_FRAGMENT_TESTS_BIT);
+            const VkAccessFlags dst_access =
+                depth_read_only
+                    ? (VK_ACCESS_SHADER_READ_BIT | VK_ACCESS_DEPTH_STENCIL_ATTACHMENT_READ_BIT)
+                    : (VK_ACCESS_DEPTH_STENCIL_ATTACHMENT_READ_BIT | VK_ACCESS_DEPTH_STENCIL_ATTACHMENT_WRITE_BIT);
+
             LLVKLoader::transitionImageLayoutVk(
                 mVkDepth,
                 VK_IMAGE_ASPECT_DEPTH_BIT | VK_IMAGE_ASPECT_STENCIL_BIT,
                 cur,
-                VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL,
+                dst,
                 src_stage,
-                VK_PIPELINE_STAGE_EARLY_FRAGMENT_TESTS_BIT | VK_PIPELINE_STAGE_LATE_FRAGMENT_TESTS_BIT,
+                dst_stage,
                 src_access,
-                VK_ACCESS_DEPTH_STENCIL_ATTACHMENT_READ_BIT | VK_ACCESS_DEPTH_STENCIL_ATTACHMENT_WRITE_BIT);
-            setCurDepthLayout(VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL);
+                dst_access);
+            setCurDepthLayout(dst);
         }
 
         LLVKLoader::DynamicRenderingAttachment color_attachments[4] = {};
@@ -625,7 +647,9 @@ void LLRenderTarget::bindTarget()
 
         LLVKLoader::DynamicRenderingAttachment depth_attachment = {};
         depth_attachment.image_view   = mVkDepthView;
-        depth_attachment.image_layout = VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL;
+        depth_attachment.image_layout = depth_read_only
+                                            ? VK_IMAGE_LAYOUT_DEPTH_STENCIL_READ_ONLY_OPTIMAL
+                                            : VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL;
         depth_attachment.load_op      = VK_ATTACHMENT_LOAD_OP_LOAD;
         depth_attachment.store_op     = VK_ATTACHMENT_STORE_OP_STORE;
 
@@ -882,7 +906,7 @@ void LLRenderTarget::bindForShaderRead(U32 attachment, bool depth)
     if (attachment < mVkTex.size() && mVkTex[attachment] != VK_NULL_HANDLE &&
         attachment < mVkTexLayout.size() &&
         mVkTexLayout[attachment] != VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL &&
-        !LLVKLoader::isImageViewActivePassAttachment(
+        !LLVKLoader::isImageViewCurrentAttachment(
             attachment < mVkTexView.size() ? mVkTexView[attachment] : VK_NULL_HANDLE))
     {
         LLVKLoader::transitionImageLayoutVk(
@@ -899,7 +923,7 @@ void LLRenderTarget::bindForShaderRead(U32 attachment, bool depth)
 
     if (depth && mVkDepth != VK_NULL_HANDLE &&
         getCurDepthLayout() != VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL &&
-        !LLVKLoader::isImageViewActivePassAttachment(mVkDepthView))
+        !LLVKLoader::isImageViewCurrentAttachment(mVkDepthView))
     {
         LLVKLoader::transitionImageLayoutVk(
             mVkDepth,
@@ -1034,7 +1058,7 @@ void LLRenderTarget::flush()
     if (mPreviousRT)
     {
         sBoundTarget = mPreviousRT->mPreviousRT;
-        mPreviousRT->bindTarget();
+        mPreviousRT->bindTarget(mPreviousRT->mLastBindDepthReadOnly);
     }
     else
     {

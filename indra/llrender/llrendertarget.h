@@ -122,7 +122,7 @@ public:
     //  If an LLRenderTarget is currently bound, stores a reference to that LLRenderTarget
     //  and restores previous binding on flush() (maintains a stack of Render Targets)
     //  Asserts that this target is not currently bound in the stack
-    void bindTarget();
+    void bindTarget(bool depth_read_only = false);
 
     void bindTargetDepthLayer(U32 layer, bool clear = false);
 
@@ -251,6 +251,7 @@ protected:
     bool mOwnDepth = false;
     bool mUseDepth;
     bool mUseDepthCompareSampler = false;
+    bool mLastBindDepthReadOnly = false;
     LLTexUnit::eTextureMipGeneration mGenerateMipMaps;
     U32 mMipLevels;
 

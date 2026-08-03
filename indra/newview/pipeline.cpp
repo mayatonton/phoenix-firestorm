@@ -343,8 +343,6 @@ extern bool gCubeSnapshot;
 extern bool gSnapshotNoPost;
 extern bool gHeroProbeMirrorRender;
 
-static bool sSceneDepthCopyActive = false;
-
 bool    gAvatarBacklight = false;
 
 LLPipeline gPipeline;
@@ -1227,10 +1225,6 @@ bool LLPipeline::allocateScreenBufferInternal(U32 resX, U32 resY)
         {
             LL_PROFILE_ZONE_NAMED_CATEGORY_DISPLAY("AYAAlphaDepth");
             if (!mAYAAlphaDepth.allocate(resX, resY, GL_RGBA, true)) return false;
-            if (LLVKLoader::isVulkanInitialized())
-            {
-                if (!mSceneDepthCopy.allocate(resX, resY, GL_RGBA, true)) return false;
-            }
         }
         // </AYAstorm r30 P5 transparent-DoF L2-β>
 
@@ -1734,7 +1728,6 @@ void LLPipeline::releaseScreenBuffers()
     // <AYAstorm r30 P5 transparent-DoF L2-β> alpha-aware depth for cofF.glsl
     mAYAAlphaDepth.release();
     // </AYAstorm r30 P5 transparent-DoF L2-β>
-    mSceneDepthCopy.release();
 
     // <AYAstorm r30 P5 transparent-DoF C-(a)> alpha BLEND color RT
     mAYAAlphaColor.release();
@@ -11426,15 +11419,6 @@ void LLPipeline::bindDeferredShaderFast(LLGLSLShader& shader)
         bindDeferredShader(shader);
         shader.mCanBindFast = true;
     }
-
-    if (sSceneDepthCopyActive && LLVKLoader::isVulkanInitialized() && mSceneDepthCopy.isComplete())
-    {
-        S32 dch = shader.getTextureChannel(LLShaderMgr::DEFERRED_DEPTH);
-        if (dch > -1)
-        {
-            gGL.getTexUnit(dch)->bind(&mSceneDepthCopy, true);
-        }
-    }
 }
 
 void LLPipeline::bindDeferredShader(LLGLSLShader& shader, LLRenderTarget* light_target, LLRenderTarget* depth_target)
@@ -11479,10 +11463,6 @@ void LLPipeline::bindDeferredShader(LLGLSLShader& shader, LLRenderTarget* light_
         if (depth_target)
         {
             gGL.getTexUnit(channel)->bind(depth_target, true);
-        }
-        else if (sSceneDepthCopyActive && LLVKLoader::isVulkanInitialized() && mSceneDepthCopy.isComplete())
-        {
-            gGL.getTexUnit(channel)->bind(&mSceneDepthCopy, true);
         }
         else
         {
@@ -12025,27 +12005,6 @@ void LLPipeline::renderDeferredLighting()
     LLRenderTarget *screen_target         = &getFrameRT()->screen;
     LLRenderTarget* deferred_light_target = &getFrameRT()->deferredLight;
 
-    sSceneDepthCopyActive = false;
-    if (LLVKLoader::isVulkanInitialized() && !gCubeSnapshot && mSceneDepthCopy.isComplete())
-    {
-        LL_PROFILE_GPU_ZONE("scene depth copy for lighting");
-        LLGLDepthTest depth(GL_TRUE, GL_TRUE, GL_ALWAYS);
-        LLRenderTarget& depth_src = getFrameRT()->deferredScreen;
-        mSceneDepthCopy.bindTarget();
-        gCopyDepthProgram.bind();
-        S32 diff_map  = gCopyDepthProgram.getTextureChannel(LLShaderMgr::DIFFUSE_MAP);
-        S32 depth_map = gCopyDepthProgram.getTextureChannel(LLShaderMgr::DEFERRED_DEPTH);
-        gGL.getTexUnit(diff_map)->bind(&depth_src);
-        gGL.getTexUnit(depth_map)->bind(&depth_src, true);
-        depth_src.bindForShaderRead(0, true);
-        gGL.setColorMask(false, false);
-        mScreenTriangleVB->setBuffer();
-        mScreenTriangleVB->drawArrays(LLRender::TRIANGLES, 0, 3);
-        gGL.setColorMask(true, true);
-        mSceneDepthCopy.flush();
-        sSceneDepthCopyActive = true;
-    }
-
     {
         LL_PROFILE_ZONE_NAMED_CATEGORY_PIPELINE("deferred");
         LLViewerCamera *camera = LLViewerCamera::getInstance();
@@ -12243,7 +12202,7 @@ void LLPipeline::renderDeferredLighting()
                 gbuf->bindForShaderRead(0, true);
             }
             // blur lightmap
-            screen_target->bindTarget();
+            screen_target->bindTarget(true);
             gGL.setClearColor(1, 1, 1, 1);
             screen_target->clear(GL_COLOR_BUFFER_BIT);
             gGL.setClearColor(0, 0, 0, 0);
@@ -12348,7 +12307,7 @@ void LLPipeline::renderDeferredLighting()
             gbuf->bindForShaderRead(3);
             gbuf->bindForShaderRead(0, true);
         }
-        screen_target->bindTarget();
+        screen_target->bindTarget(true);
         // clear color buffer here - zeroing alpha (glow) is important or it will accumulate against sky
         gGL.setClearColor(0, 0, 0, 0);
         screen_target->clear(GL_COLOR_BUFFER_BIT);
@@ -12891,8 +12850,6 @@ void LLPipeline::renderDeferredLighting()
     }
     // </AYAstorm r30 P5 transparent-DoF L2-β>
 
-    sSceneDepthCopyActive = false;
-
     {  // render non-deferred geometry (alpha, fullbright, glow)
         const U64 lgt_fwd_t0 = lgt_now();
         LLGLDisable blend(GL_BLEND);
@@ -13207,10 +13164,7 @@ void LLPipeline::doSkinSSS()
             S32 dch = shader.enableTexture(LLShaderMgr::DEFERRED_DEPTH, deferred_target->getUsage());
             if (dch > -1)
             {
-                if (LLVKLoader::isVulkanInitialized() && mSceneDepthCopy.isComplete())
-                    gGL.getTexUnit(dch)->bind(&mSceneDepthCopy, true);
-                else
-                    gGL.getTexUnit(dch)->bind(deferred_target, true);
+                gGL.getTexUnit(dch)->bind(deferred_target, true);
             }
         }
         // </FS:AYA>
@@ -13252,7 +13206,7 @@ void LLPipeline::doSkinSSS()
     // alpha kept untouched so the scene-buffer sky mask is preserved —
     // memory project_aya_visual_realism_alpha_protect.md)
     {
-        getFrameRT()->screen.bindTarget();
+        getFrameRT()->screen.bindTarget(true);
 
         LLGLEnable blend_on(GL_BLEND);
         gGL.blendFunc(LLRender::BF_SOURCE_ALPHA, LLRender::BF_ONE_MINUS_SOURCE_ALPHA,
@@ -13284,10 +13238,7 @@ void LLPipeline::doSkinSSS()
             S32 dch = shader.enableTexture(LLShaderMgr::DEFERRED_DEPTH, deferred_target->getUsage());
             if (dch > -1)
             {
-                if (LLVKLoader::isVulkanInitialized() && mSceneDepthCopy.isComplete())
-                    gGL.getTexUnit(dch)->bind(&mSceneDepthCopy, true);
-                else
-                    gGL.getTexUnit(dch)->bind(deferred_target, true);
+                gGL.getTexUnit(dch)->bind(deferred_target, true);
             }
         }
         // </FS:AYA>
