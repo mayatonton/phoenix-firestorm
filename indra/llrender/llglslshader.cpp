@@ -1649,17 +1649,105 @@ bool LLGLSLShader::generatePerProgramSPIRV(const std::vector<StageSource>& stage
 
     LLShaderMgr* mgr = LLShaderMgr::instance();
 
+    std::map<GLenum, std::vector<size_t>> stages_by_type;
+    for (size_t i = 0; i < stages.size(); ++i)
+    {
+        stages_by_type[stages[i].type].push_back(i);
+    }
+
+    static const GLenum kFixedStageOrder[] = {
+        GL_VERTEX_SHADER,
+        GL_GEOMETRY_SHADER,
+        GL_FRAGMENT_SHADER,
+    };
+
+    std::vector<std::pair<GLenum, std::string>> stage_concats;
+    stage_concats.reserve(stages_by_type.size());
+
+    for (GLenum stage_type : kFixedStageOrder)
+    {
+        auto stage_it = stages_by_type.find(stage_type);
+        if (stage_it == stages_by_type.end())
+        {
+            continue;
+        }
+        const std::vector<size_t>& stage_indices = stage_it->second;
+
+        std::string concatenated;
+        concatenated.append("#version 460\n");
+        concatenated.append("#extension GL_KHR_vulkan_glsl : enable\n");
+        if (LLVKLoader::isBindlessActiveVk())
+        {
+            concatenated.append("#extension GL_EXT_nonuniform_qualifier : enable\n");
+        }
+        concatenated.append("#define LL_VULKAN_GLSL 1\n");
+
+        const std::vector<std::string>* utility_files = nullptr;
+        const std::map<std::string, std::vector<std::string>>* source_cache = nullptr;
+        if (stage_type == GL_VERTEX_SHADER)
+        {
+            utility_files = &mVulkanAttachedVertexUtilities;
+            source_cache  = &mgr->mVertexShaderSourceCache;
+        }
+        else if (stage_type == GL_FRAGMENT_SHADER)
+        {
+            utility_files = &mVulkanAttachedFragmentUtilities;
+            source_cache  = &mgr->mFragmentShaderSourceCache;
+        }
+        if (utility_files && source_cache)
+        {
+            for (const std::string& util_file : *utility_files)
+            {
+                auto it = source_cache->find(util_file);
+                if (it == source_cache->end())
+                {
+                    LL_WARNS("Vulkan") << "generatePerProgramSPIRV: missing utility source '"
+                                       << util_file << "' for program '" << mName
+                                       << "' stage "
+                                       << (stage_type == GL_VERTEX_SHADER ? "V" :
+                                           stage_type == GL_FRAGMENT_SHADER ? "F" : "G")
+                                       << LL_ENDL;
+                    return false;
+                }
+                const std::vector<std::string>& util_sources = it->second;
+                for (size_t i = 1; i < util_sources.size(); ++i)
+                {
+                    concatenated.append(util_sources[i]);
+                    if (!util_sources[i].empty() && util_sources[i].back() != '\n')
+                    {
+                        concatenated.append("\n");
+                    }
+                }
+            }
+        }
+
+        for (size_t idx : stage_indices)
+        {
+            const auto& stage = stages[idx];
+            for (size_t i = 1; i < stage.sources.size(); ++i)
+            {
+                concatenated.append(stage.sources[i]);
+            }
+        }
+
+        if (concatenated.empty())
+        {
+            return false;
+        }
+
+        stage_concats.emplace_back(stage_type, std::move(concatenated));
+    }
+
     HBXXH128 program_hash_obj;
     program_hash_obj.update(std::string("vulkanize:v5_p2_inout_pair_prepass_group_fix"));
     program_hash_obj.update(std::string("auto_loc=1"));
     program_hash_obj.update(std::string("spv_debug_names=1"));
-    for (const auto& stage : stages)
+    program_hash_obj.update(std::string("key:v2_full_concat"));
+    program_hash_obj.update(std::string(glslang::GetGlslVersionString()));
+    for (const auto& sc : stage_concats)
     {
-        program_hash_obj.update(stage.file_name);
-        for (const auto& src : stage.sources)
-        {
-            program_hash_obj.update(src);
-        }
+        program_hash_obj.update(std::string("stage:") + std::to_string((U32)sc.first));
+        program_hash_obj.update(sc.second);
     }
     LLUUID program_hash = program_hash_obj.digest();
 
@@ -1668,12 +1756,6 @@ bool LLGLSLShader::generatePerProgramSPIRV(const std::vector<StageSource>& stage
     {
         cache_path = gDirUtilp->add(mgr->mShaderCacheDir,
                                     program_hash.asString() + "_program.spv");
-    }
-
-    std::map<GLenum, std::vector<size_t>> stages_by_type;
-    for (size_t i = 0; i < stages.size(); ++i)
-    {
-        stages_by_type[stages[i].type].push_back(i);
     }
 
     struct StageSpv { GLenum type; std::vector<unsigned int> spirv; };
@@ -1733,89 +1815,20 @@ bool LLGLSLShader::generatePerProgramSPIRV(const std::vector<StageSource>& stage
         std::vector<EShLanguage> stage_langs_in_order;
         std::vector<GLenum> stage_types_in_order;
 
-        concat_buffers.reserve(stages_by_type.size());
+        concat_buffers.reserve(stage_concats.size());
 
         LocationAllocator alloc;
-        static const GLenum kFixedStageOrder[] = {
-            GL_VERTEX_SHADER,
-            GL_GEOMETRY_SHADER,
-            GL_FRAGMENT_SHADER,
-        };
 
-        for (GLenum stage_type : kFixedStageOrder)
+        for (const auto& sc : stage_concats)
         {
-            auto stage_it = stages_by_type.find(stage_type);
-            if (stage_it == stages_by_type.end())
-            {
-                continue;
-            }
-            const std::vector<size_t>& stage_indices = stage_it->second;
-
+            GLenum stage_type = sc.first;
             EShLanguage lang = toGlslangStage(stage_type);
             if (lang == EShLangCount)
             {
                 return false;
             }
 
-            std::string concatenated;
-            concatenated.append("#version 460\n");
-            concatenated.append("#extension GL_KHR_vulkan_glsl : enable\n");
-            if (LLVKLoader::isBindlessActiveVk())
-            {
-                concatenated.append("#extension GL_EXT_nonuniform_qualifier : enable\n");
-            }
-            concatenated.append("#define LL_VULKAN_GLSL 1\n");
-
-            const std::vector<std::string>* utility_files = nullptr;
-            const std::map<std::string, std::vector<std::string>>* source_cache = nullptr;
-            if (stage_type == GL_VERTEX_SHADER)
-            {
-                utility_files = &mVulkanAttachedVertexUtilities;
-                source_cache  = &mgr->mVertexShaderSourceCache;
-            }
-            else if (stage_type == GL_FRAGMENT_SHADER)
-            {
-                utility_files = &mVulkanAttachedFragmentUtilities;
-                source_cache  = &mgr->mFragmentShaderSourceCache;
-            }
-            if (utility_files && source_cache)
-            {
-                for (const std::string& util_file : *utility_files)
-                {
-                    auto it = source_cache->find(util_file);
-                    if (it == source_cache->end())
-                    {
-                        continue;
-                    }
-                    const std::vector<std::string>& util_sources = it->second;
-                    for (size_t i = 1; i < util_sources.size(); ++i)
-                    {
-                        concatenated.append(util_sources[i]);
-                        if (!util_sources[i].empty() && util_sources[i].back() != '\n')
-                        {
-                            concatenated.append("\n");
-                        }
-                    }
-                }
-            }
-
-            for (size_t idx : stage_indices)
-            {
-                const auto& stage = stages[idx];
-                for (size_t i = 1; i < stage.sources.size(); ++i)
-                {
-                    concatenated.append(stage.sources[i]);
-                }
-            }
-
-            if (concatenated.empty())
-            {
-                return false;
-            }
-
-            concatenated = vulkanizeStageSource(concatenated, stage_type, alloc);
-
-            concat_buffers.push_back(std::move(concatenated));
+            concat_buffers.push_back(vulkanizeStageSource(sc.second, stage_type, alloc));
 
             auto shader = std::make_unique<glslang::TShader>(lang);
             const char* src_cstr = concat_buffers.back().c_str();
