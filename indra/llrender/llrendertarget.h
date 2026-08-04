@@ -306,6 +306,7 @@ public:
 
 private:
     LLRenderTarget& mRT;
+    const char*     mTag;
     bool            mAdmitted = false;
 };
 
@@ -328,6 +329,7 @@ public:
 private:
     LLRenderTarget& mTemp;
     LLRenderTarget* mOwner    = nullptr;
+    const char*     mTag;
     bool            mAdmitted = false;
     bool            mTempOpen = false;
     bool            mResumed  = false;

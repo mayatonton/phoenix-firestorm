@@ -1,5 +1,6 @@
 #include "linden_common.h"
 #include "llvkcontract.h"
+#include "llvkloader.h"
 #include "llerror.h"
 #include "lltimer.h"
 
@@ -1067,6 +1068,8 @@ void frameBegin()
         first = false;
     }
     os << '}';
+    os << " pfree=" << LLVKLoader::getPendingImageFreeCount()
+       << " vkblk=" << LLVKLoader::getVmaTotalBlockCount();
 
     U64 site_win[SITE_COUNT];
     U64 site_any = 0;

@@ -67,6 +67,9 @@ namespace LLVKLoader
     void endOffscreenFrameVk();
     VkCommandBuffer getCurrentCommandBuffer();
 
+    U32 getPendingImageFreeCount();
+    U32 getVmaTotalBlockCount();
+
     constexpr U32 MAX_RECORD_LANES = 1;
 
     U32  recordWorkerCount();

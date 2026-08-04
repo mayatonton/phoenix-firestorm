@@ -1233,7 +1233,7 @@ void LLRenderTarget::swapFBORefs(LLRenderTarget& other)
 }
 
 LLRTScope::LLRTScope(LLRenderTarget& rt, bool depth_read_only, const char* tag)
-    : mRT(rt)
+    : mRT(rt), mTag(tag)
 {
     if (rt.isComplete())
     {
@@ -1247,7 +1247,7 @@ LLRTScope::LLRTScope(LLRenderTarget& rt, bool depth_read_only, const char* tag)
 }
 
 LLRTScope::LLRTScope(LLRenderTarget& rt, EDepthLayerTag, U32 layer, bool clear, const char* tag)
-    : mRT(rt)
+    : mRT(rt), mTag(tag)
 {
     if (rt.isComplete() && rt.getVkDepthLayerView(layer) != VK_NULL_HANDLE)
     {
@@ -1261,7 +1261,7 @@ LLRTScope::LLRTScope(LLRenderTarget& rt, EDepthLayerTag, U32 layer, bool clear, 
 }
 
 LLRTScope::LLRTScope(LLRenderTarget& rt, EDepthArrayTag, const char* tag)
-    : mRT(rt)
+    : mRT(rt), mTag(tag)
 {
     if (rt.isComplete() && rt.getVkDepthArrayView() != VK_NULL_HANDLE)
     {
@@ -1276,14 +1276,27 @@ LLRTScope::LLRTScope(LLRenderTarget& rt, EDepthArrayTag, const char* tag)
 
 LLRTScope::~LLRTScope()
 {
-    if (mAdmitted)
+    if (!mAdmitted)
+    {
+        return;
+    }
+    if (LLRenderTarget::getCurrentBoundTarget() == &mRT)
     {
         mRT.flush();
+    }
+    else if (mRT.isBoundInStack())
+    {
+        llassert(false);
+        countPassRefused(mTag);
+    }
+    else
+    {
+        countPassRefused(mTag);
     }
 }
 
 LLRTDetour::LLRTDetour(LLRenderTarget& temp, bool temp_depth_ro, const char* tag)
-    : mTemp(temp)
+    : mTemp(temp), mTag(tag)
 {
     mOwner = LLRenderTarget::getCurrentBoundTarget();
     if (mOwner && temp.isComplete())
@@ -1313,7 +1326,14 @@ void LLRTDetour::resume(bool resume_depth_ro)
     endTemp();
     if (mAdmitted && !mResumed)
     {
-        mOwner->bindTarget(resume_depth_ro);
+        if (mOwner->isComplete())
+        {
+            mOwner->bindTarget(resume_depth_ro);
+        }
+        else
+        {
+            countPassRefused(mTag);
+        }
         mResumed = true;
     }
 }
@@ -1341,7 +1361,14 @@ void LLRTHole::close()
 {
     if (mOpen)
     {
-        mRT.bindTarget(false);
+        if (mRT.isComplete())
+        {
+            mRT.bindTarget(false);
+        }
+        else
+        {
+            countPassRefused("hole");
+        }
         mOpen = false;
     }
 }
