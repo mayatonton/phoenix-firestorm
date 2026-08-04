@@ -211,6 +211,11 @@ void LLReflectionMapManager::update()
         return;
     }
 
+    if (!gPipeline.probeChainComplete())
+    {
+        return;
+    }
+
     LL_PROFILE_ZONE_SCOPED_CATEGORY_DISPLAY;
     LL_PROFILE_GPU_ZONE("reflection manager update");
     llassert(!gCubeSnapshot); // assert a snapshot is not in progress
@@ -840,17 +845,25 @@ void LLReflectionMapManager::updateProbeFace(LLReflectionMap* probe, U32 face)
 
             gGaussianProgram.pushGaussianFragPC(gaussian_res_scale, 1.0f, 0.0f);
             gGL.getTexUnit(diffuseChannel)->bind(screen_rt);
-            mRenderTarget.bindTarget();
-            gPipeline.mScreenTriangleVB->setBuffer();
-            gPipeline.mScreenTriangleVB->drawArrays(LLRender::TRIANGLES, 0, 3);
-            mRenderTarget.flush();
+            {
+                LLRTScope rts(mRenderTarget, false, "probe_gaussian_h");
+                if (rts)
+                {
+                    gPipeline.mScreenTriangleVB->setBuffer();
+                    gPipeline.mScreenTriangleVB->drawArrays(LLRender::TRIANGLES, 0, 3);
+                }
+            }
 
             gGaussianProgram.pushGaussianFragPC(gaussian_res_scale, 0.0f, 1.0f);
             gGL.getTexUnit(diffuseChannel)->bind(&mRenderTarget);
-            screen_rt->bindTarget();
-            gPipeline.mScreenTriangleVB->setBuffer();
-            gPipeline.mScreenTriangleVB->drawArrays(LLRender::TRIANGLES, 0, 3);
-            screen_rt->flush();
+            {
+                LLRTScope rts(*screen_rt, false, "probe_gaussian_v");
+                if (rts)
+                {
+                    gPipeline.mScreenTriangleVB->setBuffer();
+                    gPipeline.mScreenTriangleVB->drawArrays(LLRender::TRIANGLES, 0, 3);
+                }
+            }
         }
 
 
@@ -862,7 +875,10 @@ void LLReflectionMapManager::updateProbeFace(LLReflectionMap* probe, U32 face)
         for (int i = 0; i < mMipChain.size(); ++i)
         {
             LL_PROFILE_GPU_ZONE("probe mip");
-            mMipChain[i].bindTarget();
+            {
+            LLRTScope rts(mMipChain[i], false, "probe_mip");
+            if (rts)
+            {
             if (i == 0)
             {
                 gGL.getTexUnit(diffuseChannel)->bind(screen_rt);
@@ -894,7 +910,8 @@ void LLReflectionMapManager::updateProbeFace(LLReflectionMap* probe, U32 face)
                 }
                 mTexture->unbind();
             }
-            mMipChain[i].flush();
+            }
+            }
         }
 
         gGL.popMatrix();
@@ -907,8 +924,11 @@ void LLReflectionMapManager::updateProbeFace(LLReflectionMap* probe, U32 face)
 
     if (face == 5)
     {
-        mMipChain[0].bindTarget();
         const bool aya_prev_cube_snapshot = gCubeSnapshot;
+        {
+        LLRTScope rts(mMipChain[0], false, "probe_radiance");
+        if (rts)
+        {
         gCubeSnapshot = true;
 
         if (isRadiancePass())
@@ -1029,7 +1049,8 @@ void LLReflectionMapManager::updateProbeFace(LLReflectionMap* probe, U32 face)
             gIrradianceGenProgram.unbind();
         }
 
-        mMipChain[0].flush();
+        }
+        }
         gCubeSnapshot = aya_prev_cube_snapshot;
     }
 }

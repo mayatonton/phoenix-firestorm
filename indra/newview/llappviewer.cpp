@@ -1783,37 +1783,39 @@ bool LLAppViewer::doFrame()
                     if (s_count_begin_failed == 1 || s_count_begin_failed == 10
                         || s_count_begin_failed == 100 || s_count_begin_failed == 1000)
                     {
-                        LL_WARNS("Vulkan") << "atomic 13.LLAppViewer beginFrame return false "
-                                              "= display() 進入時 sInFrame=false 維持 (count="
+                        LL_WARNS("Vulkan") << "atomic 13.LLAppViewer beginFrame return false (count="
                                            << (S64)s_count_begin_failed
-                                           << ") = scene render cmd NULL fire 候補 frame"
+                                           << ") = frame record skipped"
                                            << LL_ENDL;
                     }
                 }
                 FSAuxWindow::preDisplay();
+                if (!LLVKLoader::isVulkanInitialized() || LLVKLoader::frameCanRecord())
                 {
-                    LLVKLoader::VkPerfPhaseScope ph(1);
-                    display();
-                }
-
-                if (LLStartUp::getStartupState() == STATE_STARTED) // <FS:Beq/> FIRE-34590 - Bugsplat caused by updating maps before world is loaded.
-                {
-                    LLPerfStats::RecordSceneTime T(LLPerfStats::StatType_t::RENDER_IDLE);
-                    LL_PROFILE_ZONE_NAMED_CATEGORY_APP("df Snapshot");
-                    pingMainloopTimeout("Main:Snapshot");
                     {
-                        LLVKLoader::VkPerfPhaseScope ph(2);
-                        if (!LLVKLoader::isUISceneSplit())
-                        {
-                            gPipeline.mReflectionMapManager.update();
-                        }
+                        LLVKLoader::VkPerfPhaseScope ph(1);
+                        display();
                     }
+
+                    if (LLStartUp::getStartupState() == STATE_STARTED) // <FS:Beq/> FIRE-34590 - Bugsplat caused by updating maps before world is loaded.
                     {
-                        LLVKLoader::VkPerfMainScope mlp(8);
-                        LLFloaterSnapshot::update(); // take snapshots
-                        LLFloaterSimpleSnapshot::update();
-                        LLFloaterFlickr::update(); // <FS:Beq/> FIRE-35002 - Flickr preview not updating whne opened directly from tool tray icon
-                        FSFloaterPrimfeed::update(); // <FS:Beq/> Primfeed support
+                        LLPerfStats::RecordSceneTime T(LLPerfStats::StatType_t::RENDER_IDLE);
+                        LL_PROFILE_ZONE_NAMED_CATEGORY_APP("df Snapshot");
+                        pingMainloopTimeout("Main:Snapshot");
+                        {
+                            LLVKLoader::VkPerfPhaseScope ph(2);
+                            if (!LLVKLoader::isUISceneSplit())
+                            {
+                                gPipeline.mReflectionMapManager.update();
+                            }
+                        }
+                        {
+                            LLVKLoader::VkPerfMainScope mlp(8);
+                            LLFloaterSnapshot::update(); // take snapshots
+                            LLFloaterSimpleSnapshot::update();
+                            LLFloaterFlickr::update(); // <FS:Beq/> FIRE-35002 - Flickr preview not updating whne opened directly from tool tray icon
+                            FSFloaterPrimfeed::update(); // <FS:Beq/> Primfeed support
+                        }
                     }
                 }
 
@@ -4016,6 +4018,7 @@ bool LLAppViewer::initWindow()
     LL_PROFILE_ZONE_SCOPED;
     LL_INFOS("AppInit") << "Initializing window..." << LL_ENDL;
 
+    LLVKLoader::seedVsyncEnabled(gSavedSettings.getBOOL("RenderVSyncEnable"));
     LLVKLoader::initVulkan();
     LLVKLoader::setVkDeviceLostHook(&vkDeviceLostQuitHook);
 

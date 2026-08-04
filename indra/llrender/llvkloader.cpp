@@ -681,6 +681,7 @@ namespace
     };
     U32  sAcquiredImageIndex         = 0;
     bool sImageAcquired              = false;
+    bool sFrameWantsPresent          = false;
     bool sVulkanPresentationEnabled  = true;
 
     bool sSwapchainClearedThisFrame  = false;
@@ -4119,6 +4120,36 @@ namespace
         vkSetDebugUtilsObjectNameEXT(sDevice, &info);
     }
 
+    void warnAttachmentAllocFail(const char* tag, VkResult r, U32 width, U32 height, VkFormat format, U32 mips, U32 layers)
+    {
+        U64 usage_mb = 0, budget_mb = 0;
+        if (sAllocator != VK_NULL_HANDLE)
+        {
+            VmaBudget budgets[VK_MAX_MEMORY_HEAPS] = {};
+            vmaGetHeapBudgets(sAllocator, budgets);
+            VkDeviceSize max_budget = 0;
+            for (U32 i = 0; i < VK_MAX_MEMORY_HEAPS; ++i)
+            {
+                if (budgets[i].budget > max_budget)
+                {
+                    max_budget = budgets[i].budget;
+                    usage_mb   = budgets[i].usage  >> 20;
+                    budget_mb  = budgets[i].budget >> 20;
+                }
+            }
+        }
+        LL_WARNS("Vulkan") << "attachment image alloc failed tag=" << (tag ? tag : "attImg")
+                           << " res=" << width << "x" << height
+                           << " fmt=" << (S32)format
+                           << " mips=" << mips
+                           << " layers=" << layers
+                           << " result=" << (S32)r
+                           << " vma_usage_mb=" << usage_mb
+                           << " vma_budget_mb=" << budget_mb
+                           << " pending_frees=" << (U32)sPendingImageFrees.size()
+                           << LL_ENDL;
+    }
+
     bool createAttachmentImageVkImpl(U32                width,
                                      U32                height,
                                      VkFormat           format,
@@ -4137,10 +4168,12 @@ namespace
 
         if (width == 0 || height == 0 || format == VK_FORMAT_UNDEFINED)
         {
+            warnAttachmentAllocFail(tag, VK_RESULT_MAX_ENUM, width, height, format, mip_levels, array_layers);
             return false;
         }
         if (sAllocator == VK_NULL_HANDLE || sDevice == VK_NULL_HANDLE)
         {
+            warnAttachmentAllocFail(tag, VK_ERROR_INITIALIZATION_FAILED, width, height, format, mip_levels, array_layers);
             return false;
         }
 
@@ -4168,6 +4201,7 @@ namespace
         VkResult r = vmaCreateImage(sAllocator, &ici, &aci, &image, &allocation, nullptr);
         if (r != VK_SUCCESS)
         {
+            warnAttachmentAllocFail(tag, r, width, height, format, mip_levels, array_layers);
             return false;
         }
 
@@ -4212,6 +4246,7 @@ namespace
         r = vkCreateImageView(sDevice, &vci, nullptr, &view);
         if (r != VK_SUCCESS)
         {
+            warnAttachmentAllocFail(tag, r, width, height, format, mip_levels, array_layers);
             vmaDestroyImage(sAllocator, image, allocation);
             return false;
         }
@@ -4692,8 +4727,16 @@ namespace
             vkDestroySwapchainKHR(sDevice, old_swapchain, nullptr);
         }
 
-        sSwapchainRecreatePending = false;
         sLastRecreateFrame        = sMonotonicFrameCount;
+        if (ok)
+        {
+            sSwapchainRecreatePending = false;
+        }
+        else
+        {
+            sSwapchainRecreatePending = true;
+            LL_WARNS("Vulkan") << "recreateSwapchain failed; re-arming pending recreate" << LL_ENDL;
+        }
 
         std::string reasons;
         if (reason_mask & RECREATE_REASON_RESIZE)          { reasons += "resize,"; }
@@ -5562,8 +5605,10 @@ bool beginFrame(bool acquire_swapchain)
                                           : (sMonotonicFrameCount - sLastRecreateFrame);
         if (frames_since_last >= RECREATE_COOLDOWN_FRAMES)
         {
-            recreateSwapchain();
-            return false;
+            if (!recreateSwapchain())
+            {
+                return false;
+            }
         }
     }
 
@@ -5618,6 +5663,7 @@ bool beginFrame(bool acquire_swapchain)
     }
 
     sImageAcquired = false;
+    sFrameWantsPresent = acquire_swapchain && sVulkanPresentationEnabled;
     if (acquire_swapchain &&
         sVulkanPresentationEnabled &&
         sSwapchain != VK_NULL_HANDLE &&
@@ -6594,14 +6640,28 @@ bool isVulkanInitialized()
 
 void setVsyncEnabled(bool enabled)
 {
+    if (sVsyncEnabled.load() == enabled)
+    {
+        return;
+    }
     sVsyncEnabled.store(enabled);
     sRecreateReasonMask.fetch_or(RECREATE_REASON_VSYNC_SETTING);
     sSwapchainRecreatePending = true;
 }
 
+void seedVsyncEnabled(bool enabled)
+{
+    sVsyncEnabled.store(enabled);
+}
+
 bool isInFrame()
 {
     return sInFrame;
+}
+
+bool frameCanRecord()
+{
+    return sInFrame && (!sFrameWantsPresent || sImageAcquired);
 }
 
 bool anyViewHandleDead(const void* const* views, U32 count)
@@ -9623,6 +9683,7 @@ bool createColorAttachmentImageVk(U32          width,
     {
         if (out_sample_view == nullptr)
         {
+            warnAttachmentAllocFail("createColorAttachmentImageVk", VK_RESULT_MAX_ENUM, width, height, format, mip_levels, 1);
             return false;
         }
         *out_sample_view = out_view;
@@ -9642,8 +9703,10 @@ bool createColorAttachmentImageVk(U32          width,
         vci.subresourceRange.baseArrayLayer = 0;
         vci.subresourceRange.layerCount     = 1;
         VkImageView attach_view = VK_NULL_HANDLE;
-        if (vkCreateImageView(sDevice, &vci, nullptr, &attach_view) != VK_SUCCESS)
+        VkResult attach_r = vkCreateImageView(sDevice, &vci, nullptr, &attach_view);
+        if (attach_r != VK_SUCCESS)
         {
+            warnAttachmentAllocFail("createColorAttachmentImageVk", attach_r, width, height, format, mip_levels, 1);
             return false;
         }
         noteViewHandleCreated(attach_view);
@@ -13133,7 +13196,7 @@ bool beginShaderDrawOrSkip(LLGLSLShader* shader, U32 render_mode, VkCommandBuffe
             beginSwapchainRendering();
             if (!isInRenderPassScope())
             {
-                LLVKContract::drawSkipped(LLVKContract::C_CMD_NULL, shader->mName);
+                LLVKContract::drawSkipped(LLVKContract::C_PASS_SCOPE_FAIL, shader->mName);
                 return false;
             }
         }
@@ -13150,7 +13213,7 @@ bool beginShaderDrawOrSkip(LLGLSLShader* shader, U32 render_mode, VkCommandBuffe
             bound_rt->resumeVkDynamicRendering();
             if (!isInRenderPassScope())
             {
-                LLVKContract::drawSkipped(LLVKContract::C_CMD_NULL, shader->mName);
+                LLVKContract::drawSkipped(LLVKContract::C_PASS_SCOPE_FAIL, shader->mName);
                 return false;
             }
         }

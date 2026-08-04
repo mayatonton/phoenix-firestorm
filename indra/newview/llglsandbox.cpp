@@ -936,19 +936,23 @@ F32 shader_timer_benchmark(std::vector<LLRenderTarget> & dest, std::vector<LLPoi
         }
     }
 
-    dest[0].bindTarget();
-    gBenchmarkProgram.bind();
-    for (S32 c = 0; c < samples; ++c)
     {
-        for (U32 i = 0; i < textures.size(); ++i)
+        LLRTScope rts(dest[0], false, "benchmark");
+        if (rts)
         {
-            gBenchmarkProgram.bindTexture(LLShaderMgr::DIFFUSE_MAP, textures[i]);
-            buff->setBuffer();
-            buff->drawArrays(LLRender::TRIANGLES, 0, 3);
+            gBenchmarkProgram.bind();
+            for (S32 c = 0; c < samples; ++c)
+            {
+                for (U32 i = 0; i < textures.size(); ++i)
+                {
+                    gBenchmarkProgram.bindTexture(LLShaderMgr::DIFFUSE_MAP, textures[i]);
+                    buff->setBuffer();
+                    buff->drawArrays(LLRender::TRIANGLES, 0, 3);
+                }
+            }
+            gBenchmarkProgram.unbind();
         }
     }
-    gBenchmarkProgram.unbind();
-    dest[0].flush();
 
     if (have_ts)
     {
@@ -1061,9 +1065,13 @@ F32 gpu_benchmark()
             // abandon the benchmark test
             return -1.f;
         }
-        dest[i].bindTarget();
-        dest[i].clear();
-        dest[i].flush();
+        {
+            LLRTScope rts(dest[i], false, "benchmark_alloc");
+            if (rts)
+            {
+                dest[i].clear();
+            }
+        }
 
         LLPointer<LLViewerTexture> tex = LLViewerTextureManager::getLocalTexture(raw.get(), false);
         if (tex.isNull() || tex->getGLTexture() == nullptr || !tex->getGLTexture()->hasVkImage())

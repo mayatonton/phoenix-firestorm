@@ -74,7 +74,9 @@ const char* CAUSE_NAMES[CAUSE_COUNT] =
     "par_worker_forbidden",
     "par_concurrent",
     "par_dead_access",
-    "skin_draw_no_commit"
+    "skin_draw_no_commit",
+    "pass_scope_fail",
+    "pass_refused"
 };
 
 const char* SITE_NAMES[SITE_COUNT] =

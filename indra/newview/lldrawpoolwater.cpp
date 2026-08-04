@@ -124,9 +124,10 @@ void LLDrawPoolWater::beginPostDeferredPass(S32 pass)
 
         LLRenderTarget& src = LLPipelineFrameContext::getInstance().getActiveRT()->screen;
         LLRenderTarget& depth_src = LLPipelineFrameContext::getInstance().getActiveRT()->deferredScreen;
-        LLRenderTarget& dst = gPipeline.mWaterDis;
 
-        dst.bindTarget();
+        LLRTScope s(gPipeline.mWaterDis, false, "water_depthcopy");
+        if (s)
+        {
         gCopyDepthProgram.bind();
 
         S32 diff_map = gCopyDepthProgram.getTextureChannel(LLShaderMgr::DIFFUSE_MAP);
@@ -137,14 +138,14 @@ void LLDrawPoolWater::beginPostDeferredPass(S32 pass)
 
         gPipeline.mScreenTriangleVB->setBuffer();
         gPipeline.mScreenTriangleVB->drawArrays(LLRender::TRIANGLES, 0, 3);
-
-        dst.flush();
+        }
     }
 
-    if (!gCubeSnapshot && gPipeline.mForwardColor.isComplete() &&
+    if (!gCubeSnapshot &&
         LLPipelineFrameContext::getInstance().getActiveRT() == &gPipeline.mMainRT)
     {
-        gPipeline.mForwardColor.bindTarget();
+        mForwardScope.emplace(gPipeline.mForwardColor, false, "water_fwd");
+        if (*mForwardScope)
         {
             LLGLDepthTest depth_off(GL_FALSE, GL_FALSE);
             gGL.setClearColor(0.f, 0.f, 0.f, 0.f);
@@ -357,11 +358,7 @@ void LLDrawPoolWater::renderPostDeferred(S32 pass)
 
 void LLDrawPoolWater::endPostDeferredPass(S32 pass)
 {
-    if (!gCubeSnapshot && gPipeline.mForwardColor.isComplete() &&
-        LLPipelineFrameContext::getInstance().getActiveRT() == &gPipeline.mMainRT)
-    {
-        gPipeline.mForwardColor.flush();
-    }
+    mForwardScope.reset();
 
     LLDrawPool::endPostDeferredPass(pass);
 }

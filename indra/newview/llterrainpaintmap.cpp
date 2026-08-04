@@ -87,7 +87,11 @@ bool LLTerrainPaintMap::bakeHeightNoiseIntoPBRPaintMapRGB(const LLViewerRegion& 
     }
     gGL.getTexUnit(0)->disable();
 
-    scratch_target.bindTarget();
+    bool success = false;
+    {
+    LLRTScope rts(scratch_target, false, "terrain_paintmap");
+    if (rts)
+    {
     gGL.setClearColor(0, 0, 0, 0);
     scratch_target.clear();
 
@@ -269,7 +273,7 @@ bool LLTerrainPaintMap::bakeHeightNoiseIntoPBRPaintMapRGB(const LLViewerRegion& 
     gGL.flush();
     LLVertexBuffer::unbind();
     // Final step: Copy the output to the terrain paintmap
-    const bool success = tex.getGLTexture()->setSubImageFromFrameBuffer(0, 0, 0, 0, dim, dim);
+    success = tex.getGLTexture()->setSubImageFromFrameBuffer(0, 0, 0, 0, dim, dim);
     if (!success)
     {
         LL_WARNS() << "Failed to copy framebuffer to paintmap" << LL_ENDL;
@@ -295,7 +299,8 @@ bool LLTerrainPaintMap::bakeHeightNoiseIntoPBRPaintMapRGB(const LLViewerRegion& 
         }
     }
 
-    scratch_target.flush();
+    }
+    }
 
     LLGLSLShader::unbind();
 

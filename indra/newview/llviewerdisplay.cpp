@@ -173,36 +173,39 @@ void display_startup()
 
     bool vk_began_frame = LLVKLoader::isVulkanInitialized() && LLVKLoader::beginFrame();
 
-    LLGLSDefault gls_default;
-
-    // Required for HTML update in login screen
-    static S32 frame_count = 0;
-
-
-    if (frame_count++ > 1) // make sure we have rendered a frame first
+    if (!LLVKLoader::isVulkanInitialized() || LLVKLoader::frameCanRecord())
     {
-        LLViewerDynamicTexture::updateAllInstances();
+        LLGLSDefault gls_default;
+
+        // Required for HTML update in login screen
+        static S32 frame_count = 0;
+
+
+        if (frame_count++ > 1) // make sure we have rendered a frame first
+        {
+            LLViewerDynamicTexture::updateAllInstances();
+        }
+        else
+        {
+            LL_DEBUGS("Window") << "First display_startup frame" << LL_ENDL;
+        }
+
+
+        LLGLSUIDefault gls_ui;
+        gPipeline.disableLights();
+
+        if (gViewerWindow)
+        gViewerWindow->setup2DRender();
+        if (gViewerWindow)
+        gViewerWindow->draw();
+        gGL.flush();
+
+        LLVertexBuffer::unbind();
+
+
+        if (gViewerWindow && gViewerWindow->getWindow())
+        gViewerWindow->getWindow()->swapBuffers();
     }
-    else
-    {
-        LL_DEBUGS("Window") << "First display_startup frame" << LL_ENDL;
-    }
-
-
-    LLGLSUIDefault gls_ui;
-    gPipeline.disableLights();
-
-    if (gViewerWindow)
-    gViewerWindow->setup2DRender();
-    if (gViewerWindow)
-    gViewerWindow->draw();
-    gGL.flush();
-
-    LLVertexBuffer::unbind();
-
-
-    if (gViewerWindow && gViewerWindow->getWindow())
-    gViewerWindow->getWindow()->swapBuffers();
 
     if (vk_began_frame)
     {
@@ -690,6 +693,13 @@ void display(bool rebuild, F32 zoom_factor, int subfield, bool for_snapshot)
         return;
     }
 
+    if (!gPipeline.mainChainComplete())
+    {
+        LLAppViewer::instance()->pingMainloopTimeout("Display:Startup");
+        display_startup();
+        return;
+    }
+
 
     if (gShaderProfileFrame)
     {
@@ -1123,7 +1133,10 @@ void display(bool rebuild, F32 zoom_factor, int subfield, bool for_snapshot)
         {
             gGL.setClearColor(1, 0, 1, 1);
         }
-        LLPipelineFrameContext::getInstance().getActiveRT()->deferredScreen.bindTarget();
+        {
+        LLRTScope rts(LLPipelineFrameContext::getInstance().getActiveRT()->deferredScreen, false, "display_gbuffer");
+        if (rts)
+        {
         LLPipelineFrameContext::getInstance().getActiveRT()->deferredScreen.clear();
 
         gGL.setColorMask(true, false);
@@ -1177,8 +1190,8 @@ void display(bool rebuild, F32 zoom_factor, int subfield, bool for_snapshot)
 
         LLAppViewer::instance()->pingMainloopTimeout("Display:RenderFlush");
 
-        LLRenderTarget &rt = (LLPipelineFrameContext::getInstance().isRenderingDeferred() ? LLPipelineFrameContext::getInstance().getActiveRT()->deferredScreen : LLPipelineFrameContext::getInstance().getActiveRT()->screen);
-        rt.flush();
+        }
+        }
 
         if (LLPipelineFrameContext::getInstance().isRenderingDeferred())
         {
@@ -1442,7 +1455,10 @@ void display_cube_face()
 
     gGL.setColorMask(true, true);
 
-    LLPipelineFrameContext::getInstance().getActiveRT()->deferredScreen.bindTarget();
+    {
+    LLRTScope rts(LLPipelineFrameContext::getInstance().getActiveRT()->deferredScreen, false, "display_cube_face");
+    if (rts)
+    {
     if (gUseWireframe)
     {
         gGL.setClearColor(0.5f, 0.5f, 0.5f, 1.f);
@@ -1457,7 +1473,8 @@ void display_cube_face()
 
     gPipeline.renderGeomDeferred(*LLViewerCamera::getInstance());
 
-    LLPipelineFrameContext::getInstance().getActiveRT()->deferredScreen.flush();
+    }
+    }
 
     gPipeline.renderDeferredLighting();
 
@@ -1719,7 +1736,10 @@ void render_ui(F32 zoom_factor, int subfield)
     LLRenderTarget* scene_present_back = &gPipeline.mScenePresentRT[back_idx];
     if (uiscene_present && render_scene)
     {
-        gPipeline.mScenePresentRedirect = scene_present_back;
+        if (scene_present_back && scene_present_back->isComplete())
+        {
+            gPipeline.mScenePresentRedirect = scene_present_back;
+        }
         LLVKLoader::setProducerPresentActive(true);
     }
     if (render_scene)
@@ -2081,7 +2101,10 @@ void render_ui_2d()
             LLView::sIsRectDirty = false;
             LLRect t_rect;
 
-            gPipeline.mUIScreen.bindTarget();
+            {
+            LLRTScope rts(gPipeline.mUIScreen, false, "ui_screen");
+            if (rts)
+            {
             gGL.setColorMask(true, true);
             {
                 constexpr S32 pad = 8;
@@ -2116,7 +2139,8 @@ void render_ui_2d()
                 gViewerWindow->draw();
             }
 
-            gPipeline.mUIScreen.flush();
+            }
+            }
             gGL.setColorMask(true, false);
 
             LLView::sDirtyRect = t_rect;

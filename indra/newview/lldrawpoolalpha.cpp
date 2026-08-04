@@ -209,12 +209,12 @@ void LLDrawPoolAlpha::renderPostDeferred(S32 pass)
         LLVKLoader::gVkPerf.alpha_us[11] += (U64)LLTimer::getTotalTime() - prep_t0;
     }
 
+    std::optional<LLRTScope> plate;
     const bool use_alpha_rt =
         !LLPipelineFrameContext::getInstance().isImpostorPass() && !LLPipelineFrameContext::getInstance().isHUDPass() &&
         !gCubeSnapshot &&
         getType() == LLDrawPool::POOL_ALPHA_POST_WATER &&
-        LLPipelineFrameContext::getInstance().getActiveRT() == &gPipeline.mMainRT &&
-        gPipeline.mAYAAlphaColor.isComplete();
+        LLPipelineFrameContext::getInstance().getActiveRT() == &gPipeline.mMainRT;
 
     // <AYAstorm r30 P5 plate-clear unconditional 2026-05-23>
     // Clear mAYAAlphaColor every frame regardless of use_alpha_rt. When
@@ -225,17 +225,16 @@ void LLDrawPoolAlpha::renderPostDeferred(S32 pass)
     // frame.
     if (!LLPipelineFrameContext::getInstance().isImpostorPass() && !LLPipelineFrameContext::getInstance().isHUDPass() &&
         !gCubeSnapshot && getType() == LLDrawPool::POOL_ALPHA_POST_WATER &&
-        LLPipelineFrameContext::getInstance().getActiveRT() == &gPipeline.mMainRT &&
-        gPipeline.mAYAAlphaColor.isComplete())
+        LLPipelineFrameContext::getInstance().getActiveRT() == &gPipeline.mMainRT)
     {
         LL_PROFILE_GPU_ZONE("aya alpha color clear");
-        gPipeline.mAYAAlphaColor.bindTarget();
+        LLRTScope s(gPipeline.mAYAAlphaColor, false, "alpha_plate_clear");
+        if (s)
         {
             LLGLDepthTest depth_off(GL_FALSE, GL_FALSE);
             gGL.setClearColor(0.f, 0.f, 0.f, 0.f);
             gPipeline.mAYAAlphaColor.clear(GL_COLOR_BUFFER_BIT);
         }
-        gPipeline.mAYAAlphaColor.flush();
     }
     // </AYAstorm r30 P5 plate-clear unconditional>
 
@@ -246,8 +245,7 @@ void LLDrawPoolAlpha::renderPostDeferred(S32 pass)
         // top leaves mRT->screen underneath, and flush() at the end pops back
         // to it automatically — no manual screen.flush()/bindTarget() needed
         // (doing so trips the !isBoundInStack assertion on re-push).
-        gPipeline.mAYAAlphaColor.bindTarget();
-        mForwardToAlphaRT = true;
+        plate.emplace(gPipeline.mAYAAlphaColor, false, "alpha_plate");
     }
     // </AYAstorm r30 P5 transparent-DoF C-(a)>
 
@@ -282,11 +280,7 @@ void LLDrawPoolAlpha::renderPostDeferred(S32 pass)
 
     // <AYAstorm r30 P5 transparent-DoF C-(a)> Pop alpha plate RT — flush()
     // auto-restores mRT->screen from the FBO stack.
-    if (use_alpha_rt)
-    {
-        gPipeline.mAYAAlphaColor.flush();
-        mForwardToAlphaRT = false;
-    }
+    plate.reset();
     // </AYAstorm r30 P5 transparent-DoF C-(a)>
 
     // <AYAstorm r30 P3 step 5> Volumetric Lighting also benefits from alpha
@@ -350,12 +344,12 @@ void LLDrawPoolAlpha::renderPostDeferred(S32 pass)
         !gCubeSnapshot && !LLPipelineFrameContext::getInstance().isHUDPass() &&
         getType() == LLDrawPool::POOL_ALPHA_POST_WATER &&
         LLPipelineFrameContext::getInstance().getActiveRT() == &gPipeline.mMainRT &&
-        gPipeline.mAYAAlphaDepth.isComplete() &&
         !gPipeline.mAYAAlphaColor.isComplete())
     {
         LL_PROFILE_GPU_ZONE("aya alpha depth re-inject");
-        gPipeline.mAYAAlphaDepth.bindTarget();
-
+        LLRTScope s(gPipeline.mAYAAlphaDepth, false, "alpha_depth_reinject");
+        if (s)
+        {
         simple_shader = fullbright_shader = &gDeferredFullbrightAlphaMaskProgram;
         simple_shader->bind();
         simple_shader->setMinimumAlpha(0.5f);
@@ -364,8 +358,7 @@ void LLDrawPoolAlpha::renderPostDeferred(S32 pass)
         renderAlpha(getVertexDataMask() | LLVertexBuffer::MAP_TEXTURE_INDEX | LLVertexBuffer::MAP_TANGENT | LLVertexBuffer::MAP_TEXCOORD1 | LLVertexBuffer::MAP_TEXCOORD2,
             true); // discard mostly transparent faces
         gGL.setColorMask(true, false);
-
-        gPipeline.mAYAAlphaDepth.flush();
+        }
     }
     // </AYAstorm r30 P5 transparent-DoF L2-β>
 }
@@ -396,7 +389,7 @@ void LLDrawPoolAlpha::forwardRender(bool rigged)
     // coverage for "over" composite in dofCombineF). The default
     // (ZERO, 1-Sa) is "glow suppression" and only makes sense when alpha
     // is being written into mRT->screen.a (the scene buffer's glow channel).
-    if (mForwardToAlphaRT)
+    if (LLRenderTarget::getCurrentBoundTarget() == &gPipeline.mAYAAlphaColor)
     {
         mAlphaSFactor = LLRender::BF_ONE;
         mAlphaDFactor = LLRender::BF_ONE_MINUS_SOURCE_ALPHA;
@@ -449,7 +442,7 @@ void LLDrawPoolAlpha::forwardRenderMerged()
 
     mColorSFactor = LLRender::BF_SOURCE_ALPHA;
     mColorDFactor = LLRender::BF_ONE_MINUS_SOURCE_ALPHA;
-    if (mForwardToAlphaRT)
+    if (LLRenderTarget::getCurrentBoundTarget() == &gPipeline.mAYAAlphaColor)
     {
         mAlphaSFactor = LLRender::BF_ONE;
         mAlphaDFactor = LLRender::BF_ONE_MINUS_SOURCE_ALPHA;
@@ -1691,10 +1684,10 @@ void LLDrawPoolAlpha::renderAlpha(U32 mask, bool depth_only, bool rigged, bool u
         // pre-pushed screen on top; bindTarget() re-pushes the plate
         // after the emissive pass so subsequent BLEND in the second
         // forwardRender() call continues to write to the plate.
-        const bool emissive_to_screen = mForwardToAlphaRT;
+        LLRTHole hole(gPipeline.mAYAAlphaColor);
+        const bool emissive_to_screen = (bool)hole;
         if (emissive_to_screen)
         {
-            gPipeline.mAYAAlphaColor.flush();
             { U64 t2 = alp_now(); e_rt += t2 - e_t; e_t = t2; }
         }
         // </AYAstorm r30 P5 fix glow-lost-in-plate>
@@ -1749,7 +1742,7 @@ void LLDrawPoolAlpha::renderAlpha(U32 mask, bool depth_only, bool rigged, bool u
         // or other consumers) continues writing into the plate.
         if (emissive_to_screen)
         {
-            gPipeline.mAYAAlphaColor.bindTarget();
+            hole.close();
             { U64 t2 = alp_now(); e_rt += t2 - e_t; }
         }
         // </AYAstorm r30 P5 fix glow-lost-in-plate>

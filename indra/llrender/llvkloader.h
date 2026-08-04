@@ -38,10 +38,12 @@ namespace LLVKLoader
     void shutdownVulkan(bool device_lost = false);
     void shutdownSwapchainAndSurface();
     void setVsyncEnabled(bool enabled);
+    void seedVsyncEnabled(bool enabled);
     void vkQuiesceProducers();
 
     bool isVulkanInitialized();
     bool isInFrame();
+    bool frameCanRecord();
     void gpuCheckpoint(const char* label);
     bool anyViewHandleDead(const void* const* views, U32 count);
 

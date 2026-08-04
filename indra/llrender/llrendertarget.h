@@ -105,9 +105,9 @@ public:
     bool addColorAttachment(U32 color_fmt);
 
     //allocate a depth attachment
-    void allocateDepth();
+    bool allocateDepth();
 
-    void allocateLayeredDepth(U32 resx, U32 resy, U32 layerCount);
+    bool allocateLayeredDepth(U32 resx, U32 resy, U32 layerCount);
 
     //share depth buffer with provided render target
     void shareDepthBuffer(LLRenderTarget& target);
@@ -284,6 +284,73 @@ protected:
         if (mVkDepthLayoutOwner) { mVkDepthLayoutOwner->mVkDepthLayout = layout; }
         else                     { mVkDepthLayout = layout; }
     }
+};
+
+enum EDepthLayerTag { DEPTH_LAYER_TAG };
+enum EDepthArrayTag { DEPTH_ARRAY_TAG };
+
+class LLRTScope
+{
+public:
+    LLRTScope(LLRenderTarget& rt, bool depth_read_only = false, const char* tag = "pass");
+    LLRTScope(LLRenderTarget& rt, EDepthLayerTag, U32 layer, bool clear = false, const char* tag = "pass");
+    LLRTScope(LLRenderTarget& rt, EDepthArrayTag, const char* tag = "pass");
+    ~LLRTScope();
+
+    LLRTScope(const LLRTScope&)            = delete;
+    LLRTScope& operator=(const LLRTScope&) = delete;
+    LLRTScope(LLRTScope&&)                 = delete;
+    LLRTScope& operator=(LLRTScope&&)      = delete;
+
+    explicit operator bool() const { return mAdmitted; }
+
+private:
+    LLRenderTarget& mRT;
+    bool            mAdmitted = false;
+};
+
+class LLRTDetour
+{
+public:
+    LLRTDetour(LLRenderTarget& temp, bool temp_depth_ro = false, const char* tag = "detour");
+    ~LLRTDetour();
+
+    LLRTDetour(const LLRTDetour&)            = delete;
+    LLRTDetour& operator=(const LLRTDetour&) = delete;
+    LLRTDetour(LLRTDetour&&)                 = delete;
+    LLRTDetour& operator=(LLRTDetour&&)      = delete;
+
+    explicit operator bool() const { return mAdmitted; }
+
+    void endTemp();
+    void resume(bool resume_depth_ro = false);
+
+private:
+    LLRenderTarget& mTemp;
+    LLRenderTarget* mOwner    = nullptr;
+    bool            mAdmitted = false;
+    bool            mTempOpen = false;
+    bool            mResumed  = false;
+};
+
+class LLRTHole
+{
+public:
+    LLRTHole(LLRenderTarget& rt);
+    ~LLRTHole();
+
+    LLRTHole(const LLRTHole&)            = delete;
+    LLRTHole& operator=(const LLRTHole&) = delete;
+    LLRTHole(LLRTHole&&)                 = delete;
+    LLRTHole& operator=(LLRTHole&&)      = delete;
+
+    explicit operator bool() const { return mOpen; }
+
+    void close();
+
+private:
+    LLRenderTarget& mRT;
+    bool            mOpen = false;
 };
 
 #endif

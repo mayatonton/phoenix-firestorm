@@ -108,8 +108,13 @@ public:
     void requestResizeScreenTexture(); // set flag only, no work, safer for callbacks...
     void requestResizeShadowTexture(); // set flag only, no work, safer for callbacks...
 
-    void resizeScreenTexture();
-    void resizeShadowTexture();
+    bool resizeScreenTexture();
+    bool resizeShadowTexture();
+
+    bool mainChainComplete() const;
+    bool probeChainComplete() const;
+    bool heroChainComplete() const;
+    bool allocateProbeChains();
 
     void releaseGLBuffers();
     void releaseLUTBuffers();

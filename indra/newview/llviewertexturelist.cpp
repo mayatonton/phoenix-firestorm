@@ -1274,13 +1274,16 @@ F32 LLViewerTextureList::updateImagesCreateTextures(F32 max_time)
         }
     }
 
-    if (!mDownScaleQueue.empty() && gPipeline.mDownResMap.isComplete())
+    if (!mDownScaleQueue.empty())
     {
         LLGLDisable blend(GL_BLEND);
         gGL.setColorMask(true, true);
 
         // just in case we downres textures, bind downresmap and copy program
-        gPipeline.mDownResMap.bindTarget();
+        {
+        LLRTScope rts(gPipeline.mDownResMap, false, "downres");
+        if (rts)
+        {
         gCopyProgram.bind();
         gPipeline.mScreenTriangleVB->setBuffer();
 
@@ -1314,7 +1317,8 @@ F32 LLViewerTextureList::updateImagesCreateTextures(F32 max_time)
         }
 
         gCopyProgram.unbind();
-        gPipeline.mDownResMap.flush();
+        }
+        }
     }
 
     return create_timer.getElapsedTimeF32();
