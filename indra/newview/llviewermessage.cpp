@@ -5254,6 +5254,12 @@ void process_avatar_animation(LLMessageSystem *mesgsys, void **user_data)
             mesgsys->getUUIDFast(_PREHASH_AnimationList, _PREHASH_AnimID, animation_id, i);
             mesgsys->getS32Fast(_PREHASH_AnimationList, _PREHASH_AnimSequenceID, anim_sequence_id, i);
 
+            if (animation_id.isNull())
+            {
+                LL_DEBUGS("Motion") << "Dropping null animation id signaled for " << uuid << LL_ENDL;
+                continue;
+            }
+
             // <FS:Zi> Asset blacklist
             if (FSAssetBlacklist::getInstance()->isBlacklisted(animation_id, LLAssetType::AT_ANIMATION))
             {
@@ -5331,6 +5337,11 @@ void process_avatar_animation(LLMessageSystem *mesgsys, void **user_data)
         {
             mesgsys->getUUIDFast(_PREHASH_AnimationList, _PREHASH_AnimID, animation_id, i);
             mesgsys->getS32Fast(_PREHASH_AnimationList, _PREHASH_AnimSequenceID, anim_sequence_id, i);
+            if (animation_id.isNull())
+            {
+                LL_DEBUGS("Motion") << "Dropping null animation id signaled for " << uuid << LL_ENDL;
+                continue;
+            }
             avatarp->mSignaledAnimations[animation_id] = anim_sequence_id;
         }
     }

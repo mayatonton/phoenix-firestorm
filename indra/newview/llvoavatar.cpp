@@ -6732,7 +6732,8 @@ bool LLVOAvatar::processSingleAnimationStateChange( const LLUUID& anim_id, bool 
         }
         else
         {
-            LL_WARNS("Motion") << "Failed to start motion!" << LL_ENDL;
+            LL_WARNS("Motion") << "Failed to start motion " << anim_id
+                               << " avatar " << getID() << LL_ENDL;
         }
     }
     else //stop animation

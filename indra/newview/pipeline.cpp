@@ -4145,8 +4145,9 @@ void LLPipeline::markRebuild(LLDrawable *drawablep, LLDrawable::EDrawableFlags f
     }
 }
 
-static void vkcClassifyEmptyOtherGroup(LLSpatialGroup* group, U32* cls, std::vector<LLUUID>& hole_uuids,
-                                       std::vector<std::string>& zerogeom_info, std::vector<std::string>& transp_info)
+static void vkcScanEmptyDrawmapDefects(LLSpatialGroup* group, U32& hasgeom, U32& zerogeomv,
+                                       std::vector<LLUUID>& hole_uuids,
+                                       std::vector<std::string>& zerogeomv_info)
 {
     static LLCachedControl<bool> sa_protect(gSavedSettings, "RenderVolumeSAProtection");
     static LLCachedControl<F32> volume_sa_thresh(gSavedSettings, "RenderVolumeSAThreshold");
@@ -4157,18 +4158,19 @@ static void vkcClassifyEmptyOtherGroup(LLSpatialGroup* group, U32* cls, std::vec
         LLDrawable* drawablep = (LLDrawable*)(*it)->getDrawable();
         if (!drawablep || drawablep->isDead() || drawablep->isState(LLDrawable::FORCE_INVISIBLE))
         {
-            ++cls[0];
+            continue;
+        }
+        if (drawablep->isState(LLDrawable::IN_REBUILD_Q))
+        {
             continue;
         }
         if (LLPipeline::isParcelHideAlive(drawablep))
         {
-            ++cls[1];
             continue;
         }
         LLVOVolume* vobj = drawablep->getVOVolume();
         if (!vobj || vobj->isDead())
         {
-            ++cls[0];
             continue;
         }
         if (drawablep->isState(LLDrawable::RIGGED | LLDrawable::RIGGED_CHILD))
@@ -4177,31 +4179,26 @@ static void vkcClassifyEmptyOtherGroup(LLSpatialGroup* group, U32* cls, std::vec
         }
         if (vobj->mGLTFAsset)
         {
-            ++cls[2];
             continue;
         }
         if (vobj->isMesh())
         {
             if ((vobj->getVolume() && !vobj->getVolume()->isMeshAssetLoaded()) || !gMeshRepo.meshRezEnabled())
             {
-                ++cls[3];
                 continue;
             }
             if (!vobj->getSkinInfo() && !vobj->isSkinInfoUnavaliable())
             {
-                ++cls[4];
                 continue;
             }
         }
         if (sa_protect && vobj->mVolumeSurfaceArea > (vobj->isSculpted() ? (F32)sculpt_sa_thresh : (F32)volume_sa_thresh))
         {
-            ++cls[5];
             continue;
         }
         bool any_geom = false;
         bool any_visible = false;
         bool any_visible_te = false;
-        F32 dbg_alpha = -1.f;
         for (S32 i = 0; i < drawablep->getNumFaces(); ++i)
         {
             LLFace* facep = drawablep->getFace(i);
@@ -4219,10 +4216,6 @@ static void vkcClassifyEmptyOtherGroup(LLSpatialGroup* group, U32* cls, std::vec
                 continue;
             }
             any_geom = true;
-            if (dbg_alpha < 0.f)
-            {
-                dbg_alpha = alpha;
-            }
             if (visible_te)
             {
                 any_visible = true;
@@ -4230,39 +4223,25 @@ static void vkcClassifyEmptyOtherGroup(LLSpatialGroup* group, U32* cls, std::vec
         }
         if (any_visible)
         {
-            ++cls[8];
+            ++hasgeom;
             if (hole_uuids.size() < 8)
             {
                 hole_uuids.push_back(vobj->getID());
             }
         }
-        else if (any_geom)
+        else if (!any_geom && any_visible_te)
         {
-            ++cls[7];
-            if (transp_info.size() < 4)
-            {
-                transp_info.push_back(llformat("%s a=%.2f nf=%d mesh=%d",
-                    vobj->getID().asString().c_str(), dbg_alpha,
-                    drawablep->getNumFaces(), (S32)vobj->isMesh()));
-            }
-        }
-        else if (any_visible_te)
-        {
-            ++cls[9];
-            if (zerogeom_info.size() < 4)
+            ++zerogeomv;
+            if (zerogeomv_info.size() < 4)
             {
                 LLVolume* dbg_vol = vobj->getVolume();
-                zerogeom_info.push_back(llformat("%s mesh=%d vf=%d df=%d st=0x%x nv=%d",
+                zerogeomv_info.push_back(llformat("%s mesh=%d vf=%d df=%d st=0x%x nv=%d",
                     vobj->getID().asString().c_str(), (S32)vobj->isMesh(),
                     dbg_vol ? dbg_vol->getNumVolumeFaces() : -1,
                     drawablep->getNumFaces(), (U32)drawablep->getState(),
                     (dbg_vol && dbg_vol->getNumVolumeFaces() > 0)
                         ? dbg_vol->getVolumeFace(0).mNumVertices : -1));
             }
-        }
-        else
-        {
-            ++cls[6];
         }
     }
 }
@@ -4356,12 +4335,11 @@ void LLPipeline::stateSort(LLCamera& camera, LLCullResult &result)
     }
     {
         LL_PROFILE_ZONE_NAMED_CATEGORY_PIPELINE("StateSort: visible groups");
-    U32 vkc_empty_dirty    = 0;
-    U32 vkc_empty_other    = 0;
-    static U32 s_vkc_other_class[10] = {};
+    static U32 s_vkc_empty_frames = 0;
+    static U32 s_acc_hasgeom   = 0;
+    static U32 s_acc_zerogeomv = 0;
     static std::vector<LLUUID> s_vkc_hole_uuids;
-    static std::vector<std::string> s_vkc_zerogeom_info;
-    static std::vector<std::string> s_vkc_transp_info;
+    static std::vector<std::string> s_vkc_zerogeomv_info;
     for (LLCullResult::sg_iterator iter = getFrameCull()->beginVisibleGroups(); iter != getFrameCull()->endVisibleGroups(); ++iter)
     {
         LLSpatialGroup* group = *iter;
@@ -4369,21 +4347,11 @@ void LLPipeline::stateSort(LLCamera& camera, LLCullResult &result)
         {
             continue;
         }
-        if (group->mDrawMap.empty() && group->getElementCount() > 0)
+        if (group->mDrawMap.empty() && group->getElementCount() > 0 &&
+            !group->hasState(LLSpatialGroup::GEOM_DIRTY | LLSpatialGroup::ALPHA_DIRTY | LLSpatialGroup::IN_BUILD_Q1))
         {
-            if (group->hasState(LLSpatialGroup::GEOM_DIRTY | LLSpatialGroup::ALPHA_DIRTY))
-            {
-                ++vkc_empty_dirty;
-            }
-            else
-            {
-                ++vkc_empty_other;
-                if (LLVKContract::verboseEnabled())
-                {
-                    vkcClassifyEmptyOtherGroup(group, s_vkc_other_class, s_vkc_hole_uuids,
-                                               s_vkc_zerogeom_info, s_vkc_transp_info);
-                }
-            }
+            vkcScanEmptyDrawmapDefects(group, s_acc_hasgeom, s_acc_zerogeomv,
+                                       s_vkc_hole_uuids, s_vkc_zerogeomv_info);
         }
         group->checkOcclusion();
         if (sUseOcclusion > 1 && group->isOcclusionState(LLSpatialGroup::OCCLUDED))
@@ -4400,67 +4368,36 @@ void LLPipeline::stateSort(LLCamera& camera, LLCullResult &result)
             }
         }
     }
-    if (vkc_empty_dirty + vkc_empty_other > 0)
+    if ((++s_vkc_empty_frames % 60) == 0)
     {
-        static U32 s_vkc_empty_frames = 0;
-        static U32 s_acc_dirty = 0;
-        static U32 s_acc_other = 0;
-        s_acc_dirty    += vkc_empty_dirty;
-        s_acc_other    += vkc_empty_other;
-        if ((++s_vkc_empty_frames % 60) == 1)
+        if (s_acc_hasgeom + s_acc_zerogeomv > 0)
         {
             std::ostringstream cls;
-            if (LLVKContract::verboseEnabled())
+            if (!s_vkc_hole_uuids.empty())
             {
-                cls << " other_class{dead=" << s_vkc_other_class[0]
-                    << " parcel=" << s_vkc_other_class[1]
-                    << " gltf=" << s_vkc_other_class[2]
-                    << " meshwait=" << s_vkc_other_class[3]
-                    << " skinwait=" << s_vkc_other_class[4]
-                    << " sa=" << s_vkc_other_class[5]
-                    << " zerogeom=" << s_vkc_other_class[6]
-                    << " transp=" << s_vkc_other_class[7]
-                    << " hasgeom=" << s_vkc_other_class[8]
-                    << " zerogeomv=" << s_vkc_other_class[9] << "}";
-                if (!s_vkc_hole_uuids.empty())
+                cls << " hole_uuid[";
+                for (size_t u = 0; u < s_vkc_hole_uuids.size(); ++u)
                 {
-                    cls << " hole_uuid[";
-                    for (size_t u = 0; u < s_vkc_hole_uuids.size(); ++u)
-                    {
-                        cls << (u ? " " : "") << s_vkc_hole_uuids[u];
-                    }
-                    cls << "]";
+                    cls << (u ? " " : "") << s_vkc_hole_uuids[u];
                 }
-                if (!s_vkc_zerogeom_info.empty())
-                {
-                    cls << " zerogeomv[";
-                    for (size_t u = 0; u < s_vkc_zerogeom_info.size(); ++u)
-                    {
-                        cls << (u ? " | " : "") << s_vkc_zerogeom_info[u];
-                    }
-                    cls << "]";
-                }
-                if (!s_vkc_transp_info.empty())
-                {
-                    cls << " transp[";
-                    for (size_t u = 0; u < s_vkc_transp_info.size(); ++u)
-                    {
-                        cls << (u ? " | " : "") << s_vkc_transp_info[u];
-                    }
-                    cls << "]";
-                }
+                cls << "]";
             }
-            LL_WARNS("VKGeo") << "visible empty-drawmap groups (60f acc): dirty=" << s_acc_dirty
-                              << " other=" << s_acc_other << cls.str() << LL_ENDL;
-            s_acc_dirty = s_acc_other = 0;
-            for (U32 ci = 0; ci < 10; ++ci)
+            if (!s_vkc_zerogeomv_info.empty())
             {
-                s_vkc_other_class[ci] = 0;
+                cls << " zerogeomv[";
+                for (size_t u = 0; u < s_vkc_zerogeomv_info.size(); ++u)
+                {
+                    cls << (u ? " | " : "") << s_vkc_zerogeomv_info[u];
+                }
+                cls << "]";
             }
-            s_vkc_hole_uuids.clear();
-            s_vkc_zerogeom_info.clear();
-            s_vkc_transp_info.clear();
+            LL_WARNS("VKGeo") << "empty-drawmap defect (60f): hasgeom=" << s_acc_hasgeom
+                              << " zerogeomv=" << s_acc_zerogeomv << cls.str() << LL_ENDL;
         }
+        s_acc_hasgeom   = 0;
+        s_acc_zerogeomv = 0;
+        s_vkc_hole_uuids.clear();
+        s_vkc_zerogeomv_info.clear();
     }}
 
     {
