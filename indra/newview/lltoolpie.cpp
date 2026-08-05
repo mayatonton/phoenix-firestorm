@@ -298,38 +298,12 @@ bool LLToolPie::handleRightMouseDown(S32 x, S32 y, MASK mask)
 
     // don't pick transparent so users can't "pay" transparent objects
     mPick = gViewerWindow->pickImmediate(x, y,
-                                         /*bool pick_transparent*/ gSavedSettings.getBOOL("FSEnableRightclickOnTransparentObjects") || LLVKContract::watchPickModeEnabled(), // false, // <FS:Ansariel> FIRE-1396: Allow selecting transparent objects
+                                         /*bool pick_transparent*/ gSavedSettings.getBOOL("FSEnableRightclickOnTransparentObjects"), // false, // <FS:Ansariel> FIRE-1396: Allow selecting transparent objects
                                          /*bool pick_rigged*/ true,
                                          /*bool pick_particle*/ true,
                                          /*bool pick_unselectable*/ true,
                                          pick_reflection_probe);
     mPick.mKeyMask = mask;
-    {
-        LLViewerObject* vkc_obj = mPick.getObject();
-        if (vkc_obj != nullptr)
-        {
-            LLVKContract::watchPickCandidate(vkc_obj->getLocalID());
-            if (LLVKContract::watchPickModeEnabled())
-            {
-                LLViewerObject* vkc_root = (LLViewerObject*)vkc_obj->getRootEdit();
-                LL_WARNS("VKContract") << "VKC-PICK picked uuid=" << vkc_obj->mID
-                                       << " local=" << vkc_obj->getLocalID() << LL_ENDL;
-                if (vkc_root != nullptr)
-                {
-                    LL_WARNS("VKContract") << "VKC-PICK member uuid=" << vkc_root->mID
-                                           << " local=" << vkc_root->getLocalID() << " role=root" << LL_ENDL;
-                    for (const LLPointer<LLViewerObject>& vkc_child : vkc_root->getChildren())
-                    {
-                        if (vkc_child.notNull())
-                        {
-                            LL_WARNS("VKContract") << "VKC-PICK member uuid=" << vkc_child->mID
-                                                   << " local=" << vkc_child->getLocalID() << " role=child" << LL_ENDL;
-                        }
-                    }
-                }
-            }
-        }
-    }
 
     // claim not handled so UI focus stays same
     // <FS:Ansariel> Enable context/pie menu in mouselook

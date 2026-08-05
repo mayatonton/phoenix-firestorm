@@ -695,7 +695,7 @@ void LLParticlePartition::rebuildGeom(LLSpatialGroup* group)
         group->mLastUpdateViewAngle = group->mViewAngle;
     }
 
-    group->clearDrawMap(LLVKContract::SITE_CLEAR_REBUILD_GENERIC);
+    group->clearDrawMap();
 
     //get geometry count
     U32 index_count = 0;
@@ -807,7 +807,7 @@ void LLParticlePartition::getGeometry(LLSpatialGroup* group)
 
     std::sort(mFaceList.begin(), mFaceList.end(), LLFace::CompareDistanceGreater());
 
-    group->clearDrawMap(LLVKContract::SITE_CLEAR_REBUILD_GENERIC);
+    group->clearDrawMap();
 
     LLVertexBuffer* buffer = group->mVertexBuffer;
 

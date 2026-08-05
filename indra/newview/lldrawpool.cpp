@@ -117,24 +117,11 @@ extern bool gCubeSnapshot;
 extern bool gHeroProbeMirrorRender;
 extern bool gSnapshot;
 
-static U32 vkContractObjId(const void* p)
-{
-    const LLDrawInfo* di = static_cast<const LLDrawInfo*>(p);
-    return di != nullptr ? (U32)di->mFSPickerLocalID : 0u;
-}
-
-static U32 vkContractPassBucket()
-{
-    return (gCubeSnapshot || gHeroProbeMirrorRender) ? 3u : LLVKLoader::gVkPerfPassTag;
-}
-
 struct VkContractResolverInit
 {
     VkContractResolverInit()
     {
         LLVKContract::setResolvers(&vkContractDescribeDrawInfo, &vkContractDrawInfoKey);
-        LLVKContract::setObjIdResolver(&vkContractObjId);
-        LLVKContract::setPassBucketResolver(&vkContractPassBucket);
     }
 };
 static VkContractResolverInit sVkContractResolverInit;
@@ -985,7 +972,6 @@ U32 LLRenderPass::buildAndOverrideScenePerDrawSet(LLDrawInfo* params, bool batch
             LLVKContract::note(resolved_unit == 0 ? LLVKContract::C_FB_VIEW_DIFFUSE
                                                   : LLVKContract::C_FB_VIEW_AUX,
                                cur->mName);
-            LLVKContract::watchFbProbe(resolved_unit == 0, vkc_fb_reason);
             LLVKContract::noteFbSlot(cur, cur->mName, N, vkc_fb_reason);
             const U8 sdim_fb = cur->mVkBindingSamplerDim[N];
             view = cur->mVkBindingSamplerShadow[N] ? LLVKLoader::getDefaultFallbackShadowVkImageView()

@@ -349,12 +349,11 @@ public:
 
     bool isHUDGroup() const;
 
-    void clearDrawMap(U32 evict_site);
+    void clearDrawMap();
     void clearDrawMapStaged(const std::unordered_set<LLDrawable*>& preserve,
                             const std::unordered_set<LLDrawable*>& staged,
-                            U32 evict_site,
                             std::vector<LLDrawable*>* orphans = nullptr);
-    void stripDrawRecords(LLDrawable* drawablep, U32 evict_site);
+    void stripDrawRecords(LLDrawable* drawablep);
     void validate();
     void validateDrawMap();
 

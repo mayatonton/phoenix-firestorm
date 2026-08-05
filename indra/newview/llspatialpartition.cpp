@@ -137,44 +137,18 @@ LLSpatialGroup::~LLSpatialGroup()
 
     sNodeCount--;
 
-    clearDrawMap(LLVKContract::SITE_CLEAR_GROUP_DTOR);
+    clearDrawMap();
     LLVKBucket::onGroupDestroyed(this);
 }
 
-void LLSpatialGroup::clearDrawMap(U32 evict_site)
+void LLSpatialGroup::clearDrawMap()
 {
-    if (!mDrawMap.empty() && LLVKContract::verboseEnabled())
-    {
-        std::unordered_map<LLDrawable*, std::pair<U32, U32> > evicted;
-        for (draw_map_t::iterator it = mDrawMap.begin(); it != mDrawMap.end(); ++it)
-        {
-            drawmap_elem_t& vec = it->second;
-            for (size_t r = 0; r < vec.size(); ++r)
-            {
-                if (vec[r].isNull() || vec[r]->mSrcDrawable.isNull())
-                {
-                    continue;
-                }
-                auto& e = evicted[vec[r]->mSrcDrawable.get()];
-                if (e.second == 0)
-                {
-                    e.first = vec[r]->mFSPickerLocalID;
-                }
-                ++e.second;
-            }
-        }
-        for (auto& e : evicted)
-        {
-            LLVKContract::sentinelEvict(evict_site, e.first, e.second.first, e.second.second, e.first->isDead(), !e.first->isDead());
-        }
-    }
     mDrawMap.clear();
     LLVKBucket::evictGroup(this);
 }
 
 void LLSpatialGroup::clearDrawMapStaged(const std::unordered_set<LLDrawable*>& preserve,
                                         const std::unordered_set<LLDrawable*>& staged,
-                                        U32 evict_site,
                                         std::vector<LLDrawable*>* orphans)
 {
     if (orphans != nullptr && !mDrawMap.empty())
@@ -200,40 +174,8 @@ void LLSpatialGroup::clearDrawMapStaged(const std::unordered_set<LLDrawable*>& p
 
     if (preserve.empty())
     {
-        clearDrawMap(evict_site);
+        clearDrawMap();
         return;
-    }
-
-    if (LLVKContract::verboseEnabled())
-    {
-        std::unordered_map<LLDrawable*, std::pair<U32, U32> > evicted;
-        for (draw_map_t::iterator it = mDrawMap.begin(); it != mDrawMap.end(); ++it)
-        {
-            drawmap_elem_t& vec = it->second;
-            for (size_t r = 0; r < vec.size(); ++r)
-            {
-                if (vec[r].isNull() || vec[r]->mSrcDrawable.isNull())
-                {
-                    continue;
-                }
-                LLDrawable* d = vec[r]->mSrcDrawable.get();
-                if (preserve.find(d) != preserve.end())
-                {
-                    continue;
-                }
-                auto& e = evicted[d];
-                if (e.second == 0)
-                {
-                    e.first = vec[r]->mFSPickerLocalID;
-                }
-                ++e.second;
-            }
-        }
-        for (auto& e : evicted)
-        {
-            bool eligible = staged.find(e.first) != staged.end();
-            LLVKContract::sentinelEvict(evict_site, e.first, e.second.first, e.second.second, e.first->isDead(), eligible);
-        }
     }
 
     for (draw_map_t::iterator it = mDrawMap.begin(); it != mDrawMap.end(); )
@@ -268,15 +210,13 @@ void LLSpatialGroup::clearDrawMapStaged(const std::unordered_set<LLDrawable*>& p
     LLVKBucket::evictGroup(this);
 }
 
-void LLSpatialGroup::stripDrawRecords(LLDrawable* drawablep, U32 evict_site)
+void LLSpatialGroup::stripDrawRecords(LLDrawable* drawablep)
 {
     if (drawablep == nullptr || mDrawMap.empty())
     {
         return;
     }
     bool removed = false;
-    U32 removed_count = 0;
-    U32 removed_obj = 0;
     for (draw_map_t::iterator it = mDrawMap.begin(); it != mDrawMap.end(); ++it)
     {
         drawmap_elem_t& vec = it->second;
@@ -286,11 +226,6 @@ void LLSpatialGroup::stripDrawRecords(LLDrawable* drawablep, U32 evict_site)
             if (vec[r].notNull() && vec[r]->mSrcDrawable.get() == drawablep)
             {
                 removed = true;
-                ++removed_count;
-                if (removed_obj == 0)
-                {
-                    removed_obj = vec[r]->mFSPickerLocalID;
-                }
                 continue;
             }
             if (w != r)
@@ -306,7 +241,6 @@ void LLSpatialGroup::stripDrawRecords(LLDrawable* drawablep, U32 evict_site)
     }
     if (removed)
     {
-        LLVKContract::sentinelEvict(evict_site, drawablep, removed_obj, removed_count, drawablep->isDead(), !drawablep->isDead());
         LLVKBucket::patchGroup(this);
     }
 }
@@ -534,7 +468,7 @@ void LLSpatialPartition::rebuildGeom(LLSpatialGroup* group)
 
     LL_PROFILE_ZONE_SCOPED_CATEGORY_SPATIAL;
 
-    group->clearDrawMap(LLVKContract::SITE_CLEAR_REBUILD_GENERIC);
+    group->clearDrawMap();
 
     //get geometry count
     U32 index_count = 0;
@@ -625,7 +559,7 @@ bool LLSpatialGroup::removeObject(LLDrawable *drawablep, bool from_octree)
 
         if (getElementCount() == 0)
         { //delete draw map on last element removal since a rebuild might never happen
-            clearDrawMap(LLVKContract::SITE_CLEAR_LAST_ELEMENT);
+            clearDrawMap();
         }
     }
     return true;
@@ -985,7 +919,7 @@ void LLSpatialGroup::handleDestruction(const TreeNode* node)
         }
     }
 
-    clearDrawMap(LLVKContract::SITE_CLEAR_ZOMBIE);
+    clearDrawMap();
     mVertexBuffer = NULL;
     mBufferMap.clear();
     sZombieGroups++;
@@ -1061,7 +995,7 @@ void LLSpatialGroup::destroyGLState(bool keep_occlusion)
     mVertexBuffer = NULL;
     mBufferMap.clear();
 
-    clearDrawMap(LLVKContract::SITE_CLEAR_DESTROY_GL);
+    clearDrawMap();
 
     if (!keep_occlusion)
     {

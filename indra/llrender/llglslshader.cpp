@@ -3778,7 +3778,6 @@ void LLGLSLShader::populateAndBindUniversalDescriptorSet()
             LLVKContract::note(resolved_unit == 0 ? LLVKContract::C_FB_VIEW_DIFFUSE
                                                   : LLVKContract::C_FB_VIEW_AUX,
                                cur->mName);
-            LLVKContract::watchFbProbe(resolved_unit == 0, vkc_fb_reason);
             LLVKContract::noteFbSlot(cur, cur->mName, N, vkc_fb_reason);
             const U8 sdim = cur->mVkBindingSamplerDim[N];
             view = cur->mVkBindingSamplerShadow[N] ? LLVKLoader::getDefaultFallbackShadowVkImageView()

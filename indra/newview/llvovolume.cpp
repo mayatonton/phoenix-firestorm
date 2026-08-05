@@ -5852,36 +5852,27 @@ namespace
 
     bool applyGeoStaged(LLSpatialGroup* group, LLGeoStagedRebuild& staged, built_map_t* prebuilt = nullptr)
     {
-        auto watch_id = [](const LLGeoFaceApply& e) -> U32
-        {
-            const LLViewerObject* vo = e.mDrawable.notNull() ? e.mDrawable->getVObj() : nullptr;
-            return vo != nullptr ? vo->getLocalID() : 0;
-        };
         for (const LLGeoFaceApply& e : staged.mFaces)
         {
             LLDrawable* drawablep = e.mDrawable.get();
             if (drawablep == nullptr || drawablep->isDead())
             {
-                LLVKContract::watchStageEvent(watch_id(e), "apply_abort_dead");
                 return false;
             }
             if (drawablep->getSpatialGroup() != group)
             {
                 if (prebuilt != nullptr)
                 {
-                    LLVKContract::watchStageEvent(watch_id(e), "apply_abort_moved");
                     return false;
                 }
                 continue;
             }
             if (e.mTEOffset < 0 || e.mTEOffset >= drawablep->getNumFaces())
             {
-                LLVKContract::watchStageEvent(watch_id(e), "apply_abort_te");
                 return false;
             }
             if (drawablep->getFace(e.mTEOffset) != e.mFace)
             {
-                LLVKContract::watchStageEvent(watch_id(e), "apply_abort_face");
                 return false;
             }
             if (!e.mFieldsApplied && !e.mAllocFailed)
@@ -5889,13 +5880,11 @@ namespace
                 if ((U32)e.mFace->getGeomCount() != e.mGeomCount ||
                     (U32)e.mFace->getIndicesCount() != e.mIndicesCount)
                 {
-                    LLVKContract::watchStageEvent(watch_id(e), "apply_abort_count");
                     return false;
                 }
             }
             if (e.mFieldsApplied && !e.mAllocFailed && e.mFace->getVertexBuffer() == nullptr)
             {
-                LLVKContract::watchStageEvent(watch_id(e), "apply_abort_nullvb");
                 return false;
             }
         }
@@ -5929,8 +5918,7 @@ namespace
         }
 
         std::vector<LLDrawable*> evict_orphans;
-        group->clearDrawMapStaged(preserve, staged_drawables, LLVKContract::SITE_CLEAR_APPLY,
-                                  &evict_orphans);
+        group->clearDrawMapStaged(preserve, staged_drawables, &evict_orphans);
         for (LLDrawable* orphan : evict_orphans)
         {
             gPipeline.markRebuild(orphan, LLDrawable::REBUILD_GEOMETRY);
@@ -5955,7 +5943,6 @@ namespace
                 {
                     gPipeline.markRebuild(e.mDrawable, LLDrawable::REBUILD_VOLUME);
                 }
-                LLVKContract::watchStageEvent(watch_id(e), "apply_moved");
                 continue;
             }
 
@@ -5966,7 +5953,6 @@ namespace
                     facep->setVertexBuffer(nullptr);
                     facep->setSize(0, 0);
                 }
-                LLVKContract::watchStageEvent(watch_id(e), "apply_allocfail");
                 continue;
             }
 
@@ -5988,8 +5974,6 @@ namespace
                     }
                 }
             }
-            LLVKContract::watchStageEvent(watch_id(e), "apply_reg", (U32)e.mPasses.size());
-
             U32 live_snaps = 0;
             for (const LLDrawInfoSnapshot& snap : e.mSnaps)
             {
@@ -6005,7 +5989,6 @@ namespace
                 if (!hidden_selected)
                 {
                     staged.mHadFailedFace = true;
-                    LLVKContract::watchStageEvent(watch_id(e), "apply_norec");
                 }
             }
         }
@@ -6063,7 +6046,6 @@ static LLDrawInfoSnapshot captureRegisterSnapshot(LLFace* facep, U32 type)
            ( ((!pObj->isHUDAttachment()) || (!gRlvAttachmentLocks.isLockedAttachment(pObj->getRootEdit()))) &&
              (RlvActions::canEdit(pObj)) ) ) )
     {
-        LLVKContract::watchStageEvent(pObj->getLocalID(), "reg_hidden");
         s.mSkip = true;
         return s;
     }
@@ -6214,7 +6196,6 @@ static void buildDrawInfoFromSnapshot(built_map_t& out, LLDrawInfoSnapshot& s, c
 {
     if (vb.mVb == nullptr)
     {
-        LLVKContract::watchStageEvent(s.mFSPickerLocalID, "reg_nullvb");
         static std::atomic<U32> s_null_vb_faces{0};
         const U32 n = ++s_null_vb_faces;
         if ((n & (n - 1)) == 0)
@@ -6230,8 +6211,6 @@ static void buildDrawInfoFromSnapshot(built_map_t& out, LLDrawInfoSnapshot& s, c
         LL_WARNS() << "Non fullbright face has no normals!" << LL_ENDL;
         return;
     }
-
-    LLDrawable* srcd = s.mSrcDrawable.get();
 
     std::vector<BuiltDraw>& draw_vec = out[s.mPassType];
 
@@ -6362,8 +6341,6 @@ static void buildDrawInfoFromSnapshot(built_map_t& out, LLDrawInfoSnapshot& s, c
         }
         draw_vec.push_back(std::move(bd));
     }
-
-    LLVKContract::sentinelRegister(srcd);
 
     llassert(info->mGLTFMaterial == nullptr || (vb.mVb->getTypeMask() & LLVertexBuffer::MAP_TANGENT) != 0);
     llassert(s.mType != LLPipeline::RENDER_TYPE_PASS_GLTF_PBR || info->mGLTFMaterial != nullptr);
@@ -7467,9 +7444,6 @@ U32 LLVolumeGeometryManager::genDrawInfo(LLSpatialGroup* group, U32 mask, LLFace
 
             if (buffer.isNull())
             {
-                LLVKContract::watchStageEvent(facep->getViewerObject() != nullptr
-                                              ? facep->getViewerObject()->getLocalID() : 0,
-                                              "alloc_null");
                 // Bulk allocation failed
                 if (apply != nullptr)
                 {
@@ -7544,7 +7518,6 @@ U32 LLVolumeGeometryManager::genDrawInfo(LLSpatialGroup* group, U32 mask, LLFace
                             {
                                 LL_WARNS() << "Failed to get geometry for face!" << LL_ENDL;
                             }
-                            LLVKContract::watchStageEvent(vobj->getLocalID(), "inline");
                         }
                     }
 
