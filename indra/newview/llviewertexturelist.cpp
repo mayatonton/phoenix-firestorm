@@ -873,6 +873,7 @@ void LLViewerTextureList::updateImages(F32 max_time)
         {
             s_stuck_sweep_timer.reset();
             U32 stuck = 0;
+            U32 unmet = 0;
             for (image_list_t::iterator sit = mImageList.begin(); sit != mImageList.end(); ++sit)
             {
                 LLViewerFetchedTexture* stuck_imagep = *sit;
@@ -885,8 +886,51 @@ void LLViewerTextureList::updateImages(F32 max_time)
                                                << " " << stuck_imagep->fetchRetryStuckInfo() << LL_ENDL;
                     }
                 }
+                if (stuck_imagep && stuck_imagep->sweepFetchObligation())
+                {
+                    ++unmet;
+                    if (unmet <= 3)
+                    {
+                        LL_WARNS("AssetStuck") << "unmet fetch obligation texture " << stuck_imagep->getID()
+                                               << " vsize=" << (S32)stuck_imagep->getMaxVirtualSize()
+                                               << " discard=" << stuck_imagep->getDiscardLevel()
+                                               << " desired=" << (S32)stuck_imagep->getDesiredDiscardLevel()
+                                               << " sweeps=" << stuck_imagep->getFetchObligationUnmetSweeps() << LL_ENDL;
+                    }
+                }
+            }
+            if (unmet > 3)
+            {
+                LL_WARNS("AssetStuck") << "unmet fetch obligation total=" << unmet << LL_ENDL;
             }
             gAssetOracleTexStuck.store(stuck);
+
+            LLTextureFetch* fetcherp = LLAppViewer::getTextureFetch();
+            if (fetcherp)
+            {
+                static U32 s_pump_last_pulse[LLTextureFetch::TEX_PUMP_COUNT] = {};
+                static U32 s_pump_streak[LLTextureFetch::TEX_PUMP_COUNT] = {};
+                for (S32 p = 0; p < LLTextureFetch::TEX_PUMP_COUNT; ++p)
+                {
+                    LLTextureFetch::e_tex_pump pump = (LLTextureFetch::e_tex_pump)p;
+                    LLTextureFetch::TexPumpStat stat = fetcherp->getTexPumpStat(pump);
+                    if (stat.waiting > 0 && stat.pulse == s_pump_last_pulse[p])
+                    {
+                        ++s_pump_streak[p];
+                    }
+                    else
+                    {
+                        s_pump_streak[p] = 0;
+                    }
+                    s_pump_last_pulse[p] = stat.pulse;
+                    if (s_pump_streak[p] == 4 || (s_pump_streak[p] > 4 && (s_pump_streak[p] - 4) % 4 == 0))
+                    {
+                        LL_WARNS("AssetStuck") << "texfetch_pump_stall pump=" << LLTextureFetch::getTexPumpName(pump)
+                                               << " waiting=" << stat.waiting
+                                               << " windows=" << s_pump_streak[p] << LL_ENDL;
+                    }
+                }
+            }
         }
     }
 

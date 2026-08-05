@@ -1195,6 +1195,7 @@ void LLViewerFetchedTexture::init(bool firstinit)
     mHasFetcher = false;
     mIsFetching = false;
     mFetchState = 0;
+    mFetchObligationUnmetSweeps = 0;
     mFetchPriority = 0;
     mDownloadProgress = 0.f;
     mFetchDeltaTime = 999999.f;
@@ -1615,14 +1616,39 @@ std::string LLViewerFetchedTexture::fetchRetryStuckInfo() const
                     (S32)mBoostLevel, (S32)mHasFetcher);
 }
 
-const char* LLViewerFetchedTexture::getVkSupplyClass() const
+bool LLViewerFetchedTexture::sweepFetchObligation()
 {
-    if (isMissingAsset())                       return "missing";
-    if (mMaxVirtualSize <= 0.f)                 return "nodemand";
-    if (mIsFetching || mHasFetcher)             return "fetching";
-    if (mNeedsCreateTexture.CurrentValue())     return "creating";
-    if (mFetchFailCount > 0 || mCreateFailCount > 0) return "retrywait";
-    return "stalled";
+    bool unmet = true;
+    if (mNeedsCreateTexture || mIsMissingAsset
+        || (!mLoadedCallbackList.empty() && mRawImage.notNull())
+        || mInFastCacheList
+        || mGLTexturep.isNull()
+        || mIsFetching || mHasFetcher
+        || mMaxVirtualSize <= 0.f
+        || mDesiredDiscardLevel > getMaxDiscardLevel()
+        || (mFetchFailCount > 0 && !mFetchFailTimer.hasExpired())
+        || (mCreateFailCount > 0 && !mCreateFailTimer.hasExpired()))
+    {
+        unmet = false;
+    }
+    if (unmet)
+    {
+        S32 current_discard = getCurrentDiscardLevelForFetching();
+        S32 desired_discard = llmin((S32)getDesiredDiscardLevel(), getMaxDiscardLevel());
+        if (current_discard >= 0
+            && (current_discard <= mMinDiscardLevel || current_discard <= desired_discard))
+        {
+            unmet = false;
+        }
+    }
+    if (!unmet)
+    {
+        mFetchObligationUnmetSweeps = 0;
+        return false;
+    }
+    ++mFetchObligationUnmetSweeps;
+    return mFetchObligationUnmetSweeps == 3
+        || (mFetchObligationUnmetSweeps > 3 && ((mFetchObligationUnmetSweeps - 3) % 4) == 0);
 }
 
 bool LLViewerFetchedTexture::createTexture()

@@ -129,14 +129,6 @@ void LLTexUnit::disable(void)
     }
 }
 
-static void vkNoteDefaultBind(LLImageGL* image, S32 unit, const char* reason)
-{
-    LLGLSLShader* sh = LLGLSLShader::sCurBoundShaderPtr;
-    LLVKContract::noteFbSlot(sh,
-                             sh != nullptr ? sh->mName : std::string("(noshader)"),
-                             (U32)llmax(unit, 0), reason);
-}
-
 void LLTexUnit::vkNotifyShaderChannelBound()
 {
     if (!LLVKLoader::isVulkanInitialized())
@@ -151,20 +143,6 @@ void LLTexUnit::vkNotifyShaderChannelBound()
     sh->vkCaptureChannelBoundView(mIndex);
 }
 
-static const char* vkDefaultBindReason(bool fast, const char* cls)
-{
-    switch (cls[0])
-    {
-    case 'm': return fast ? "bindfast_default.missing"   : "bindtex_default.missing";
-    case 'n': return fast ? "bindfast_default.nodemand"  : "bindtex_default.nodemand";
-    case 'f': return fast ? "bindfast_default.fetching"  : "bindtex_default.fetching";
-    case 'c': return fast ? "bindfast_default.creating"  : "bindtex_default.creating";
-    case 'r': return fast ? "bindfast_default.retrywait" : "bindtex_default.retrywait";
-    case 's': return fast ? "bindfast_default.stalled"   : "bindtex_default.stalled";
-    default:  return fast ? "bindfast_default.un"        : "bindtex_default.un";
-    }
-}
-
 void LLTexUnit::bindFast(LLTexture* texture)
 {
     LLImageGL* gl_tex = texture->getGLTexture();
@@ -175,7 +153,6 @@ void LLTexUnit::bindFast(LLTexture* texture)
         LL_PROFILE_ZONE_NAMED_CATEGORY_PIPELINE("MISSING TEXTURE");
         texture->forceImmediateUpdate();
         gl_tex->forceUpdateBindStats();
-        vkNoteDefaultBind(gl_tex, mIndex, vkDefaultBindReason(true, texture->getVkSupplyClass()));
         texture->bindDefaultImage(mIndex);
         mCurrVkWhite = false;
         return;
@@ -266,7 +243,6 @@ bool LLTexUnit::bind(LLTexture* texture, bool for_rendering, bool forceBind)
                 texture->forceImmediateUpdate() ;
 
                 gl_tex->forceUpdateBindStats() ;
-                vkNoteDefaultBind(gl_tex, mIndex, vkDefaultBindReason(false, texture->getVkSupplyClass()));
                 mCurrVkWhite = false;
                 return texture->bindDefaultImage(mIndex);
             }
@@ -308,7 +284,6 @@ bool LLTexUnit::bind(LLImageGL* texture, bool for_rendering, bool forceBind)
         mCurrVkWhite = false;
         if(LLImageGL::sDefaultGLTexture && LLImageGL::sDefaultGLTexture->hasVkImage())
         {
-            vkNoteDefaultBind(texture, mIndex, "bind_default");
             return bind(LLImageGL::sDefaultGLTexture) ;
         }
         return false ;

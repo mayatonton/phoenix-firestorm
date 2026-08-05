@@ -1744,6 +1744,7 @@ void LLPipeline::releaseLUTBuffers()
 
     mColorGradingLUT = nullptr;
     mColorGradingLUTName.clear();
+    mColorGradingLUTValid = false;
 
     mPbrBrdfLut.release();
 
@@ -1962,62 +1963,84 @@ F32 lerpf(F32 a, F32 b, F32 w)
 
 bool LLPipeline::loadColorGradingLUT(const std::string& filename)
 {
-    mColorGradingLUT = nullptr;
-    mColorGradingLUTName.clear();
-
-    if (filename.empty())
-        return true;
-
-    std::string path = filename;
-    if (!gDirUtilp->fileExists(path))
-        path = gDirUtilp->getExpandedFilename(LL_PATH_APP_SETTINGS, "luts", filename);
-
-    llifstream file(path.c_str());
-    if (!file.is_open())
-    {
-        LL_WARNS("LUT") << "Failed to open LUT file: " << path << LL_ENDL;
-        return false;
-    }
+    mColorGradingLUTValid = false;
+    mColorGradingLUTName = filename;
 
     int lut_size = 0;
     std::vector<float> lut_data;
-    std::string line;
+    bool loaded = false;
 
-    while (std::getline(file, line))
+    if (!filename.empty())
     {
-        if (line.empty() || line[0] == '#') continue;
-        if (line.substr(0, 12) == "LUT_3D_SIZE ")
+        std::string path = filename;
+        if (!gDirUtilp->fileExists(path))
+            path = gDirUtilp->getExpandedFilename(LL_PATH_APP_SETTINGS, "luts", filename);
+
+        llifstream file(path.c_str());
+        if (!file.is_open())
         {
-            lut_size = std::stoi(line.substr(12));
-            lut_data.reserve((size_t)lut_size * lut_size * lut_size * 3);
-            continue;
+            LL_WARNS("LUT") << "Failed to open LUT file: " << path << LL_ENDL;
         }
-        if (lut_size > 0)
+        else
         {
-            float r, g, b;
-            if (sscanf(line.c_str(), "%f %f %f", &r, &g, &b) == 3)
+            std::string line;
+            while (std::getline(file, line))
             {
-                lut_data.push_back(r);
-                lut_data.push_back(g);
-                lut_data.push_back(b);
+                if (line.empty() || line[0] == '#') continue;
+                if (line.substr(0, 12) == "LUT_3D_SIZE ")
+                {
+                    lut_size = std::stoi(line.substr(12));
+                    lut_data.reserve((size_t)lut_size * lut_size * lut_size * 3);
+                    continue;
+                }
+                if (lut_size > 0)
+                {
+                    float r, g, b;
+                    if (sscanf(line.c_str(), "%f %f %f", &r, &g, &b) == 3)
+                    {
+                        lut_data.push_back(r);
+                        lut_data.push_back(g);
+                        lut_data.push_back(b);
+                    }
+                }
+            }
+
+            if (lut_size <= 0 || (int)lut_data.size() != lut_size * lut_size * lut_size * 3)
+            {
+                LL_WARNS("LUT") << "Invalid LUT file (size=" << lut_size
+                    << " entries=" << lut_data.size() << "): " << path << LL_ENDL;
+                lut_size = 0;
+                lut_data.clear();
+            }
+            else
+            {
+                loaded = true;
+                LL_INFOS("LUT") << "Loaded color grading LUT: " << path << LL_ENDL;
             }
         }
     }
 
-    if (lut_size <= 0 || (int)lut_data.size() != lut_size * lut_size * lut_size * 3)
+    if (!loaded)
     {
-        LL_WARNS("LUT") << "Invalid LUT file (size=" << lut_size
-            << " entries=" << lut_data.size() << "): " << path << LL_ENDL;
-        return false;
+        lut_size = 2;
+        lut_data.clear();
+        lut_data.reserve((size_t)lut_size * lut_size * lut_size * 3);
+        for (int z = 0; z < lut_size; ++z)
+            for (int y = 0; y < lut_size; ++y)
+                for (int x = 0; x < lut_size; ++x)
+                {
+                    lut_data.push_back((float)x / (float)(lut_size - 1));
+                    lut_data.push_back((float)y / (float)(lut_size - 1));
+                    lut_data.push_back((float)z / (float)(lut_size - 1));
+                }
     }
 
     mColorGradingLUT = new LLImageGL(lut_size, lut_size, 3, false);
     mColorGradingLUT->setTarget(GL_TEXTURE_3D, LLTexUnit::TT_TEXTURE_3D);
     mColorGradingLUT->syncVulkan3DImage(GL_RGB16F, GL_RGB, GL_FLOAT, lut_size, lut_size, lut_size, lut_data.data());
 
-    mColorGradingLUTName = filename;
-    LL_INFOS("LUT") << "Loaded color grading LUT: " << path << LL_ENDL;
-    return true;
+    mColorGradingLUTValid = loaded;
+    return filename.empty() || loaded;
 }
 
 void LLPipeline::createLUTBuffers()
@@ -5742,7 +5765,7 @@ void LLPipeline::renderGeomPostDeferred(LLCamera& camera)
         if (cur_type >= atmospherics_pass && !done_atmospherics)
         { // do atmospherics against depth buffer before rendering alpha
             LLVKLoader::gpuCheckpoint("post:atmospherics");
-            doAtmospherics();
+            bool scene_depth_ok = doAtmospherics();
             done_atmospherics = true;
             // <FS:AYAstorm r30 BD改善> AYAstorm View は無条件、Cinematic は個別 InCinematic cvar で opt-in。
             //   各関数も自己 gate 済 (Phase 3.1 / r20 早期 return) だが call-site でも wrap して
@@ -5755,7 +5778,7 @@ void LLPipeline::renderGeomPostDeferred(LLCamera& camera)
             if (dispatch_r15)
             {
                 LLVKLoader::gpuCheckpoint("post:godrays");
-                doGodrays();
+                doGodrays(scene_depth_ok);
             }
             // </FS:AYAstorm>
         }
@@ -9460,13 +9483,13 @@ void LLPipeline::tonemap(LLRenderTarget* src, LLRenderTarget* dst, bool gamma_co
             // <FS:AYAstorm r30 BD full port Phase 3.7 cat 01> Cinematic では
             // LUT name を空 string (= LUT load しない) に強制。
             const std::string lut_name = gSavedSettings.getString("RenderColorGradingLUTName");
-            if (lut_name != mColorGradingLUTName)
+            if (mColorGradingLUT.isNull() || lut_name != mColorGradingLUTName)
                 loadColorGradingLUT(lut_name);
             // </FS:AYAstorm>
         }
 
         S32 lut_channel = shader->enableTexture(LLShaderMgr::COLOR_GRADING_LUT, LLTexUnit::TT_TEXTURE_3D);
-        if (lut_channel > -1 && mColorGradingLUT.notNull())
+        if (lut_channel > -1)
             gGL.getTexUnit(lut_channel)->bind(mColorGradingLUT);
         // </FS:AYAstorm>
 
@@ -9480,7 +9503,7 @@ void LLPipeline::tonemap(LLRenderTarget* src, LLRenderTarget* dst, bool gamma_co
             ubo_data.color_temperature           = gSavedSettings.getF32("RenderColorTemperature");
             ubo_data.color_brightness            = gSavedSettings.getF32("RenderColorBrightness");
             ubo_data.color_grading_lut_intensity = gSavedSettings.getF32("RenderColorGradingLUTIntensity");
-            ubo_data.color_grading_lut_enabled   = (mColorGradingLUT.notNull()) ? 1 : 0;
+            ubo_data.color_grading_lut_enabled   = mColorGradingLUTValid ? 1 : 0;
             ubo_data.gamma                       = gamma_correct ? (F32)psky->getGamma() : 0.f;
             std::memcpy(shader->mVkPerProgramUBOMapped, &ubo_data,
                         llmin((U32)sizeof(ubo_data), shader->mVkPerProgramUBOSize));
@@ -12788,48 +12811,54 @@ void LLPipeline::renderDeferredLighting()
     }
 }
 
-void LLPipeline::doAtmospherics()
+bool LLPipeline::snapshotSceneDepthToWaterDis()
+{
+    LLRTDetour det(gPipeline.mWaterDis, false, "atm_depthcopy");
+    if (det)
+    {
+        // copy depth buffer for use in haze shader (use water displacement map as temp storage)
+        LLGLDepthTest depth(GL_TRUE, GL_TRUE, GL_ALWAYS);
+
+        LLRenderTarget& src = getFrameRT()->screen;
+        LLRenderTarget& depth_src = getFrameRT()->deferredScreen;
+
+        gCopyDepthProgram.bind();
+
+        S32 diff_map = gCopyDepthProgram.getTextureChannel(LLShaderMgr::DIFFUSE_MAP);
+        S32 depth_map = gCopyDepthProgram.getTextureChannel(LLShaderMgr::DEFERRED_DEPTH);
+
+        gGL.getTexUnit(diff_map)->bind(&src);
+        gGL.getTexUnit(depth_map)->bind(&depth_src, true);
+
+        if (LLVKLoader::isVulkanInitialized())
+        {
+            src.bindForShaderRead();
+            depth_src.bindForShaderRead(0, true);
+        }
+
+        gGL.setColorMask(false, false);
+        gPipeline.mScreenTriangleVB->setBuffer();
+        gPipeline.mScreenTriangleVB->drawArrays(LLRender::TRIANGLES, 0, 3);
+
+    }
+    det.resume();
+    return (bool)det;
+}
+
+bool LLPipeline::doAtmospherics()
 {
     LL_PROFILE_ZONE_SCOPED_CATEGORY_PIPELINE;
 
     if (isFrameImpostorPass())
     { // do not attempt atmospherics on impostors
-        return;
+        return false;
     }
 
     if (RenderDeferredAtmospheric)
     {
-        LLRTDetour det(gPipeline.mWaterDis, false, "atm_depthcopy");
-        if (det)
-        {
-            // copy depth buffer for use in haze shader (use water displacement map as temp storage)
-            LLGLDepthTest depth(GL_TRUE, GL_TRUE, GL_ALWAYS);
+        bool scene_depth_ok = snapshotSceneDepthToWaterDis();
 
-            LLRenderTarget& src = getFrameRT()->screen;
-            LLRenderTarget& depth_src = getFrameRT()->deferredScreen;
-
-            gCopyDepthProgram.bind();
-
-            S32 diff_map = gCopyDepthProgram.getTextureChannel(LLShaderMgr::DIFFUSE_MAP);
-            S32 depth_map = gCopyDepthProgram.getTextureChannel(LLShaderMgr::DEFERRED_DEPTH);
-
-            gGL.getTexUnit(diff_map)->bind(&src);
-            gGL.getTexUnit(depth_map)->bind(&depth_src, true);
-
-            if (LLVKLoader::isVulkanInitialized())
-            {
-                src.bindForShaderRead();
-                depth_src.bindForShaderRead(0, true);
-            }
-
-            gGL.setColorMask(false, false);
-            gPipeline.mScreenTriangleVB->setBuffer();
-            gPipeline.mScreenTriangleVB->drawArrays(LLRender::TRIANGLES, 0, 3);
-
-        }
-        det.resume();
-
-        if (det)
+        if (scene_depth_ok)
         {
         LLGLEnable blend(GL_BLEND);
         gGL.blendFunc(LLRender::BF_ONE, LLRender::BF_SOURCE_ALPHA, LLRender::BF_ZERO, LLRender::BF_SOURCE_ALPHA);
@@ -12868,14 +12897,16 @@ void LLPipeline::doAtmospherics()
 
         gGL.setSceneBlendType(LLRender::BT_ALPHA);
         }
+        return scene_depth_ok;
     }
+    return false;
 }
 
 // <FS:AYA r15 P1> godrays: screen-space shadow-driven ray-march pass.
 // Mirrors the doAtmospherics() pattern (bindDeferredShader on the HDR
 // scene buffer, fullscreen triangle, additive blend) so godrays land on
 // getFrameRT()->screen while it is still HDR / pre-tonemap.
-void LLPipeline::doGodrays()
+void LLPipeline::doGodrays(bool scene_depth_ok)
 {
     LL_PROFILE_ZONE_SCOPED_CATEGORY_PIPELINE;
 
@@ -12895,13 +12926,22 @@ void LLPipeline::doGodrays()
         return;
     }
 
+    if (!scene_depth_ok)
+    {
+        scene_depth_ok = snapshotSceneDepthToWaterDis();
+    }
+    if (!scene_depth_ok)
+    {
+        return;
+    }
+
     LLGLDepthTest depth(GL_FALSE);
     LLGLEnable    blend(GL_BLEND);
     gGL.blendFunc(LLRender::BF_ONE, LLRender::BF_ONE, LLRender::BF_ONE, LLRender::BF_ONE);
     gGL.setColorMask(true, true);
 
     LLGLSLShader& shader = gDeferredGodraysProgram;
-    bindDeferredShader(shader);
+    bindDeferredShader(shader, nullptr, &mWaterDis);
 
     LL_PROFILE_GPU_ZONE("godrays");
 

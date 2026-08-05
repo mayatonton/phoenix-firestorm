@@ -548,6 +548,8 @@ private:
 
     e_state mState;
     void setState(e_state new_state);
+    static S32 waitBucketForState(e_state s);
+    S32 mWaitBucket;
     LLViewerRegion* getRegion();
 
     e_write_to_cache_state mWriteToCacheState;
@@ -909,6 +911,7 @@ LLTextureFetchWorker::LLTextureFetchWorker(LLTextureFetch* fetcher,
     : LLWorkerClass(fetcher, "TextureFetch"),
       LLCore::HttpHandler(),
       mState(INIT),
+      mWaitBucket(-1),
       mWriteToCacheState(NOT_WRITE),
       mFetcher(fetcher),
       mFTType(f_type),
@@ -990,6 +993,11 @@ LLTextureFetchWorker::~LLTextureFetchWorker()
     llassert_always(!haveWork());
 
     lockWorkMutex();                                                    // +Mw (should be useless)
+    if (mWaitBucket >= 0)
+    {
+        mFetcher->mTexPumpWaiting[mWaitBucket]--;
+        mWaitBucket = -1;
+    }
     if (mHttpHasResource)
     {
         // Last-chance catchall to recover the resource.  Using an
@@ -1216,7 +1224,7 @@ bool LLTextureFetchWorker::doWork(S32 param)
         if (FSAssetBlacklist::getInstance()->isBlacklisted(mID, LLAssetType::AT_TEXTURE))
         {
             LL_INFOS() << "Blacklisted texture asset blocked." << LL_ENDL;
-            mState = DONE;
+            setState(DONE);
             return true;
         }
         // </FS> Asset Blacklist
@@ -2166,6 +2174,7 @@ void LLTextureFetchWorker::onCompleted(LLCore::HttpHandle handle, LLCore::HttpRe
     LLMutexLock lock(&mWorkMutex);                                      // +Mw
 
     mHttpActive = false;
+    mFetcher->mTexPumpPulse[LLTextureFetch::TEX_PUMP_HTTP_REQ]++;
 
     if (log_to_viewer_log || log_to_sim)
     {
@@ -2618,6 +2627,7 @@ void LLTextureFetchWorker::callbackCacheRead(bool success, LLImageFormatted* ima
         }
     }
     mLoaded = true;
+    mFetcher->mTexPumpPulse[LLTextureFetch::TEX_PUMP_CACHE_READ]++;
 }                                                                       // -Mw
 
 // Threads:  Ttc
@@ -2630,6 +2640,7 @@ void LLTextureFetchWorker::callbackCacheWrite(bool success)
         return;
     }
     mWritten = true;
+    mFetcher->mTexPumpPulse[LLTextureFetch::TEX_PUMP_CACHE_WRITE]++;
 }                                                                       // -Mw
 
 //////////////////////////////////////////////////////////////////////////////
@@ -2679,6 +2690,7 @@ void LLTextureFetchWorker::callbackDecoded(bool success, const std::string &erro
         mDecodedDiscard = -1; // Redundant, here for clarity and paranoia
     }
     mDecoded = true;
+    mFetcher->mTexPumpPulse[LLTextureFetch::TEX_PUMP_DECODE]++;
 //  LL_INFOS(LOG_TXT) << mID << " : DECODE COMPLETE " << LL_ENDL;
 }                                                                       // -Mw
 
@@ -2796,6 +2808,12 @@ LLTextureFetch::LLTextureFetch(LLTextureCache* cache, bool threaded, bool qa_mod
     mHttpHighWater = HTTP_NONPIPE_REQUESTS_HIGH_WATER;
     mHttpLowWater = HTTP_NONPIPE_REQUESTS_LOW_WATER;
     mHttpSemaphore = 0;
+
+    for (S32 p = 0; p < TEX_PUMP_COUNT; ++p)
+    {
+        mTexPumpPulse[p] = 0;
+        mTexPumpWaiting[p] = 0;
+    }
 
     // If that test log has ben requested but not yet created, create it
     if (LLMetricPerformanceTesterBasic::isMetricLogRequested(sTesterName) && !LLMetricPerformanceTesterBasic::getTester(sTesterName))
@@ -3706,6 +3724,38 @@ void LLTextureFetchWorker::setState(e_state new_state)
 
     mStateTimer.reset();
     mState = new_state;
+
+    S32 new_bucket = waitBucketForState(new_state);
+    if (new_bucket != mWaitBucket)
+    {
+        if (mWaitBucket >= 0)
+        {
+            mFetcher->mTexPumpWaiting[mWaitBucket]--;
+        }
+        if (new_bucket >= 0)
+        {
+            mFetcher->mTexPumpWaiting[new_bucket]++;
+        }
+        mWaitBucket = new_bucket;
+    }
+
+    if (new_state == SEND_HTTP_REQ)
+    {
+        mFetcher->mTexPumpPulse[LLTextureFetch::TEX_PUMP_HTTP_RES]++;
+    }
+}
+
+S32 LLTextureFetchWorker::waitBucketForState(e_state s)
+{
+    switch (s)
+    {
+        case LOAD_FROM_TEXTURE_CACHE: return LLTextureFetch::TEX_PUMP_CACHE_READ;
+        case WAIT_HTTP_RESOURCE2:     return LLTextureFetch::TEX_PUMP_HTTP_RES;
+        case WAIT_HTTP_REQ:           return LLTextureFetch::TEX_PUMP_HTTP_REQ;
+        case DECODE_IMAGE_UPDATE:     return LLTextureFetch::TEX_PUMP_DECODE;
+        case WAIT_ON_WRITE:           return LLTextureFetch::TEX_PUMP_CACHE_WRITE;
+        default:                      return -1;
+    }
 }
 
 LLViewerRegion* LLTextureFetchWorker::getRegion()
@@ -4191,6 +4241,27 @@ void LLTextureFetch::getStateStats(U32 * cache_read, U32 * cache_write, U32 * re
     *cache_read = ret1;
     *cache_write = ret2;
     *res_wait = ret3;
+}
+
+LLTextureFetch::TexPumpStat LLTextureFetch::getTexPumpStat(e_tex_pump pump)
+{
+    TexPumpStat stat;
+    stat.waiting = mTexPumpWaiting[pump].CurrentValue();
+    stat.pulse = mTexPumpPulse[pump].CurrentValue();
+    return stat;
+}
+
+const char* LLTextureFetch::getTexPumpName(e_tex_pump pump)
+{
+    switch (pump)
+    {
+        case TEX_PUMP_CACHE_READ:  return "cache_read";
+        case TEX_PUMP_HTTP_RES:    return "http_res";
+        case TEX_PUMP_HTTP_REQ:    return "http_req";
+        case TEX_PUMP_DECODE:      return "decode";
+        case TEX_PUMP_CACHE_WRITE: return "cache_write";
+        default:                   return "unknown";
+    }
 }
 
 //////////////////////////////////////////////////////////////////////////////
