@@ -670,6 +670,10 @@ int APIENTRY WINMAIN(HINSTANCE hInstance,
         hSession = 0;
     }
 
+    if (!LLApp::isError())
+    {
+        LLAppViewer::exitWithoutStaticDestructors();
+    }
     return 0;
 }
 

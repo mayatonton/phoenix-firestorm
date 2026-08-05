@@ -5338,6 +5338,13 @@ void LLAppViewer::fastQuit(S32 error_code)
     _exit(final_error_code);
 }
 
+void LLAppViewer::exitWithoutStaticDestructors()
+{
+#if !defined(LL_SANITIZE)
+    _exit(0);
+#endif
+}
+
 void LLAppViewer::requestQuit()
 {
     LL_INFOS() << "requestQuit" << LL_ENDL;

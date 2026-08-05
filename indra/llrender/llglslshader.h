@@ -374,7 +374,6 @@ public:
     void vkCaptureChannelBoundView(S32 channel);
     VkImageView vkResolveEnumBoundView(S32 uniform_enum) const;
     U8 vkResolveEnumBoundDim(S32 uniform_enum) const;
-    static void vkWarnL3Fallback(LLGLSLShader* shader, U32 binding, S32 enum_value, VkImageView old_view);
 
     U32 mVkPerProgramUBOBinding = 0;
 

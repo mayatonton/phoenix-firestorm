@@ -264,6 +264,9 @@ struct FbSlotStat
 };
 std::mutex sFbSlotMutex;
 std::unordered_map<U64, FbSlotStat> sFbSlotWin;
+std::unordered_map<U64, FbSlotStat> sFbNoViewWin;
+std::unordered_map<U64, U32>        sFbNoViewStreak;
+const U32 kNoViewPersistWindows = 3;
 }
 
 void noteFbSlot(const void* shader_key, const std::string& shader_name, U32 binding, const char* reason)
@@ -278,6 +281,21 @@ void noteFbSlot(const void* shader_key, const std::string& shader_name, U32 bind
         st.shader  = shader_name;
         st.binding = binding;
         st.reason  = reason;
+    }
+    ++st.count;
+}
+
+void noteFbNoView(const void* shader_key, const std::string& shader_name, U32 binding)
+{
+    const U64 key = ((U64)(uintptr_t)shader_key * 0x100000001B3ull)
+                    ^ ((U64)binding << 32);
+    std::lock_guard<std::mutex> lock(sFbSlotMutex);
+    FbSlotStat& st = sFbNoViewWin[key];
+    if (st.count == 0)
+    {
+        st.shader  = shader_name;
+        st.binding = binding;
+        st.reason  = "no_view";
     }
     ++st.count;
 }
@@ -636,6 +654,7 @@ void frameBegin()
 
     {
         std::vector<FbSlotStat> slots;
+        std::vector<FbSlotStat> noview;
         {
             std::lock_guard<std::mutex> lock(sFbSlotMutex);
             slots.reserve(sFbSlotWin.size());
@@ -644,8 +663,31 @@ void frameBegin()
                 slots.push_back(kv.second);
             }
             sFbSlotWin.clear();
+
+            for (auto it = sFbNoViewStreak.begin(); it != sFbNoViewStreak.end(); )
+            {
+                if (sFbNoViewWin.find(it->first) == sFbNoViewWin.end())
+                {
+                    it = sFbNoViewStreak.erase(it);
+                }
+                else
+                {
+                    ++it;
+                }
+            }
+            for (auto& kv : sFbNoViewWin)
+            {
+                U32 streak = ++sFbNoViewStreak[kv.first];
+                if (streak >= kNoViewPersistWindows)
+                {
+                    FbSlotStat st = kv.second;
+                    st.count = streak;
+                    noview.push_back(st);
+                }
+            }
+            sFbNoViewWin.clear();
         }
-        if (!slots.empty())
+        if (!slots.empty() || !noview.empty())
         {
             std::sort(slots.begin(), slots.end(),
                       [](const FbSlotStat& a, const FbSlotStat& b) { return a.count > b.count; });
@@ -677,6 +719,10 @@ void frameBegin()
             if (slots.size() > top)
             {
                 os << " +" << (slots.size() - top);
+            }
+            for (const FbSlotStat& st : noview)
+            {
+                emit_slot(st);
             }
             os << '}';
         }

@@ -28,6 +28,7 @@
 
 #include <algorithm>
 #include <atomic>
+#include <cstring>
 #include <mutex>
 #include <set>
 #include <tuple>
@@ -843,7 +844,6 @@ U32 LLRenderPass::buildAndOverrideScenePerDrawSet(LLDrawInfo* params, bool batch
             {
                 view_to_write = gGL.getTexUnit(unit1)->getLiveVkImageView();
                 sampler1      = gGL.getTexUnit(unit1)->getLiveVkSampler();
-                LLGLSLShader::vkWarnL3Fallback(cur, 1, enum1, view_to_write);
                 if (view_to_write != VK_NULL_HANDLE &&
                     gGL.getTexUnit(unit1)->getLiveVkImageViewDim() != cur->mVkBindingSamplerDim[1])
                 {
@@ -920,7 +920,6 @@ U32 LLRenderPass::buildAndOverrideScenePerDrawSet(LLDrawInfo* params, bool batch
         {
             resolved_unit = channel;
             view = gGL.getTexUnit((S32)channel)->getLiveVkImageView();
-            LLGLSLShader::vkWarnL3Fallback(cur, N, enum_value, view);
         }
         else if (enum_value >= 0 && enum_value < (S32)cur->mTexture.size())
         {
@@ -929,7 +928,6 @@ U32 LLRenderPass::buildAndOverrideScenePerDrawSet(LLDrawInfo* params, bool batch
             {
                 resolved_unit = unit;
                 view = gGL.getTexUnit((S32)unit)->getLiveVkImageView();
-                LLGLSLShader::vkWarnL3Fallback(cur, N, enum_value, view);
             }
         }
         if (l3_hit)
@@ -969,10 +967,17 @@ U32 LLRenderPass::buildAndOverrideScenePerDrawSet(LLDrawInfo* params, bool batch
         }
         if (need_typed_fallback)
         {
-            LLVKContract::note(resolved_unit == 0 ? LLVKContract::C_FB_VIEW_DIFFUSE
-                                                  : LLVKContract::C_FB_VIEW_AUX,
-                               cur->mName);
-            LLVKContract::noteFbSlot(cur, cur->mName, N, vkc_fb_reason);
+            if (vkc_fb_reason != nullptr && std::strcmp(vkc_fb_reason, "no_view") == 0)
+            {
+                LLVKContract::noteFbNoView(cur, cur->mName, N);
+            }
+            else
+            {
+                LLVKContract::note(resolved_unit == 0 ? LLVKContract::C_FB_VIEW_DIFFUSE
+                                                      : LLVKContract::C_FB_VIEW_AUX,
+                                   cur->mName);
+                LLVKContract::noteFbSlot(cur, cur->mName, N, vkc_fb_reason);
+            }
             const U8 sdim_fb = cur->mVkBindingSamplerDim[N];
             view = cur->mVkBindingSamplerShadow[N] ? LLVKLoader::getDefaultFallbackShadowVkImageView()
                  : (sdim_fb == LLGLSLShader::VKSD_CUBE_ARRAY) ? LLVKLoader::getDefaultFallbackCubeArrayVkImageView()

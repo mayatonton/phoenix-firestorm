@@ -51,6 +51,7 @@
 #include <glslang/Public/ResourceLimits.h>
 #include <glslang/SPIRV/GlslangToSpv.h>
 #include <atomic>
+#include <cstring>
 #include <map>
 #include <memory>
 #include <mutex>
@@ -2327,24 +2328,6 @@ U8 LLGLSLShader::vkResolveEnumBoundDim(S32 uniform_enum) const
     return VKSD_2D;
 }
 
-void LLGLSLShader::vkWarnL3Fallback(LLGLSLShader* shader, U32 binding, S32 enum_value, VkImageView old_view)
-{
-    if (shader == nullptr || enum_value < 0 || old_view == VK_NULL_HANDLE)
-    {
-        return;
-    }
-    static std::set<std::pair<const void*, U32>> logged_sites;
-    if (!logged_sites.insert(std::make_pair((const void*)shader, binding)).second)
-    {
-        return;
-    }
-    const std::vector<std::string>& reserved = LLShaderMgr::instance()->mReservedUniforms;
-    std::string ename = (enum_value < (S32)reserved.size()) ? reserved[enum_value] : std::string();
-    LL_WARNS("BindReg") << "BindRegFallback shader=" << shader->mName
-        << " binding=" << binding
-        << " enum=" << enum_value << "(" << ename << ")" << LL_ENDL;
-}
-
 U64 LLGLSLShader::vkComputePerDrawRingSig(LLGLSLShader* cur)
 {
     U64 ring_sig = 0;
@@ -3712,7 +3695,6 @@ void LLGLSLShader::populateAndBindUniversalDescriptorSet()
         {
             resolved_unit = channel;
             view = live_view((U32)channel);
-            vkWarnL3Fallback(cur, N, enum_value, view);
         }
         else
         {
@@ -3723,7 +3705,6 @@ void LLGLSLShader::populateAndBindUniversalDescriptorSet()
                 {
                     resolved_unit = unit;
                     view = live_view((U32)unit);
-                    vkWarnL3Fallback(cur, N, enum_value, view);
                 }
             }
         }
@@ -3775,10 +3756,17 @@ void LLGLSLShader::populateAndBindUniversalDescriptorSet()
         }
         if (used_fallback)
         {
-            LLVKContract::note(resolved_unit == 0 ? LLVKContract::C_FB_VIEW_DIFFUSE
-                                                  : LLVKContract::C_FB_VIEW_AUX,
-                               cur->mName);
-            LLVKContract::noteFbSlot(cur, cur->mName, N, vkc_fb_reason);
+            if (vkc_fb_reason != nullptr && std::strcmp(vkc_fb_reason, "no_view") == 0)
+            {
+                LLVKContract::noteFbNoView(cur, cur->mName, N);
+            }
+            else
+            {
+                LLVKContract::note(resolved_unit == 0 ? LLVKContract::C_FB_VIEW_DIFFUSE
+                                                      : LLVKContract::C_FB_VIEW_AUX,
+                                   cur->mName);
+                LLVKContract::noteFbSlot(cur, cur->mName, N, vkc_fb_reason);
+            }
             const U8 sdim = cur->mVkBindingSamplerDim[N];
             view = cur->mVkBindingSamplerShadow[N] ? LLVKLoader::getDefaultFallbackShadowVkImageView()
                  : (sdim == VKSD_CUBE_ARRAY) ? LLVKLoader::getDefaultFallbackCubeArrayVkImageView()
