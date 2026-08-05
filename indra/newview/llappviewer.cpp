@@ -2762,6 +2762,7 @@ bool LLAppViewer::cleanup()
     //Note:
     //SUBSYSTEM_CLEANUP(LLViewerMedia) has to be put before gTextureList.shutdown()
     //because some new image might be generated during cleaning up media. --bao
+    gGLTFMaterialList.cleanup();
     gTextureList.shutdown(); // shutdown again in case a callback added something
     LLUIImageList::getInstance()->cleanUp();
 

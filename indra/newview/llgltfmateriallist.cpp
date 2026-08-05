@@ -761,6 +761,16 @@ void LLGLTFMaterialList::flushMaterials()
     }
 }
 
+void LLGLTFMaterialList::cleanup()
+{
+    mList.clear();
+    mQueuedOverrides.clear();
+    mLastUpdateKey.setNull();
+    sModifyQueue.clear();
+    sApplyQueue.clear();
+    sUpdates = LLSD();
+}
+
 // static
 void LLGLTFMaterialList::modifyMaterialCoro(std::string cap_url, LLSD overrides, std::shared_ptr<CallbackHolder> callback_holder)
 {
