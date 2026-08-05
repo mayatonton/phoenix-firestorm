@@ -419,8 +419,6 @@ void LLHeroProbeManager::updateProbeFace(LLReflectionMap* probe, U32 face, bool 
             if (mip >= 0)
             {
                 LL_PROFILE_GPU_ZONE("hero probe mip copy");
-                mTexture->bind(0);
-
                 if (LLVKLoader::isVulkanInitialized() && mTexture->hasVkImage() && mMipChain[i].hasVkImage(0))
                 {
                     LLVKLoader::endDynamicRendering();
@@ -429,8 +427,6 @@ void LLHeroProbeManager::updateProbeFace(LLReflectionMap* probe, U32 face, bool 
                         mTexture->getVkImage(), (U32)(sourceIdx * 6 + face), (U32)mip, (U32)res, (U32)res);
                     mMipChain[i].resumeVkDynamicRendering();
                 }
-
-                mTexture->unbind();
             }
             }
             }

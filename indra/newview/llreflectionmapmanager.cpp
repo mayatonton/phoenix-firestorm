@@ -899,7 +899,6 @@ void LLReflectionMapManager::updateProbeFace(LLReflectionMap* probe, U32 face)
             if (mip >= 0)
             {
                 LL_PROFILE_GPU_ZONE("probe mip copy");
-                mTexture->bind(0);
                 if (LLVKLoader::isVulkanInitialized() && mTexture->hasVkImage() && mMipChain[i].hasVkImage(0))
                 {
                     LLVKLoader::endDynamicRendering();
@@ -908,7 +907,6 @@ void LLReflectionMapManager::updateProbeFace(LLReflectionMap* probe, U32 face)
                         mTexture->getVkImage(), (U32)(sourceIdx * 6 + face), (U32)mip, (U32)res, (U32)res);
                     mMipChain[i].resumeVkDynamicRendering();
                 }
-                mTexture->unbind();
             }
             }
             }
@@ -1032,7 +1030,6 @@ void LLReflectionMapManager::updateProbeFace(LLReflectionMap* probe, U32 face)
                     mVertexBuffer->drawArrays(gGL.TRIANGLE_STRIP, 0, 4);
 
                     S32 res = mMipChain[i].getWidth();
-                    mIrradianceMaps->bind(channel);
                     if (LLVKLoader::isVulkanInitialized() && mIrradianceMaps->hasVkImage() && mMipChain[0].hasVkImage(0))
                     {
                         LLVKLoader::endDynamicRendering();
@@ -1042,7 +1039,6 @@ void LLReflectionMapManager::updateProbeFace(LLReflectionMap* probe, U32 face)
                             (U32)(mMipChain[0].getHeight() - res));
                         mMipChain[0].resumeVkDynamicRendering();
                     }
-                    mTexture->bind(channel);
                 }
             }
 

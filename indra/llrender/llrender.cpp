@@ -340,25 +340,6 @@ bool LLTexUnit::bind(LLImageGL* texture, bool for_rendering, bool forceBind)
     mCurrFilterOption = texture->getFilteringOption();
     mCurrVkWhite      = false;
 
-    if (LLVKContract::verboseEnabled() && mIndex < 4 && texture->getTarget() != TT_TEXTURE)
-    {
-        static std::atomic<U32> s_non2d_bind{0};
-        const U32 n = ++s_non2d_bind;
-        if ((n & (n - 1)) == 0)
-        {
-            LL_WARNS("VKContract") << "VKC non2d_bind n=" << n
-                                   << " unit=" << mIndex
-                                   << " tgt=0x" << std::hex << texture->getTarget() << std::dec
-                                   << " w=" << texture->getWidth()
-                                   << " gl=" << (void*)texture
-                                   << " shader=" << (LLGLSLShader::sCurBoundShaderPtr != nullptr
-                                                         ? LLGLSLShader::sCurBoundShaderPtr->mName
-                                                         : std::string("(none)"))
-                                   << " passtag=" << LLVKLoader::gVkPerfPassTag
-                                   << LL_ENDL;
-        }
-    }
-
     vkNotifyShaderChannelBound();
     return true;
 }
