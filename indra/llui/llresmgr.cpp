@@ -242,7 +242,26 @@ const std::string LLLocale::SYSTEM_LOCALE("English_United States.1252");
 const std::string LLLocale::USER_LOCALE("en_US.iso8859-1");// = LLStringUtil::null;
 const std::string LLLocale::SYSTEM_LOCALE("en_US.iso8859-1");
 #else // LL_LINUX likes this
-const std::string LLLocale::USER_LOCALE("en_US.utf8");
+namespace
+{
+    std::string ll_resolve_user_locale()
+    {
+        std::string prev = setlocale(LC_ALL, NULL);
+        const char* candidates[] = { "en_US.UTF-8", "en_US.utf8", "C.UTF-8", "C.utf8", "C" };
+        std::string chosen = "C";
+        for (const char* cand : candidates)
+        {
+            if (setlocale(LC_ALL, cand) != NULL)
+            {
+                chosen = cand;
+                break;
+            }
+        }
+        setlocale(LC_ALL, prev.c_str());
+        return chosen;
+    }
+}
+const std::string LLLocale::USER_LOCALE(ll_resolve_user_locale());
 const std::string LLLocale::SYSTEM_LOCALE("C");
 #endif
 
@@ -259,10 +278,15 @@ LLLocale::LLLocale(const std::string& locale_string)
 
         setlocale(LC_ALL, SYSTEM_LOCALE.c_str());
     }
-    //else
-    //{
-    //  LL_INFOS() << "Set locale to " << new_locale_string << LL_ENDL;
-    //}
+    else
+    {
+        static bool sLoggedUserLocale = false;
+        if (!sLoggedUserLocale && locale_string == USER_LOCALE)
+        {
+            sLoggedUserLocale = true;
+            LL_INFOS("LLLocale") << "Set locale to " << new_locale_string << LL_ENDL;
+        }
+    }
 }
 
 LLLocale::~LLLocale()
