@@ -90,7 +90,7 @@ protected:
 public:
     virtual void dump();    // debugging info to LL_INFOS()
 
-    bool setSize(S32 width, S32 height, S32 ncomponents, S32 discard_level = -1);
+    void setSize(S32 width, S32 height, S32 ncomponents, S32 discard_level = -1);
     void setComponents(S32 ncomponents) { mComponents = (S8)ncomponents ;}
     void setAllowCompression(bool allow) { mAllowCompression = allow; }
 

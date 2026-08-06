@@ -687,16 +687,10 @@ bool LLImageGL::checkSize(S32 width, S32 height)
     return check_power_of_two(width) && check_power_of_two(height);
 }
 
-bool LLImageGL::setSize(S32 width, S32 height, S32 ncomponents, S32 discard_level)
+void LLImageGL::setSize(S32 width, S32 height, S32 ncomponents, S32 discard_level)
 {
     if (width != mWidth || height != mHeight || ncomponents != mComponents)
     {
-        if (!checkSize(width, height))
-        {
-            LL_WARNS() << llformat("Texture has non power of two dimension: %dx%d",width,height) << LL_ENDL;
-            return false;
-        }
-
         mWidth = width;
         mHeight = height;
         mComponents = ncomponents;
@@ -725,8 +719,6 @@ bool LLImageGL::setSize(S32 width, S32 height, S32 ncomponents, S32 discard_leve
             mMaxDiscardLevel = MAX_DISCARD_LEVEL;
         }
     }
-
-    return true;
 }
 
 
@@ -1736,12 +1728,7 @@ bool LLImageGL::createGLTexture(S32 discard_level, const LLImageRaw* imageraw, b
     S32 w = raw_w << discard_level;
     S32 h = raw_h << discard_level;
 
-    if (!setSize(w, h, imageraw->getComponents(), discard_level))
-    {
-        LL_WARNS() << "Trying to create a texture with incorrect dimensions!" << LL_ENDL;
-        mGLTextureCreated = false;
-        return false;
-    }
+    setSize(w, h, imageraw->getComponents(), discard_level);
 
     if (mHasExplicitFormat &&
         ((mFormatPrimary == GL_RGBA && mComponents < 4) ||
@@ -2189,6 +2176,7 @@ void LLImageGL::calcAlphaChannelOffsetAndStride()
         mAlphaStride = 2;
         break;
     case GL_RED:
+    case GL_RG:
     case GL_RGB:
     case GL_SRGB:
         mNeedsAlphaAndPickMask = false;
