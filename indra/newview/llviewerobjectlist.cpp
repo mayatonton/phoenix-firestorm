@@ -923,22 +923,64 @@ void LLViewerObjectList::updateApparentAngles(LLAgent &agent)
 
 namespace
 {
-    std::map<LLUUID, F64> sMeshKickNext;
+    std::map<std::pair<LLUUID, S32>, F64> sMeshKickNext;
 
-    bool meshKickAllowed(const LLUUID& mesh_id)
+    bool meshKickAllowed(const LLUUID& obj_id, S32 lod)
     {
         const F64 now = LLFrameTimer::getTotalSeconds();
         if (sMeshKickNext.size() > 8192)
         {
             sMeshKickNext.clear();
         }
-        F64& next = sMeshKickNext[mesh_id];
+        F64& next = sMeshKickNext[std::make_pair(obj_id, lod)];
         if (now < next)
         {
             return false;
         }
         next = now + 30.0;
         return true;
+    }
+
+    S32 meshKickLOD(LLVOVolume* vobj, LLVolume* volume)
+    {
+        const S32 lod = llclamp(vobj->getLOD(), 0, (S32)LLVolumeLODGroup::NUM_LODS - 1);
+        if (!meshKickAllowed(vobj->getID(), lod))
+        {
+            return -1;
+        }
+        if (gMeshRepo.debugLoadingState(volume->getParams().getSculptID(), vobj) & (0x10u << lod))
+        {
+            return -1;
+        }
+        return lod;
+    }
+
+    std::map<LLUUID, F64> sGeoRepairNext;
+    std::map<LLUUID, U32> sGeoRepairCount;
+
+    bool geoRepairKickAllowed(const LLUUID& obj_id)
+    {
+        const F64 now = LLFrameTimer::getTotalSeconds();
+        if (sGeoRepairNext.size() > 8192)
+        {
+            sGeoRepairNext.clear();
+        }
+        F64& next = sGeoRepairNext[obj_id];
+        if (now < next)
+        {
+            return false;
+        }
+        next = now + 30.0;
+        return true;
+    }
+
+    U32 geoRepairBump(const LLUUID& obj_id)
+    {
+        if (sGeoRepairCount.size() > 8192)
+        {
+            sGeoRepairCount.clear();
+        }
+        return ++sGeoRepairCount[obj_id];
     }
 }
 
@@ -962,12 +1004,14 @@ static void asyncReconcileObject(LLViewerObject* obj)
     if (drawablep->isState(LLDrawable::RIGGED | LLDrawable::RIGGED_CHILD))
     {
         if (vobj->isMesh() && !volume->isMeshAssetLoaded()
-            && !volume->isMeshAssetUnavaliable()
-            && meshKickAllowed(volume->getParams().getSculptID()))
+            && !volume->isMeshAssetUnavaliable())
         {
-            gMeshRepo.loadMesh(vobj, volume->getParams(),
-                               llclamp(vobj->getLOD(), 0, (S32)LLVolumeLODGroup::NUM_LODS - 1));
-            ++gAssetOracleMeshKick;
+            const S32 lod = meshKickLOD(vobj, volume);
+            if (lod >= 0)
+            {
+                gMeshRepo.loadMesh(vobj, volume->getParams(), lod);
+                ++gAssetOracleMeshKick;
+            }
         }
         return;
     }
@@ -978,12 +1022,12 @@ static void asyncReconcileObject(LLViewerObject* obj)
         {
             return;
         }
-        if (!meshKickAllowed(volume->getParams().getSculptID()))
+        const S32 lod = meshKickLOD(vobj, volume);
+        if (lod < 0)
         {
             return;
         }
-        gMeshRepo.loadMesh(vobj, volume->getParams(),
-                           llclamp(vobj->getLOD(), 0, (S32)LLVolumeLODGroup::NUM_LODS - 1));
+        gMeshRepo.loadMesh(vobj, volume->getParams(), lod);
         ++gAssetOracleMeshKick;
         {
             static F64 s_probe_window = 0.0;
@@ -1082,30 +1126,45 @@ static void asyncReconcileObject(LLViewerObject* obj)
             break;
         }
     }
-    if (!any_geom && any_visible_te)
+    if (!any_geom && any_visible_te && vobj->isGeometryDrawExpected())
     {
-        ++gAssetOracleGeoRepair;
+        if (geoRepairKickAllowed(vobj->getID()))
         {
-            static F64 s_ef_window = 0.0;
-            static U32 s_ef_count  = 0;
-            const F64 now = LLFrameTimer::getTotalSeconds();
-            if (now - s_ef_window >= 10.0)
+            if (vobj->isMesh())
             {
-                s_ef_window = now;
-                s_ef_count  = 0;
+                vobj->resolveMeshSkinTerminal();
+                gPipeline.markRebuild(drawablep, LLDrawable::REBUILD_GEOMETRY);
             }
-            if (s_ef_count < 4)
+            const U32 repair_count = geoRepairBump(vobj->getID());
+            if (repair_count >= 2)
             {
-                ++s_ef_count;
-                LL_WARNS("AssetStuck") << "VKC-EMPTYFACE obj=" << vobj->getID()
-                                       << " mesh=" << (vobj->isMesh() ? 1 : 0)
-                                       << " loaded=" << (volume->isMeshAssetLoaded() ? 1 : 0)
-                                       << " nf=" << volume->getNumVolumeFaces()
-                                       << " dfaces=" << drawablep->getNumFaces()
-                                       << " gd=" << (group->hasState(LLSpatialGroup::GEOM_DIRTY | LLSpatialGroup::ALPHA_DIRTY) ? 1 : 0)
-                                       << " rbret=" << (S32)group->mVkRebuildRet
-                                       << " rbage=" << (S32)((U32)gFrameCount - group->mVkRebuildVisitFrame)
-                                       << LL_ENDL;
+                if (vobj->isMesh())
+                {
+                    ++gAssetOracleGeoRepair;
+                }
+                static F64 s_ef_window = 0.0;
+                static U32 s_ef_count  = 0;
+                const F64 now = LLFrameTimer::getTotalSeconds();
+                if (now - s_ef_window >= 10.0)
+                {
+                    s_ef_window = now;
+                    s_ef_count  = 0;
+                }
+                if (s_ef_count < 4)
+                {
+                    ++s_ef_count;
+                    LL_WARNS("AssetStuck") << "VKC-EMPTYFACE obj=" << vobj->getID()
+                                           << " mesh=" << (vobj->isMesh() ? 1 : 0)
+                                           << " loaded=" << (volume->isMeshAssetLoaded() ? 1 : 0)
+                                           << " nf=" << volume->getNumVolumeFaces()
+                                           << " dfaces=" << drawablep->getNumFaces()
+                                           << " rc=" << repair_count
+                                           << " skin=" << (vobj->getSkinInfo() ? 1 : 0)
+                                           << " skinU=" << (vobj->isSkinInfoUnavaliable() ? 1 : 0)
+                                           << " gd=" << (group->hasState(LLSpatialGroup::GEOM_DIRTY | LLSpatialGroup::ALPHA_DIRTY) ? 1 : 0)
+                                           << " rbret=" << (S32)group->mVkRebuildRet
+                                           << LL_ENDL;
+                }
             }
         }
     }

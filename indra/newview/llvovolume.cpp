@@ -1353,25 +1353,7 @@ bool LLVOVolume::setVolume(const LLVolumeParams &params_in, const S32 detail, bo
                     }
                 }
 
-                if (!mSkinInfo && !mSkinInfoUnavaliable)
-                {
-                    LLUUID mesh_id = volume_params.getSculptID();
-                    if (gMeshRepo.hasHeader(mesh_id) && !gMeshRepo.hasSkinInfo(mesh_id))
-                    {
-                        // If header is present but has no data about skin,
-                        // no point fetching
-                        mSkinInfoUnavaliable = true;
-                    }
-
-                    if (!mSkinInfoUnavaliable)
-                    {
-                        const LLMeshSkinInfo* skin_info = gMeshRepo.getSkinInfo(mesh_id, this);
-                        if (skin_info)
-                        {
-                            notifySkinInfoLoaded(skin_info);
-                        }
-                    }
-                }
+                resolveMeshSkinTerminal();
             }
             else // otherwise is sculptie
             {
@@ -4000,6 +3982,83 @@ bool LLVOVolume::isMesh() const
         }
     }
 
+    return false;
+}
+
+void LLVOVolume::resolveMeshSkinTerminal()
+{
+    if (getVolume() == nullptr)
+    {
+        return;
+    }
+    if (!isMesh())
+    {
+        return;
+    }
+    if (!mSkinInfo && !mSkinInfoUnavaliable)
+    {
+        LLUUID mesh_id = getVolume()->getParams().getSculptID();
+        if (gMeshRepo.hasHeader(mesh_id) && !gMeshRepo.hasSkinInfo(mesh_id))
+        {
+            mSkinInfoUnavaliable = true;
+        }
+        if (!mSkinInfoUnavaliable)
+        {
+            const LLMeshSkinInfo* skin_info = gMeshRepo.getSkinInfo(mesh_id, this);
+            if (skin_info)
+            {
+                notifySkinInfoLoaded(skin_info);
+            }
+        }
+    }
+}
+
+bool LLVOVolume::isGeometryDrawExpected() const
+{
+    LLVolume* volume = getVolume();
+    if (volume == nullptr)
+    {
+        return false;
+    }
+    if (isMesh() && (!volume->isMeshAssetLoaded() || !gMeshRepo.meshRezEnabled()))
+    {
+        return false;
+    }
+    if (mGLTFAsset)
+    {
+        return false;
+    }
+    if (mDrawable.notNull() && mDrawable->isState(LLDrawable::FORCE_INVISIBLE))
+    {
+        return false;
+    }
+    if (LLPipeline::isParcelHideAlive(mDrawable))
+    {
+        return false;
+    }
+    if (enableVolumeSAPProtection())
+    {
+        static LLCachedControl<F32> volume_sa_thresh(gSavedSettings, "RenderVolumeSAThreshold");
+        static LLCachedControl<F32> sculpt_sa_thresh(gSavedSettings, "RenderSculptSAThreshold");
+        const F32 max_for_this_vol = isSculpted() ? (F32)sculpt_sa_thresh : (F32)volume_sa_thresh;
+        if (mVolumeSurfaceArea > max_for_this_vol)
+        {
+            return false;
+        }
+    }
+    for (S32 i = 0, n = volume->getNumVolumeFaces(); i < n; ++i)
+    {
+        const LLVolumeFace& vf = volume->getVolumeFace(i);
+        if (vf.mNumVertices > 0)
+        {
+            LLVector4a range;
+            range.setSub(vf.mExtents[1], vf.mExtents[0]);
+            if (range.getLength3().getF32() > F_APPROXIMATELY_ZERO)
+            {
+                return true;
+            }
+        }
+    }
     return false;
 }
 
