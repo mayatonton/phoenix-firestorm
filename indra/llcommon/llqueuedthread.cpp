@@ -159,16 +159,21 @@ size_t LLQueuedThread::updateQueue(F32 max_time_ms)
     if (mThreaded)
     {
         // schedule a call to threadedUpdate for every call to updateQueue
-        if (!isQuitting())
+        if (!isQuitting() && !mUpdateScheduled.exchange(true))
         {
-            mRequestQueue.post([=, this]()
+            bool posted = mRequestQueue.post([=, this]()
                 {
+                    mUpdateScheduled.store(false);
                     LL_PROFILE_ZONE_NAMED_CATEGORY_THREAD("qt - update");
                     mIdleThread = false;
                     threadedUpdate();
                     mIdleThread = true;
                 }
             );
+            if (!posted)
+            {
+                mUpdateScheduled.store(false);
+            }
         }
 
         if(getPending() > 0)

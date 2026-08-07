@@ -79,6 +79,8 @@ public:
     // subclasses may optimize/cache results.
     virtual LLJoint* getJoint(std::string_view name);
 
+    virtual bool isKnownJointName(std::string_view name) { return false; }
+
     // get the position of the character
     virtual LLVector3 getCharacterPosition() = 0;
 

@@ -143,6 +143,7 @@ constexpr F32 TELEPORT_EXPIRY = 15.0f;
 constexpr F32 TELEPORT_EXPIRY_PER_ATTACHMENT = 3.f;
 
 U32 gRecentFrameCount = 0; // number of 'recent' frames
+U32 gFpsLogCount = 0;
 LLFrameTimer gRecentFPSTime;
 LLFrameTimer gRecentMemoryTime;
 LLFrameTimer gAssetStorageLogTime;
@@ -332,6 +333,7 @@ void display_stats()
         F64 normalized_period_jitter = recording.getLastValue(LLStatViewer::NORMALIZED_FRAMTIME_JITTER_PERIOD);
         F32 fps = gRecentFrameCount / FPS_LOG_FREQUENCY;
         LL_INFOS() << llformat("FPS: %.02f SESSION JITTER: %.4f PERIOD JITTER: %.4f", fps, normalized_session_jitter, normalized_period_jitter) << LL_ENDL;
+        ++gFpsLogCount;
         if (!s_frame_times_ms.empty())
         {
             std::sort(s_frame_times_ms.begin(), s_frame_times_ms.end());

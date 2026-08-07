@@ -4723,6 +4723,16 @@ void process_kill_object(LLMessageSystem *mesgsys, void **user_data)
                 LL_DEBUGS("MessageBlip") << "Kill blip for local " << local_id << " at " << objectp->getPositionAgent() << LL_ENDL;
             }
 
+            if (objectp->isAvatar() && id != gAgentID)
+            {
+                LLVOAvatar* av = (LLVOAvatar*)objectp;
+                if (!av->isFullyLoaded() && !av->isControlAvatar())
+                {
+                    av->deferKill();
+                    continue;
+                }
+            }
+
             // Do the kill
             gObjectList.killObject(objectp);
         }
@@ -5430,7 +5440,14 @@ void process_avatar_appearance(LLMessageSystem *mesgsys, void **user_data)
     }
     else
     {
-        LL_WARNS("Messaging") << "avatar_appearance sent for unknown avatar " << uuid << LL_ENDL;
+        if (LLVOAvatar::cacheAppearanceFromMessage(uuid, mesgsys))
+        {
+            LL_DEBUGS("Messaging") << "avatar_appearance sent for unknown avatar " << uuid << LL_ENDL;
+        }
+        else
+        {
+            LL_WARNS("Messaging") << "avatar_appearance sent for unknown avatar " << uuid << LL_ENDL;
+        }
     }
 }
 

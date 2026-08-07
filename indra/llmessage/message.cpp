@@ -1630,7 +1630,7 @@ void LLMessageSystem::disableCircuit(const LLHost &host)
         // Sigh, since we can open circuits which don't have circuit
         // codes, it's possible for this to happen...
 
-        LL_WARNS("Messaging") << "Couldn't find circuit code for " << host << LL_ENDL;
+        LL_DEBUGS("Messaging") << "Couldn't find circuit code for " << host << LL_ENDL;
     }
 
 }

@@ -501,7 +501,8 @@ void FSData::processAssets(const LLSD& assets)
     const LLSD& asset = assets["assets"];
     for (LLSD::map_const_iterator itr = asset.beginMap(); itr != asset.endMap(); ++itr)
     {
-        LLUUID uid = LLUUID(itr->first);
+        LLUUID uid;
+        uid.set(itr->first, false);
         LLXORCipher cipher(MAGIC_ID.mData, UUID_BYTES);
         cipher.decrypt(uid.mData, UUID_BYTES);
         LLSD data = itr->second;
@@ -522,7 +523,8 @@ void FSData::processAgents(const LLSD& data)
         const LLSD& agents = data["Agents"];
         for (LLSD::map_const_iterator iter = agents.beginMap(); iter != agents.endMap(); ++iter)
         {
-            LLUUID key = LLUUID(iter->first);
+            LLUUID key;
+            key.set(iter->first, false);
             mTeamAgents[key] = iter->second.asInteger();
             LL_DEBUGS("fsdata") << "Added " << key << " with " << mTeamAgents[key] << " flag mask to mSupportAgentList" << LL_ENDL;
         }
@@ -533,7 +535,8 @@ void FSData::processAgents(const LLSD& data)
         std::string newFormat;
         for (LLSD::map_const_iterator iter = support_agents.beginMap(); iter != support_agents.endMap(); ++iter)
         {
-            LLUUID key = LLUUID(iter->first);
+            LLUUID key;
+            key.set(iter->first, false);
             mTeamAgents[key] = 0;
             const LLSD& content = iter->second;
             if(content.has("support"))
@@ -557,7 +560,9 @@ void FSData::processAgents(const LLSD& data)
         const LLSD& support_groups = data["SupportGroups"];
         for (LLSD::map_const_iterator itr = support_groups.beginMap(); itr != support_groups.endMap(); ++itr)
         {
-            mSupportGroup.insert(LLUUID(itr->first));
+            LLUUID gid;
+            gid.set(itr->first, false);
+            mSupportGroup.insert(gid);
             LL_DEBUGS("fsdata") << "Added " << itr->first << " to mSupportGroup" << LL_ENDL;
         }
     }
@@ -567,7 +572,9 @@ void FSData::processAgents(const LLSD& data)
         const LLSD& testing_groups = data["TestingGroups"];
         for (LLSD::map_const_iterator itr = testing_groups.beginMap(); itr != testing_groups.endMap(); ++itr)
         {
-            mTestingGroup.insert(LLUUID(itr->first));
+            LLUUID tid;
+            tid.set(itr->first, false);
+            mTestingGroup.insert(tid);
             LL_DEBUGS("fsdata") << "Added " << itr->first << " to mTestingGroup" << LL_ENDL;
         }
     }

@@ -611,6 +611,9 @@ std::string LLSLURL::getSLURLString() const
         }
         return app_url.str();
     }
+    case INVALID:
+    case EMPTY:
+        return std::string();
     default:
         LL_WARNS("AppInit") << "Unexpected SLURL type for SLURL string" << (int)mType << LL_ENDL;
         return std::string();

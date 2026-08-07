@@ -278,10 +278,20 @@ namespace Details
                     // <FS:Beq> FIRE-36454 TP Disconnects in 7.2.3
                     // LL_WARNS("LLEventPollImpl") << "<" << counter << "> Canceling coroutine, status: " << status.toTerseString()
                     //     << ", time passed: " << message_time.getElapsedSeconds() << LL_ENDL;
-                    LL_WARNS("LLEventPollImpl") << "<" << counter << "> Canceling coroutine, status: " << status.toTerseString()
-                        << ", time passed: " << message_time.getElapsedSeconds()
-                        << ", llcore retries: " << llcore_retries
-                        << ", sender: " << mSenderIp << LL_ENDL;
+                    if (mDone)
+                    {
+                        LL_DEBUGS("LLEventPollImpl") << "<" << counter << "> Canceling coroutine, status: " << status.toTerseString()
+                            << ", time passed: " << message_time.getElapsedSeconds()
+                            << ", llcore retries: " << llcore_retries
+                            << ", sender: " << mSenderIp << LL_ENDL;
+                    }
+                    else
+                    {
+                        LL_WARNS("LLEventPollImpl") << "<" << counter << "> Canceling coroutine, status: " << status.toTerseString()
+                            << ", time passed: " << message_time.getElapsedSeconds()
+                            << ", llcore retries: " << llcore_retries
+                            << ", sender: " << mSenderIp << LL_ENDL;
+                    }
                     // </FS:Beq>
                     break;
                 }

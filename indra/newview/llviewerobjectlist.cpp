@@ -2198,7 +2198,7 @@ void LLViewerObjectList::clearAllMapObjectsInRegion(LLViewerRegion* regionp)
     }
     if(region_object_list.size() > 0)
     {
-        LL_WARNS() << "There are " << region_object_list.size() << " objects not removed from the deleted region!" << LL_ENDL ;
+        LL_DEBUGS() << "There are " << region_object_list.size() << " objects not removed from the deleted region!" << LL_ENDL ;
 
         for(std::set<LLViewerObject*>::iterator iter = region_object_list.begin(); iter != region_object_list.end(); ++iter)
         {

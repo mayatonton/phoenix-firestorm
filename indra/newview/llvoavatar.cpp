@@ -539,6 +539,12 @@ F32 LLVOAvatar::sGreyUpdateTime = 0.f;
 LLPointer<LLViewerTexture> LLVOAvatar::sCloudTexture = NULL;
 std::vector<LLUUID> LLVOAvatar::sAVsIgnoringARTLimit;
 S32 LLVOAvatar::sAvatarsNearby = 0;
+std::map<LLUUID, LLVOAvatar::LLCachedAppearance> LLVOAvatar::sCachedAppearances;
+LLFrameTimer LLVOAvatar::sAppearanceCacheTimer;
+
+static const size_t CACHED_APPEARANCE_MAX = 256;
+static const F32 CACHED_APPEARANCE_TTL_SEC = 300.f;
+static const F32 KILL_DEFER_GRACE_SEC = 15.f;
 
 static F32 calc_bouncy_animation(F32 x);
 
@@ -2758,6 +2764,8 @@ U32 LLVOAvatar::processUpdateMessage(LLMessageSystem *mesgsys,
 {
     const bool had_no_name = !getNVPair("FirstName");
 
+    mKillDeferred = false;
+
     // Do base class updates...
     U32 retval = LLViewerObject::processUpdateMessage(mesgsys, user_data, block_num, update_type, dp);
 
@@ -2872,6 +2880,14 @@ void LLVOAvatar::idleUpdate(LLAgent &agent, const F64 &time)
         return;
     }
 
+    if (mKillDeferred && mKillDeferredTimer.getElapsedTimeF32() > KILL_DEFER_GRACE_SEC)
+    {
+        mKillDeferred = false;
+        gObjectList.killObject(this);
+        LLSelectMgr::getInstance()->removeObjectFromSelections(getID());
+        return;
+    }
+
     static LLCachedControl<bool> friends_only(gSavedSettings, "RenderAvatarFriendsOnly", false);
     if (friends_only()
         && !isUIAvatar()
@@ -2905,6 +2921,8 @@ void LLVOAvatar::idleUpdate(LLAgent &agent, const F64 &time)
         }
         return;
     }
+
+    applyCachedAppearanceIfCloud();
 
     // Update should be happening max once per frame.
     static LLCachedControl<S32> refreshPeriod(gSavedSettings, "AvatarExtentRefreshPeriodBatch");
@@ -10255,7 +10273,7 @@ void LLVOAvatar::dumpAppearanceMsgParams( const std::string& dump_prefix,
     apr_file_printf(file, "</textures>\n");
 }
 
-void LLVOAvatar::parseAppearanceMessage(LLMessageSystem* mesgsys, LLAppearanceMessageContents& contents)
+void LLVOAvatar::parseAppearanceContentsInto(LLMessageSystem* mesgsys, LLAppearanceMessageContents& contents)
 {
     parseTEMessage(mesgsys, _PREHASH_ObjectData, -1, contents.mTEContents);
 
@@ -10280,46 +10298,6 @@ void LLVOAvatar::parseAppearanceMessage(LLMessageSystem* mesgsys, LLAppearanceMe
         //LL_DEBUGS("Avatar") << avString() << " hover received " << hover.mV[ VX ] << "," << hover.mV[ VY ] << "," << hover.mV[ VZ ] << LL_ENDL;
         contents.mHoverOffset = hover;
         contents.mHoverOffsetWasSet = true;
-    }
-
-    // Get attachment info, if sent
-    LLUUID attachment_id;
-    U8     attach_point;
-    S32    attach_count = mesgsys->getNumberOfBlocksFast(_PREHASH_AttachmentBlock);
-    LL_DEBUGS("AVAppearanceAttachments") << "Agent " << getID() << " has "
-                                         << attach_count << " attachments" << LL_ENDL;
-    size_t old_size = mSimAttachments.size();
-    mSimAttachments.clear();
-    for (S32 attach_i = 0; attach_i < attach_count; attach_i++)
-    {
-        mesgsys->getUUIDFast(_PREHASH_AttachmentBlock, _PREHASH_ID, attachment_id, attach_i);
-        mesgsys->getU8Fast(_PREHASH_AttachmentBlock, _PREHASH_AttachmentPoint, attach_point, attach_i);
-        LL_DEBUGS("AVAppearanceAttachments") << "AV " << getID() << " has attachment " << attach_i << " "
-            << (attachment_id.isNull() ? "pending" : attachment_id.asString())
-            << " on point " << (S32)attach_point << LL_ENDL;
-
-        if (attachment_id.notNull())
-        {
-            mSimAttachments[attachment_id] = attach_point;
-        }
-        else
-        {
-            // at the moment viewer is only interested in non-null attachments
-            LL_DEBUGS("AVAppearanceAttachments") << "AV " << getID()
-                << " has null attachment on point " << (S32)attach_point
-                << ", discarding" << LL_ENDL;
-        }
-    }
-
-    // todo? Doesn't detect if attachments were switched
-    if (old_size != mSimAttachments.size())
-    {
-        mLastCloudAttachmentCount = 0;
-        mLastCloudAttachmentChangeTime.reset();
-        if (!isFullyLoaded())
-        {
-            mFullyLoadedTimer.reset();
-        }
     }
 
     // Parse visual params, if any.
@@ -10385,7 +10363,52 @@ void LLVOAvatar::parseAppearanceMessage(LLMessageSystem* mesgsys, LLAppearanceMe
     }
 }
 
-bool resolve_appearance_version(const LLAppearanceMessageContents& contents, S32& appearance_version)
+void LLVOAvatar::parseAppearanceMessage(LLMessageSystem* mesgsys, LLAppearanceMessageContents& contents)
+{
+    parseAppearanceContentsInto(mesgsys, contents);
+
+    // Get attachment info, if sent
+    LLUUID attachment_id;
+    U8     attach_point;
+    S32    attach_count = mesgsys->getNumberOfBlocksFast(_PREHASH_AttachmentBlock);
+    LL_DEBUGS("AVAppearanceAttachments") << "Agent " << getID() << " has "
+                                         << attach_count << " attachments" << LL_ENDL;
+    size_t old_size = mSimAttachments.size();
+    mSimAttachments.clear();
+    for (S32 attach_i = 0; attach_i < attach_count; attach_i++)
+    {
+        mesgsys->getUUIDFast(_PREHASH_AttachmentBlock, _PREHASH_ID, attachment_id, attach_i);
+        mesgsys->getU8Fast(_PREHASH_AttachmentBlock, _PREHASH_AttachmentPoint, attach_point, attach_i);
+        LL_DEBUGS("AVAppearanceAttachments") << "AV " << getID() << " has attachment " << attach_i << " "
+            << (attachment_id.isNull() ? "pending" : attachment_id.asString())
+            << " on point " << (S32)attach_point << LL_ENDL;
+
+        if (attachment_id.notNull())
+        {
+            mSimAttachments[attachment_id] = attach_point;
+        }
+        else
+        {
+            // at the moment viewer is only interested in non-null attachments
+            LL_DEBUGS("AVAppearanceAttachments") << "AV " << getID()
+                << " has null attachment on point " << (S32)attach_point
+                << ", discarding" << LL_ENDL;
+        }
+    }
+
+    // todo? Doesn't detect if attachments were switched
+    if (old_size != mSimAttachments.size())
+    {
+        mLastCloudAttachmentCount = 0;
+        mLastCloudAttachmentChangeTime.reset();
+        if (!isFullyLoaded())
+        {
+            mFullyLoadedTimer.reset();
+        }
+    }
+}
+
+bool resolve_appearance_version(const LLAppearanceMessageContents& contents, S32& appearance_version, bool quiet)
 {
     appearance_version = -1;
 
@@ -10393,8 +10416,11 @@ bool resolve_appearance_version(const LLAppearanceMessageContents& contents, S32
         (contents.mParamAppearanceVersion >= 0) &&
         (contents.mAppearanceVersion != contents.mParamAppearanceVersion))
     {
-        LL_WARNS() << "inconsistent appearance_version settings - field: " <<
-            contents.mAppearanceVersion << ", param: " <<  contents.mParamAppearanceVersion << LL_ENDL;
+        if (!quiet)
+        {
+            LL_WARNS() << "inconsistent appearance_version settings - field: " <<
+                contents.mAppearanceVersion << ", param: " <<  contents.mParamAppearanceVersion << LL_ENDL;
+        }
         return false;
     }
     // <FS:Ansariel> [Legacy Bake]
@@ -10453,7 +10479,7 @@ void LLVOAvatar::processAvatarAppearance( LLMessageSystem* mesgsys )
     }
 
     S32 appearance_version;
-    if (!resolve_appearance_version(*contents, appearance_version))
+    if (!resolve_appearance_version(*contents, appearance_version, false))
     {
         LL_WARNS() << "bad appearance version info, discarding" << LL_ENDL;
         return;
@@ -10491,7 +10517,7 @@ void LLVOAvatar::processAvatarAppearance( LLMessageSystem* mesgsys )
         if (appearance_version > 0 && mLastUpdateReceivedCOFVersion >= thisAppearanceVersion)
 // </FS:Beq>
         {
-            LL_WARNS("Avatar") << "Stale appearance received #" << thisAppearanceVersion <<
+            LL_DEBUGS("Avatar") << "Stale appearance received #" << thisAppearanceVersion <<
                 " attempt to roll back from #" << mLastUpdateReceivedCOFVersion <<
                 "... dropping." << LL_ENDL;
             return;
@@ -10552,10 +10578,137 @@ void LLVOAvatar::processAvatarAppearance( LLMessageSystem* mesgsys )
 
     bool slam_params = false;
     applyParsedAppearanceMessage(*contents, slam_params);
+
+    if (!isSelf())
+    {
+        cacheSnapshotFromContents(getID(), appearance_version, *contents);
+    }
+
     if (getOverallAppearance() != AOA_NORMAL)
     {
         resetSkeleton(false);
     }
+}
+
+void LLVOAvatar::deferKill()
+{
+    if (!mKillDeferred)
+    {
+        mKillDeferred = true;
+        mKillDeferredTimer.reset();
+    }
+}
+
+void LLVOAvatar::applyCachedAppearanceIfCloud()
+{
+    if (isSelf() || mAppliedCachedAppearance || getRezzedStatus() != 0)
+    {
+        return;
+    }
+
+    auto it = sCachedAppearances.find(getID());
+    if (it == sCachedAppearances.end())
+    {
+        return;
+    }
+
+    if (sAppearanceCacheTimer.getElapsedTimeF32() - it->second.mReceivedTime > CACHED_APPEARANCE_TTL_SEC)
+    {
+        sCachedAppearances.erase(it);
+        return;
+    }
+
+    const LLCachedAppearance& snap = it->second;
+
+    LLPointer<LLAppearanceMessageContents> c = new LLAppearanceMessageContents;
+    c->mTEContents = snap.mTE;
+    c->mHoverOffset = snap.mHoverOffset;
+    c->mHoverOffsetWasSet = snap.mHoverOffsetWasSet;
+    c->mAppearanceVersion = snap.mAppearanceVersion;
+    c->mParamAppearanceVersion = snap.mParamAppearanceVersion;
+    c->mCOFVersion = snap.mCOFVersion;
+    for (const std::pair<S32, F32>& pw : snap.mParams)
+    {
+        LLVisualParam* p = getVisualParam(pw.first);
+        if (p)
+        {
+            c->mParams.push_back(p);
+            c->mParamWeights.push_back(pw.second);
+        }
+    }
+
+    setIsUsingServerBakes(true);
+    mLastProcessedAppearance = c;
+    mLastUpdateReceivedCOFVersion = snap.mCOFVersion;
+    applyParsedAppearanceMessage(*c, false);
+
+    if (getOverallAppearance() != AOA_NORMAL)
+    {
+        resetSkeleton(false);
+    }
+
+    mAppliedCachedAppearance = true;
+}
+
+bool LLVOAvatar::cacheSnapshotFromContents(const LLUUID& id, S32 appearance_version, const LLAppearanceMessageContents& contents)
+{
+    if (appearance_version <= 0 || contents.mParams.empty())
+    {
+        return false;
+    }
+
+    LLCachedAppearance snap;
+    snap.mTE = contents.mTEContents;
+    snap.mParams.reserve(contents.mParams.size());
+    for (size_t i = 0; i < contents.mParams.size() && i < contents.mParamWeights.size(); ++i)
+    {
+        snap.mParams.emplace_back(contents.mParams[i]->getID(), contents.mParamWeights[i]);
+    }
+    snap.mHoverOffset = contents.mHoverOffsetWasSet ? contents.mHoverOffset : LLVector3(0.f, 0.f, 0.f);
+    snap.mHoverOffsetWasSet = true;
+    snap.mAppearanceVersion = contents.mAppearanceVersion;
+    snap.mParamAppearanceVersion = contents.mParamAppearanceVersion;
+    snap.mCOFVersion = contents.mCOFVersion;
+    snap.mReceivedTime = sAppearanceCacheTimer.getElapsedTimeF32();
+    sCachedAppearances[id] = std::move(snap);
+
+    if (sCachedAppearances.size() > CACHED_APPEARANCE_MAX)
+    {
+        auto oldest = sCachedAppearances.begin();
+        for (auto it = sCachedAppearances.begin(); it != sCachedAppearances.end(); ++it)
+        {
+            if (it->second.mReceivedTime < oldest->second.mReceivedTime)
+            {
+                oldest = it;
+            }
+        }
+        sCachedAppearances.erase(oldest);
+    }
+
+    return true;
+}
+
+bool LLVOAvatar::cacheAppearanceFromMessage(const LLUUID& uuid, LLMessageSystem* mesgsys)
+{
+    if (!isAgentAvatarValid())
+    {
+        return false;
+    }
+
+    LLAppearanceMessageContents contents;
+    gAgentAvatarp->parseAppearanceContentsInto(mesgsys, contents);
+
+    S32 av = -1;
+    if (!resolve_appearance_version(contents, av, true))
+    {
+        return false;
+    }
+    if (av <= 0 || av > 1)
+    {
+        return false;
+    }
+
+    return cacheSnapshotFromContents(uuid, av, contents);
 }
 
 void LLVOAvatar::applyParsedAppearanceMessage(LLAppearanceMessageContents& contents, bool slam_params)

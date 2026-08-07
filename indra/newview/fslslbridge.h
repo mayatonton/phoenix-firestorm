@@ -104,6 +104,8 @@ public:
 
 private:
     std::string             mCurrentURL;
+    U64                     mBridgeURLRegionHandle;
+    boost::signals2::connection mRegionChangedConnection;
     bool                    mBridgeCreating;
     bool                    mAllowDetach;
     bool                    mFinishCreation;
@@ -142,6 +144,7 @@ protected:
     void configureBridgePrim(LLViewerObject* object);
     void cleanUpPreCreation();
     void finishCleanUpPreCreation();
+    void onRegionChanged();
 };
 
 

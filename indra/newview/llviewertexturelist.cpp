@@ -84,6 +84,7 @@ U32 LLViewerTextureList::sNumFastCacheReads = 0;
 LLViewerTextureList gTextureList;
 
 extern LLGLSLShader gCopyProgram;
+extern U32 gFpsLogCount;
 
 ETexListType get_element_type(S32 priority)
 {
@@ -303,7 +304,7 @@ LLViewerTextureList::~LLViewerTextureList()
 void LLViewerTextureList::shutdown()
 {
     LL_PROFILE_ZONE_SCOPED_CATEGORY_TEXTURE;
-    LL_WARNS() << "Shutdown called" << LL_ENDL;
+    LL_DEBUGS() << "Shutdown called" << LL_ENDL;
     // clear out preloads
     mImagePreloads.clear();
 
@@ -1306,7 +1307,12 @@ F32 LLViewerTextureList::updateImagesCreateTextures(F32 max_time)
             // NOTE: this may happen if the desired discard reduces while a decode is in progress and does not
             // necessarily indicate a problem, but if log occurrences excede that of dsiplay_stats: FPS,
             // something has probably gone wrong.
-            LL_WARNS_ONCE("Texture") << "Texture will be downscaled immediately after loading." << LL_ENDL;
+            static U32 s_downscale_count = 0;
+            ++s_downscale_count;
+            if (gFpsLogCount > 0 && s_downscale_count > gFpsLogCount)
+                LL_WARNS_ONCE("Texture") << "Texture will be downscaled immediately after loading." << LL_ENDL;
+            else
+                LL_DEBUGS("Texture")     << "Texture will be downscaled immediately after loading." << LL_ENDL;
             imagep->scaleDown();
         }
 
@@ -1645,6 +1651,10 @@ void LLViewerTextureList::decodeAllImages(F32 max_time)
         {
             main_queue->runFor(std::chrono::milliseconds(1));
             fetch_pending += main_queue->size();
+        }
+        else
+        {
+            ms_sleep(1);
         }
 
         if (fetch_pending == 0 || timer.getElapsedTimeF32() > max_time)

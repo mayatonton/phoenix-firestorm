@@ -628,6 +628,7 @@ void LLViewerRegion::initStats()
     mLastPacketsLost = 0;
     mPingDelay = (U32Seconds)0;
     mAlive = false;                 // can become false if circuit disconnects
+    mEverAlive = false;
 }
 
 static LLTrace::BlockTimerStatHandle FTM_CLEANUP_REGION_OBJECTS("Cleanup Region Objects");
@@ -2111,6 +2112,7 @@ void LLViewerRegion::updateNetStats()
     }
 
     mAlive = true;
+    mEverAlive = true;
     mDeltaTime = dt;
 
     mLastPacketsIn =    mPacketsIn;
@@ -2240,6 +2242,11 @@ bool LLViewerRegion::isAlive() const
 // [/SL:KB]
 {
     return mAlive;
+}
+
+bool LLViewerRegion::hasEverBeenAlive() const
+{
+    return mEverAlive;
 }
 
 //bool LLViewerRegion::isOwnedSelf(const LLVector3& pos)

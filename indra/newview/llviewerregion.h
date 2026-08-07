@@ -151,6 +151,7 @@ public:
 //  bool isAlive(); // can become false if circuit disconnects
 // [SL:KB] - Patch: World-MinimapOverlay | Checked: 2012-06-20 (Catznip-3.3)
     bool isAlive() const; // can become false if circuit disconnects
+    bool hasEverBeenAlive() const;
 
     typedef std::vector<LLPointer<LLViewerTexture> > tex_matrix_t;
     const tex_matrix_t& getWorldMapTiles() const;
@@ -617,6 +618,7 @@ public:
     bool                                    mCacheLoaded;
     bool                                    mCacheDirty;
     bool    mAlive;                 // can become false if circuit disconnects
+    bool    mEverAlive;
     bool    mSimulatorFeaturesReceived;
     bool    mReleaseNotesRequested;
     bool    mDead;  //if true, this region is in the process of deleting.

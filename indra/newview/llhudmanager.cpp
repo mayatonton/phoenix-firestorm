@@ -79,7 +79,7 @@ void LLHUDManager::sendEffects()
         LLHUDEffect *hep = mHUDEffects[i];
         if (hep->isDead())
         {
-            LL_WARNS() << "Trying to send dead effect!" << LL_ENDL;
+            LL_DEBUGS() << "Trying to send dead effect!" << LL_ENDL;
             continue;
         }
         if (hep->mType < LLHUDObject::LL_HUD_EFFECT_BEAM)
