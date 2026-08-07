@@ -1821,7 +1821,7 @@ bool LLTextureFetchWorker::doWork(S32 param)
                 resetFormattedData();
                 setState(DONE);
                 releaseHttpSemaphore();
-                LL_WARNS(LOG_TXT) << mID << " abort: fail harder" << LL_ENDL;
+                LL_WARNS(LOG_TXT) << mID << " abort: fail harder status " << mGetStatus.toTerseString() << LL_ENDL;
                 return true; // failed
             }
 

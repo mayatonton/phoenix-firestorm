@@ -528,7 +528,6 @@ void LLGLTFMaterialList::onAssetLoadComplete(const LLUUID& id, LLAssetType::ETyp
 
     if (status != LL_ERR_NOERR)
     {
-        LL_WARNS("GLTF") << "Error getting material asset data: " << LLAssetStorage::getErrorString(status) << " (" << status << ")" << LL_ENDL;
         LLPointer<LLFetchedGLTFMaterial> mat = asset_data->mMaterial;
         delete asset_data;
         const bool transient = (status != LL_ERR_ASSET_REQUEST_NOT_IN_DATABASE);
@@ -553,6 +552,10 @@ void LLGLTFMaterialList::onAssetLoadComplete(const LLUUID& id, LLAssetType::ETyp
         }
         else
         {
+            LL_WARNS("GLTF") << "Material asset " << id << " failed permanently ("
+                             << (transient ? "after retries" : "not in database") << "): "
+                             << LLAssetStorage::getErrorString(status) << " (" << status
+                             << "); using fallback material" << LL_ENDL;
             mat->materialComplete(false);
         }
     }
