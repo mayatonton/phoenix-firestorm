@@ -240,7 +240,6 @@ public:
     LLUUID mCacheID;
 
     CapabilityMap mCapabilities;
-    CapabilityMap mSecondCapabilitiesTracker;
 
     LLEventPoll* mEventPoll;
 
@@ -256,7 +255,6 @@ public:
     U32         mLastCameraUpdate;
 
     static void        requestBaseCapabilitiesCoro(U64 regionHandle);
-    static void        requestBaseCapabilitiesCompleteCoro(U64 regionHandle);
     static void        requestSimulatorFeatureCoro(std::string url, U64 regionHandle);
 };
 
@@ -413,140 +411,6 @@ void LLViewerRegionImpl::requestBaseCapabilitiesCoro(U64 regionHandle)
     }
 }
 
-
-void LLViewerRegionImpl::requestBaseCapabilitiesCompleteCoro(U64 regionHandle)
-{
-    LLCore::HttpRequest::policy_t httpPolicy(LLCore::HttpRequest::DEFAULT_POLICY_ID);
-    LLCoreHttpUtil::HttpCoroutineAdapter::ptr_t
-        httpAdapter = std::make_shared<LLCoreHttpUtil::HttpCoroutineAdapter>("BaseCapabilitiesRequest", httpPolicy);
-    LLCore::HttpRequest::ptr_t httpRequest = std::make_shared<LLCore::HttpRequest>();
-
-    LLSD result;
-    LLViewerRegion *regionp = NULL;
-
-    // This loop is used for retrying a capabilities request.
-    do
-    {
-        LLWorld *world_inst = LLWorld::getInstance(); // Not a singleton!
-        if (!world_inst)
-        {
-            LL_WARNS("AppInit", "Capabilities") << "Attempting to get capabilities, but world no longer exists!" << LL_ENDL;
-            return;
-        }
-
-        regionp = world_inst->getRegionFromHandle(regionHandle);
-        if (!regionp) //region was removed
-        {
-            LL_WARNS("AppInit", "Capabilities") << "Attempting to get capabilities for region that no longer exists!" << LL_ENDL;
-            break; // this error condition is not recoverable.
-        }
-
-        std::string url = regionp->getCapabilityDebug("Seed");
-        if (url.empty())
-        {
-            LL_WARNS("AppInit", "Capabilities") << "Failed to get seed capabilities, and can not determine url!" << LL_ENDL;
-            if (regionp->getCapability("Seed").empty())
-            {
-                // initial attempt failed to get this cap as well
-                regionp->setCapabilitiesError();
-            }
-            break; // this error condition is not recoverable.
-        }
-
-        // record that we just entered a new region
-        newRegionEntry(*regionp);
-
-        LLSD capabilityNames = LLSD::emptyArray();
-        buildCapabilityNames(capabilityNames);
-
-        LL_INFOS("AppInit", "Capabilities") << "Requesting second Seed from " << url << " for region " << regionp->getRegionID() << LL_ENDL;
-
-        regionp = NULL;
-        world_inst = NULL;
-        result = httpAdapter->postAndSuspend(httpRequest, url, capabilityNames);
-
-        LLSD httpResults = result["http_result"];
-        LLCore::HttpStatus status = LLCoreHttpUtil::HttpCoroutineAdapter::getStatusFromLLSD(httpResults);
-        if (!status)
-        {
-            LL_WARNS("AppInit", "Capabilities") << "HttpStatus error " << LL_ENDL;
-            break;  // no retry
-        }
-
-        if (LLApp::isExiting() || gDisconnected)
-        {
-            break;
-        }
-
-        world_inst = LLWorld::getInstance();
-        if (!world_inst)
-        {
-            LL_WARNS("AppInit", "Capabilities") << "Received capabilities, but world no longer exists!" << LL_ENDL;
-            return;
-        }
-
-        regionp = world_inst->getRegionFromHandle(regionHandle);
-        if (!regionp) //region was removed
-        {
-            LL_WARNS("AppInit", "Capabilities") << "Received capabilities for region that no longer exists!" << LL_ENDL;
-            break; // this error condition is not recoverable.
-        }
-        LLViewerRegionImpl* impl = regionp->getRegionImplNC();
-
-        // remove the http_result from the llsd
-        result.erase("http_result");
-
-        LLSD::map_const_iterator iter;
-        for (iter = result.beginMap(); iter != result.endMap(); ++iter)
-        {
-            regionp->setCapabilityDebug(iter->first, iter->second);
-            //LL_INFOS()<<"BaseCapabilitiesCompleteTracker New Caps "<<iter->first<<" "<< iter->second<<LL_ENDL;
-        }
-
-#if 0
-        log_capabilities(impl->mCapabilities);
-#endif
-
-        if (impl->mCapabilities.size() != impl->mSecondCapabilitiesTracker.size())
-        {
-            LL_WARNS("AppInit", "Capabilities")
-                << "Sim sent duplicate base caps that differ in size from what we initially received - most likely content. "
-                << "mCapabilities == " << impl->mCapabilities.size()
-                << " mSecondCapabilitiesTracker == " << impl->mSecondCapabilitiesTracker.size()
-                << LL_ENDL;
-#ifdef DEBUG_CAPS_GRANTS
-            LL_WARNS("AppInit", "Capabilities")
-                << "Initial Base capabilities: " << LL_ENDL;
-
-            log_capabilities(impl->mCapabilities);
-
-            LL_WARNS("AppInit", "Capabilities")
-                << "Latest base capabilities: " << LL_ENDL;
-
-            log_capabilities(impl->mSecondCapabilitiesTracker);
-
-#endif
-
-            if (impl->mSecondCapabilitiesTracker.size() > impl->mCapabilities.size())
-            {
-                // *HACK Since we were granted more base capabilities in this grant request than the initial, replace
-                // the old with the new. This shouldn't happen i.e. we should always get the same capabilities from a
-                // sim. The simulator fix from SH-3895 should prevent it from happening, at least in the case of the
-                // inventory api capability grants.
-
-                // Need to clear a std::map before copying into it because old keys take precedence.
-                impl->mCapabilities.clear();
-                impl->mCapabilities = impl->mSecondCapabilitiesTracker;
-            }
-        }
-        else
-        {
-            LL_DEBUGS("CrossingCaps") << "Sim sent multiple base cap grants with matching sizes." << LL_ENDL;
-        }
-        impl->mSecondCapabilitiesTracker.clear();
-    }
-    while (false);
-}
 
 void LLViewerRegionImpl::requestSimulatorFeatureCoro(std::string url, U64 regionHandle)
 {
@@ -3617,21 +3481,7 @@ void LLViewerRegion::setSeedCapability(const std::string& url)
 {
     if (getCapability("Seed") == url)
     {
-        setCapabilityDebug("Seed", url);
-        LL_WARNS("CrossingCaps") <<  "Received duplicate seed capability for " << getRegionID() << ", posting to seed " <<
-                url << LL_ENDL;
-
-        //Instead of just returning we build up a second set of seed caps and compare them
-        //to the "original" seed cap received and determine why there is problem!
-        std::string coroname =
-            LLCoros::instance().launch("LLEnvironmentRequest::requestBaseCapabilitiesCompleteCoro",
-            boost::bind(&LLViewerRegionImpl::requestBaseCapabilitiesCompleteCoro, getHandle()));
-
-        // setSeedCapability can be called from other coros,
-        // launch() acts like a suspend()
-        // Make sure we are still good to do
-        LLCoros::checkStop();
-
+        LL_DEBUGS("CrossingCaps") <<  "Received duplicate seed capability for " << getRegionID() << LL_ENDL;
         return;
     }
 
@@ -3700,47 +3550,6 @@ void LLViewerRegion::setCapability(const std::string& name, const std::string& u
         }
         // </FS:Ansariel> [UDP Assets]
     }
-}
-
-void LLViewerRegion::setCapabilityDebug(const std::string& name, const std::string& url)
-{
-    // Continue to not add certain caps, as we do in setCapability. This is so they match up when we check them later.
-    if ( ! ( name == "EventQueueGet" || name == "UntrustedSimulatorMessage" || name == "SimulatorFeatures" ) )
-    {
-        mImpl->mSecondCapabilitiesTracker[name] = url;
-        if(name == "ViewerAsset")
-        {
-            /*==============================================================*/
-            // The following inserted lines are a hack for testing MAINT-7081,
-            // which is why the indentation and formatting are left ugly.
-            const char* VIEWERASSET = getenv("VIEWERASSET");
-            if (VIEWERASSET)
-            {
-                mImpl->mSecondCapabilitiesTracker[name] = VIEWERASSET;
-                mViewerAssetUrl = VIEWERASSET;
-            }
-            else
-            /*==============================================================*/
-            mViewerAssetUrl = url;
-        }
-        // <FS:Ansariel> [UDP Assets]
-        else if (name == "GetTexture")
-        {
-            mHttpUrl = url;
-        }
-        // </FS:Ansariel> [UDP Assets]
-    }
-}
-
-std::string LLViewerRegion::getCapabilityDebug(std::string_view name) const
-{
-    CapabilityMap::const_iterator iter = mImpl->mSecondCapabilitiesTracker.find(name);
-    if (iter == mImpl->mSecondCapabilitiesTracker.end())
-    {
-        return "";
-    }
-
-    return iter->second;
 }
 
 bool LLViewerRegion::isSpecialCapabilityName(std::string_view name)
