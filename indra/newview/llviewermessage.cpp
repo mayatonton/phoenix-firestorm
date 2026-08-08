@@ -3875,7 +3875,7 @@ void process_agent_movement_complete(LLMessageSystem* msg, void**)
     {
         // Could happen if you were immediately god-teleported away on login,
         // maybe other cases.  Continue, but warn.
-        LL_WARNS("Teleport", "Messaging") << "agent_movement_complete() with NULL avatarp." << LL_ENDL;
+        LL_DEBUGS("Teleport", "Messaging") << "agent_movement_complete() with NULL avatarp." << LL_ENDL;
     }
 
     F32 x, y;
@@ -5243,7 +5243,7 @@ void process_avatar_animation(LLMessageSystem *mesgsys, void **user_data)
     {
         // no agent by this ID...error?
         if (!gSavedPerAccountSettings.getBOOL("FSRenderFriendsOnly")) // <FS:Ansariel> FIRE-32520: Prevent log spam when show friends only is enabled
-            LL_WARNS("Messaging") << "Received animation state for unknown avatar " << uuid << LL_ENDL;
+            LL_DEBUGS("Messaging") << "Received animation state for unknown avatar " << uuid << LL_ENDL;
         return;
     }
 

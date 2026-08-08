@@ -402,10 +402,10 @@ bool LLPanelMainInventory::postBuild()
             if(savedFilterState.has(mActivePanel->getFilter().getName()))
             {
                 LLSD items = savedFilterState.get(mActivePanel->getFilter().getName());
-                LLInventoryFilter::Params p;
+                LLInventoryPanel::InventoryState p;
                 LLParamSDParser parser;
                 parser.readSD(items, p);
-                mActivePanel->getFilter().setSearchVisibilityTypes(p);
+                mActivePanel->getFilter().setSearchVisibilityTypes(p.filter);
             }
         }
 

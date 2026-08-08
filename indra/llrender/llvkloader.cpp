@@ -12161,6 +12161,11 @@ bool perfLogEnabled()
     return s_enabled;
 }
 
+bool immediatePresentActive()
+{
+    return sActivePresentMode == VK_PRESENT_MODE_IMMEDIATE_KHR;
+}
+
 bool isIndirectDrawEnabled()
 {
     return sMultiDrawIndirectEnabled && sDrawIndirectFirstInstanceEnabled;

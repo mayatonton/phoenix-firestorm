@@ -140,7 +140,7 @@ void LLModalDialog::stopModal()
         }
         else
         {
-            LL_WARNS() << "LLModalDialog::stopModal not in list!" << LL_ENDL;
+            LL_DEBUGS() << "LLModalDialog::stopModal not in list!" << LL_ENDL;
         }
     }
     if (!sModalStack.empty())

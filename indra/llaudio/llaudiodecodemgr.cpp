@@ -650,7 +650,7 @@ void LLAudioDecodeMgr::Impl::startMoreDecodes()
             // Shutdown
             // Consider making processQueue() do a cleanup instead
             // of starting more decodes
-            LL_WARNS() << "Tried to start decoding on shutdown" << LL_ENDL;
+            LL_DEBUGS() << "Tried to start decoding on shutdown" << LL_ENDL;
         }
     }
 }

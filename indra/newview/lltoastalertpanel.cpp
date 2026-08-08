@@ -200,7 +200,7 @@ LLToastAlertPanel::LLToastAlertPanel( LLNotificationPtr notification, bool modal
     // Message: create text box using raw string, as text has been structure deliberately
     // Use size of created text box to generate dialog box size
     std::string msg = mNotification->getMessage();
-    LL_WARNS() << "Alert: " << msg << LL_ENDL;
+    LL_INFOS() << "Alert: " << msg << LL_ENDL;
     LLTextBox::Params params;
     params.name("Alert message");
     params.font(font);

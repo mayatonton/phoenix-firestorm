@@ -120,7 +120,7 @@ void FSData::processResponder(const LLSD& content, const std::string& url, bool 
             }
             else
             {
-                LL_WARNS("fsdata") << "Unable to download or load assets.xml" << LL_ENDL;
+                LL_DEBUGS("fsdata") << "Unable to download or load assets.xml" << LL_ENDL;
             }
         }
         else

@@ -1983,10 +1983,20 @@ bool LLAppViewer::doFrame()
                         if (!s_backstop_warned)
                         {
                             s_backstop_warned = true;
-                            LL_WARNS("FramePace") << "frame pace backstop engaged: pacing lost upstream"
-                                                  << " (engaged " << s_backstop_frames << "/" << s_backstop_win_frames
-                                                  << " frames, slept " << (s_backstop_sleep_us / 1000) << "ms/5s"
-                                                  << ", cap=" << backstop_fps << "fps)" << LL_ENDL;
+                            if (LLVKLoader::immediatePresentActive())
+                            {
+                                LL_DEBUGS("FramePace") << "frame pace backstop engaged: pacing carried (vsync off)"
+                                                       << " (engaged " << s_backstop_frames << "/" << s_backstop_win_frames
+                                                       << " frames, slept " << (s_backstop_sleep_us / 1000) << "ms/5s"
+                                                       << ", cap=" << backstop_fps << "fps)" << LL_ENDL;
+                            }
+                            else
+                            {
+                                LL_WARNS("FramePace") << "frame pace backstop engaged: pacing lost upstream"
+                                                      << " (engaged " << s_backstop_frames << "/" << s_backstop_win_frames
+                                                      << " frames, slept " << (s_backstop_sleep_us / 1000) << "ms/5s"
+                                                      << ", cap=" << backstop_fps << "fps)" << LL_ENDL;
+                            }
                         }
                         else
                         {
@@ -2103,10 +2113,20 @@ bool LLAppViewer::doFrame()
                                         msg->sendReliable(regionp->getHost());
                                     }
                                 }
-                                LL_WARNS("AssetRetry") << "scene resync probe: lost=" << loss_delta
-                                                       << " probed=" << probed
-                                                       << " max_lid=" << max_lid
-                                                       << " region=" << regionp->getRegionID() << LL_ENDL;
+                                if (probed > 0)
+                                {
+                                    LL_WARNS("AssetRetry") << "scene resync probe: lost=" << loss_delta
+                                                           << " probed=" << probed
+                                                           << " max_lid=" << max_lid
+                                                           << " region=" << regionp->getRegionID() << LL_ENDL;
+                                }
+                                else
+                                {
+                                    LL_DEBUGS("AssetRetry") << "scene resync probe: lost=" << loss_delta
+                                                            << " probed=" << probed
+                                                            << " max_lid=" << max_lid
+                                                            << " region=" << regionp->getRegionID() << LL_ENDL;
+                                }
                             }
                         }
                     }

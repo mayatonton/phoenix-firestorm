@@ -65,7 +65,7 @@ void LLWorkerThread::clearDeleteList()
     // Delete any workers in the delete queue (should be safe - had better be!)
     if (!mDeleteList.empty())
     {
-        LL_WARNS() << "Worker Thread: " << mName << " destroyed with " << mDeleteList.size()
+        LL_DEBUGS() << "Worker Thread: " << mName << " destroyed with " << mDeleteList.size()
                 << " entries in delete list." << LL_ENDL;
 
         mDeleteMutex->lock();

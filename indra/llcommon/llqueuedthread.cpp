@@ -122,7 +122,7 @@ void LLQueuedThread::shutdown()
     unlockData();
     if (queued_count)
     {
-        LL_WARNS() << "~LLQueuedThread() called with unpocessed requests: " << queued_count << LL_ENDL;
+        LL_DEBUGS() << "~LLQueuedThread() called with unpocessed requests: " << queued_count << LL_ENDL;
     }
     if (has_active)
     {

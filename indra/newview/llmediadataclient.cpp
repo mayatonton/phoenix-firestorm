@@ -610,7 +610,7 @@ void LLMediaDataClient::Handler::onSuccess(LLCore::HttpResponse * response, cons
 
     if (mRequest->isDead())
     {
-        LL_WARNS("LLMediaDataClient") << "dead request " << *mRequest << LL_ENDL;
+        LL_DEBUGS("LLMediaDataClient") << "dead request " << *mRequest << LL_ENDL;
         return;
     }
 

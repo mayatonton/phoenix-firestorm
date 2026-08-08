@@ -1776,6 +1776,8 @@ namespace LLVKLoader
 
     bool perfLogEnabled();
 
+    bool immediatePresentActive();
+
     const float* getCurrentModelviewMatrix();
 
     struct ScenePerDrawBindings
