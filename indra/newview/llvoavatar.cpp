@@ -11090,7 +11090,7 @@ void LLVOAvatar::onBakedTextureMasksLoaded( bool success, LLViewerFetchedTexture
         {
             // this can happen when someone uses an old baked texture possibly provided by
             // viewer-side baked texture caching
-            LL_WARNS() << "Masks loaded callback but NO aux source, id " << id << LL_ENDL;
+            LL_INFOS() << "Masks loaded callback but NO aux source, id " << id << LL_ENDL;
         }
     }
 

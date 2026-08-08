@@ -3215,7 +3215,7 @@ void LLVoiceWebRTCConnection::OnDataReceivedImpl(const std::string &data, bool b
         if (!mPrimary && isSpatial() && gAgent.getRegion())
         {
             is_primary_region = (mRegionID == gAgent.getRegion()->getRegionID());
-            LL_WARNS() << "mPrimary is false, expected: " << is_primary_region << " connection state: " << getVoiceConnectionState() << LL_ENDL;
+            LL_DEBUGS("Voice") << "mPrimary is false, expected: " << is_primary_region << " connection state: " << getVoiceConnectionState() << LL_ENDL;
         }
         boost::json::object voice_data = voice_data_parsed.as_object();
         boost::json::object mute;
