@@ -223,7 +223,9 @@ Linux / Windows とも Vulkan 前提で検証する。Vulkan + bindless run で�
 次をひとまとまりで共有する。ログ全体が最優先である。
 
 1. `AYAstorm.log` 全体（最低でもこの run の開始から終了まで）。
-2. `#VkPerf#` 行、とくに `shsite` 欄。
+2. `#VkPerf#` 行は全欄をそのまま（`shsite`・`e3`・`fam`・`shamdi`・`mdi` を含む行全体を、
+   加工せず最低 1 行転記する。欄の取捨選択をしない — 2026-08-02 の実測記録では
+   `shsite` のみ抜粋したため `e3 pal` が失われた）。
 3. `FRAMETIME ms:` の全行（10 秒周期、p95 / p99 を含む）。
 4. `recreateSwapchain` 行。存在する場合は必ず `reason=` を残す。
 5. `WARNING`、`ERROR`、`VUID`、`device lost` の有無。存在する場合は該当行の前後も含める。

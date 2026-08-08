@@ -1366,7 +1366,8 @@ namespace LLVKLoader
                                     U32           width,
                                     U32           height,
                                     VkFormat      format,
-                                    F32*          out_depth);
+                                    F32*          out_depth,
+                                    U32           array_layer = 0);
 
     VkSampler getStandardLinearSampler();
 
@@ -1517,7 +1518,7 @@ namespace LLVKLoader
         std::atomic<U64> mat_draws{0};
         std::atomic<U64> mat_bindless_draws{0};
         std::atomic<U64> mat_cen[12][2] = {};
-        std::atomic<U64> shamdi[4][3] = {};
+        std::atomic<U64> shamdi[8][3] = {};
         std::atomic<U64> mdi_call{0};
         std::atomic<U64> mdi_rec{0};
         std::atomic<U64> mdi_zero{0};
@@ -1542,7 +1543,7 @@ namespace LLVKLoader
         std::atomic<U64> skin_bl_of{0};
         std::atomic<U64> skin_base_wr{0};
         std::atomic<U64> e3_rig_us[3] = {};
-        std::atomic<U64> e3_pal_us{0};
+        std::atomic<U64> e3_pal_us[3] = {};
         std::atomic<U64> als_n[4] = {};
         std::atomic<U64> als_us[4] = {};
         std::atomic<U64> als_cause[8] = {};
@@ -1619,7 +1620,7 @@ namespace LLVKLoader
             rigged_rec = 0;
             skin_up = 0;
             for (auto& v : e3_rig_us) v = 0;
-            e3_pal_us = 0;
+            for (auto& v : e3_pal_us) v = 0;
             for (auto& v : als_n) v = 0;
             for (auto& v : als_us) v = 0;
             for (auto& v : als_cause) v = 0;

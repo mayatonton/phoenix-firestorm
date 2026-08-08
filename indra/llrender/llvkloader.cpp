@@ -6009,8 +6009,8 @@ bool endFrame()
                                         }
                                         return s; }()
                                    << [](){ std::string s;
-                                        static const char* sn[4] = { "am","fbm","gm","ab" };
-                                        for (U32 i = 0; i < 4; ++i) {
+                                        static const char* sn[8] = { "am","fbm","gm","ab","amR","fbmR","gmR","opR" };
+                                        for (U32 i = 0; i < 8; ++i) {
                                             const U64 sp = gVkPerf.shamdi[i][0].load();
                                             const U64 dy = gVkPerf.shamdi[i][1].load();
                                             const U64 wk = gVkPerf.shamdi[i][2].load();
@@ -6121,11 +6121,13 @@ bool endFrame()
                                             (unsigned long long)gVkPerf.lgt_nl.load(),
                                             (unsigned long long)gVkPerf.lgt_ns.load());
                                         return s; }()
-                                   << llformat(" | e3 rig=%.2f/%.2f/%.2f pal=%.2f",
+                                   << llformat(" | e3 rig=%.2f/%.2f/%.2f pal=%.2f/%.2f/%.2f",
                                         gVkPerf.e3_rig_us[0].load() / 1000.0,
                                         gVkPerf.e3_rig_us[1].load() / 1000.0,
                                         gVkPerf.e3_rig_us[2].load() / 1000.0,
-                                        gVkPerf.e3_pal_us.load() / 1000.0)
+                                        gVkPerf.e3_pal_us[0].load() / 1000.0,
+                                        gVkPerf.e3_pal_us[1].load() / 1000.0,
+                                        gVkPerf.e3_pal_us[2].load() / 1000.0)
                                    << " | tex enq=" << gVkPerf.tex_enq.load()
                                    << " pub=" << gVkPerf.tex_pub.load()
                                    << " fail=" << gVkPerf.tex_fail.load()
@@ -11913,7 +11915,8 @@ bool readbackDepthImageRegionVk(VkImage       image,
                                 U32           width,
                                 U32           height,
                                 VkFormat      format,
-                                F32*          out_depth)
+                                F32*          out_depth,
+                                U32           array_layer)
 {
     if (image == VK_NULL_HANDLE || out_depth == nullptr ||
         width == 0 || height == 0 || x < 0 || y < 0)
@@ -11996,7 +11999,7 @@ bool readbackDepthImageRegionVk(VkImage       image,
         b.subresourceRange.aspectMask     = barrier_aspect;
         b.subresourceRange.baseMipLevel   = 0;
         b.subresourceRange.levelCount     = 1;
-        b.subresourceRange.baseArrayLayer = 0;
+        b.subresourceRange.baseArrayLayer = array_layer;
         b.subresourceRange.layerCount     = 1;
         vkCmdPipelineBarrier(cmd,
                              VK_PIPELINE_STAGE_ALL_COMMANDS_BIT,
@@ -12011,7 +12014,7 @@ bool readbackDepthImageRegionVk(VkImage       image,
         region.bufferImageHeight               = 0;
         region.imageSubresource.aspectMask     = VK_IMAGE_ASPECT_DEPTH_BIT;
         region.imageSubresource.mipLevel       = 0;
-        region.imageSubresource.baseArrayLayer = 0;
+        region.imageSubresource.baseArrayLayer = array_layer;
         region.imageSubresource.layerCount     = 1;
         region.imageOffset                     = {x, y, 0};
         region.imageExtent                     = {width, height, 1};
@@ -12032,7 +12035,7 @@ bool readbackDepthImageRegionVk(VkImage       image,
         b.subresourceRange.aspectMask     = barrier_aspect;
         b.subresourceRange.baseMipLevel   = 0;
         b.subresourceRange.levelCount     = 1;
-        b.subresourceRange.baseArrayLayer = 0;
+        b.subresourceRange.baseArrayLayer = array_layer;
         b.subresourceRange.layerCount     = 1;
         vkCmdPipelineBarrier(cmd,
                              VK_PIPELINE_STAGE_TRANSFER_BIT,

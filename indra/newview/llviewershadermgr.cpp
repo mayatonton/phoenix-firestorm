@@ -162,6 +162,10 @@ LLGLSLShader            gDeferredShadowMultiviewProgram;
 LLGLSLShader            gDeferredSkinnedShadowMultiviewProgram;
 LLGLSLShader            gDeferredShadowAlphaMaskProgram;
 LLGLSLShader            gDeferredSkinnedShadowAlphaMaskProgram;
+LLGLSLShader            gDeferredShadowAlphaBlendProgram;
+LLGLSLShader            gDeferredSkinnedShadowAlphaBlendProgram;
+LLGLSLShader            gDeferredShadowAlphaBlendMultiviewProgram;
+LLGLSLShader            gDeferredSkinnedShadowAlphaBlendMultiviewProgram;
 LLGLSLShader            gDeferredShadowGLTFAlphaMaskProgram;
 LLGLSLShader            gDeferredSkinnedShadowGLTFAlphaMaskProgram;
 LLGLSLShader            gDeferredShadowGLTFAlphaBlendProgram;
@@ -1567,6 +1571,10 @@ bool LLViewerShaderMgr::loadShadersDeferred()
         gDeferredSkinnedShadowMultiviewProgram.unload();
         gDeferredShadowAlphaMaskProgram.unload();
         gDeferredSkinnedShadowAlphaMaskProgram.unload();
+        gDeferredShadowAlphaBlendProgram.unload();
+        gDeferredSkinnedShadowAlphaBlendProgram.unload();
+        gDeferredShadowAlphaBlendMultiviewProgram.unload();
+        gDeferredSkinnedShadowAlphaBlendMultiviewProgram.unload();
         gDeferredShadowGLTFAlphaMaskProgram.unload();
         gDeferredSkinnedShadowGLTFAlphaMaskProgram.unload();
         gDeferredShadowFullbrightAlphaMaskProgram.unload();
@@ -3037,6 +3045,8 @@ bool LLViewerShaderMgr::loadShadersDeferred()
         success = gDeferredSkinnedShadowProgram.createShader();
         llassert(success);
 
+        gDeferredSkinnedShadowProgram.mVkPerDrawSupplySlotComplete = true;
+
         if (success && LLVKLoader::isVulkanInitialized())
         {
             gDeferredSkinnedShadowProgram.createVkPipeline(0);
@@ -3058,6 +3068,8 @@ bool LLViewerShaderMgr::loadShadersDeferred()
 
         success = gDeferredSkinnedShadowMultiviewProgram.createShader();
         llassert(success);
+
+        gDeferredSkinnedShadowMultiviewProgram.mVkPerDrawSupplySlotComplete = true;
 
         if (success && LLVKLoader::isVulkanInitialized())
         {
@@ -3130,6 +3142,26 @@ bool LLViewerShaderMgr::loadShadersDeferred()
         }
     }
 
+    if (success)
+    {
+        gDeferredShadowAlphaBlendProgram.mName = "Deferred Shadow Alpha Blend Shader";
+        gDeferredShadowAlphaBlendProgram.mFeatures.mIndexedTextureChannels = LLGLSLShader::sIndexedTextureChannels;
+
+        gDeferredShadowAlphaBlendProgram.mShaderFiles.clear();
+        gDeferredShadowAlphaBlendProgram.mShaderFiles.push_back(make_pair("deferred/shadowAlphaMaskV.glsl", GL_VERTEX_SHADER));
+        gDeferredShadowAlphaBlendProgram.mShaderFiles.push_back(make_pair("deferred/shadowAlphaBlendF.glsl", GL_FRAGMENT_SHADER));
+        gDeferredShadowAlphaBlendProgram.mShaderLevel = mShaderLevel[SHADER_DEFERRED];
+        success = make_rigged_variant(gDeferredShadowAlphaBlendProgram, gDeferredSkinnedShadowAlphaBlendProgram);
+        success = success && gDeferredShadowAlphaBlendProgram.createShader();
+        llassert(success);
+
+        if (success && LLVKLoader::isVulkanInitialized())
+        {
+            gDeferredShadowAlphaBlendProgram.createVkPipeline(16);
+            gDeferredSkinnedShadowAlphaBlendProgram.createVkPipeline(16);
+        }
+    }
+
 
     if (success)
     {
@@ -3190,11 +3222,35 @@ bool LLViewerShaderMgr::loadShadersDeferred()
 
         gDeferredShadowAlphaMaskMultiviewProgram.mVkShadowCutoffFromSlot = true;
         gDeferredSkinnedShadowAlphaMaskMultiviewProgram.mVkShadowCutoffFromSlot = true;
+        gDeferredSkinnedShadowAlphaMaskMultiviewProgram.mVkPerDrawSupplySlotComplete = true;
 
         if (success && LLVKLoader::isVulkanInitialized())
         {
             gDeferredShadowAlphaMaskMultiviewProgram.createVkPipeline(16);
             gDeferredSkinnedShadowAlphaMaskMultiviewProgram.createVkPipeline(16);
+        }
+    }
+
+    if (success && LLVKLoader::isMultiviewEnabled())
+    {
+        gDeferredShadowAlphaBlendMultiviewProgram.mName = "Deferred Shadow Alpha Blend Multiview Shader";
+        gDeferredShadowAlphaBlendMultiviewProgram.mFeatures.mIndexedTextureChannels = LLGLSLShader::sIndexedTextureChannels;
+        gDeferredShadowAlphaBlendMultiviewProgram.mShaderFiles.clear();
+        gDeferredShadowAlphaBlendMultiviewProgram.mShaderFiles.push_back(make_pair("deferred/shadowAlphaMaskV.glsl", GL_VERTEX_SHADER));
+        gDeferredShadowAlphaBlendMultiviewProgram.mShaderFiles.push_back(make_pair("deferred/shadowAlphaBlendF.glsl", GL_FRAGMENT_SHADER));
+        gDeferredShadowAlphaBlendMultiviewProgram.mShaderLevel = mShaderLevel[SHADER_DEFERRED];
+        gDeferredShadowAlphaBlendMultiviewProgram.mDefines["LL_MULTIVIEW_SHADOW"] = "1";
+        success = make_rigged_variant(gDeferredShadowAlphaBlendMultiviewProgram, gDeferredSkinnedShadowAlphaBlendMultiviewProgram);
+        success = success && gDeferredShadowAlphaBlendMultiviewProgram.createShader();
+        llassert(success);
+
+        gDeferredShadowAlphaBlendMultiviewProgram.mVkPerDrawSupplySlotComplete = true;
+        gDeferredSkinnedShadowAlphaBlendMultiviewProgram.mVkPerDrawSupplySlotComplete = true;
+
+        if (success && LLVKLoader::isVulkanInitialized())
+        {
+            gDeferredShadowAlphaBlendMultiviewProgram.createVkPipeline(16);
+            gDeferredSkinnedShadowAlphaBlendMultiviewProgram.createVkPipeline(16);
         }
     }
 

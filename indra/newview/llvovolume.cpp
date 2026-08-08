@@ -5875,6 +5875,7 @@ struct LLGeoStagedRebuild
     bool mHadFailedFace = false;
     bool mHadSkippedFace = false;
     std::vector<LLGeoFaceApply> mFaces;
+    std::vector<LLPointer<LLDrawable> > mStagedDrawables;
     std::vector<std::pair<U32, LLSpatialGroup::buffer_texture_map_t> > mBufferMaps;
 };
 
@@ -5963,10 +5964,17 @@ namespace
         }
 
         std::unordered_set<LLDrawable*> staged_drawables;
-        staged_drawables.reserve(staged.mFaces.size());
+        staged_drawables.reserve(staged.mFaces.size() + staged.mStagedDrawables.size());
         for (const LLGeoFaceApply& e : staged.mFaces)
         {
             staged_drawables.insert(e.mDrawable.get());
+        }
+        for (const LLPointer<LLDrawable>& d : staged.mStagedDrawables)
+        {
+            if (d.notNull())
+            {
+                staged_drawables.insert(d.get());
+            }
         }
 
         std::unordered_set<LLDrawable*> preserve;
@@ -6682,6 +6690,8 @@ void LLVolumeGeometryManager::rebuildGeom(LLSpatialGroup* group)
 
             vobj->updateTextureVirtualSize(true);
             vobj->preRebuild();
+
+            staged.mStagedDrawables.push_back(drawablep);
 
             drawablep->clearState(LLDrawable::HAS_ALPHA);
 

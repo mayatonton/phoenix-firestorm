@@ -154,7 +154,7 @@ struct E3PalTimer
     {
         if (mOn)
         {
-            LLVKLoader::gVkPerf.e3_pal_us += (U64)LLTimer::getTotalTime() - mT0;
+            LLVKLoader::gVkPerf.e3_pal_us[e3RigBucket()] += (U64)LLTimer::getTotalTime() - mT0;
         }
     }
 };
@@ -1258,6 +1258,20 @@ static U32 shamdiCellForPass(U32 pass)
     }
 }
 
+static U32 shamdiRiggedCellForPass(U32 pass)
+{
+    switch (pass)
+    {
+        case LLRenderPass::PASS_ALPHA_MASK_RIGGED:            return 4;
+        case LLRenderPass::PASS_FULLBRIGHT_ALPHA_MASK_RIGGED: return 5;
+        case LLRenderPass::PASS_MATERIAL_ALPHA_MASK_RIGGED:
+        case LLRenderPass::PASS_SPECMAP_MASK_RIGGED:
+        case LLRenderPass::PASS_NORMMAP_MASK_RIGGED:
+        case LLRenderPass::PASS_NORMSPEC_MASK_RIGGED:         return 6;
+        default:                                              return 0xFFFFFFFFu;
+    }
+}
+
 void LLRenderPass::pushBatches(U32 type, bool texture, bool batch_textures)
 {
     LL_PROFILE_ZONE_SCOPED_CATEGORY_DRAWPOOL;
@@ -1456,25 +1470,15 @@ void LLRenderPass::pushIndirectBucket(LLVKBucket::Bucket& bucket, const std::vec
 
 namespace
 {
-    bool riggedMdiKillSwitchOn()
-    {
-        static const bool s_on = []()
-        {
-            const char* e = getenv("AYASTORM_RIGGED_MDI");
-            return e != nullptr && e[0] == '1';
-        }();
-        return s_on;
-    }
-
     bool riggedMdiEligible(U32 type)
     {
         (void)type;
-        return riggedMdiKillSwitchOn()
-            && LLPipelineFrameContext::getInstance().isShadowPass()
+        return LLPipelineFrameContext::getInstance().isShadowPass()
             && LLVKLoader::isIndirectDrawEnabled()
             && LLVKLoader::skinBindlessEnabled()
             && LLGLSLShader::sCurBoundShaderPtr != nullptr
-            && LLGLSLShader::sCurBoundShaderPtr->mVkUsesHeapSet
+            && LLGLSLShader::sCurBoundShaderPtr->mVkUsesSkinSet
+            && LLGLSLShader::sCurBoundShaderPtr->mVkPerDrawSupplySlotComplete
             && !gSnapshot;
     }
 
@@ -1510,13 +1514,17 @@ namespace
         return true;
     }
 
-    bool pushRiggedBatchesIndirect(U32 type, bool batch_textures)
+    bool pushRiggedBatchesIndirect(LLRenderPass* self, U32 type, bool texture, bool batch_textures,
+                                   U32 shamdi_cell)
     {
         LLGLSLShader* shader = LLGLSLShader::sCurBoundShaderPtr;
 
         static thread_local std::vector<RiggedMdiRec> s_items;
+        static thread_local std::vector<LLDrawInfo*>  s_dyn;
         s_items.clear();
+        s_dyn.clear();
 
+        U64               acceptedRec   = 0;
         const LLVOAvatar* lastAvatar    = nullptr;
         U64               lastMeshId    = 0;
         bool              skipLastSkin  = false;
@@ -1534,7 +1542,7 @@ namespace
             {
                 continue;
             }
-            ++LLVKLoader::gVkPerf.rigged_rec;
+            ++acceptedRec;
             if (!p->mCount || vkShadowCullBatch(*p))
             {
                 continue;
@@ -1548,6 +1556,7 @@ namespace
             const LLVKLoader::MegaSliceI& is = vb->getVkIndexSlice();
             if (vs.buffer == VK_NULL_HANDLE || is.buffer == VK_NULL_HANDLE)
             {
+                s_dyn.push_back(p);
                 continue;
             }
 
@@ -1645,6 +1654,37 @@ namespace
             return false;
         }
         LLVKLoader::gVkPerf.mdi_rec += (U64)s_cmds.size();
+        LLVKLoader::gVkPerf.rigged_rec += acceptedRec;
+
+        U64 dynDrawn = 0;
+        if (!s_dyn.empty())
+        {
+            const LLVOAvatar* dynAvatar = nullptr;
+            U64               dynMeshId = 0;
+            bool              dynSkip   = false;
+            for (LLDrawInfo* p : s_dyn)
+            {
+                if (LLRenderPass::uploadMatrixPalette(p->mAvatar, p->mSkinInfo,
+                                                      dynAvatar, dynMeshId, dynSkip))
+                {
+                    if (texture)
+                    {
+                        self->pushBatch(*p, true, batch_textures);
+                    }
+                    else
+                    {
+                        self->pushUntexturedBatch(*p);
+                    }
+                    ++LLVKLoader::gVkPerf.mdi_dyn;
+                    ++dynDrawn;
+                }
+            }
+        }
+        if (shamdi_cell < 8)
+        {
+            LLVKLoader::gVkPerf.shamdi[shamdi_cell][0] += (U64)s_cmds.size();
+            LLVKLoader::gVkPerf.shamdi[shamdi_cell][1] += dynDrawn;
+        }
         return true;
     }
 }
@@ -1655,7 +1695,8 @@ void LLRenderPass::pushRiggedBatches(U32 type, bool texture, bool batch_textures
     const bool e3on = LLVKLoader::perfLogEnabled();
     const U64  e3t0 = e3on ? (U64)LLTimer::getTotalTime() : 0;
 
-    if (riggedMdiEligible(type) && pushRiggedBatchesIndirect(type, batch_textures))
+    if (riggedMdiEligible(type)
+        && pushRiggedBatchesIndirect(this, type, texture, batch_textures, 7))
     {
         if (e3on)
         {
@@ -1663,6 +1704,10 @@ void LLRenderPass::pushRiggedBatches(U32 type, bool texture, bool batch_textures
         }
         return;
     }
+
+    const bool opWalk = LLPipelineFrameContext::getInstance().isShadowPass()
+        && LLGLSLShader::sCurBoundShaderPtr != nullptr
+        && LLGLSLShader::sCurBoundShaderPtr->mVkPerDrawSupplySlotComplete;
 
     if (texture)
     {
@@ -1679,6 +1724,10 @@ void LLRenderPass::pushRiggedBatches(U32 type, bool texture, bool batch_textures
             if (uploadMatrixPalette(pparams->mAvatar, pparams->mSkinInfo, lastAvatar, lastMeshId, skipLastSkin))
             {
                 ++LLVKLoader::gVkPerf.rigged_rec;
+                if (opWalk)
+                {
+                    ++LLVKLoader::gVkPerf.shamdi[7][2];
+                }
                 pushBatch(*pparams, texture, batch_textures);
             }
         }
@@ -1696,6 +1745,9 @@ void LLRenderPass::pushRiggedBatches(U32 type, bool texture, bool batch_textures
 void LLRenderPass::pushUntexturedRiggedBatches(U32 type)
 {
     LL_PROFILE_ZONE_SCOPED_CATEGORY_DRAWPOOL;
+    const bool opWalk = LLPipelineFrameContext::getInstance().isShadowPass()
+        && LLGLSLShader::sCurBoundShaderPtr != nullptr
+        && LLGLSLShader::sCurBoundShaderPtr->mVkPerDrawSupplySlotComplete;
     const LLVOAvatar* lastAvatar = nullptr;
     U64 lastMeshId = 0;
     bool skipLastSkin = false;
@@ -1709,6 +1761,10 @@ void LLRenderPass::pushUntexturedRiggedBatches(U32 type)
         if (uploadMatrixPalette(pparams->mAvatar, pparams->mSkinInfo, lastAvatar, lastMeshId, skipLastSkin))
         {
             ++LLVKLoader::gVkPerf.rigged_rec;
+            if (opWalk)
+            {
+                ++LLVKLoader::gVkPerf.shamdi[7][2];
+            }
             pushUntexturedBatch(*pparams);
         }
     }
@@ -1745,11 +1801,17 @@ void LLRenderPass::pushMaskBatches(U32 type, bool texture, bool batch_textures)
             return;
         }
     }
+    const bool maskObjAlphaPC = !LLGLSLShader::sCurBoundShaderPtr->mVkShadowCutoffFromSlot
+        && LLPipelineFrameContext::getInstance().isShadowPass();
     LLVKBucket::forEachSource(type, [&](LLDrawInfo& params)
     {
         if (!LLGLSLShader::sCurBoundShaderPtr->mVkShadowCutoffFromSlot)
         {
             LLGLSLShader::sCurBoundShaderPtr->setMinimumAlpha(params.mAlphaMaskCutoff);
+        }
+        if (maskObjAlphaPC)
+        {
+            LLGLSLShader::sCurBoundShaderPtr->setObjectAlpha(params.mObjectAlpha);
         }
         pushBatch(params, texture, batch_textures);
     });
@@ -1760,6 +1822,24 @@ void LLRenderPass::pushRiggedMaskBatches(U32 type, bool texture, bool batch_text
     LL_PROFILE_ZONE_SCOPED_CATEGORY_DRAWPOOL;
     const bool e3on = LLVKLoader::perfLogEnabled();
     const U64  e3t0 = e3on ? (U64)LLTimer::getTotalTime() : 0;
+
+    if (riggedMdiEligible(type)
+        && LLGLSLShader::sCurBoundShaderPtr->mVkUsesHeapSet
+        && LLGLSLShader::sCurBoundShaderPtr->mVkShadowCutoffFromSlot
+        && pushRiggedBatchesIndirect(this, type, texture, batch_textures,
+                                     shamdiRiggedCellForPass(type)))
+    {
+        if (e3on)
+        {
+            LLVKLoader::gVkPerf.e3_rig_us[e3RigBucket()] += (U64)LLTimer::getTotalTime() - e3t0;
+        }
+        return;
+    }
+
+    const U32 wcell = (LLGLSLShader::sCurBoundShaderPtr != nullptr
+                       && LLGLSLShader::sCurBoundShaderPtr->mVkShadowCutoffFromSlot)
+                          ? shamdiRiggedCellForPass(type)
+                          : 0xFFFFFFFFu;
     const LLVOAvatar* lastAvatar = nullptr;
     U64 lastMeshId = 0;
     bool skipLastSkin = false;
@@ -1776,11 +1856,19 @@ void LLRenderPass::pushRiggedMaskBatches(U32 type, bool texture, bool batch_text
         if (!LLGLSLShader::sCurBoundShaderPtr->mVkShadowCutoffFromSlot)
         {
             LLGLSLShader::sCurBoundShaderPtr->setMinimumAlpha(pparams->mAlphaMaskCutoff);
+            if (LLPipelineFrameContext::getInstance().isShadowPass())
+            {
+                LLGLSLShader::sCurBoundShaderPtr->setObjectAlpha(pparams->mObjectAlpha);
+            }
         }
 
         if (uploadMatrixPalette(pparams->mAvatar, pparams->mSkinInfo, lastAvatar, lastMeshId, skipLastSkin))
         {
             ++LLVKLoader::gVkPerf.rigged_rec;
+            if (wcell < 8)
+            {
+                ++LLVKLoader::gVkPerf.shamdi[wcell][2];
+            }
             pushBatch(*pparams, texture, batch_textures);
         }
     }
@@ -2304,6 +2392,8 @@ void LLRenderPass::pushGLTFBatches(U32 type, bool textured)
 void LLRenderPass::pushGLTFBatches(U32 type)
 {
     LL_PROFILE_ZONE_SCOPED_CATEGORY_DRAWPOOL;
+    const bool gltfObjAlphaPC = LLPipelineFrameContext::getInstance().isShadowPass()
+        && LLGLSLShader::sCurBoundShaderPtr != nullptr;
     auto* begin = gPipeline.beginRenderMap(type);
     auto* end = gPipeline.endRenderMap(type);
     for (LLCullResult::drawinfo_iterator i = begin; i != end; )
@@ -2312,6 +2402,10 @@ void LLRenderPass::pushGLTFBatches(U32 type)
         LLDrawInfo& params = **i;
         LLCullResult::increment_iterator(i, end);
 
+        if (gltfObjAlphaPC && params.mGLTFMaterial != nullptr)
+        {
+            LLGLSLShader::sCurBoundShaderPtr->setObjectAlpha(params.mGLTFMaterial->mBaseColor.mV[3]);
+        }
         pushGLTFBatch(params);
     }
 }
@@ -2399,6 +2493,8 @@ void LLRenderPass::pushRiggedGLTFBatches(U32 type, bool textured)
 void LLRenderPass::pushRiggedGLTFBatches(U32 type)
 {
     LL_PROFILE_ZONE_SCOPED_CATEGORY_DRAWPOOL;
+    const bool gltfObjAlphaPC = LLPipelineFrameContext::getInstance().isShadowPass()
+        && LLGLSLShader::sCurBoundShaderPtr != nullptr;
     const LLVOAvatar* lastAvatar = nullptr;
     U64 lastMeshId = 0;
     bool skipLastSkin = false;
@@ -2411,6 +2507,10 @@ void LLRenderPass::pushRiggedGLTFBatches(U32 type)
         LLDrawInfo& params = **i;
         LLCullResult::increment_iterator(i, end);
 
+        if (gltfObjAlphaPC && params.mGLTFMaterial != nullptr)
+        {
+            LLGLSLShader::sCurBoundShaderPtr->setObjectAlpha(params.mGLTFMaterial->mBaseColor.mV[3]);
+        }
         pushRiggedGLTFBatch(params, lastAvatar, lastMeshId, skipLastSkin);
     }
 }

@@ -228,6 +228,8 @@ extern LLGLSLShader         gDeferredShadowProgram;
 extern LLGLSLShader         gDeferredShadowMultiviewProgram;
 extern LLGLSLShader         gDeferredSkinnedShadowMultiviewProgram;
 extern LLGLSLShader         gDeferredShadowAlphaMaskProgram;
+extern LLGLSLShader         gDeferredShadowAlphaBlendProgram;
+extern LLGLSLShader         gDeferredShadowAlphaBlendMultiviewProgram;
 extern LLGLSLShader         gDeferredShadowGLTFAlphaMaskProgram;
 extern LLGLSLShader         gDeferredShadowGLTFAlphaBlendProgram;
 extern LLGLSLShader         gDeferredShadowFullbrightAlphaMaskProgram;

@@ -703,7 +703,9 @@ void LLRenderTarget::bindTarget(bool depth_read_only)
                                             ? VK_IMAGE_LAYOUT_DEPTH_STENCIL_READ_ONLY_OPTIMAL
                                             : VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL;
         depth_attachment.load_op      = VK_ATTACHMENT_LOAD_OP_LOAD;
-        depth_attachment.store_op     = VK_ATTACHMENT_STORE_OP_STORE;
+        depth_attachment.store_op     = depth_read_only
+                                            ? VK_ATTACHMENT_STORE_OP_NONE
+                                            : VK_ATTACHMENT_STORE_OP_STORE;
 
         LLVKLoader::beginDynamicRendering(
             mResX, mResY,
