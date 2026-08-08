@@ -942,6 +942,7 @@ bool LLImagePreviewAvatar::render()
 
     gUIProgram.bind();
 
+    gGL.getTexUnit(0)->unbind(LLTexUnit::TT_TEXTURE);
     gl_rect_2d_simple( mFullWidth, mFullHeight );
 
     gGL.matrixMode(LLRender::MM_PROJECTION);
@@ -1131,6 +1132,7 @@ bool LLImagePreviewSculpted::render()
 
     gUIProgram.bind();
 
+    gGL.getTexUnit(0)->unbind(LLTexUnit::TT_TEXTURE);
     gl_rect_2d_simple( mFullWidth, mFullHeight );
 
     gGL.matrixMode(LLRender::MM_PROJECTION);

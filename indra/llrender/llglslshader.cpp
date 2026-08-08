@@ -2300,6 +2300,74 @@ VkImageView LLGLSLShader::vkResolveEnumBoundView(S32 uniform_enum) const
     return VK_NULL_HANDLE;
 }
 
+bool LLGLSLShader::vkPruneEnumBoundView(S32 uniform_enum)
+{
+    if (uniform_enum < 0 || uniform_enum >= (S32)mVkEnumBoundView.size())
+    {
+        return false;
+    }
+    VkEnumBoundView& e = mVkEnumBoundView[uniform_enum];
+    if (!e.bound)
+    {
+        return false;
+    }
+    if (e.rtp != nullptr)
+    {
+        if (e.rtp == LLRenderTarget::getCurrentBoundTarget()
+            || e.rtp->isVkActivePassAttachment(e.rt_attachment, e.rt_depth))
+        {
+            return false;
+        }
+        if (e.rt_depth ? e.rtp->hasVkDepth() : e.rtp->hasVkImage(e.rt_attachment))
+        {
+            return false;
+        }
+        e.imagep = nullptr;
+        e.cubep  = nullptr;
+        e.rtp    = nullptr;
+        e.bound  = false;
+        return true;
+    }
+    if (e.imagep.notNull() && e.imagep->hasVkImage())
+    {
+        return false;
+    }
+    if (e.cubep.notNull() && e.cubep->hasVkCubeImage())
+    {
+        return false;
+    }
+    e.imagep = nullptr;
+    e.cubep  = nullptr;
+    e.bound  = false;
+    return true;
+}
+
+bool LLGLSLShader::vkL3NullIsAttachment(const LLGLSLShader* cur, S32 enum_value)
+{
+    if (cur == nullptr || enum_value < 0 || enum_value >= (S32)cur->mVkEnumBoundView.size())
+    {
+        return false;
+    }
+    const VkEnumBoundView& e = cur->mVkEnumBoundView[enum_value];
+    if (e.rtp == nullptr)
+    {
+        return false;
+    }
+    return e.rtp == LLRenderTarget::getCurrentBoundTarget()
+        || e.rtp->isVkActivePassAttachment(e.rt_attachment, e.rt_depth);
+}
+
+bool LLGLSLShader::vkUnitNullIsAttachment(S32 unit)
+{
+    LLTexUnit* tu = gGL.getTexUnit(unit);
+    if (tu == nullptr || tu->mCurrRenderTarget == nullptr)
+    {
+        return false;
+    }
+    return tu->mCurrRenderTarget == LLRenderTarget::getCurrentBoundTarget()
+        || tu->mCurrRenderTarget->isVkActivePassAttachment(tu->mCurrRTAttachment, tu->mCurrRTDepth);
+}
+
 U8 LLGLSLShader::vkResolveEnumBoundDim(S32 uniform_enum) const
 {
     if (uniform_enum < 0 || uniform_enum >= (S32)mVkEnumBoundView.size())
@@ -3676,7 +3744,8 @@ void LLGLSLShader::populateAndBindUniversalDescriptorSet()
         S32 enum_value = cur->mVkBindingToEnum[N];
         S32 resolved_unit = -1;
         const bool l3_hit = (enum_value >= 0 && enum_value < (S32)cur->mVkEnumBoundView.size()
-                             && cur->mVkEnumBoundView[enum_value].bound);
+                             && cur->mVkEnumBoundView[enum_value].bound
+                             && !cur->vkPruneEnumBoundView(enum_value));
 
         if (enum_value == -2)
         {
@@ -3732,7 +3801,9 @@ void LLGLSLShader::populateAndBindUniversalDescriptorSet()
         bool used_fallback = (view == VK_NULL_HANDLE);
         if (used_fallback && vkc_fb_reason == nullptr)
         {
-            vkc_fb_reason = "no_view";
+            const bool attach = l3_hit ? vkL3NullIsAttachment(cur, enum_value)
+                                       : (resolved_unit >= 0 && vkUnitNullIsAttachment(resolved_unit));
+            vkc_fb_reason = attach ? "attachment" : "no_view";
         }
         if (!used_fallback)
         {

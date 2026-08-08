@@ -748,15 +748,32 @@ U32 LLRenderPass::buildAndOverrideScenePerDrawSet(LLDrawInfo* params, bool batch
             VkImageView view_to_write = VK_NULL_HANDLE;
             if (i < real_count)
             {
-                view_to_write = gGL.getTexUnit((S32)i)->getLiveVkImageView();
-                if (view_to_write != VK_NULL_HANDLE &&
-                    (100 + i) < LLGLSLShader::MAX_VK_BINDING &&
-                    gGL.getTexUnit((S32)i)->getLiveVkImageViewDim() != cur->mVkBindingSamplerDim[100 + i])
+                LLTexUnit* tu_i = gGL.getTexUnit((S32)i);
+                view_to_write = tu_i->getLiveVkImageView();
+                const char* reason = nullptr;
+                if (view_to_write == VK_NULL_HANDLE)
+                {
+                    reason = LLGLSLShader::vkUnitNullIsAttachment((S32)i) ? "attachment" : "no_view";
+                }
+                else if ((100 + i) < LLGLSLShader::MAX_VK_BINDING &&
+                         tu_i->getLiveVkImageViewDim() != cur->mVkBindingSamplerDim[100 + i])
                 {
                     view_to_write = VK_NULL_HANDLE;
+                    reason = "dim_unit";
                 }
                 if (view_to_write == VK_NULL_HANDLE)
                 {
+                    if (reason != nullptr && std::strcmp(reason, "no_view") == 0)
+                    {
+                        LLVKContract::noteFbNoView(cur, cur->mName, 100 + i);
+                    }
+                    else
+                    {
+                        LLVKContract::note(i == 0 ? LLVKContract::C_FB_VIEW_DIFFUSE
+                                                  : LLVKContract::C_FB_VIEW_AUX,
+                                           cur->mName);
+                        LLVKContract::noteFbSlot(cur, cur->mName, 100 + i, reason);
+                    }
                     view_to_write = fallback_view;
                 }
             }
@@ -784,14 +801,29 @@ U32 LLRenderPass::buildAndOverrideScenePerDrawSet(LLDrawInfo* params, bool batch
             VkImageView view_to_write = VK_NULL_HANDLE;
             if (i == 0)
             {
-                view_to_write = gGL.getTexUnit(0)->getLiveVkImageView();
-                if (view_to_write != VK_NULL_HANDLE &&
-                    gGL.getTexUnit(0)->getLiveVkImageViewDim() != cur->mVkBindingSamplerDim[100])
+                LLTexUnit* tu0 = gGL.getTexUnit(0);
+                view_to_write = tu0->getLiveVkImageView();
+                const char* reason = nullptr;
+                if (view_to_write == VK_NULL_HANDLE)
+                {
+                    reason = LLGLSLShader::vkUnitNullIsAttachment(0) ? "attachment" : "no_view";
+                }
+                else if (tu0->getLiveVkImageViewDim() != cur->mVkBindingSamplerDim[100])
                 {
                     view_to_write = VK_NULL_HANDLE;
+                    reason = "dim_unit";
                 }
                 if (view_to_write == VK_NULL_HANDLE)
                 {
+                    if (reason != nullptr && std::strcmp(reason, "no_view") == 0)
+                    {
+                        LLVKContract::noteFbNoView(cur, cur->mName, 100);
+                    }
+                    else
+                    {
+                        LLVKContract::note(LLVKContract::C_FB_VIEW_DIFFUSE, cur->mName);
+                        LLVKContract::noteFbSlot(cur, cur->mName, 100, reason);
+                    }
                     view_to_write = fallback_view;
                 }
             }
@@ -827,31 +859,53 @@ U32 LLRenderPass::buildAndOverrideScenePerDrawSet(LLDrawInfo* params, bool batch
             const S32 enum1 = cur->mVkBindingToEnum[1];
             const S32 unit1 = (cur->mVkBindingToChannel[1] >= 0) ? cur->mVkBindingToChannel[1] : 0;
             const bool l3_hit = (enum1 >= 0 && enum1 < (S32)cur->mVkEnumBoundView.size()
-                                 && cur->mVkEnumBoundView[enum1].bound);
+                                 && cur->mVkEnumBoundView[enum1].bound
+                                 && !cur->vkPruneEnumBoundView(enum1));
             VkImageView view_to_write = VK_NULL_HANDLE;
             VkSampler   sampler1      = VK_NULL_HANDLE;
+            const char* reason1       = nullptr;
             if (l3_hit)
             {
                 view_to_write = cur->vkResolveEnumBoundView(enum1);
                 sampler1      = cur->mVkEnumBoundView[enum1].sampler;
-                if (view_to_write != VK_NULL_HANDLE &&
-                    cur->vkResolveEnumBoundDim(enum1) != cur->mVkBindingSamplerDim[1])
+                if (view_to_write == VK_NULL_HANDLE)
+                {
+                    reason1 = LLGLSLShader::vkL3NullIsAttachment(cur, enum1) ? "attachment" : "no_view";
+                }
+                else if (cur->vkResolveEnumBoundDim(enum1) != cur->mVkBindingSamplerDim[1])
                 {
                     view_to_write = VK_NULL_HANDLE;
+                    reason1 = "dim_l3";
                 }
             }
             else
             {
-                view_to_write = gGL.getTexUnit(unit1)->getLiveVkImageView();
-                sampler1      = gGL.getTexUnit(unit1)->getLiveVkSampler();
-                if (view_to_write != VK_NULL_HANDLE &&
-                    gGL.getTexUnit(unit1)->getLiveVkImageViewDim() != cur->mVkBindingSamplerDim[1])
+                LLTexUnit* tu1 = gGL.getTexUnit(unit1);
+                view_to_write = tu1->getLiveVkImageView();
+                sampler1      = tu1->getLiveVkSampler();
+                if (view_to_write == VK_NULL_HANDLE)
+                {
+                    reason1 = LLGLSLShader::vkUnitNullIsAttachment(unit1) ? "attachment" : "no_view";
+                }
+                else if (tu1->getLiveVkImageViewDim() != cur->mVkBindingSamplerDim[1])
                 {
                     view_to_write = VK_NULL_HANDLE;
+                    reason1 = "dim_unit";
                 }
             }
             if (view_to_write == VK_NULL_HANDLE)
             {
+                if (reason1 != nullptr && std::strcmp(reason1, "no_view") == 0)
+                {
+                    LLVKContract::noteFbNoView(cur, cur->mName, 1);
+                }
+                else
+                {
+                    LLVKContract::note((!l3_hit && unit1 == 0) ? LLVKContract::C_FB_VIEW_DIFFUSE
+                                                               : LLVKContract::C_FB_VIEW_AUX,
+                                       cur->mName);
+                    LLVKContract::noteFbSlot(cur, cur->mName, 1, reason1);
+                }
                 view_to_write = fallback_view;
             }
             if (view_to_write != fallback_view)
@@ -911,7 +965,8 @@ U32 LLRenderPass::buildAndOverrideScenePerDrawSet(LLDrawInfo* params, bool batch
         VkImageView view = VK_NULL_HANDLE;
         S32 resolved_unit = -1;
         const bool l3_hit = (enum_value >= 0 && enum_value < (S32)cur->mVkEnumBoundView.size()
-                             && cur->mVkEnumBoundView[enum_value].bound);
+                             && cur->mVkEnumBoundView[enum_value].bound
+                             && !cur->vkPruneEnumBoundView(enum_value));
         if (l3_hit)
         {
             view = cur->vkResolveEnumBoundView(enum_value);
@@ -943,7 +998,9 @@ U32 LLRenderPass::buildAndOverrideScenePerDrawSet(LLDrawInfo* params, bool batch
         bool need_typed_fallback = (view == VK_NULL_HANDLE);
         if (need_typed_fallback)
         {
-            vkc_fb_reason = "no_view";
+            const bool attach = l3_hit ? LLGLSLShader::vkL3NullIsAttachment(cur, enum_value)
+                                       : (resolved_unit >= 0 && LLGLSLShader::vkUnitNullIsAttachment(resolved_unit));
+            vkc_fb_reason = attach ? "attachment" : "no_view";
         }
         if (!need_typed_fallback)
         {

@@ -157,6 +157,7 @@ void LLTexUnit::bindFast(LLTexture* texture)
         mCurrVkWhite = false;
         return;
     }
+    gl_tex->updateBindStats();
     const bool same_state = (mCurrImageGL == gl_tex)
                             && mCurrRenderTarget == nullptr
                             && mCurrCubeMap == nullptr
@@ -214,11 +215,6 @@ bool LLTexUnit::bind(LLTexture* texture, bool for_rendering, bool forceBind)
                 {
                     activate();
                     enable(gl_tex->getTarget());
-                    if(gl_tex->updateBindStats())
-                    {
-                        texture->setActive() ;
-                        texture->updateBindStatsForTester() ;
-                    }
                     mHasMipMaps = gl_tex->mHasMipMaps;
                     if (gl_tex->mTexOptionsDirty)
                     {
@@ -226,6 +222,11 @@ bool LLTexUnit::bind(LLTexture* texture, bool for_rendering, bool forceBind)
                         setTextureAddressMode(gl_tex->mAddressMode);
                         setTextureFilteringOption(gl_tex->mFilterOption);
                     }
+                }
+                if(gl_tex->updateBindStats())
+                {
+                    texture->setActive() ;
+                    texture->updateBindStatsForTester() ;
                 }
                 mCurrImageGL = gl_tex;
                 mCurrVkHeapSlot = (gl_tex->getTarget() == TT_TEXTURE)
@@ -294,7 +295,6 @@ bool LLTexUnit::bind(LLImageGL* texture, bool for_rendering, bool forceBind)
         gGL.flush();
         activate();
         enable(texture->getTarget());
-        texture->updateBindStats();
         mHasMipMaps = texture->mHasMipMaps;
         if (texture->mTexOptionsDirty)
         {
@@ -303,6 +303,7 @@ bool LLTexUnit::bind(LLImageGL* texture, bool for_rendering, bool forceBind)
             setTextureFilteringOption(texture->mFilterOption);
         }
     }
+    texture->updateBindStats();
 
     mCurrImageGL = texture;
     mCurrVkHeapSlot = (texture->getTarget() == TT_TEXTURE)
@@ -344,7 +345,6 @@ bool LLTexUnit::bind(LLCubeMap* cubeMap)
             activate();
             enable(LLTexUnit::TT_CUBE_MAP);
             mHasMipMaps = cubeMap->mImages[0]->mHasMipMaps;
-            cubeMap->mImages[0]->updateBindStats();
             if (cubeMap->mImages[0]->mTexOptionsDirty)
             {
                 cubeMap->mImages[0]->mTexOptionsDirty = false;
@@ -359,6 +359,7 @@ bool LLTexUnit::bind(LLCubeMap* cubeMap)
         }
     }
 
+    cubeMap->mImages[0]->updateBindStats();
     mCurrCubeMap      = cubeMap;
     mCurrImageGL      = nullptr;
     mCurrVkHeapSlot   = 0xFFFFFFFFu;

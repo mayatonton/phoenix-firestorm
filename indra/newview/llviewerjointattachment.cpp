@@ -90,6 +90,7 @@ U32 LLViewerJointAttachment::drawShape( F32 pixelArea, bool first_pass, bool is_
         LLGLDisable cull_face(GL_CULL_FACE);
 
         gGL.color4f(1.f, 1.f, 1.f, 1.f);
+        gGL.getTexUnit(0)->unbind(LLTexUnit::TT_TEXTURE);
         gGL.begin(LLRender::TRIANGLES);
         {
             gGL.vertex3f(-0.1f, 0.1f, 0.f);

@@ -373,7 +373,10 @@ public:
     void vkCaptureEnumBoundView(S32 uniform_enum, S32 channel);
     void vkCaptureChannelBoundView(S32 channel);
     VkImageView vkResolveEnumBoundView(S32 uniform_enum) const;
+    bool vkPruneEnumBoundView(S32 uniform_enum);
     U8 vkResolveEnumBoundDim(S32 uniform_enum) const;
+    static bool vkL3NullIsAttachment(const LLGLSLShader* cur, S32 enum_value);
+    static bool vkUnitNullIsAttachment(S32 unit);
 
     U32 mVkPerProgramUBOBinding = 0;
 
