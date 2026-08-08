@@ -1979,6 +1979,7 @@ LLVolume::LLVolume(const LLVolumeParams &params, const F32 detail, const bool ge
     mFaceMask = 0x0;
     mDetail = detail;
     mSculptLevel = -2;
+    mSculptVisiblePlaceholder = false;
     mSurfaceArea = 1.f; //only calculated for sculpts, defaults to 1 for all other prims
     mIsMeshAssetLoaded = false;
     mIsMeshAssetUnavaliable = false;
@@ -3276,6 +3277,7 @@ void LLVolume::sculpt(U16 sculpt_width, U16 sculpt_height, S8 sculpt_components,
     }
 
     mSculptLevel = sculpt_level;
+    mSculptVisiblePlaceholder = data_is_empty && visible_placeholder;
 
     // Delete any existing faces so that they get regenerated
     mVolumeFaces.clear();

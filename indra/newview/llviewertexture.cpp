@@ -2493,6 +2493,15 @@ void LLViewerFetchedTexture::setIsMissingAsset(bool is_missing)
                 LL_WARNS("Texture") << mID << ": missing-asset substitute creation failed" << LL_ENDL;
             }
         }
+        for (U32 i = 0; i < mNumVolumes[LLRender::SCULPT_TEX]; ++i)
+        {
+            LLVOVolume* volume = mVolumeList[LLRender::SCULPT_TEX][i];
+            if (volume)
+            {
+                volume->mSculptChanged = true;
+                gPipeline.markRebuild(volume->mDrawable);
+            }
+        }
     }
     else
     {

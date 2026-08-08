@@ -1056,7 +1056,7 @@ static void asyncReconcileObject(LLViewerObject* obj)
                     }
                 }
                 LLSpatialGroup* kg = drawablep->getSpatialGroup();
-                LL_WARNS("AssetStuck") << "VKC-KICKPROBE mesh=" << p.getSculptID()
+                LL_INFOS("AssetStuck") << "VKC-KICKPROBE mesh=" << p.getSculptID()
                                        << " obj=" << vobj->getID()
                                        << " mlod=" << vobj->getLOD()
                                        << " vdet=" << LLVolumeLODGroup::getVolumeDetailFromScale(volume->getDetail())
@@ -1133,7 +1133,7 @@ static void asyncReconcileObject(LLViewerObject* obj)
             if (vobj->isMesh())
             {
                 vobj->resolveMeshSkinTerminal();
-                gPipeline.markRebuild(drawablep, LLDrawable::REBUILD_GEOMETRY);
+                vobj->notifyMeshLoaded();
             }
             const U32 repair_count = geoRepairBump(vobj->getID());
             if (repair_count >= 2)

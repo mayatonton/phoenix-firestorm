@@ -1062,10 +1062,15 @@ void LLVOVolume::updateTextureVirtualSize(bool forced)
 
             S32 texture_discard = mSculptTexture->getRawImageLevel(); //try to match the texture
             S32 current_discard = getVolume() ? getVolume()->getSculptLevel() : -2 ;
+            bool sculpt_data_absent = !mSculptTexture->getRawImage()
+                                   && !mSculptTexture->getSavedRawImage();
+            bool want_placeholder = mSculptTexture->isMissingAsset() && sculpt_data_absent;
 
-            if (texture_discard >= 0 && //texture has some data available
-                (texture_discard < current_discard || //texture has more data than last rebuild
-                current_discard < 0)) //no previous rebuild
+            if (want_placeholder
+                ? !(getVolume() && getVolume()->isSculptVisiblePlaceholder())
+                : (texture_discard >= 0 && //texture has some data available
+                   (texture_discard < current_discard || //texture has more data than last rebuild
+                   current_discard < 0))) //no previous rebuild
             {
                 gPipeline.markRebuild(mDrawable, LLDrawable::REBUILD_VOLUME);
                 mSculptChanged = true;
@@ -1498,7 +1503,8 @@ void LLVOVolume::sculpt()
             discard_level = mSculptTexture->getSavedRawImageLevel();
         }
 
-        if (!raw_image || raw_image->getWidth() < mSculptTexture->getWidth() || raw_image->getHeight() < mSculptTexture->getHeight())
+        if ((!raw_image || raw_image->getWidth() < mSculptTexture->getWidth() || raw_image->getHeight() < mSculptTexture->getHeight())
+            && !mSculptTexture->isMissingAsset())
         {
             // last resort, read back from GL
             mSculptTexture->readbackRawImage();
@@ -1556,7 +1562,8 @@ void LLVOVolume::sculpt()
             return;
         }
 
-        if (current_discard == discard_level)  // no work to do here
+        if (current_discard == discard_level &&  // no work to do here
+            !(!raw_image && mSculptTexture->isMissingAsset() && !getVolume()->isSculptVisiblePlaceholder()))
             return;
 
         if(!raw_image)
@@ -4000,7 +4007,14 @@ void LLVOVolume::resolveMeshSkinTerminal()
         LLUUID mesh_id = getVolume()->getParams().getSculptID();
         if (gMeshRepo.hasHeader(mesh_id) && !gMeshRepo.hasSkinInfo(mesh_id))
         {
-            mSkinInfoUnavaliable = true;
+            if (getVolume()->isMeshAssetLoaded())
+            {
+                notifySkinInfoUnavailable();
+            }
+            else
+            {
+                mSkinInfoUnavaliable = true;
+            }
         }
         if (!mSkinInfoUnavaliable)
         {

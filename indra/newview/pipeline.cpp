@@ -79,6 +79,7 @@
 #include "llhudtext.h"
 #include "lllightconstants.h"
 #include "llmeshrepository.h"
+#include "llvolumemgr.h"
 #include "llpipelineframecontext.h"
 #include "llpipelinelistener.h"
 #include "llresmgr.h"
@@ -4254,16 +4255,22 @@ static void vkcScanEmptyDrawmapDefects(LLSpatialGroup* group, U32& hasgeom, U32&
         }
         else if (!any_geom && any_visible_te)
         {
-            ++zerogeomv;
-            if (zerogeomv_info.size() < 4)
+            LLVolume* dbg_vol = vobj->getVolume();
+            const S32 vdet = dbg_vol ? LLVolumeLODGroup::getVolumeDetailFromScale(dbg_vol->getDetail()) : -1;
+            const S32 want = (vobj->isMesh() && dbg_vol) ? gMeshRepo.getActualMeshLOD(dbg_vol->getParams(), vobj->getLOD()) : vobj->getLOD();
+            if (vobj->isGeometryDrawExpected() || vdet != want)
             {
-                LLVolume* dbg_vol = vobj->getVolume();
-                zerogeomv_info.push_back(llformat("%s mesh=%d vf=%d df=%d st=0x%x nv=%d",
-                    vobj->getID().asString().c_str(), (S32)vobj->isMesh(),
-                    dbg_vol ? dbg_vol->getNumVolumeFaces() : -1,
-                    drawablep->getNumFaces(), (U32)drawablep->getState(),
-                    (dbg_vol && dbg_vol->getNumVolumeFaces() > 0)
-                        ? dbg_vol->getVolumeFace(0).mNumVertices : -1));
+                ++zerogeomv;
+                if (zerogeomv_info.size() < 4)
+                {
+                    zerogeomv_info.push_back(llformat("%s mesh=%d vf=%d df=%d st=0x%x nv=%d vdet=%d want=%d",
+                        vobj->getID().asString().c_str(), (S32)vobj->isMesh(),
+                        dbg_vol ? dbg_vol->getNumVolumeFaces() : -1,
+                        drawablep->getNumFaces(), (U32)drawablep->getState(),
+                        (dbg_vol && dbg_vol->getNumVolumeFaces() > 0)
+                            ? dbg_vol->getVolumeFace(0).mNumVertices : -1,
+                        vdet, want));
+                }
             }
         }
     }

@@ -6976,7 +6976,7 @@ void LLAppViewer::removeWatchdogMarker() const
     if (!mSecondInstance)
     {
         std::string error_marker_file = gDirUtilp->getExpandedFilename(LL_PATH_LOGS, WATCHDOG_MARKER_FILE_NAME);
-        LLFile::remove(error_marker_file);
+        LLFile::remove(error_marker_file, ENOENT);
     }
 }
 

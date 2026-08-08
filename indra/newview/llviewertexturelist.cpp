@@ -1310,7 +1310,7 @@ F32 LLViewerTextureList::updateImagesCreateTextures(F32 max_time)
             static U32 s_downscale_count = 0;
             ++s_downscale_count;
             if (gFpsLogCount > 0 && s_downscale_count > gFpsLogCount)
-                LL_WARNS_ONCE("Texture") << "Texture will be downscaled immediately after loading." << LL_ENDL;
+                LL_INFOS_ONCE("Texture") << "Texture will be downscaled immediately after loading." << LL_ENDL;
             else
                 LL_DEBUGS("Texture")     << "Texture will be downscaled immediately after loading." << LL_ENDL;
             imagep->scaleDown();
