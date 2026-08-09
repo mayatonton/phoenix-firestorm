@@ -122,9 +122,12 @@ rg '#VkPerf#|FRAMETIME ms:|recreateSwapchain|WARNING|ERROR|VUID|device lost' "$L
 半透明オブジェクトの影が点描（dither）状に出ることを、検証者の目視で **OK** と確認した。
 したがって同項目の現時点の結果は **OK** とし、2026-08-02 の NG は過去の再現記録として残す。
 
-この PR には `pbrShadowAlphaBlendF.glsl` 等の半透明 shadow shader 差分を含めていないため、
-今回の OK をこの PR の device lost 修正による効果とは断定しない。再発防止のため、同一の透明度
-段階・light・カメラ条件で screenshot と log を採取する再試験は引き続き推奨する。
+解消元は、最新 `feature/ayastorm-r42-phase2` の `54e8559fba`
+（`fix: 透明影 flicker 根治(MDI テンプレ per-draw 内容 stale)+ F1 timeline hang 退行修正 + 診断計器撤去`）
+である。この PR の先頭コミット `1bfa09760d` は同 commit を親にしており、device lost 修正が
+dither shadow を解消したものではない。今回の目視は、更新済み base の透明 shadow 修正が有効で
+あることの確認として扱う。再発防止のため、同一の透明度段階・light・カメラ条件で screenshot と
+log を採取する再試験は引き続き推奨する。
 
 ### 追加視覚事象: メッシュボディ alpha の再有効化 — 2026-08-02
 
