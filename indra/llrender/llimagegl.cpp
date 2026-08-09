@@ -1432,9 +1432,17 @@ void LLImageGL::updateVkHeapSlot()
 
     if (mVkHeapSlotView != mVkImageView || mVkHeapSlotSampler != smp)
     {
-        LLVKLoader::bindlessUpdateSlot(mVkHeapSlot, mVkImageView, smp);
-        mVkHeapSlotView    = mVkImageView;
-        mVkHeapSlotSampler = smp;
+        // Descriptors referenced by already submitted command buffers must
+        // remain immutable until those submissions complete.  Publish a new
+        // slot and retire the old one instead of overwriting it in place.
+        const U32 old_slot = mVkHeapSlot;
+        const U32 new_slot = LLVKLoader::bindlessAcquireSlot(mVkImageView, smp);
+        LLVKLoader::bindlessReleaseSlotDeferred(old_slot);
+        mVkHeapSlot        = new_slot;
+        mVkHeapSlotView    = (new_slot != LLVKLoader::BINDLESS_INVALID_SLOT)
+                             ? mVkImageView : VK_NULL_HANDLE;
+        mVkHeapSlotSampler = (new_slot != LLVKLoader::BINDLESS_INVALID_SLOT)
+                             ? smp : VK_NULL_HANDLE;
     }
 }
 
@@ -2609,4 +2617,3 @@ void LLImageGLThread::run()
     gGL.shutdown();
     mWindow->destroySharedContext(mContext);
 }
-
