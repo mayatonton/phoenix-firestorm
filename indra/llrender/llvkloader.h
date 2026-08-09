@@ -1245,6 +1245,16 @@ namespace LLVKLoader
                            U32         data_size_bytes,
                            U32         mip_level = 0);
 
+    bool canGenerateMipChainBlitVk(VkFormat format);
+
+    bool uploadImageDataAndGenerateMipChainVk(VkImage     image,
+                                              U32         width,
+                                              U32         height,
+                                              const void* data,
+                                              U32         data_size_bytes,
+                                              U32         mip_count,
+                                              VkFormat    format);
+
     bool generateMipChainBlitVk(VkImage image, U32 base_w, U32 base_h, U32 mip_count, VkFormat format);
 
     void setVkGeoWorkerStopHook(void (*fn)());

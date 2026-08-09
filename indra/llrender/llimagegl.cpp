@@ -879,11 +879,8 @@ bool LLImageGL::setImage(const U8* data_in, bool data_hasmips /* = false */)
                         S32 dim = llmax(w, h);
                         while (dim > 1) { dim >>= 1; ++vk_mip_count; }
                     }
-                    vk_ok &= syncVulkanMip0Image((U32)mFormatInternal, (U32)mFormatPrimary, (U32)mFormatType, w, h, data_in, false, 0, vk_mip_count);
-                    if (vk_ok && mVkImage != VK_NULL_HANDLE && mVkImageMipLevels > 1)
-                    {
-                        LLVKLoader::generateMipChainBlitVk(mVkImage, (U32)w, (U32)h, mVkImageMipLevels, mVkImageFormat);
-                    }
+                    vk_ok &= syncVulkanMip0Image((U32)mFormatInternal, (U32)mFormatPrimary, (U32)mFormatType,
+                                                  w, h, data_in, false, 0, vk_mip_count, true);
 
                     updatePickMask(w, h, data_in);
                 }
@@ -1072,7 +1069,7 @@ namespace
 
 bool LLImageGL::syncVulkanMip0Image(U32 intformat, U32 primary, U32 type,
                                     S32 w, S32 h, const void* data, bool is_compressed,
-                                    S32 mip_level, S32 mip_count)
+                                    S32 mip_level, S32 mip_count, bool generate_mip_chain)
 {
     if (!LLVKLoader::shouldUseVulkanRender())
     {
@@ -1104,7 +1101,15 @@ bool LLImageGL::syncVulkanMip0Image(U32 intformat, U32 primary, U32 type,
 
     if (mip_level == 0)
     {
-        const U32 want_mips = (mip_count > 0) ? (U32)mip_count : 1u;
+        U32 want_mips = (mip_count > 0) ? (U32)mip_count : 1u;
+        if (generate_mip_chain && want_mips > 1
+            && !LLVKLoader::canGenerateMipChainBlitVk(vk_format))
+        {
+            // A view restricted to one level is safe to sample; leaving an
+            // unsupported mip chain allocated would leave its lower levels
+            // uninitialized and make the first texture sample undefined.
+            want_mips = 1;
+        }
 
         const bool can_reuse = (mVkImage != VK_NULL_HANDLE)
                                && (mVkImageView != VK_NULL_HANDLE)
@@ -1241,8 +1246,12 @@ bool LLImageGL::syncVulkanMip0Image(U32 intformat, U32 primary, U32 type,
     bool ok = true;
     if (upload_size > 0)
     {
-        const bool upload_ok = LLVKLoader::uploadImageDataVk(
-            mVkImage, (U32)w, (U32)h, upload_data, upload_size, (U32)mip_level);
+        const bool upload_ok = (generate_mip_chain && mip_level == 0 && mVkImageMipLevels > 1)
+            ? LLVKLoader::uploadImageDataAndGenerateMipChainVk(
+                mVkImage, (U32)w, (U32)h, upload_data, upload_size,
+                mVkImageMipLevels, mVkImageFormat)
+            : LLVKLoader::uploadImageDataVk(
+                mVkImage, (U32)w, (U32)h, upload_data, upload_size, (U32)mip_level);
 
         if (!upload_ok)
         {

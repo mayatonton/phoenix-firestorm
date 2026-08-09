@@ -10269,12 +10269,29 @@ bool createTextureImageVk(U32          width,
     return created;
 }
 
-bool uploadImageDataVk(VkImage     image,
-                       U32         width,
-                       U32         height,
-                       const void* data,
-                       U32         data_size_bytes,
-                       U32         mip_level)
+bool canGenerateMipChainBlitVk(VkFormat format)
+{
+    if (sPhysicalDevice == VK_NULL_HANDLE || format == VK_FORMAT_UNDEFINED)
+    {
+        return false;
+    }
+
+    VkFormatProperties fp = {};
+    vkGetPhysicalDeviceFormatProperties(sPhysicalDevice, format, &fp);
+    const VkFormatFeatureFlags required = VK_FORMAT_FEATURE_BLIT_SRC_BIT
+                                        | VK_FORMAT_FEATURE_BLIT_DST_BIT
+                                        | VK_FORMAT_FEATURE_SAMPLED_IMAGE_FILTER_LINEAR_BIT;
+    return (fp.optimalTilingFeatures & required) == required;
+}
+
+static bool uploadImageDataVkImpl(VkImage     image,
+                                  U32         width,
+                                  U32         height,
+                                  const void* data,
+                                  U32         data_size_bytes,
+                                  U32         mip_level,
+                                  U32         generate_mip_count,
+                                  VkFormat    generate_mip_format)
 {
     if (image == VK_NULL_HANDLE || data == nullptr || data_size_bytes == 0)
     {
@@ -10282,6 +10299,12 @@ bool uploadImageDataVk(VkImage     image,
     }
     if (sDevice == VK_NULL_HANDLE || sAllocator == VK_NULL_HANDLE ||
         sCommandPool == VK_NULL_HANDLE || sGraphicsQueue == VK_NULL_HANDLE)
+    {
+        return false;
+    }
+    const bool generate_mip_chain = generate_mip_count > 1;
+    if (generate_mip_chain
+        && (mip_level != 0 || !canGenerateMipChainBlitVk(generate_mip_format)))
     {
         return false;
     }
@@ -10362,6 +10385,7 @@ bool uploadImageDataVk(VkImage     image,
                                VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, 1, &region);
     }
 
+    if (!generate_mip_chain)
     {
         VkImageMemoryBarrier b = {};
         b.sType                           = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER;
@@ -10382,11 +10406,103 @@ bool uploadImageDataVk(VkImage     image,
                              VK_PIPELINE_STAGE_ALL_COMMANDS_BIT,
                              0, 0, nullptr, 0, nullptr, 1, &b);
     }
+    else
+    {
+        auto mip_barrier = [&](U32 level, VkImageLayout old_layout, VkImageLayout new_layout,
+                               VkAccessFlags src_access, VkAccessFlags dst_access,
+                               VkPipelineStageFlags src_stage, VkPipelineStageFlags dst_stage)
+        {
+            VkImageMemoryBarrier b = {};
+            b.sType                           = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER;
+            b.srcAccessMask                   = src_access;
+            b.dstAccessMask                   = dst_access;
+            b.oldLayout                       = old_layout;
+            b.newLayout                       = new_layout;
+            b.srcQueueFamilyIndex             = VK_QUEUE_FAMILY_IGNORED;
+            b.dstQueueFamilyIndex             = VK_QUEUE_FAMILY_IGNORED;
+            b.image                           = image;
+            b.subresourceRange.aspectMask     = VK_IMAGE_ASPECT_COLOR_BIT;
+            b.subresourceRange.baseMipLevel   = level;
+            b.subresourceRange.levelCount     = 1;
+            b.subresourceRange.baseArrayLayer = 0;
+            b.subresourceRange.layerCount     = 1;
+            vkCmdPipelineBarrier(cmd, src_stage, dst_stage, 0, 0, nullptr, 0, nullptr, 1, &b);
+        };
+
+        S32 mip_w = (S32)width;
+        S32 mip_h = (S32)height;
+        for (U32 i = 1; i < generate_mip_count; ++i)
+        {
+            const S32 dst_w = (mip_w > 1) ? (mip_w / 2) : 1;
+            const S32 dst_h = (mip_h > 1) ? (mip_h / 2) : 1;
+
+            mip_barrier(i - 1,
+                        VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL,
+                        VK_ACCESS_TRANSFER_WRITE_BIT, VK_ACCESS_TRANSFER_READ_BIT,
+                        VK_PIPELINE_STAGE_TRANSFER_BIT, VK_PIPELINE_STAGE_TRANSFER_BIT);
+            mip_barrier(i,
+                        VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
+                        0, VK_ACCESS_TRANSFER_WRITE_BIT,
+                        VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT, VK_PIPELINE_STAGE_TRANSFER_BIT);
+
+            VkImageBlit blit = {};
+            blit.srcSubresource.aspectMask     = VK_IMAGE_ASPECT_COLOR_BIT;
+            blit.srcSubresource.mipLevel       = i - 1;
+            blit.srcSubresource.baseArrayLayer = 0;
+            blit.srcSubresource.layerCount     = 1;
+            blit.srcOffsets[1]                 = { mip_w, mip_h, 1 };
+            blit.dstSubresource.aspectMask     = VK_IMAGE_ASPECT_COLOR_BIT;
+            blit.dstSubresource.mipLevel       = i;
+            blit.dstSubresource.baseArrayLayer = 0;
+            blit.dstSubresource.layerCount     = 1;
+            blit.dstOffsets[1]                 = { dst_w, dst_h, 1 };
+            vkCmdBlitImage(cmd,
+                           image, VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL,
+                           image, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
+                           1, &blit, VK_FILTER_LINEAR);
+
+            mip_barrier(i - 1,
+                        VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,
+                        VK_ACCESS_TRANSFER_READ_BIT, VK_ACCESS_SHADER_READ_BIT,
+                        VK_PIPELINE_STAGE_TRANSFER_BIT, VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT);
+            mip_w = dst_w;
+            mip_h = dst_h;
+        }
+
+        mip_barrier(generate_mip_count - 1,
+                    VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,
+                    VK_ACCESS_TRANSFER_WRITE_BIT, VK_ACCESS_SHADER_READ_BIT,
+                    VK_PIPELINE_STAGE_TRANSFER_BIT, VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT);
+    }
 
     vkEndCommandBuffer(cmd);
 
     return submitOneShotVk(cmd, staging_buffer, staging_allocation,
-                           "image-upload-2d", data_size_bytes);
+                           generate_mip_chain ? "image-upload-mips-2d" : "image-upload-2d",
+                           data_size_bytes);
+}
+
+bool uploadImageDataVk(VkImage     image,
+                       U32         width,
+                       U32         height,
+                       const void* data,
+                       U32         data_size_bytes,
+                       U32         mip_level)
+{
+    return uploadImageDataVkImpl(image, width, height, data, data_size_bytes,
+                                 mip_level, 1, VK_FORMAT_UNDEFINED);
+}
+
+bool uploadImageDataAndGenerateMipChainVk(VkImage     image,
+                                          U32         width,
+                                          U32         height,
+                                          const void* data,
+                                          U32         data_size_bytes,
+                                          U32         mip_count,
+                                          VkFormat    format)
+{
+    return uploadImageDataVkImpl(image, width, height, data, data_size_bytes,
+                                 0, mip_count, format);
 }
 
 bool generateMipChainBlitVk(VkImage image, U32 base_w, U32 base_h, U32 mip_count, VkFormat format)
@@ -10400,9 +10516,7 @@ bool generateMipChainBlitVk(VkImage image, U32 base_w, U32 base_h, U32 mip_count
         return false;
     }
 
-    VkFormatProperties fp = {};
-    vkGetPhysicalDeviceFormatProperties(sPhysicalDevice, format, &fp);
-    if (!(fp.optimalTilingFeatures & VK_FORMAT_FEATURE_SAMPLED_IMAGE_FILTER_LINEAR_BIT))
+    if (!canGenerateMipChainBlitVk(format))
     {
         return false;
     }
@@ -10709,9 +10823,7 @@ bool generateMipChainInFrameVk(VkImage        image,
         return false;
     }
 
-    VkFormatProperties fp = {};
-    vkGetPhysicalDeviceFormatProperties(sPhysicalDevice, format, &fp);
-    if (!(fp.optimalTilingFeatures & VK_FORMAT_FEATURE_SAMPLED_IMAGE_FILTER_LINEAR_BIT))
+    if (!canGenerateMipChainBlitVk(format))
     {
         return false;
     }

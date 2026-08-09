@@ -146,7 +146,7 @@ public:
     bool syncVulkan3DImage(U32 intformat, U32 primary, U32 type, S32 w, S32 h, S32 depth, const void* data);
 
     bool syncVulkanMip0Image(U32 intformat, U32 primary, U32 type, S32 w, S32 h, const void* data, bool is_compressed,
-                             S32 mip_level = 0, S32 mip_count = 1);
+                             S32 mip_level = 0, S32 mip_count = 1, bool generate_mip_chain = false);
 
     static bool computeIsMask(const void* data_in, U32 w, U32 h, S8 alpha_stride, S8 alpha_offset);
     static U8* buildPickMask(S32 width, S32 height, const U8* data_in, U16& out_width, U16& out_height);
