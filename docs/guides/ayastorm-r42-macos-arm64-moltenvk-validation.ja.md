@@ -307,3 +307,111 @@ shsite mv.op=850 mv.opR=374 mv.am=102 mv.ab=646 mv.gm=102 mv.gmR=8874 mv.gaR=34 
 - 視覚確認は [§5](#5-視覚確認チェックリスト) に記録済み。髪、植生・木の葉、金網、草、
   カメラ回転、spot light は OK だが、半透明 dither shadow は NG のため、視覚受入は
   **FAIL** である。
+
+## 10. device lost 再現・submit 診断記録 — 2026-08-09
+
+`feature/ayastorm-r42-macos-device-lost-diagnostics` の開発 app で、次の環境変数を付けて
+実行した run で device lost を再現した。この branch には Retina でのログイン画面 1/4 表示を
+防ぐ修正 (`1bfa09760d`) と、Darwin 限定の submit 履歴診断
+(`c43f8d4320`) を含む。
+
+```bash
+AYASTORM_VKC=1 AYASTORM_PERF_LOG=5 "$APP/Contents/MacOS/AYAstorm"
+```
+
+この run については shader cache / pipeline cache を起動直前に消去した記録がない。そのため
+shadow の視覚受入結果には使わず、device lost の診断 run としてだけ扱う。
+
+### 結果
+
+- 起動から約 271 秒後の `2026-08-09T14:41:02Z` に `VK_ERROR_DEVICE_LOST` を再現した。
+- 直接失敗したのは `queue-submit` の timeline `57962`、`result=-4`
+  (`VK_ERROR_DEVICE_LOST`) である。
+- 新設した `VKC-DEVLOST` 診断では、失敗 submit を含む直近 16 件が**すべて
+  `one-shot`**だった。timeline `57947`--`57961` は成功、`57962` だけが失敗した。
+- `PresentEngine submit failed` の後、Viewer は `requestQuit` を呼び、logout / cleanup を
+  完走して `status: stopped` へ到達した。OS による即時 abort ではなく、device lost を検出した
+  Viewer の graceful shutdown である。
+- 終了直前の P0 は `FRAMETIME ms: avg 101.81, p95 275.99, p99 319.35, max 319.35, n 99`。
+  この run の安定性判定は **FAIL**。
+
+`VKC-DEVLOST` の原本は次の Viewer log に残る。
+
+```text
+~/Library/Application Support/AYAstorm-dev/logs/AYAstorm.log
+```
+
+要点は次のとおり。
+
+```text
+VKC-DEVLOST trigger=queue-submit submit_history=16
+VKC-DEVLOST submit[14]: type=one-shot result=0  timeline=57961 ...
+VKC-DEVLOST submit[15]: type=one-shot result=-4 timeline=57962 ...
+PresentEngine: device lost — all further submits skipped (first skipped: is_frame=0 is_oneshot=1)
+GPU device lost (VK_ERROR_DEVICE_LOST) — requesting graceful shutdown.
+```
+
+### shader / pipeline cache が空の状態での再現 — 2026-08-09
+
+同じ開発用 profile で、起動前に次の 2 項目を確認した。両方とも既に存在せず、profile 内に
+別位置の同名項目もなかったため、cache が空の状態であることを確認してから起動した。
+
+```text
+~/Library/Application Support/AYAstorm-dev/cache/shader_cache/
+~/Library/Application Support/AYAstorm-dev/cache/pipeline_cache.bin
+```
+
+起動には再び `AYASTORM_VKC=1 AYASTORM_PERF_LOG=5` を用いた。`15:12:02Z` に Vulkan
+presentation surface / `2560x1387` swapchain の成立を確認したが、run time 約 68 秒後の
+`15:13:10Z` に再度 `VK_ERROR_DEVICE_LOST` が発生した。
+
+- `VKC-DEVLOST trigger=queue-submit`、失敗は one-shot timeline `16606` (`result=-4`)。
+- 直前 15 件 (`16591`--`16605`) もすべて one-shot で、成功していた。
+- 最終 P0 行は `15:13:01Z`: `FRAMETIME ms: avg 106.80, p95 237.44, p99 310.23,
+  max 310.23, n 75`。
+- この場合も `requestQuit` を経由して `status: stopped` まで cleanup した。
+
+したがって shader cache / pipeline cache の残存は、この device lost の必要条件ではない。
+ただし cache を消しても device lost を防げないことを示すだけで、one-shot command buffer 内の
+どの操作が GPU 異常を引き起こしたかは未確定である。
+
+### 現時点の切り分け
+
+device lost を返した submit と直前 15 件が one-shot であるため、通常 frame submit、swapchain
+present、shadow multiview 経路ではなく、one-shot のリソース転送・画像レイアウト遷移・mipmap /
+cubemap 処理のいずれかが関与する可能性が高い。ただし GPU の異常は先行コマンドに起因して
+後続 submit で検出され得るため、timeline `57962` の command buffer 自体を原因とは断定しない。
+
+MoltenVK / Apple GPU のこの run では GPU breadcrumb と `VK_EXT_device_fault` がともに
+`enabled=0` であり、driver 側 fault 情報は取得できない。HTTP 403・asset retry・network timeout
+は同時期に出ているが、device lost への因果を示すログはない。
+
+次の再現では one-shot submit ごとに呼び出し元種別（buffer upload / image upload / mipmap /
+cubemap / layout transition）と staging bytes を記録し、timeline `57962` / `16606` のような
+失敗 submit に対応する操作まで特定する。
+
+### one-shot 発生元を特定した再現 — 2026-08-09
+
+Darwin 限定の発生元・staging byte 診断 (`7f8b2cfd83`) を含む開発 app を、同じ環境変数で起動した。
+Viewer log 上の起動時刻は `15:30:17Z`、device lost は約 42 秒後の `15:30:59Z` だった。
+
+- 失敗した submit は timeline `17119`、`type=one-shot`、
+  `oneshot_source=image-upload-2d`、`staging_bytes=4096`、`result=-4`
+  (`VK_ERROR_DEVICE_LOST`) である。
+- 直前 15 件もすべて one-shot で、`image-upload-2d`（各 4,096 bytes）と
+  `image-mip-blit` が交互に並んだ。`17104`--`17118` は成功し、`17119` だけが失敗した。
+- `image-upload-2d` は静的な呼び出し元として
+  `LLImageGL::syncVulkanMip0Image()` から `LLVKLoader::uploadImageDataVk()` へ入る一般的な
+  テクスチャ upload 経路である。今回の診断は texture asset ID、画像寸法、format、mip 数を
+  出していないため、対象テクスチャ自体は未確定である。
+- `image-mip-blit` は `LLVKLoader::generateMipChainBlitVk()` の経路である。最後に
+  `image-upload-2d` が失敗を返したことは、当該 upload 自体が原因である証拠にはならない。
+  先行 upload / mip blit の GPU 異常が後続 submit で検出される可能性を残す。
+- 終了直前の P0 は `15:30:57Z`: `FRAMETIME ms: avg 66.77, p95 171.10, p99 188.98,
+  max 342.55, n 121`。この run も `requestQuit` を経由して終了し、安定性判定は **FAIL**。
+
+従って、次の修正・診断対象は swapchain や shadow multiview ではなく、
+`LLImageGL::syncVulkanMip0Image()` -- `uploadImageDataVk()` -- `generateMipChainBlitVk()` の
+小規模テクスチャ upload / mipmap 作成経路である。次の診断では image handle、幅・高さ、format、
+mip 数および texture asset ID を submit 履歴へ加え、対象リソースを確定してから layout と
+GPU 完了前の寿命管理を修正する。
