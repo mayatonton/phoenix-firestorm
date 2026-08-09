@@ -751,7 +751,7 @@ namespace
         VkCommandPool   pool       = VK_NULL_HANDLE;
         VkBuffer        buffer     = VK_NULL_HANDLE;
         VmaAllocation   allocation = VK_NULL_HANDLE;
-        U32             staging_bytes = 0;
+        U64             staging_bytes = 0;
         uint64_t        timeline_value = 0;   // この submit の GPU 完了 = timeline >= この値
     };
     std::vector<PendingOneShotFree> sPendingOneShotFrees;
@@ -4979,7 +4979,7 @@ static void           tickDeferredQueryReleaseQueue();
 static bool           submitOneShotVk(VkCommandBuffer cmd, VkBuffer staging_buffer, VmaAllocation staging_allocation,
                                       const char* source, U64 staging_bytes = 0);
 static bool           submitOneShotVkFromPool(VkCommandBuffer cmd, VkCommandPool pool, VkBuffer staging_buffer,
-                                              VmaAllocation staging_allocation, U32 staging_bytes,
+                                              VmaAllocation staging_allocation, U64 staging_bytes,
                                               const char* source, U64 diagnostic_staging_bytes);
 static void           tickOneShotFreeQueue();
 static void           shutdownSurface();
@@ -9068,7 +9068,7 @@ void tickDeferredBufferFreeQueue()
 bool submitOneShotVk(VkCommandBuffer cmd, VkBuffer staging_buffer, VmaAllocation staging_allocation,
                      const char* source, U64 staging_bytes)
 {
-    return submitOneShotVkFromPool(cmd, sCommandPool, staging_buffer, staging_allocation, 0,
+    return submitOneShotVkFromPool(cmd, sCommandPool, staging_buffer, staging_allocation, staging_bytes,
                                    source, staging_bytes);
 }
 
@@ -9092,7 +9092,7 @@ static VkCommandBuffer beginOneShotCommandBufferVk()
 }
 
 bool submitOneShotVkFromPool(VkCommandBuffer cmd, VkCommandPool pool, VkBuffer staging_buffer,
-                             VmaAllocation staging_allocation, U32 staging_bytes,
+                             VmaAllocation staging_allocation, U64 staging_bytes,
                              const char* source, U64 diagnostic_staging_bytes)
 {
 #if !LL_DARWIN
