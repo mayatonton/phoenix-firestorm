@@ -493,3 +493,56 @@ submit 発生元は `image-upload-mips-2d` として診断に残す。asset 側�
 統合、(4) staging backpressure と command pool 監査とする。各段階で cache を消去した状態から
 `AYASTORM_VKC=1 AYASTORM_PERF_LOG=5` で複数回起動し、device lost / VUID の不在、`#VkPerf#`、
 `FRAMETIME ms:`、および通常の texture・shadow 表示を記録する。
+
+## 12. device lost 修正実装と初回実用検証 — 2026-08-09
+
+### 実装済みの変更
+
+`feature/ayastorm-r42-macos-device-lost-repair-wip` で、§11 のうち command pool 監査を除く
+修正を次の 3 コミットに分離して実装した。この branch はローカル検証用であり、既存 PR には
+まだ含めていない。
+
+| コミット | 内容 |
+| --- | --- |
+| `5ced502490` | auto-generated mip の base level upload、全 mip の layout 遷移、blit、shader-read 遷移を単一 one-shot command buffer / submit に統合。format feature は `BLIT_SRC`、`BLIT_DST`、linear filter の全条件を確認し、非対応 format は 1 mip に制限する。 |
+| `f247b52742` | one-shot deferred-free queue に実際の staging byte 数を引き渡し、256 MiB の backpressure を再び実効させる。byte 数の型を `U64` に揃える。 |
+| `d9da0126e9` | image view / sampler の変更時に bindless descriptor を in-place 更新せず、新 slot を取得して旧 slot を GPU 完了後に解放する。 |
+
+この変更により、旧来の `image-upload-2d` と `image-mip-blit` の別 submit は、auto-generated mip
+対象では `image-upload-mips-2d` の単一 submit に置き換わる。asset が既に mip を持つ upload、cube / 3D
+image、readback は変更対象外である。
+
+### 初回実用検証の記録
+
+同一ソースから arm64 開発 app を build し、shader cache と `pipeline_cache.bin` を削除してから、
+次で起動した。
+
+```bash
+AYASTORM_VKC=1 AYASTORM_PERF_LOG=5 "$APP/Contents/MacOS/AYAstorm"
+```
+
+原本 log は次にある。
+
+```text
+~/Library/Application Support/AYAstorm-dev/logs/AYAstorm.log
+```
+
+| 確認項目 | 実測結果 |
+| --- | --- |
+| Vulkan 起動 | `initialized device=Apple M2 Pro`、`Vulkan presentation surface initialized`、`Initializing Login Screen` を順に確認。 |
+| 実行時間 | `Run time: 1069.259 seconds`（約 17 分 49 秒）。ユーザー操作による終了後に `status: stopped`。 |
+| device lost / VUID | `device lost`、`VK_ERROR_DEVICE_LOST`、`VUID` は検出なし。 |
+| GPU shadow 経路 | `#VkPerf#` に `shsite mv.am=...` を確認。観測した同一行に `rest.am` および `fb.*` はなく、alpha-mask の multiview 経路は維持された。 |
+| P0 | 終盤は負荷により `FRAMETIME ms:` の p95 が約 190--290 ms、p99 が約 262--308 ms。安定性通過と性能受入を混同しない。 |
+| 警告 | HTTP 403 等の asset/network 系 WARNING は継続。今回の log に device lost、VUID、ログレベル ERROR はない。 |
+
+この run は、従来 42--271 秒で再現していた `VK_ERROR_DEVICE_LOST` がこの操作範囲では再現せず、
+修正コードを**実用検証へ進める候補として採用できる**根拠である。一方で、単一 run が GPU/driver
+問題の恒久解決を証明するものではない。安定性の最終受入は次を満たすまで **OPEN** とする。
+
+1. shader cache / pipeline cache を毎回消去した cache-cold run を少なくとも 3 回行う。
+2. 各 run を 10--30 分以上継続し、login、teleport、texture streaming、カメラ回転を含める。
+3. 各 run の log 全体から `device lost` / `VK_ERROR_DEVICE_LOST` / `VUID` / ERROR の有無、`#VkPerf#`、
+   `FRAMETIME ms:`、`recreateSwapchain` を記録する。
+4. macOS の結果を Linux / Windows の実行証拠とみなさず、共有 Vulkan TU に触れる本修正は各
+   プラットフォーム担当者が build と Vulkan run を別途確認する。
