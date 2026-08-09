@@ -115,7 +115,16 @@ rg '#VkPerf#|FRAMETIME ms:|recreateSwapchain|WARNING|ERROR|VUID|device lost' "$L
 確認したもの。スクリーンショットは有り（この task に添付された
 `codex-clipboard-5ef5d7d3-9b79-401b-a0ae-faaae31d421e.png`）。再現場所、ワールド時刻、
 カメラ位置・回転操作の詳細は未記録であるため、修正確認時はこれらを採取して同一条件で
-再試験する。この NG により、視覚受入は **FAIL** とする。
+再試験する。この時点では、この NG により視覚受入を **FAIL** とした。
+
+### 再確認結果 — 2026-08-10
+
+半透明オブジェクトの影が点描（dither）状に出ることを、検証者の目視で **OK** と確認した。
+したがって同項目の現時点の結果は **OK** とし、2026-08-02 の NG は過去の再現記録として残す。
+
+この PR には `pbrShadowAlphaBlendF.glsl` 等の半透明 shadow shader 差分を含めていないため、
+今回の OK をこの PR の device lost 修正による効果とは断定しない。再発防止のため、同一の透明度
+段階・light・カメラ条件で screenshot と log を採取する再試験は引き続き推奨する。
 
 ### 追加視覚事象: メッシュボディ alpha の再有効化 — 2026-08-02
 
@@ -136,10 +145,11 @@ rg '#VkPerf#|FRAMETIME ms:|recreateSwapchain|WARNING|ERROR|VUID|device lost' "$L
   テレポートせずに反映されること。操作開始・終了時刻、COF version、`Stale appearance` の
   有無を併記すること。
 
-## 6. 半透明 dither shadow NG の修正方針（未実装）
+## 6. 半透明 dither shadow: 過去の NG と修正候補（PR 対象外）
 
-この節は §5 の半透明オブジェクト shadow NG に対する**修正方針**であり、shader の修正が
-この branch に含まれることを示すものではない。現時点の視覚受入は NG のままである。
+この節は §5 で過去に記録した半透明オブジェクト shadow NG に対する**修正候補**であり、shader の
+修正がこの branch に含まれることを示すものではない。2026-08-10 の目視再確認では dither shadow は
+OK であり、ここに記載する候補は再発時に検討するものとする。
 
 ### 現状の確認結果
 
@@ -172,7 +182,7 @@ cutout shadow は対象外とし、輪郭を保つ既存経路を変更しない
 この shader は `LL_VULKAN_GLSL` 経路で共有されるため、修正時は macOS MoltenVK だけでなく
 Linux Vulkan と Windows Vulkan を同一 scope とする。
 
-### 修正後の受入条件
+### 再発時の受入条件
 
 同じ light、地面、カメラ距離で、次の4行を別々に比較する。
 
