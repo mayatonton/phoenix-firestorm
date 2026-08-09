@@ -935,6 +935,108 @@ namespace
     void                    recordAbandonedTimelineValue(uint64_t v);   // 定義は gpuTimelineValue 後
     std::atomic<bool>       sVkDeviceLost{false};
 
+#if LL_DARWIN
+    // MoltenVK does not expose device-fault or checkpoint extensions on the
+    // current Apple GPU path. Keep a small host-side submit history so a
+    // VK_ERROR_DEVICE_LOST report identifies the work that was in flight.
+    struct PEDarwinSubmitTrace
+    {
+        const char* type             = "unknown";
+        VkResult    result           = VK_ERROR_UNKNOWN;
+        U64         command_buffer   = 0;
+        U64         fence            = 0;
+        U64         wait_semaphore   = 0;
+        U64         signal_semaphore = 0;
+        uint64_t    timeline_value   = 0;
+        U32         slot             = 0;
+        U32         present_count    = 0;
+        bool        wait_idle        = false;
+    };
+
+    std::mutex                      sPEDarwinSubmitTraceMutex;
+    std::deque<PEDarwinSubmitTrace> sPEDarwinSubmitTrace;
+    std::atomic<bool>               sPEDarwinDeviceLostTraceDumped{false};
+
+    const char* peJobType(const PEJob& job)
+    {
+        if (job.is_frame)
+        {
+            return "frame";
+        }
+        if (job.is_async_producer)
+        {
+            return "async-producer";
+        }
+        if (job.is_oneshot)
+        {
+            return "one-shot";
+        }
+        if (job.sync != nullptr)
+        {
+            return "blocking";
+        }
+        if (!job.presents.empty())
+        {
+            return "aux-present";
+        }
+        return "producer";
+    }
+
+    void recordDarwinSubmitTrace(const PEJob& job, VkResult result)
+    {
+        PEDarwinSubmitTrace trace;
+        trace.type             = peJobType(job);
+        trace.result           = result;
+        trace.command_buffer   = (U64)(uintptr_t)job.cmd;
+        trace.fence            = (U64)(uintptr_t)job.fence;
+        trace.wait_semaphore   = (U64)(uintptr_t)job.wait_semaphore;
+        trace.signal_semaphore = (U64)(uintptr_t)job.signal_semaphore;
+        trace.timeline_value   = job.timeline_value;
+        trace.slot             = job.slot;
+        trace.present_count    = (U32)job.presents.size();
+        trace.wait_idle        = job.wait_idle;
+
+        std::lock_guard<std::mutex> lk(sPEDarwinSubmitTraceMutex);
+        constexpr size_t history_capacity = 16;
+        if (sPEDarwinSubmitTrace.size() == history_capacity)
+        {
+            sPEDarwinSubmitTrace.pop_front();
+        }
+        sPEDarwinSubmitTrace.push_back(trace);
+    }
+
+    void dumpDarwinSubmitTraceOnDeviceLost(const char* trigger)
+    {
+        if (sPEDarwinDeviceLostTraceDumped.exchange(true))
+        {
+            return;
+        }
+
+        std::deque<PEDarwinSubmitTrace> history;
+        {
+            std::lock_guard<std::mutex> lk(sPEDarwinSubmitTraceMutex);
+            history = sPEDarwinSubmitTrace;
+        }
+        LL_WARNS("Vulkan") << "VKC-DEVLOST trigger=" << trigger
+                           << " submit_history=" << history.size() << LL_ENDL;
+        U32 index = 0;
+        for (const PEDarwinSubmitTrace& trace : history)
+        {
+            LL_WARNS("Vulkan") << "VKC-DEVLOST submit[" << index++ << "]: type=" << trace.type
+                               << " result=" << (S32)trace.result
+                               << " timeline=" << trace.timeline_value
+                               << " slot=" << trace.slot
+                               << " presents=" << trace.present_count
+                               << " wait_idle=" << (trace.wait_idle ? 1 : 0)
+                               << " cmd=0x" << std::hex << trace.command_buffer
+                               << " fence=0x" << trace.fence
+                               << " wait_sem=0x" << trace.wait_semaphore
+                               << " signal_sem=0x" << trace.signal_semaphore
+                               << std::dec << LL_ENDL;
+        }
+    }
+#endif
+
     std::atomic<U64>        sPESubmitUs{0};
     std::atomic<U64>        sPEPresentUs{0};
     std::atomic<U64>        sPEPrsMainUs{0};
@@ -1089,6 +1191,9 @@ namespace
         }
         const auto t0 = std::chrono::steady_clock::now();
         VkResult sr = vkQueueSubmit(sGraphicsQueue, 1, &si, job.fence);
+#if LL_DARWIN
+        recordDarwinSubmitTrace(job, sr);
+#endif
         if (sr == VK_SUCCESS && job.wait_idle)
         {
             vkQueueWaitIdle(sGraphicsQueue);
@@ -1127,6 +1232,9 @@ namespace
                     dumpCheckpointsOnDeviceLost();
                     dumpDeviceFaultOnDeviceLost();
                 }
+#if LL_DARWIN
+                dumpDarwinSubmitTraceOnDeviceLost("queue-submit");
+#endif
                 sVkDeviceLost.store(true, std::memory_order_release);
             }
             LL_WARNS("Vulkan") << "PresentEngine submit failed sr=" << (S32)sr
@@ -1201,6 +1309,9 @@ namespace
                 }
                 else if (pr == VK_ERROR_DEVICE_LOST)
                 {
+#if LL_DARWIN
+                    dumpDarwinSubmitTraceOnDeviceLost("queue-present");
+#endif
                     sVkDeviceLost.store(true, std::memory_order_release);
                 }
                 else if (sPresentWaitEnabled && pr == VK_SUCCESS && this_present_id != 0)
@@ -1212,6 +1323,9 @@ namespace
                             std::chrono::steady_clock::now() - w0).count();
                     if (wr == VK_ERROR_DEVICE_LOST)
                     {
+#if LL_DARWIN
+                        dumpDarwinSubmitTraceOnDeviceLost("wait-for-present");
+#endif
                         sVkDeviceLost.store(true, std::memory_order_release);
                     }
                 }
