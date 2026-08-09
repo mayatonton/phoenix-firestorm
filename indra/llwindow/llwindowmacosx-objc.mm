@@ -33,6 +33,8 @@
 #include "llwindowmacosx-objc.h"
 #include "llappdelegate-objc.h"
 
+extern bool gHiDPISupport;
+
 /*
  * These functions are broken out into a separate file because the
  * objective-C typedef for 'BOOL' conflicts with the one in
@@ -242,15 +244,11 @@ MetalLayerRef createMetalLayerForWindow(NSWindowRef window)
     }
 
     CAMetalLayer *layer = [CAMetalLayer layer];
-    layer.contentsScale = [ns_window backingScaleFactor];
-    layer.frame = [view bounds];
     layer.autoresizingMask = kCALayerWidthSizable | kCALayerHeightSizable;
 
     [view setWantsLayer:YES];
     [[view layer] addSublayer:layer];
-
-    NSSize backing = [view convertSizeToBacking:[view bounds].size];
-    layer.drawableSize = CGSizeMake(backing.width, backing.height);
+    updateMetalLayerDrawableSize((MetalLayerRef)layer, window);
 
     return (MetalLayerRef)layer;
 }
@@ -264,10 +262,14 @@ void updateMetalLayerDrawableSize(MetalLayerRef layer_ref, NSWindowRef window)
     {
         return;
     }
-    layer.contentsScale = [ns_window backingScaleFactor];
+    const NSSize view_size = [view bounds].size;
+    // When RenderHiDPI is disabled, keep Metal in the legacy OpenGL 1x
+    // coordinate domain. Otherwise the swapchain is Retina-sized while the
+    // Viewer UI and mouse coordinates remain 1x-sized.
+    const NSSize drawable_size = gHiDPISupport ? [view convertSizeToBacking:view_size] : view_size;
+    layer.contentsScale = gHiDPISupport ? [ns_window backingScaleFactor] : 1.0;
     layer.frame = [view bounds];
-    NSSize backing = [view convertSizeToBacking:[view bounds].size];
-    layer.drawableSize = CGSizeMake(backing.width, backing.height);
+    layer.drawableSize = CGSizeMake(drawable_size.width, drawable_size.height);
 }
 
 GLViewRef createOpenGLView(NSWindowRef window, unsigned int samples, bool vsync)
