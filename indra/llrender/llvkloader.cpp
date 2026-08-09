@@ -641,7 +641,6 @@ namespace
     bool sConsumerActiveThisFrame = false;
 
     VkCommandBuffer sAsyncProducerCommandBuffer = VK_NULL_HANDLE;
-    VkFence         sAsyncProducerFence         = VK_NULL_HANDLE;
     bool            sAsyncProducerInFlight      = false;
     bool            sAsyncProducerFlipPending   = false;
     U32             sAsyncProducerBackIndex     = 0;
@@ -669,15 +668,18 @@ namespace
     };
     AuxWindowVk sAuxWindow;
 
-    VkFence sInFlightFences[FRAMES_IN_FLIGHT] = {
-        VK_NULL_HANDLE, VK_NULL_HANDLE, VK_NULL_HANDLE
-    };
-
-    VkFence sProducerFences[FRAMES_IN_FLIGHT] = {
-        VK_NULL_HANDLE, VK_NULL_HANDLE, VK_NULL_HANDLE
-    };
     bool sProducerFencePending[FRAMES_IN_FLIGHT] = { false, false, false };
     bool sProducerPresentActive = false;
+
+    // ── GPU 完了タイムライン(fence 群を置換する単一の完了機構)──
+    // 各 submit が単調値 v を signal。完了照会 = vkGetSemaphoreCounterValue >= v で
+    // 任意スレッドから race 無く可能(fence の host external-sync 制約が無い)。
+    bool                  sTimelineSemaphoreEnabled = false;
+    VkSemaphore           sGpuTimeline              = VK_NULL_HANDLE;
+    std::atomic<uint64_t> sTimelineNext{0};                       // 次に採番する値(enqueue 時 ++ )
+    uint64_t sFrameTimelineValue[FRAMES_IN_FLIGHT]    = { 0, 0, 0 }; // slot 直近 frame submit の値
+    uint64_t sProducerTimelineValue[FRAMES_IN_FLIGHT] = { 0, 0, 0 };
+    uint64_t sAsyncTimelineValue = 0;
 
     VkSemaphore sImageAvailableSemaphores[FRAMES_IN_FLIGHT] = {
         VK_NULL_HANDLE, VK_NULL_HANDLE, VK_NULL_HANDLE
@@ -745,15 +747,14 @@ namespace
 
     struct PendingOneShotFree
     {
-        VkFence         fence      = VK_NULL_HANDLE;
         VkCommandBuffer cmd        = VK_NULL_HANDLE;
         VkCommandPool   pool       = VK_NULL_HANDLE;
         VkBuffer        buffer     = VK_NULL_HANDLE;
         VmaAllocation   allocation = VK_NULL_HANDLE;
         U32             staging_bytes = 0;
+        uint64_t        timeline_value = 0;   // この submit の GPU 完了 = timeline >= この値
     };
     std::vector<PendingOneShotFree> sPendingOneShotFrees;
-    std::vector<VkFence>            sSubmitFencePool;
     std::mutex                      sOneShotMutex;
     std::vector<VkCommandBuffer>    sRetiredMainOneShotCmds;
     std::atomic<U64>                sOneShotStagingBytes{0};
@@ -903,11 +904,13 @@ namespace
         VkSemaphore     wait_semaphore   = VK_NULL_HANDLE;
         VkSemaphore     signal_semaphore = VK_NULL_HANDLE;
         std::vector<PEPresentTarget> presents;
-        bool            is_frame   = false;
-        bool            is_oneshot = false;
-        bool            wait_idle  = false;
-        U32             slot       = 0;
-        PESyncPoint*    sync       = nullptr;
+        bool            is_frame          = false;
+        bool            is_oneshot        = false;
+        bool            is_async_producer = false;
+        bool            wait_idle         = false;
+        U32             slot              = 0;
+        PESyncPoint*    sync              = nullptr;
+        uint64_t        timeline_value    = 0;   // この submit が signal する GPU タイムライン値
     };
 
     std::atomic<U32>        sPESlotState[FRAMES_IN_FLIGHT] = {};
@@ -926,7 +929,7 @@ namespace
     std::mutex              sSwapchainAccessMutex;
 
     std::mutex              sPEFailedMutex;
-    std::vector<VkFence>    sPEFailedOneShotFences;
+    std::vector<uint64_t>   sPEFailedOneShotValues;   // 失敗した oneshot submit の timeline 値(回収用)
     std::atomic<bool>       sVkDeviceLost{false};
 
     std::atomic<U64>        sPESubmitUs{0};
@@ -996,13 +999,13 @@ namespace
 
         void failOneshotFence()
         {
-            if (!mJob.is_oneshot || mJob.fence == VK_NULL_HANDLE || mFenceDecided)
+            if (!mJob.is_oneshot || mFenceDecided)
             {
                 return;
             }
             {
                 std::lock_guard<std::mutex> lk(sPEFailedMutex);
-                sPEFailedOneShotFences.push_back(mJob.fence);
+                sPEFailedOneShotValues.push_back(mJob.timeline_value);
             }
             mFenceDecided = true;
         }
@@ -1038,27 +1041,45 @@ namespace
             rel.finishSync(VK_ERROR_DEVICE_LOST);
             return;
         }
-        VkSubmitInfo si = {};
-        si.sType = VK_STRUCTURE_TYPE_SUBMIT_INFO;
-        if (job.cmd != VK_NULL_HANDLE)
-        {
-            si.commandBufferCount = 1;
-            si.pCommandBuffers    = &job.cmd;
-        }
-        VkPipelineStageFlags wait_stage = VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT;
-        if (job.wait_semaphore != VK_NULL_HANDLE)
-        {
-            si.waitSemaphoreCount = 1;
-            si.pWaitSemaphores    = &job.wait_semaphore;
-            si.pWaitDstStageMask  = &wait_stage;
-        }
+        // signal = [present 用 binary semaphore(有れば)] + [GPU タイムライン(有れば)]。
+        // binary は値 0・timeline は job.timeline_value。順序は追加順で単調。
+        VkSemaphore signal_sems[2];
+        uint64_t    signal_vals[2];
+        U32         sig_n = 0;
         if (job.signal_semaphore != VK_NULL_HANDLE)
         {
-            si.signalSemaphoreCount = 1;
-            si.pSignalSemaphores    = &job.signal_semaphore;
+            signal_sems[sig_n] = job.signal_semaphore;
+            signal_vals[sig_n] = 0;
+            ++sig_n;
         }
+        if (sGpuTimeline != VK_NULL_HANDLE)
+        {
+            signal_sems[sig_n] = sGpuTimeline;
+            signal_vals[sig_n] = job.timeline_value;
+            ++sig_n;
+        }
+        const uint64_t wait_val = 0;
+        VkPipelineStageFlags wait_stage = VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT;
 
-        if (!job.is_frame && job.fence != VK_NULL_HANDLE && job.fence == sAsyncProducerFence)
+        VkTimelineSemaphoreSubmitInfo tsi = {};
+        tsi.sType                     = VK_STRUCTURE_TYPE_TIMELINE_SEMAPHORE_SUBMIT_INFO;
+        tsi.waitSemaphoreValueCount   = (job.wait_semaphore != VK_NULL_HANDLE) ? 1u : 0u;
+        tsi.pWaitSemaphoreValues      = &wait_val;
+        tsi.signalSemaphoreValueCount = sig_n;
+        tsi.pSignalSemaphoreValues    = signal_vals;
+
+        VkSubmitInfo si = {};
+        si.sType                = VK_STRUCTURE_TYPE_SUBMIT_INFO;
+        si.pNext                = &tsi;
+        si.commandBufferCount   = (job.cmd != VK_NULL_HANDLE) ? 1u : 0u;
+        si.pCommandBuffers      = &job.cmd;
+        si.waitSemaphoreCount   = (job.wait_semaphore != VK_NULL_HANDLE) ? 1u : 0u;
+        si.pWaitSemaphores      = &job.wait_semaphore;
+        si.pWaitDstStageMask    = &wait_stage;
+        si.signalSemaphoreCount = sig_n;
+        si.pSignalSemaphores    = signal_sems;
+
+        if (job.is_async_producer)
         {
             sProdEnqToSubUs += vkMonoUs() - sProdEnqMonoUs.load();
             ++sProdSubCount;
@@ -1219,18 +1240,56 @@ namespace
         }
     }
 
-    void peEnqueue(PEJob&& job)
+    // GPU 完了タイムラインの現在値(= 完了済みの最大 submit 値)。任意スレッドから race 無く可。
+    uint64_t gpuTimelineValue()
+    {
+        uint64_t v = 0;
+        vkGetSemaphoreCounterValue(sDevice, sGpuTimeline, &v);
+        return v;
+    }
+
+    // GPU タイムラインが値 v に到達するまで待つ(= 該当 submit の GPU 完了待ち)。
+    // 任意スレッドから race 無く可。device-lost で脱出。v==0 は待ち不要。
+    void waitTimeline(uint64_t v)
+    {
+        if (v == 0 || sGpuTimeline == VK_NULL_HANDLE)
+        {
+            return;
+        }
+        VkSemaphoreWaitInfo wi = {};
+        wi.sType          = VK_STRUCTURE_TYPE_SEMAPHORE_WAIT_INFO;
+        wi.semaphoreCount = 1;
+        wi.pSemaphores    = &sGpuTimeline;
+        wi.pValues        = &v;
+        while (vkWaitSemaphores(sDevice, &wi, 50000000ull) == VK_TIMEOUT)
+        {
+            if (sVkDeviceLost.load(std::memory_order_acquire))
+            {
+                return;
+            }
+        }
+    }
+
+    // enqueue 時に単調な timeline 値を採番し job に載せて返す。
+    // 採番と push を同一ロックで行うため 値順 == 提出順 == timeline signal 順(単調)。
+    uint64_t peEnqueue(PEJob&& job)
     {
         if (!sPERunning)
         {
+            const uint64_t v = ++sTimelineNext;
+            job.timeline_value = v;
             peExecute(job);
-            return;
+            return v;
         }
+        uint64_t v;
         {
             std::lock_guard<std::mutex> lk(sPEQueueMutex);
+            v = ++sTimelineNext;
+            job.timeline_value = v;
             sPEJobs.push_back(std::move(job));
         }
         sPEQueueCv.notify_one();
+        return v;
     }
 
     VkResult peSubmitBlocking(VkCommandBuffer cmd, VkFence fence, bool wait_idle)
@@ -1243,31 +1302,19 @@ namespace
         job.sync      = &sync;
         if (!sPERunning)
         {
+            job.timeline_value = ++sTimelineNext;
             peExecute(job);
             return sync.result;
         }
         {
             std::lock_guard<std::mutex> lk(sPEQueueMutex);
+            job.timeline_value = ++sTimelineNext;
             sPEJobs.push_back(std::move(job));
         }
         sPEQueueCv.notify_one();
         std::unique_lock<std::mutex> lk(sync.m);
         sync.cv.wait(lk, [&] { return sync.done; });
         return sync.result;
-    }
-
-    bool peWaitSlotSubmitted(U32 slot)
-    {
-        for (;;)
-        {
-            const U32 st = sPESlotState[slot].load();
-            if (st != PE_SLOT_PENDING)
-            {
-                return st == PE_SLOT_SUBMITTED;
-            }
-            std::unique_lock<std::mutex> lk(sPESlotMutex);
-            sPESlotCv.wait(lk, [slot] { return sPESlotState[slot].load() != PE_SLOT_PENDING; });
-        }
     }
 
     void peDrain()
@@ -2071,6 +2118,12 @@ namespace
                 enabled_features.drawIndirectFirstInstance = VK_TRUE;
                 sDrawIndirectFirstInstanceEnabled = true;
             }
+            if (vk12_query.timelineSemaphore)
+            {
+                // GPU 完了タイムライン: host 照会がスレッド安全(fence の external-sync 制約無し)。
+                vk12_features_enable.timelineSemaphore = VK_TRUE;
+                sTimelineSemaphoreEnabled = true;
+            }
         }
 
         VkPhysicalDeviceVulkan11Features vk11_features_enable = {};
@@ -2166,6 +2219,26 @@ namespace
         }
 
         volkLoadDevice(sDevice);
+
+        // GPU 完了タイムラインは volkLoadDevice の後(device 関数 load 後)かつ
+        // init 時の one-shot submit より前に作る。
+        if (sTimelineSemaphoreEnabled)
+        {
+            VkSemaphoreTypeCreateInfo tci = {};
+            tci.sType         = VK_STRUCTURE_TYPE_SEMAPHORE_TYPE_CREATE_INFO;
+            tci.semaphoreType = VK_SEMAPHORE_TYPE_TIMELINE;
+            tci.initialValue  = 0;
+            VkSemaphoreCreateInfo sci = {};
+            sci.sType = VK_STRUCTURE_TYPE_SEMAPHORE_CREATE_INFO;
+            sci.pNext = &tci;
+            if (vkCreateSemaphore(sDevice, &sci, nullptr, &sGpuTimeline) != VK_SUCCESS)
+            {
+                LL_WARNS("Vulkan") << "timeline semaphore creation failed" << LL_ENDL;
+                sGpuTimeline = VK_NULL_HANDLE;
+                return false;
+            }
+        }
+
         if (sCheckpointsEnabled && (vkCmdSetCheckpointNV == nullptr || vkGetQueueCheckpointDataNV == nullptr))
         {
             sCheckpointsEnabled = false;
@@ -4293,59 +4366,12 @@ namespace
 
     bool createSyncObjects()
     {
-        VkFenceCreateInfo fence_info = {};
-        fence_info.sType = VK_STRUCTURE_TYPE_FENCE_CREATE_INFO;
-        fence_info.flags = VK_FENCE_CREATE_SIGNALED_BIT;
-
-        for (U32 i = 0; i < FRAMES_IN_FLIGHT; ++i)
-        {
-            VkResult result = vkCreateFence(sDevice, &fence_info, nullptr, &sInFlightFences[i]);
-            if (result != VK_SUCCESS)
-            {
-                for (U32 j = 0; j < i; ++j)
-                {
-                    vkDestroyFence(sDevice, sInFlightFences[j], nullptr);
-                    sInFlightFences[j] = VK_NULL_HANDLE;
-                }
-                return false;
-            }
-        }
-
-        VkFenceCreateInfo producer_fence_info = {};
-        producer_fence_info.sType = VK_STRUCTURE_TYPE_FENCE_CREATE_INFO;
+        // fence は全廃(GPU 完了は sGpuTimeline で判定)。ここは present 用 binary semaphore のみ。
         for (U32 i = 0; i < FRAMES_IN_FLIGHT; ++i)
         {
             sProducerFencePending[i] = false;
-            VkResult result = vkCreateFence(sDevice, &producer_fence_info, nullptr, &sProducerFences[i]);
-            if (result != VK_SUCCESS)
-            {
-                for (U32 j = 0; j < i; ++j)
-                {
-                    vkDestroyFence(sDevice, sProducerFences[j], nullptr);
-                    sProducerFences[j] = VK_NULL_HANDLE;
-                }
-                for (U32 j = 0; j < FRAMES_IN_FLIGHT; ++j)
-                {
-                    vkDestroyFence(sDevice, sInFlightFences[j], nullptr);
-                    sInFlightFences[j] = VK_NULL_HANDLE;
-                }
-                return false;
-            }
         }
-
         sAsyncProducerInFlight = false;
-        if (vkCreateFence(sDevice, &producer_fence_info, nullptr, &sAsyncProducerFence) != VK_SUCCESS)
-        {
-            for (U32 j = 0; j < FRAMES_IN_FLIGHT; ++j)
-            {
-                vkDestroyFence(sDevice, sProducerFences[j], nullptr);
-                sProducerFences[j] = VK_NULL_HANDLE;
-                vkDestroyFence(sDevice, sInFlightFences[j], nullptr);
-                sInFlightFences[j] = VK_NULL_HANDLE;
-            }
-            return false;
-        }
-
 
         VkSemaphoreCreateInfo sem_info = {};
         sem_info.sType = VK_STRUCTURE_TYPE_SEMAPHORE_CREATE_INFO;
@@ -4363,11 +4389,6 @@ namespace
                     vkDestroySemaphore(sDevice, sRenderFinishedSemaphores[j], nullptr);
                     sRenderFinishedSemaphores[j] = VK_NULL_HANDLE;
                 }
-                for (U32 j = 0; j < FRAMES_IN_FLIGHT; ++j)
-                {
-                    vkDestroyFence(sDevice, sInFlightFences[j], nullptr);
-                    sInFlightFences[j] = VK_NULL_HANDLE;
-                }
                 return false;
             }
 
@@ -4384,11 +4405,6 @@ namespace
                     vkDestroySemaphore(sDevice, sRenderFinishedSemaphores[j], nullptr);
                     sRenderFinishedSemaphores[j] = VK_NULL_HANDLE;
                 }
-                for (U32 j = 0; j < FRAMES_IN_FLIGHT; ++j)
-                {
-                    vkDestroyFence(sDevice, sInFlightFences[j], nullptr);
-                    sInFlightFences[j] = VK_NULL_HANDLE;
-                }
                 return false;
             }
         }
@@ -4398,25 +4414,15 @@ namespace
 
     void destroySyncObjects()
     {
+        if (sGpuTimeline != VK_NULL_HANDLE)
+        {
+            vkDestroySemaphore(sDevice, sGpuTimeline, nullptr);
+            sGpuTimeline = VK_NULL_HANDLE;
+        }
+        sAsyncProducerInFlight = false;
         for (U32 i = 0; i < FRAMES_IN_FLIGHT; ++i)
         {
-            if (sInFlightFences[i] != VK_NULL_HANDLE)
-            {
-                vkDestroyFence(sDevice, sInFlightFences[i], nullptr);
-                sInFlightFences[i] = VK_NULL_HANDLE;
-            }
-            if (sProducerFences[i] != VK_NULL_HANDLE)
-            {
-                vkDestroyFence(sDevice, sProducerFences[i], nullptr);
-                sProducerFences[i] = VK_NULL_HANDLE;
-            }
             sProducerFencePending[i] = false;
-            if (i == 0 && sAsyncProducerFence != VK_NULL_HANDLE)
-            {
-                vkDestroyFence(sDevice, sAsyncProducerFence, nullptr);
-                sAsyncProducerFence = VK_NULL_HANDLE;
-                sAsyncProducerInFlight = false;
-            }
             if (sImageAvailableSemaphores[i] != VK_NULL_HANDLE)
             {
                 vkDestroySemaphore(sDevice, sImageAvailableSemaphores[i], nullptr);
@@ -5041,11 +5047,6 @@ void shutdownVulkan(bool device_lost)
             }
         }
         reapAllDeferred(device_lost ? REAP_LOST : REAP_CLOSE);
-        for (VkFence pooled_fence : sSubmitFencePool)
-        {
-            vkDestroyFence(sDevice, pooled_fence, nullptr);
-        }
-        sSubmitFencePool.clear();
 
         auxWindowShutdownVk();
         destroySwapchain();
@@ -5476,10 +5477,8 @@ static void reapAllDeferred(ReapMode mode)
 static void pollAsyncProducerCompletion()
 {
     if (sAsyncProducerInFlight &&
-        sAsyncProducerFence != VK_NULL_HANDLE &&
-        vkGetFenceStatus(sDevice, sAsyncProducerFence) == VK_SUCCESS)
+        gpuTimelineValue() >= sAsyncTimelineValue)
     {
-        vkResetFences(sDevice, 1, &sAsyncProducerFence);
         sAsyncProducerInFlight    = false;
         sAsyncProducerFlipPending = true;
     }
@@ -5488,10 +5487,11 @@ static void pollAsyncProducerCompletion()
 static void refreshCompletedWatermark()
 {
     pollAsyncProducerCompletion();
+    const uint64_t cur = gpuTimelineValue();
     for (U32 i = 0; i < FRAMES_IN_FLIGHT; ++i)
     {
-        if (sInFlightFences[i] != VK_NULL_HANDLE &&
-            vkGetFenceStatus(sDevice, sInFlightFences[i]) == VK_SUCCESS &&
+        if (sFrameTimelineValue[i] != 0 &&
+            cur >= sFrameTimelineValue[i] &&
             sFrameSubmittedMonotonic[i] > sLastCompletedMonotonic)
         {
             sLastCompletedMonotonic = sFrameSubmittedMonotonic[i];
@@ -5553,19 +5553,18 @@ bool asyncProducerTryComplete()
         sAsyncProducerFlipPending = false;
         return true;
     }
-    if (!sAsyncProducerInFlight || sAsyncProducerFence == VK_NULL_HANDLE)
+    if (!sAsyncProducerInFlight)
     {
         return false;
     }
     const U32 checks = sProdChecksSinceSubmit.fetch_add(1) + 1;
-    if (vkGetFenceStatus(sDevice, sAsyncProducerFence) == VK_SUCCESS)
+    if (gpuTimelineValue() >= sAsyncTimelineValue)
     {
         ++sProdCheckTotalReady;
         if (checks == 1)
         {
             ++sProdCheckFirstReady;
         }
-        vkResetFences(sDevice, 1, &sAsyncProducerFence);
         sAsyncProducerInFlight = false;
         return true;
     }
@@ -5713,35 +5712,20 @@ bool beginFrame(bool acquire_swapchain)
     sSkinPaletteCursor[sFrameIndex].store(0, std::memory_order_relaxed); // B.0: reset skin palette region ring
     sDrawDataScratchCursor.store(0, std::memory_order_relaxed);
 
-    bool slot_submitted;
-    {
-        VkPerfMainScope mlp_slot(0);
-        slot_submitted = peWaitSlotSubmitted(sFrameIndex);
-    }
-    if (sInFlightFences[sFrameIndex] != VK_NULL_HANDLE)
+    // slot 再利用前に、この slot の前回 frame の GPU 完了を timeline で待つ(fence 不要)。
     {
         VkPerfMainScope mlp_fence(1);
-        if (slot_submitted)
-        {
-            vkWaitForFences(sDevice, 1, &sInFlightFences[sFrameIndex],
-                                                VK_TRUE, UINT64_MAX);
-        }
+        waitTimeline(sFrameTimelineValue[sFrameIndex]);
     }
     refreshCompletedWatermark();
-    if (sInFlightFences[sFrameIndex] != VK_NULL_HANDLE)
+    if (sProducerFencePending[sFrameIndex])
     {
-        vkResetFences(sDevice, 1, &sInFlightFences[sFrameIndex]);
-    }
-    if (sProducerFencePending[sFrameIndex] && sProducerFences[sFrameIndex] != VK_NULL_HANDLE)
-    {
-        vkWaitForFences(sDevice, 1, &sProducerFences[sFrameIndex], VK_TRUE, UINT64_MAX);
-        vkResetFences(sDevice, 1, &sProducerFences[sFrameIndex]);
+        waitTimeline(sProducerTimelineValue[sFrameIndex]);
         sProducerFencePending[sFrameIndex] = false;
     }
-    if (sAsyncProducerInFlight && sAsyncProducerRecordSlot == sFrameIndex &&
-        sAsyncProducerFence != VK_NULL_HANDLE)
+    if (sAsyncProducerInFlight && sAsyncProducerRecordSlot == sFrameIndex)
     {
-        vkWaitForFences(sDevice, 1, &sAsyncProducerFence, VK_TRUE, UINT64_MAX);
+        waitTimeline(sAsyncTimelineValue);
     }
     sPESlotState[sFrameIndex].store(PE_SLOT_IDLE);
 
@@ -6356,7 +6340,6 @@ bool endFrame()
         cjob.is_frame = true;
         cjob.slot     = sFrameIndex;
         cjob.cmd      = sConsumerCommandBuffers[sFrameIndex];
-        cjob.fence    = sInFlightFences[sFrameIndex];
         if (sImageAcquired)
         {
             cjob.wait_semaphore   = sImageAvailableSemaphores[sFrameIndex];
@@ -6372,26 +6355,25 @@ bool endFrame()
         }
         sFrameSubmittedMonotonic[sFrameIndex] = sMonotonicFrameCount;
         sPESlotState[sFrameIndex].store(PE_SLOT_PENDING);
-        peEnqueue(std::move(cjob));
+        sFrameTimelineValue[sFrameIndex] = peEnqueue(std::move(cjob));
 
         PEJob pjob;
         pjob.is_frame = false;
         pjob.slot     = sFrameIndex;
         pjob.cmd      = sCommandBuffers[sFrameIndex];
-        pjob.fence    = sProducerFences[sFrameIndex];
         sProducerFencePending[sFrameIndex] = true;
-        peEnqueue(std::move(pjob));
+        sProducerTimelineValue[sFrameIndex] = peEnqueue(std::move(pjob));
 
         if (sAsyncRenderSceneThisFrame)
         {
             vkEndCommandBuffer(sAsyncProducerCommandBuffer);
             PEJob apjob;
-            apjob.is_frame = false;
-            apjob.cmd      = sAsyncProducerCommandBuffer;
-            apjob.fence    = sAsyncProducerFence;
+            apjob.is_frame          = false;
+            apjob.is_async_producer = true;
+            apjob.cmd               = sAsyncProducerCommandBuffer;
             sProdEnqMonoUs.store(vkMonoUs());
             sProdChecksSinceSubmit.store(0);
-            peEnqueue(std::move(apjob));
+            sAsyncTimelineValue = peEnqueue(std::move(apjob));
             sAsyncProducerInFlight        = true;
             sAsyncProducerSubmitMonotonic = sMonotonicFrameCount;
             ++sAsyncProducerSubmitCount;
@@ -6404,7 +6386,6 @@ bool endFrame()
         job.is_frame = true;
         job.slot     = sFrameIndex;
         job.cmd      = sCommandBuffers[sFrameIndex];
-        job.fence    = sInFlightFences[sFrameIndex];
         if (sImageAcquired)
         {
             job.wait_semaphore   = sImageAvailableSemaphores[sFrameIndex];
@@ -6420,7 +6401,7 @@ bool endFrame()
         }
         sFrameSubmittedMonotonic[sFrameIndex] = sMonotonicFrameCount;
         sPESlotState[sFrameIndex].store(PE_SLOT_PENDING);
-        peEnqueue(std::move(job));
+        sFrameTimelineValue[sFrameIndex] = peEnqueue(std::move(job));
     }
 
     sImageAcquired = false;
@@ -6441,30 +6422,16 @@ bool beginOffscreenFrameVk()
 
     beginCommandRecording();
 
-    const bool slot_submitted = peWaitSlotSubmitted(sFrameIndex);
-    if (sInFlightFences[sFrameIndex] != VK_NULL_HANDLE)
-    {
-        if (slot_submitted)
-        {
-            vkWaitForFences(sDevice, 1, &sInFlightFences[sFrameIndex],
-                                                VK_TRUE, UINT64_MAX);
-        }
-    }
+    waitTimeline(sFrameTimelineValue[sFrameIndex]);
     refreshCompletedWatermark();
-    if (sInFlightFences[sFrameIndex] != VK_NULL_HANDLE)
+    if (sProducerFencePending[sFrameIndex])
     {
-        vkResetFences(sDevice, 1, &sInFlightFences[sFrameIndex]);
-    }
-    if (sProducerFencePending[sFrameIndex] && sProducerFences[sFrameIndex] != VK_NULL_HANDLE)
-    {
-        vkWaitForFences(sDevice, 1, &sProducerFences[sFrameIndex], VK_TRUE, UINT64_MAX);
-        vkResetFences(sDevice, 1, &sProducerFences[sFrameIndex]);
+        waitTimeline(sProducerTimelineValue[sFrameIndex]);
         sProducerFencePending[sFrameIndex] = false;
     }
-    if (sAsyncProducerInFlight && sAsyncProducerRecordSlot == sFrameIndex &&
-        sAsyncProducerFence != VK_NULL_HANDLE)
+    if (sAsyncProducerInFlight && sAsyncProducerRecordSlot == sFrameIndex)
     {
-        vkWaitForFences(sDevice, 1, &sAsyncProducerFence, VK_TRUE, UINT64_MAX);
+        waitTimeline(sAsyncTimelineValue);
     }
     sPESlotState[sFrameIndex].store(PE_SLOT_IDLE);
 
@@ -6510,28 +6477,8 @@ void endOffscreenFrameVk()
         return;
     }
 
-    {
-        PESyncPoint sync;
-        PEJob job;
-        job.cmd       = sCommandBuffers[sFrameIndex];
-        job.fence     = sInFlightFences[sFrameIndex];
-        job.wait_idle = true;
-        job.sync      = &sync;
-        if (!sPERunning)
-        {
-            peExecute(job);
-        }
-        else
-        {
-            {
-                std::lock_guard<std::mutex> lk(sPEQueueMutex);
-                sPEJobs.push_back(std::move(job));
-            }
-            sPEQueueCv.notify_one();
-            std::unique_lock<std::mutex> lk(sync.m);
-            sync.cv.wait(lk, [&] { return sync.done; });
-        }
-    }
+    peSubmitBlocking(sCommandBuffers[sFrameIndex], VK_NULL_HANDLE, true);
+    sFrameTimelineValue[sFrameIndex] = gpuTimelineValue();
     pollAsyncProducerCompletion();
     sFrameSubmittedMonotonic[sFrameIndex] = sMonotonicFrameCount;
     if (sMonotonicFrameCount > sLastCompletedMonotonic)
@@ -8999,8 +8946,7 @@ bool submitOneShotVkFromPool(VkCommandBuffer cmd, VkCommandPool pool, VkBuffer s
         {
             break;
         }
-        vkWaitForFences(sDevice, 1, &wait_entry.fence, VK_TRUE, 100000000ull);
-        if (vkGetFenceStatus(sDevice, wait_entry.fence) == VK_SUCCESS)
+        if (gpuTimelineValue() >= wait_entry.timeline_value)
         {
             if (wait_entry.buffer != VK_NULL_HANDLE || wait_entry.allocation != VK_NULL_HANDLE)
             {
@@ -9008,7 +8954,6 @@ bool submitOneShotVkFromPool(VkCommandBuffer cmd, VkCommandPool pool, VkBuffer s
             }
             sOneShotStagingBytes.fetch_sub(wait_entry.staging_bytes);
             std::lock_guard<std::mutex> lk(sOneShotMutex);
-            sSubmitFencePool.push_back(wait_entry.fence);
             if (wait_entry.cmd != VK_NULL_HANDLE)
             {
                 sRetiredMainOneShotCmds.push_back(wait_entry.cmd);
@@ -9016,61 +8961,31 @@ bool submitOneShotVkFromPool(VkCommandBuffer cmd, VkCommandPool pool, VkBuffer s
         }
         else
         {
-            std::lock_guard<std::mutex> lk(sOneShotMutex);
-            sPendingOneShotFrees.insert(sPendingOneShotFrees.begin(), wait_entry);
+            {
+                std::lock_guard<std::mutex> lk(sOneShotMutex);
+                sPendingOneShotFrees.insert(sPendingOneShotFrees.begin(), wait_entry);
+            }
+            std::this_thread::sleep_for(std::chrono::microseconds(200)); // GPU 完了待ち(backpressure)
         }
         tickOneShotFreeQueue();
     }
 
-    VkFence fence = VK_NULL_HANDLE;
-    {
-        std::lock_guard<std::mutex> lk(sOneShotMutex);
-        if (!sSubmitFencePool.empty())
-        {
-            fence = sSubmitFencePool.back();
-            sSubmitFencePool.pop_back();
-        }
-    }
-    if (fence != VK_NULL_HANDLE)
-    {
-        vkResetFences(sDevice, 1, &fence);
-    }
-    else
-    {
-        VkFenceCreateInfo fci = {};
-        fci.sType = VK_STRUCTURE_TYPE_FENCE_CREATE_INFO;
-        if (vkCreateFence(sDevice, &fci, nullptr, &fence) != VK_SUCCESS)
-        {
-            fence = VK_NULL_HANDLE;
-        }
-    }
-
-    if (fence == VK_NULL_HANDLE)
-    {
-        VkResult sr = peSubmitBlocking(cmd, VK_NULL_HANDLE, true);
-        vkFreeCommandBuffers(sDevice, pool, 1, &cmd);
-        if (staging_buffer != VK_NULL_HANDLE || staging_allocation != VK_NULL_HANDLE)
-        {
-            vmaDestroyBuffer(sAllocator, staging_buffer, staging_allocation);
-        }
-        return sr == VK_SUCCESS;
-    }
-
+    // fence 不要: 完了は timeline 値で判定する(GPU 完了 = timeline >= oneshot_value)。
+    uint64_t oneshot_value;
     {
         PEJob job;
         job.cmd        = cmd;
-        job.fence      = fence;
         job.is_oneshot = true;
-        peEnqueue(std::move(job));
+        oneshot_value  = peEnqueue(std::move(job));
     }
 
     PendingOneShotFree pending;
-    pending.fence         = fence;
-    pending.cmd           = cmd;
-    pending.pool          = pool;
-    pending.buffer        = staging_buffer;
-    pending.allocation    = staging_allocation;
-    pending.staging_bytes = staging_bytes;
+    pending.cmd            = cmd;
+    pending.pool           = pool;
+    pending.buffer         = staging_buffer;
+    pending.allocation     = staging_allocation;
+    pending.staging_bytes  = staging_bytes;
+    pending.timeline_value = oneshot_value;
     sOneShotStagingBytes.fetch_add(staging_bytes);
     {
         std::lock_guard<std::mutex> lk(sOneShotMutex);
@@ -9085,13 +9000,14 @@ void tickOneShotFreeQueue()
     {
         return;
     }
-    std::vector<VkFence> failed;
+    std::vector<uint64_t> failed;
     {
         std::lock_guard<std::mutex> lk(sPEFailedMutex);
-        failed.swap(sPEFailedOneShotFences);
+        failed.swap(sPEFailedOneShotValues);
     }
     std::vector<VkCommandBuffer> free_now;
     const VkCommandPool free_pool = sCommandPool;
+    const uint64_t cur = gpuTimelineValue();
     {
         std::lock_guard<std::mutex> lk(sOneShotMutex);
         size_t w = 0;
@@ -9100,15 +9016,14 @@ void tickOneShotFreeQueue()
         {
             PendingOneShotFree& e = sPendingOneShotFrees[r];
             const bool submit_failed = !failed.empty() &&
-                std::find(failed.begin(), failed.end(), e.fence) != failed.end();
-            if (sReapForceAll || submit_failed || vkGetFenceStatus(sDevice, e.fence) == VK_SUCCESS)
+                std::find(failed.begin(), failed.end(), e.timeline_value) != failed.end();
+            if (sReapForceAll || submit_failed || cur >= e.timeline_value)
             {
                 if (e.buffer != VK_NULL_HANDLE || e.allocation != VK_NULL_HANDLE)
                 {
                     vmaDestroyBuffer(sAllocator, e.buffer, e.allocation);
                 }
                 sOneShotStagingBytes.fetch_sub(e.staging_bytes);
-                sSubmitFencePool.push_back(e.fence);
                 if (e.cmd != VK_NULL_HANDLE)
                 {
                     sRetiredMainOneShotCmds.push_back(e.cmd);
@@ -11686,6 +11601,20 @@ bool createReadbackBufferVk(U32       bytes,
     return true;
 }
 
+static VkBufferMemoryBarrier readbackDstWawBarrier(VkBuffer buffer)
+{
+    VkBufferMemoryBarrier b = {};
+    b.sType               = VK_STRUCTURE_TYPE_BUFFER_MEMORY_BARRIER;
+    b.srcAccessMask       = VK_ACCESS_TRANSFER_WRITE_BIT;
+    b.dstAccessMask       = VK_ACCESS_TRANSFER_WRITE_BIT;
+    b.srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+    b.dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+    b.buffer              = buffer;
+    b.offset              = 0;
+    b.size                = VK_WHOLE_SIZE;
+    return b;
+}
+
 bool copyColorImageRegionToBufferVk(VkImage       src_image,
                                     VkImageLayout src_layout,
                                     S32           src_x,
@@ -11729,8 +11658,9 @@ bool copyColorImageRegionToBufferVk(VkImage       src_image,
         b.subresourceRange.levelCount     = 1;
         b.subresourceRange.baseArrayLayer = 0;
         b.subresourceRange.layerCount     = 1;
+        VkBufferMemoryBarrier bufb = readbackDstWawBarrier(dst_buffer);
         vkCmdPipelineBarrier(cmd, VK_PIPELINE_STAGE_ALL_COMMANDS_BIT, VK_PIPELINE_STAGE_TRANSFER_BIT,
-                             0, 0, nullptr, 0, nullptr, 1, &b);
+                             0, 0, nullptr, 1, &bufb, 1, &b);
     }
 
     {
@@ -11850,10 +11780,11 @@ bool readbackColorImageRegionVk(VkImage       image,
         b.subresourceRange.levelCount     = 1;
         b.subresourceRange.baseArrayLayer = 0;
         b.subresourceRange.layerCount     = 1;
+        VkBufferMemoryBarrier bufb = readbackDstWawBarrier(staging_buffer);
         vkCmdPipelineBarrier(cmd,
                              VK_PIPELINE_STAGE_ALL_COMMANDS_BIT,
                              VK_PIPELINE_STAGE_TRANSFER_BIT,
-                             0, 0, nullptr, 0, nullptr, 1, &b);
+                             0, 0, nullptr, 1, &bufb, 1, &b);
     }
 
     {
@@ -12001,10 +11932,11 @@ bool readbackDepthImageRegionVk(VkImage       image,
         b.subresourceRange.levelCount     = 1;
         b.subresourceRange.baseArrayLayer = array_layer;
         b.subresourceRange.layerCount     = 1;
+        VkBufferMemoryBarrier bufb = readbackDstWawBarrier(staging_buffer);
         vkCmdPipelineBarrier(cmd,
                              VK_PIPELINE_STAGE_ALL_COMMANDS_BIT,
                              VK_PIPELINE_STAGE_TRANSFER_BIT,
-                             0, 0, nullptr, 0, nullptr, 1, &b);
+                             0, 0, nullptr, 1, &bufb, 1, &b);
     }
 
     {

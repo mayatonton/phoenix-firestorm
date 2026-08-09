@@ -1422,6 +1422,21 @@ void LLRenderPass::pushIndirectBucket(LLVKBucket::Bucket& bucket, const std::vec
                     cmds[c].instanceCount = 0;
                     ++zeroed;
                 }
+                else if (LLVKContract::verboseEnabled())
+                {
+                    LLDrawInfo* rec  = bucket.mTplRecords[c];
+                    const U32   baked = bucket.mTplCommands[c].firstInstance;
+                    const U32   live  = (rec != nullptr) ? rec->mVkDrawDataSlot : 0xFFFFFFFFu;
+                    if (rec != nullptr && live != 0xFFFFFFFFu && baked != live)
+                    {
+                        U32 obj_id = 0;
+                        if (rec->mSrcDrawable.notNull() && rec->mSrcDrawable->getVObj().notNull())
+                        {
+                            obj_id = rec->mSrcDrawable->getVObj()->getLocalID();
+                        }
+                        LLVKContract::noteShadowStaleSlot(obj_id, baked, live);
+                    }
+                }
             }
             LLVKLoader::gVkPerf.mdi_zero += zeroed;
             if (pushIndirectSpans(bucket, ring_buf, ring_offset))
