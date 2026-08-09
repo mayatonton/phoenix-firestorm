@@ -1422,19 +1422,18 @@ void LLRenderPass::pushIndirectBucket(LLVKBucket::Bucket& bucket, const std::vec
                     cmds[c].instanceCount = 0;
                     ++zeroed;
                 }
-                else if (LLVKContract::verboseEnabled())
+                else
                 {
-                    LLDrawInfo* rec  = bucket.mTplRecords[c];
-                    const U32   baked = bucket.mTplCommands[c].firstInstance;
-                    const U32   live  = (rec != nullptr) ? rec->mVkDrawDataSlot : 0xFFFFFFFFu;
-                    if (rec != nullptr && live != 0xFFFFFFFFu && baked != live)
+                    LLDrawInfo* rec = bucket.mTplRecords[c];
+                    if (rec != nullptr)
                     {
-                        U32 obj_id = 0;
-                        if (rec->mSrcDrawable.notNull() && rec->mSrcDrawable->getVObj().notNull())
+                        U32 slots[LLVKLoader::DRAWDATA_SLOT_UINTS];
+                        computeDrawDataSlots(rec, LLVKBucket::mdiBatchTextures(bucket.mPass), slots);
+                        rec->ensureVkDrawDataSlot(slots);
+                        if (rec->mVkDrawDataSlot != 0xFFFFFFFFu)
                         {
-                            obj_id = rec->mSrcDrawable->getVObj()->getLocalID();
+                            cmds[c].firstInstance = rec->mVkDrawDataSlot;
                         }
-                        LLVKContract::noteShadowStaleSlot(obj_id, baked, live);
                     }
                 }
             }

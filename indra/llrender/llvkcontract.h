@@ -97,7 +97,6 @@ void stashDrawDataID(U32 id);
 void checkDrawDataIDAtFire(U32 actual);
 void markPerDrawIDCommitted();
 void checkPerDrawIDFreshnessAtFire(bool fired, bool uses_skin_set, const char* shader_name);
-void noteShadowStaleSlot(U32 obj_id, U32 baked, U32 live);
 
 void parallelEpochBegin();
 void parallelEpochEnd();

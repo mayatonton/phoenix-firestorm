@@ -930,6 +930,9 @@ namespace
 
     std::mutex              sPEFailedMutex;
     std::vector<uint64_t>   sPEFailedOneShotValues;   // 失敗した oneshot submit の timeline 値(回収用)
+    std::mutex              sPEAbandonedMutex;
+    std::vector<uint64_t>   sPEAbandonedTimelineValues;   // 非 device-lost で submit 失敗した frame/producer/async の値(永久未 signal・waitTimeline 脱出用)
+    void                    recordAbandonedTimelineValue(uint64_t v);   // 定義は gpuTimelineValue 後
     std::atomic<bool>       sVkDeviceLost{false};
 
     std::atomic<U64>        sPESubmitUs{0};
@@ -1106,6 +1109,12 @@ namespace
                 rel.failOneshotFence();
             }
         }
+        else if (sr != VK_SUCCESS)
+        {
+            // frame/producer/async の submit 失敗 = この値は永久に signal されない。
+            // waitTimeline がハングしないよう abandoned として記録(device-lost 有無に依らず安全側)。
+            recordAbandonedTimelineValue(job.timeline_value);
+        }
 
         if (sr != VK_SUCCESS)
         {
@@ -1248,8 +1257,40 @@ namespace
         return v;
     }
 
+    // submit 失敗(非 device-lost)で永久に signal されない値を記録。記録時に counter を越えた
+    // 既済値を prune して集合を有界化(失敗は稀・集合は小)。
+    void recordAbandonedTimelineValue(uint64_t v)
+    {
+        const uint64_t cur = gpuTimelineValue();
+        std::lock_guard<std::mutex> lk(sPEAbandonedMutex);
+        size_t w = 0;
+        for (size_t r = 0; r < sPEAbandonedTimelineValues.size(); ++r)
+        {
+            const uint64_t a = sPEAbandonedTimelineValues[r];
+            if (a > cur)
+            {
+                sPEAbandonedTimelineValues[w++] = a;
+            }
+        }
+        sPEAbandonedTimelineValues.resize(w);
+        sPEAbandonedTimelineValues.push_back(v);
+    }
+
+    bool timelineValueAbandoned(uint64_t v)
+    {
+        std::lock_guard<std::mutex> lk(sPEAbandonedMutex);
+        for (uint64_t a : sPEAbandonedTimelineValues)
+        {
+            if (a == v)
+            {
+                return true;
+            }
+        }
+        return false;
+    }
+
     // GPU タイムラインが値 v に到達するまで待つ(= 該当 submit の GPU 完了待ち)。
-    // 任意スレッドから race 無く可。device-lost で脱出。v==0 は待ち不要。
+    // 任意スレッドから race 無く可。device-lost もしくは当該 submit 失敗(永久未 signal)で脱出。v==0 は待ち不要。
     void waitTimeline(uint64_t v)
     {
         if (v == 0 || sGpuTimeline == VK_NULL_HANDLE)
@@ -1264,6 +1305,10 @@ namespace
         while (vkWaitSemaphores(sDevice, &wi, 50000000ull) == VK_TIMEOUT)
         {
             if (sVkDeviceLost.load(std::memory_order_acquire))
+            {
+                return;
+            }
+            if (timelineValueAbandoned(v))
             {
                 return;
             }

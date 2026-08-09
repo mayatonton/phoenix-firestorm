@@ -452,25 +452,6 @@ void markPerDrawIDCommitted()
     tPerDrawIDCommitted = true;
 }
 
-void noteShadowStaleSlot(U32 obj_id, U32 baked, U32 live)
-{
-    cause(C_DRAWDATA_ID_MISMATCH);
-    if (!verboseEnabled())
-    {
-        return;
-    }
-    static std::mutex              s_m;
-    static std::unordered_set<U64> s_seen;
-    const U64 key = ((U64)obj_id << 32) ^ ((U64)baked << 8) ^ (U64)live;
-    std::lock_guard<std::mutex> lk(s_m);
-    if (s_seen.size() >= 4096 || !s_seen.insert(key).second)
-    {
-        return;
-    }
-    LL_WARNS("VKContract") << "VKC shadow_stale_slot obj=" << obj_id
-                           << " baked=" << baked << " live=" << live << LL_ENDL;
-}
-
 void checkPerDrawIDFreshnessAtFire(bool fired, bool uses_skin_set, const char* shader_name)
 {
     if (!verboseEnabled())
