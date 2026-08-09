@@ -415,3 +415,81 @@ Viewer log 上の起動時刻は `15:30:17Z`、device lost は約 42 秒後の `
 小規模テクスチャ upload / mipmap 作成経路である。次の診断では image handle、幅・高さ、format、
 mip 数および texture asset ID を submit 履歴へ加え、対象リソースを確定してから layout と
 GPU 完了前の寿命管理を修正する。
+
+## 11. image upload / mip blit の調査と修正方針 — 2026-08-10
+
+### 結論
+
+`image-upload-2d` と `image-mip-blit` が交互に記録されたこと自体は、device lost の原因確定を
+意味しない。Present Engine は one-shot job に単調な timeline 値を振り、単一 graphics queue へ
+FIFO で submit するため、通常の `upload -> mip blit` の順序は維持される。
+
+今回の履歴は、先行 texture の mip blit の後に次 texture の upload が続く形であり、timeline
+`17119` の `image-upload-2d` が `VK_ERROR_DEVICE_LOST` を返した。Vulkan / MoltenVK では先行する
+GPU command の異常が後続 submit で表面化し得るため、最後の upload だけを原因とは断定しない。
+
+### VERIFIED: 修正すべき仕様不備
+
+`LLVKLoader::generateMipChainBlitVk()` は `VK_FILTER_LINEAR` 用に
+`VK_FORMAT_FEATURE_SAMPLED_IMAGE_FILTER_LINEAR_BIT` だけを検査している。しかし
+`vkCmdBlitImage` には source の `VK_FORMAT_FEATURE_BLIT_SRC_BIT` と destination の
+`VK_FORMAT_FEATURE_BLIT_DST_BIT` も必要である。
+
+従って次の修正を行う。
+
+1. mip generation 可否を format ごとに `BLIT_SRC`、`BLIT_DST`、および linear filter の全条件で
+   判定する。
+2. 非対応 format は mip blit command を一切記録せず、最初から 1 mip の texture として確保し、
+   non-mip sampler を使う fallback にする。複数 mip を確保したまま未初期化の level を sample
+   してはならない。
+3. 失敗時の診断には image handle、幅・高さ、format、mip 数、および format feature bits を残す。
+
+これは log の 4 KiB texture が当該非対応 format だったことをまだ示すものではないが、現行コードの
+`vkCmdBlitImage` 発行条件が不十分であることは source と Vulkan の valid usage から確認済みである。
+
+### VERIFIED: bindless descriptor の寿命上の危険
+
+Vulkan + bindless が有効な run で、`LLImageGL::updateVkHeapSlot()` は image view または sampler が
+変わると、既存 bindless slot を `vkUpdateDescriptorSets()` で即時上書きする。descriptor binding は
+`UPDATE_AFTER_BIND` と `UPDATE_UNUSED_WHILE_PENDING` を付けているが、pending command buffer が実際に
+その slot を sample する場合、その descriptor を更新してよいことにはならない。
+
+修正は、view または sampler が変わるたびに新しい bindless slot を取得し、旧 slot は既存の
+`bindlessReleaseSlotDeferred()` 経路で GPU 完了後に解放することとする。これにより既に submit 済みの
+frame は旧 slot と旧 image view を維持し、以後 record する frame だけが新 slot を参照する。
+
+これは device lost の直接原因としては未確定だが、今回の run では bindless heap が有効であり、texture
+streaming 中にこの更新が起きるため、format feature 修正と同じ優先度で是正する。
+
+### 構造改善: upload と mip chain を一つの one-shot に統合する
+
+現状は `syncVulkanMip0Image()` が base level upload を submit した直後、別 command buffer / 別
+one-shot job として mip chain blit を submit する。FIFO により通常は順序を保てるものの、mip family の
+layout 遷移を呼び手内で閉じる規約に対して不必要な中間状態を作る。
+
+auto-generated mip の経路は、次を一つの command buffer に記録して一度だけ submit する。
+
+```text
+UNDEFINED -> TRANSFER_DST (mip 0)
+copy staging buffer -> mip 0
+TRANSFER_DST / TRANSFER_SRC を使った mip 1..N の blit
+全 mip -> SHADER_READ_ONLY
+```
+
+submit 発生元は `image-upload-mips-2d` として診断に残す。asset 側が既に全 mip を持つ upload、cube /
+3D image、readback などは対象外とし、挙動を変えない。
+
+### 補助的な是正と検証
+
+- one-shot の staging byte 上限は、通常の `image-upload-2d` で回収キューに `0` が渡されるため、
+  256 MiB の byte 上限が実効していない。今回の直接原因とは未確定だが、実バイト数を保持して
+  backpressure を有効化する。
+- `sCommandPool` は one-shot と frame command buffer で共有している。Vulkan の command pool は
+  host access の外部同期が必要である。現行の静的確認では PE thread は submit 専任であり、この共有が
+  本件の race である証拠はない。ただし one-shot を将来 worker から記録する経路がないかを確認し、
+  必要なら専用 pool または pool mutex を導入する。
+
+修正順序は、(1) format feature gate と 1 mip fallback、(2) bindless slot の世代分離、(3) upload + mip
+統合、(4) staging backpressure と command pool 監査とする。各段階で cache を消去した状態から
+`AYASTORM_VKC=1 AYASTORM_PERF_LOG=5` で複数回起動し、device lost / VUID の不在、`#VkPerf#`、
+`FRAMETIME ms:`、および通常の texture・shadow 表示を記録する。
