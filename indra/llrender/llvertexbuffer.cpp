@@ -563,6 +563,7 @@ void LLVertexBuffer::drawRange(U32 mode, U32 start, U32 end, U32 count, U32 indi
                 || LLGLSLShader::sCurBoundShaderPtr->mVkUsesSkinSet)
             {
                 LLVKContract::checkDrawDataIDAtFire(fi);
+                LLVKContract::mdiReference(fi, LLVKContract::currentDrawInfo());   // MDI 供給検証器 α reference
             }
             vkCmdDrawIndexed(cmd, count, 1, mVkIndexSlice.offset / mIndicesStride + indices_offset, (S32)mVkVertexSlice.first, fi);
             ++sVkDrawCallCount;
@@ -606,6 +607,7 @@ void LLVertexBuffer::drawRangeFast(U32 mode, U32 start, U32 end, U32 count, U32 
                     || LLGLSLShader::sCurBoundShaderPtr->mVkUsesSkinSet)
                 {
                     LLVKContract::checkDrawDataIDAtFire(fi);
+                    LLVKContract::mdiReference(fi, LLVKContract::currentDrawInfo());   // MDI 供給検証器 α reference（fast path）
                 }
                 vkCmdDrawIndexed(cmd, count, 1, mVkIndexSlice.offset / mIndicesStride + indices_offset, (S32)mVkVertexSlice.first, fi);
                 ++sVkDrawCallCount;
@@ -654,6 +656,7 @@ void LLVertexBuffer::drawArrays(U32 mode, U32 first, U32 count, U32 draw_data_sl
                 || LLGLSLShader::sCurBoundShaderPtr->mVkUsesSkinSet)
             {
                 LLVKContract::checkDrawDataIDAtFire(fi);
+                LLVKContract::mdiReference(fi, LLVKContract::currentDrawInfo());   // MDI 供給検証器 α reference
             }
             vkCmdDraw(cmd, count, 1, mVkVertexSlice.first + first, fi);
             ++sVkDrawCallCount;

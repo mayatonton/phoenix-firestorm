@@ -596,7 +596,55 @@ U32 LLRenderPass::establishPerDrawId(LLDrawInfo* params, LLGLSLShader* cur, bool
                                   ? (const void*)params->mAvatar.get() : nullptr;
     const U64   skin_hash   = (skin_avatar != nullptr) ? params->mSkinInfo->mHash : 0;
     LLVKLoader::commitPerDrawID(id, cur->mVkUsesSkinSet, skin_avatar, skin_hash);
+
+    // MDI 供給検証器: α author + β heap-identity(多テクスチャ)
+    mdiAuthorAndCheck(params, slots, id, batch_textures);
     return id;
+}
+
+// MDI 供給検証器(docs/vknative_mdi_supply_verifier.md §5.1/§6.1)。
+// α = DrawData 16-uint 指紋を shadow に stamp。β = 各テクスチャ slot の heap 実体が
+// 当該 draw の tex view を保持しているか照合(番号正・実体別=当初 particle 混入)。
+void LLRenderPass::mdiAuthorAndCheck(const LLDrawInfo* params, const U32* slots, U32 id, bool batch_textures)
+{
+    LLVKContract::mdiAuthor(id, LLVKContract::mdiHash(slots), (const void*)params);
+
+    LLGLSLShader* cur = LLGLSLShader::sCurBoundShaderPtr;
+    if (cur == nullptr || !cur->mVkUsesHeapSet || params == nullptr)
+    {
+        return;
+    }
+    const VkImageView fallback = LLVKLoader::bindlessFallbackView();
+    // 既定テクスチャ slot（heap 枯渇/未 resident 時の fb_heap_default 落ち先・非ゼロ）を除外（設計 §6.1）
+    const U32 def_slot = (LLImageGL::sDefaultGLTexture != nullptr)
+                             ? LLImageGL::sDefaultGLTexture->getVkHeapSlot() : 0u;
+    const U32 n = (batch_textures && params->mTextureList.size() > 1)
+                      ? llmin((U32)params->mTextureList.size(), 4u) : 1u;
+    for (U32 i = 0; i < n; ++i)
+    {
+        const U32 slot = slots[i];
+        if (slot == 0 || slot == def_slot)
+        {
+            continue;   // 未 resident 白/既定 slot は fb_heap_default 管轄=β 対象外
+        }
+        LLTexture* t = (n > 1) ? params->mTextureList[i].get() : params->mTexture.get();
+        LLImageGL* gl = (t != nullptr) ? t->getGLTexture() : nullptr;
+        const VkImageView intended = (gl != nullptr) ? gl->getVkImageView() : VK_NULL_HANDLE;
+        const VkImageView actual   = LLVKLoader::bindlessSlotView(slot);
+        if (intended != VK_NULL_HANDLE && actual != VK_NULL_HANDLE
+            && actual != fallback && actual != intended)
+        {
+            LLVKContract::causeNamed(LLVKContract::C_MDI_HEAP_IDENTITY,
+                                     std::string("slot=") + std::to_string(slot)
+                                         + " ch=" + std::to_string(i));
+        }
+    }
+}
+
+void LLRenderPass::mdiSetFirstInstance(U32& first_instance, U32 id, const void* src)
+{
+    first_instance = id;
+    LLVKContract::mdiReference(id, src);
 }
 
 U32 LLRenderPass::buildAndOverrideScenePerDrawSet(LLDrawInfo* params, bool batch_textures,
@@ -1427,12 +1475,14 @@ void LLRenderPass::pushIndirectBucket(LLVKBucket::Bucket& bucket, const std::vec
                     LLDrawInfo* rec = bucket.mTplRecords[c];
                     if (rec != nullptr)
                     {
+                        const bool bt = LLVKBucket::mdiBatchTextures(bucket.mPass);
                         U32 slots[LLVKLoader::DRAWDATA_SLOT_UINTS];
-                        computeDrawDataSlots(rec, LLVKBucket::mdiBatchTextures(bucket.mPass), slots);
+                        computeDrawDataSlots(rec, bt, slots);
                         rec->ensureVkDrawDataSlot(slots);
                         if (rec->mVkDrawDataSlot != 0xFFFFFFFFu)
                         {
-                            cmds[c].firstInstance = rec->mVkDrawDataSlot;
+                            mdiAuthorAndCheck(rec, slots, rec->mVkDrawDataSlot, bt);
+                            mdiSetFirstInstance(cmds[c].firstInstance, rec->mVkDrawDataSlot, (const void*)rec);
                         }
                     }
                 }
@@ -1591,6 +1641,8 @@ namespace
                 draw_id = (p->mVkDrawDataSlot == LLVKLoader::BINDLESS_INVALID_SLOT)
                               ? 0 : p->mVkDrawDataSlot;
 
+                LLRenderPass::mdiAuthorAndCheck(p, slots, draw_id, batch_textures);
+
                 if (LLVKLoader::publishDrawSkinBase(draw_id, p->mAvatar.get(),
                                                     p->mSkinInfo->mHash)
                         == LLVKLoader::BINDLESS_INVALID_SLOT)
@@ -1609,7 +1661,7 @@ namespace
             rec.cmd.instanceCount = 1;
             rec.cmd.firstIndex    = is.offset / vb->getIndicesStride() + p->mOffset;
             rec.cmd.vertexOffset  = (S32)vs.first;
-            rec.cmd.firstInstance = draw_id;
+            LLRenderPass::mdiSetFirstInstance(rec.cmd.firstInstance, draw_id, (const void*)p);
             s_items.push_back(rec);
         }
 

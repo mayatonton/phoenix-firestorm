@@ -37,6 +37,7 @@
 #include "llunits.h"
 #include "llthreadsafequeue.h"
 #include "llrender.h"
+#include "llvktexresidency.h"
 #include "threadpool.h"
 #include "workqueue.h"
 #include <unordered_set>
@@ -129,17 +130,22 @@ public:
     LLGLenum getPrimaryFormat() const { return mFormatPrimary; }
     LLGLenum getFormatType() const { return mFormatType; }
 
-    bool getHasGLTexture() const { return mVkImage != VK_NULL_HANDLE; }
+    bool getHasGLTexture() const { return mVkRes.isLive(); }
 
-    VkImageView getVkImageView() const { return mVkImageView; }
-    bool hasVkImage() const { return mVkImage != VK_NULL_HANDLE; }
-    VkImage getVkImage() const { return mVkImage; }
-    U32      getVkImageMipLevels() const { return mVkImageMipLevels; }
-    VkFormat getVkImageFormat() const { return mVkImageFormat; }
+    VkImageView getVkImageView() const { return mVkRes.view(); }
+    bool hasVkImage() const { return mVkRes.isLive(); }
+    VkImage getVkImage() const { return mVkRes.image(); }
+    U32      getVkImageMipLevels() const { return mVkRes.mips(); }
+    U32      getVkImageWidth() const { return mVkRes.width(); }
+    U32      getVkImageHeight() const { return mVkRes.height(); }
+    VkFormat getVkImageFormat() const { return mVkRes.format(); }
 
-    U32  getVkHeapSlot() const { return mVkHeapSlot; }
-    void updateVkHeapSlot();
+    U32  getVkHeapSlot() const { return mVkRes.slot(); }
     static U32 vkHeapSlotOrDefault(LLImageGL* gl);
+
+    bool commitVkBacking(const VkBacking& b);
+    void resampleVkSlot();
+    U32  ensureVkSlot();
 
     void setExternalVkBacking(VkImage image, VkImageView view, void* allocation, U32 w, U32 h, VkFormat format, U32 mip_levels = 1);
 
@@ -240,17 +246,7 @@ protected:
 
     bool mExternalTexture;
 
-    VkImage     mVkImage      = VK_NULL_HANDLE;
-    VkImageView mVkImageView  = VK_NULL_HANDLE;
-    void*       mVkAllocation = nullptr;
-    U32         mVkImageWidth  = 0;
-    U32         mVkImageHeight = 0;
-    U32         mVkImageMipLevels = 1;
-    VkFormat    mVkImageFormat = VK_FORMAT_UNDEFINED;
-
-    U32         mVkHeapSlot        = 0xFFFFFFFFu;
-    VkImageView mVkHeapSlotView    = VK_NULL_HANDLE;
-    VkSampler   mVkHeapSlotSampler = VK_NULL_HANDLE;
+    VkTexResidency mVkRes;
 
 public:
     static std::unordered_set<LLImageGL*> sImageList;

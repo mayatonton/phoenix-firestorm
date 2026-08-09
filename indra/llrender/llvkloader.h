@@ -1390,6 +1390,10 @@ namespace LLVKLoader
 
     void bindlessReleaseSlotDeferred(U32 slot);
 
+    // β 検証(MDI supply verifier): slot に実登録の view / NULL 置換用 fallback view
+    VkImageView bindlessSlotView(U32 slot);
+    VkImageView bindlessFallbackView();
+
     VkDescriptorSetLayout getBindlessHeapLayout();
     VkDescriptorSetLayout getSkinBaseLayout();
     VkDescriptorSetLayout getEmptySetLayout();

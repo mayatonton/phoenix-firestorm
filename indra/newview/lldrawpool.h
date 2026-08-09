@@ -401,6 +401,12 @@ public:
 
     static void computeDrawDataSlots(const LLDrawInfo* params, bool batch_textures, U32* slots);
 
+    // MDI 供給検証器(docs/vknative_mdi_supply_verifier.md)。全 MDI author/reference サイトの choke。
+    // author: DrawData 指紋を stamp(α) + heap slot 実体照合(β・多テクスチャ)。
+    static void mdiAuthorAndCheck(const LLDrawInfo* params, const U32* slots, U32 id, bool batch_textures);
+    // reference: firstInstance を書きつつ参照を mark(α V1)。
+    static void mdiSetFirstInstance(U32& first_instance, U32 id, const void* src);
+
     static U32  buildAndOverrideScenePerDrawSet(LLDrawInfo* params, bool batch_textures,
                                                  U64      gltf_materials_ubo  = 0,
                                                  U32      gltf_materials_size = 0,

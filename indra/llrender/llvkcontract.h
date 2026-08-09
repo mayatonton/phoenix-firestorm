@@ -54,6 +54,11 @@ enum ECause : U32
     C_SKIN_DRAW_NO_COMMIT,
     C_PASS_SCOPE_FAIL,
     C_PASS_REFUSED,
+    C_MDI_STALE,
+    C_MDI_OVERWRITE,
+    C_MDI_HEAP_IDENTITY,
+    C_MDI_RUNINV,
+    C_MDI_GEOM,
     CAUSE_COUNT
 };
 
@@ -97,6 +102,21 @@ void stashDrawDataID(U32 id);
 void checkDrawDataIDAtFire(U32 actual);
 void markPerDrawIDCommitted();
 void checkPerDrawIDFreshnessAtFire(bool fired, bool uses_skin_set, const char* shader_name);
+
+// MDI per-draw 供給検証器（恒久・docs/vknative_mdi_supply_verifier.md）
+// α = DrawData 供給の stale/上書き（mdiAuthor/mdiReference）
+// β = heap slot 実体の取り違え（呼び手が heap 照合し causeNamed(C_MDI_HEAP_IDENTITY)）
+void mdiInit(U32 total_slots);
+void mdiAuthor(U32 id, U64 content_hash, const void* src);
+void mdiReference(U32 id, const void* src);
+
+// slot[0..12]（GPU が実読する DrawData の全フィールド）の 64bit 指紋
+inline U64 mdiHash(const U32* slots)
+{
+    U64 h = 1469598103934665603ULL;
+    for (int i = 0; i < 13; ++i) { h ^= (U64)slots[i]; h *= 1099511628211ULL; }
+    return h;
+}
 
 void parallelEpochBegin();
 void parallelEpochEnd();

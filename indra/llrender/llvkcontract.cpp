@@ -1,6 +1,7 @@
 #include "linden_common.h"
 #include "llvkcontract.h"
 #include "llvkloader.h"
+#include "llglslshader.h"
 #include "llerror.h"
 #include "lltimer.h"
 
@@ -67,7 +68,12 @@ const char* CAUSE_NAMES[CAUSE_COUNT] =
     "par_dead_access",
     "skin_draw_no_commit",
     "pass_scope_fail",
-    "pass_refused"
+    "pass_refused",
+    "mdi_stale",
+    "mdi_overwrite",
+    "mdi_heap_identity",
+    "mdi_runinv",
+    "mdi_geom"
 };
 
 std::string (*sDescribe)(const void*) = nullptr;
@@ -466,6 +472,83 @@ void checkPerDrawIDFreshnessAtFire(bool fired, bool uses_skin_set, const char* s
         note(C_SKIN_DRAW_NO_COMMIT, name);
         noteFbSlot((const void*)(uintptr_t)std::hash<std::string>{}(name),
                    name, (U32)C_SKIN_DRAW_NO_COMMIT, "no_commit");
+    }
+}
+
+// ── MDI per-draw 供給検証器（docs/vknative_mdi_supply_verifier.md）───────────
+// 記録スレッド（main）専用アクセス前提（establishPerDrawId / appendAlphaRunCmd）。
+struct MdiSlot
+{
+    U64 hash         = 0;
+    U32 author_frame = 0xFFFFFFFFu;
+    U32 ref_frame    = 0xFFFFFFFFu;
+};                                                  // 16 B/slot（設計 §8）
+static std::vector<MdiSlot>     sMdiShadow;
+static std::vector<const void*> sMdiRefSrc;         // 名指し用・verbose 時のみ確保（設計 §4 副表）
+
+void mdiInit(U32 total_slots)
+{
+    sMdiShadow.assign(total_slots, MdiSlot{});
+    if (verboseEnabled())
+    {
+        sMdiRefSrc.assign(total_slots, nullptr);
+    }
+}
+
+void mdiAuthor(U32 id, U64 h, const void* src)
+{
+    if (sMdiShadow.empty() || id >= sMdiShadow.size())
+    {
+        return;
+    }
+    const U32 cur = (U32)sFrame.load(std::memory_order_relaxed);
+    MdiSlot& s = sMdiShadow[id];
+    if (s.ref_frame == cur && s.hash != h)          // V2: 参照済み slot を同フレーム別内容で上書き
+    {
+        cause(C_MDI_OVERWRITE);
+        if (verboseEnabled())
+        {
+            const void* victim_src = (id < sMdiRefSrc.size()) ? sMdiRefSrc[id] : nullptr;
+            const std::string victim  = (sDescribe && victim_src) ? sDescribe(victim_src) : std::string("?");
+            const std::string culprit = (sDescribe && src)        ? sDescribe(src)        : std::string("?");
+            LL_WARNS("VKContract") << "VKC mdi_overwrite slot=" << id
+                                   << " victim=" << victim << " culprit=" << culprit
+                                   << " hash=" << s.hash << "->" << h << LL_ENDL;
+        }
+    }
+    s.hash         = h;
+    s.author_frame = cur;
+}
+
+void mdiReference(U32 id, const void* src)
+{
+    // 設計 §6 guard: DrawData を実読しない非 bindless draw は対象外（INHERIT/slot0 集約の偽陽性を排除）
+    LLGLSLShader* sh = LLGLSLShader::sCurBoundShaderPtr;
+    if (sh == nullptr || !(sh->mVkUsesHeapSet || sh->mVkUsesSkinSet))
+    {
+        return;
+    }
+    const U32 slot = (id == LLVKLoader::PERDRAW_SLOT_INHERIT) ? 0u : id;
+    if (sMdiShadow.empty() || slot >= sMdiShadow.size())
+    {
+        return;
+    }
+    const U32 cur = (U32)sFrame.load(std::memory_order_relaxed);
+    MdiSlot& s = sMdiShadow[slot];
+    if (s.author_frame != cur)                      // V1: 当該フレームに author されていない slot を参照
+    {
+        cause(C_MDI_STALE);
+        if (verboseEnabled())
+        {
+            const std::string who = (sDescribe && src) ? sDescribe(src) : std::string("?");
+            LL_WARNS("VKContract") << "VKC mdi_stale slot=" << slot << " ref=" << who
+                                   << " author_frame=" << s.author_frame << " cur=" << cur << LL_ENDL;
+        }
+    }
+    s.ref_frame = cur;
+    if (slot < sMdiRefSrc.size())
+    {
+        sMdiRefSrc[slot] = src;
     }
 }
 

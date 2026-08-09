@@ -312,6 +312,7 @@ namespace
     U32                      sBindlessSlotNext                       = 1;
     std::vector<U32>         sBindlessSlotFreeList;
     std::mutex               sBindlessSlotMutex;
+    std::vector<VkImageView> sBindlessSlotView;   // β: slot→現ディスクリプタ view の CPU shadow(sBindlessSlotMutex 下で書く)
     bool                     sBindlessActive                         = false;
     struct PendingSlotFree
     {
@@ -3030,6 +3031,10 @@ namespace
         w.descriptorType  = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
         w.pImageInfo      = &ii;
         vkUpdateDescriptorSets(sDevice, 1, &w, 0, nullptr);
+        if (slot < sBindlessSlotView.size())
+        {
+            sBindlessSlotView[slot] = view;   // β shadow = ディスクリプタと同一(NULL→fallback 置換後)
+        }
     }
 
     bool createBufferVkImpl(U32                 size_bytes,
@@ -3121,6 +3126,7 @@ namespace
             std::lock_guard<std::mutex> guard(sBindlessSlotMutex);
             sBindlessSlotFreeList.clear();
             sPendingSlotFrees.clear();
+            sBindlessSlotView.clear();
         }
         sBindlessActive = false;
     }
@@ -3383,6 +3389,8 @@ namespace
         sBindlessHeapCount = count;
         sBindlessSlotNext  = 1;
         sBindlessActive    = true;
+        sBindlessSlotView.assign(count, VK_NULL_HANDLE);   // β shadow
+        LLVKContract::mdiInit(DRAWDATA_TOTAL_SLOTS);        // α shadow
         bindlessWriteSlotInternal(0, VK_NULL_HANDLE, VK_NULL_HANDLE);
         LL_INFOS("Vulkan") << "VKBindless: heap active count=" << count << LL_ENDL;
         return true;
@@ -12256,6 +12264,17 @@ void bindlessUpdateSlot(U32 slot, VkImageView view, VkSampler sampler)
     }
     std::lock_guard<std::mutex> guard(sBindlessSlotMutex);
     bindlessWriteSlotInternal(slot, view, sampler);
+}
+
+// β: slot に実際に登録されている view（記録スレッドからの読取・latent race 許容 = 別 tex 判別が目的）
+VkImageView bindlessSlotView(U32 slot)
+{
+    return (slot < sBindlessSlotView.size()) ? sBindlessSlotView[slot] : VK_NULL_HANDLE;
+}
+
+VkImageView bindlessFallbackView()
+{
+    return sDefaultFallbackImageView;
 }
 
 void bindlessReleaseSlotDeferred(U32 slot)
