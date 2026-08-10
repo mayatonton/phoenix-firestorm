@@ -59,6 +59,10 @@ enum ECause : U32
     C_MDI_HEAP_IDENTITY,
     C_MDI_RUNINV,
     C_MDI_GEOM,
+    C_RECORD_PHASE_ACQUIRE,
+    C_RECORD_PHASE_TPLDIRTY,
+    C_VBSTAGE_OFFMAIN,
+    C_PUBLISH_IN_RECORD,
     CAUSE_COUNT
 };
 
@@ -107,8 +111,16 @@ void checkPerDrawIDFreshnessAtFire(bool fired, bool uses_skin_set, const char* s
 // α = DrawData 供給の stale/上書き（mdiAuthor/mdiReference）
 // β = heap slot 実体の取り違え（呼び手が heap 照合し causeNamed(C_MDI_HEAP_IDENTITY)）
 void mdiInit(U32 total_slots);
-void mdiAuthor(U32 id, U64 content_hash, const void* src);
-void mdiReference(U32 id, const void* src);
+constexpr U8 MDI_SITE_UNKNOWN     = 0;
+constexpr U8 MDI_SITE_TPL_FIRE    = 1;
+constexpr U8 MDI_SITE_FREEZE      = 2;
+constexpr U8 MDI_SITE_ESTABLISH   = 3;
+constexpr U8 MDI_SITE_RIGGED      = 4;
+constexpr U8 MDI_SITE_RIGGED_FAST = 5;
+constexpr U8 MDI_SITE_ALPHA_RUN   = 6;
+constexpr U8 MDI_SITE_VB_SINGLE   = 7;
+void mdiAuthor(U32 id, U64 content_hash, const void* src, U8 site = MDI_SITE_UNKNOWN);
+void mdiReference(U32 id, const void* src, U8 site = MDI_SITE_UNKNOWN);
 
 // slot[0..12]（GPU が実読する DrawData の全フィールド）の 64bit 指紋
 inline U64 mdiHash(const U32* slots)

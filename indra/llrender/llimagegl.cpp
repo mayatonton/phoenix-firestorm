@@ -1577,6 +1577,10 @@ bool LLImageGL::commitVkBacking(const VkBacking& b)
 
 void LLImageGL::publishStagedVkBacking()
 {
+    if (LLVKLoader::isShadowRecordPhase())
+    {
+        LLVKContract::cause(LLVKContract::C_PUBLISH_IN_RECORD);
+    }
     const bool want_slot = LLVKLoader::isBindlessActiveVk() && (mTarget == GL_TEXTURE_2D);
     const VkSampler smp = want_slot
         ? LLVKLoader::getSamplerForState((U32)mAddressMode, (U32)mFilterOption, mHasMipMaps, false)

@@ -159,6 +159,8 @@ namespace LLVKLoader
     U32 getCurrentFrameIndex();
     U32 getMonotonicFrameCount();
     U32 getLastCompletedMonotonic();
+    void setShadowRecordPhase(bool active);
+    bool isShadowRecordPhase();
 
     void writeCurrentPerFrameMatrixUBO(const PerFrameMatrixUBO& data, const TextureMatrixUBO& texdata);
 

@@ -720,7 +720,7 @@ public:
             addText(xpos, ypos, llformat("%d Matrix Ops", gPipeline.mMatrixOpCount.load()));
             ypos += y_inc;
 
-            addText(xpos, ypos, llformat("%d Texture Matrix Ops", gPipeline.mTextureMatrixOps));
+            addText(xpos, ypos, llformat("%d Texture Matrix Ops", gPipeline.mTextureMatrixOps.load()));
             ypos += y_inc;
 
             gPipeline.mTextureMatrixOps = 0;

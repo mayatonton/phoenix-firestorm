@@ -754,7 +754,7 @@ public:
 
     bool                     mBackfaceCull;
     std::atomic<S32>         mMatrixOpCount;
-    S32                      mTextureMatrixOps;
+    std::atomic<S32>         mTextureMatrixOps;
     S32                      mNumVisibleNodes;
 
     S32                      mDebugTextureUploadCost;

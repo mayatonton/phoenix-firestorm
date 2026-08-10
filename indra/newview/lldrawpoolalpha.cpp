@@ -974,7 +974,7 @@ void appendAlphaRunCmd(AlphaRun& run, LLDrawInfo& params, U32 id)
     dc.firstIndex    = is.offset / vb->getIndicesStride() + params.mOffset;
     dc.vertexOffset  = (S32)vs.first;
     // MDI 供給検証器: α reference（firstInstance を書きつつ参照 mark + V1）
-    LLRenderPass::mdiSetFirstInstance(dc.firstInstance, id, (const void*)&params);
+    LLRenderPass::mdiSetFirstInstance(dc.firstInstance, id, (const void*)&params, LLVKContract::MDI_SITE_ALPHA_RUN);
     run.mCmds.push_back(dc);
 
     LLGLSLShader* sh = LLGLSLShader::sCurBoundShaderPtr;

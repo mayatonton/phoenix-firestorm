@@ -405,7 +405,7 @@ namespace
     VkBuffer                 sIndirectRingBuffer                     = VK_NULL_HANDLE;
     void*                    sIndirectRingAllocation                 = nullptr;
     U8*                      sIndirectRingMapped                     = nullptr;
-    U32                      sIndirectRingCursor                     = 0;
+    std::atomic<U32>         sIndirectRingCursor{0};
     U32                      sIndirectRingFrame                      = 0xFFFFFFFFu;
 
     constexpr U32                  SCENE_PER_DRAW_POOL_GROWTH_SETS     = 50000;
@@ -5002,6 +5002,7 @@ static bool           submitOneShotVkFromPool(VkCommandBuffer cmd, VkCommandPool
                                               VmaAllocation staging_allocation, U64 staging_bytes,
                                               const char* source, U64 diagnostic_staging_bytes);
 static void           tickOneShotFreeQueue();
+static void           tickIndirectRing();
 static void           shutdownSurface();
 static bool           initSharedDynamicPersistentUBOs();
 static void           teardownSharedDynamicPersistentUBOs();
@@ -5661,6 +5662,7 @@ static void reapAllDeferred(ReapMode mode)
     {
         tickSharedDynamicPersistentUBOs();
         tickPerDrawUBOArena();
+        tickIndirectRing();
         tickScenePerDrawDescriptorCache();
     }
     sReapForceAll = false;
@@ -7428,6 +7430,18 @@ void tickScenePerDrawDescriptorCache()
 U32 getCurrentFrameIndex()
 {
     return sFrameIndex;
+}
+
+static std::atomic<bool> sShadowRecordPhaseFlag{false};
+
+void setShadowRecordPhase(bool active)
+{
+    sShadowRecordPhaseFlag.store(active, std::memory_order_relaxed);
+}
+
+bool isShadowRecordPhase()
+{
+    return sShadowRecordPhaseFlag.load(std::memory_order_relaxed);
 }
 
 U32 getMonotonicFrameCount()
@@ -9769,6 +9783,7 @@ bool vbStageCopyVk(VkBuffer dst_buffer, const VbCopyRegion* regions, U32 region_
     }
     if (!on_main_thread())
     {
+        LLVKContract::cause(LLVKContract::C_VBSTAGE_OFFMAIN);
         return false;
     }
     VkCommandBuffer cmd = vbUploadCmd();
@@ -12732,19 +12747,14 @@ bool isIndirectDrawEnabled()
     return sMultiDrawIndirectEnabled && sDrawIndirectFirstInstanceEnabled;
 }
 
-bool indirectRingAlloc(U32 count, VkBuffer& out_buffer, VkDeviceSize& out_offset, void*& out_mapped)
+static void tickIndirectRing()
 {
-    if (count == 0 || count > INDIRECT_RING_COMMANDS_PER_FRAME)
+    if (sDevice == VK_NULL_HANDLE)
     {
-        ++gVkPerf.mdi_full;
-        return false;
+        return;
     }
     if (sIndirectRingBuffer == VK_NULL_HANDLE)
     {
-        if (sDevice == VK_NULL_HANDLE)
-        {
-            return false;
-        }
         void* mapped = nullptr;
         if (!createBufferVkImpl(FRAMES_IN_FLIGHT * INDIRECT_RING_COMMANDS_PER_FRAME
                                     * (U32)sizeof(VkDrawIndexedIndirectCommand),
@@ -12764,24 +12774,37 @@ bool indirectRingAlloc(U32 count, VkBuffer& out_buffer, VkDeviceSize& out_offset
                 sIndirectRingBuffer     = VK_NULL_HANDLE;
                 sIndirectRingAllocation = nullptr;
             }
-            return false;
+            return;
         }
         sIndirectRingMapped = reinterpret_cast<U8*>(mapped);
     }
     if (sIndirectRingFrame != sMonotonicFrameCount)
     {
-        sIndirectRingFrame  = sMonotonicFrameCount;
-        sIndirectRingCursor = 0;
+        sIndirectRingFrame = sMonotonicFrameCount;
+        sIndirectRingCursor.store(0, std::memory_order_relaxed);
     }
-    if (sIndirectRingCursor + count > INDIRECT_RING_COMMANDS_PER_FRAME)
+}
+
+bool indirectRingAlloc(U32 count, VkBuffer& out_buffer, VkDeviceSize& out_offset, void*& out_mapped)
+{
+    if (count == 0 || count > INDIRECT_RING_COMMANDS_PER_FRAME)
+    {
+        ++gVkPerf.mdi_full;
+        return false;
+    }
+    if (sIndirectRingBuffer == VK_NULL_HANDLE || sIndirectRingMapped == nullptr)
+    {
+        return false;
+    }
+    const U32 local = sIndirectRingCursor.fetch_add(count, std::memory_order_relaxed);
+    if (local + count > INDIRECT_RING_COMMANDS_PER_FRAME)
     {
         ++gVkPerf.mdi_full;
         return false;
     }
     const U32 region = (sFrameIndex < FRAMES_IN_FLIGHT) ? sFrameIndex : 0;
-    const U64 base   = ((U64)region * INDIRECT_RING_COMMANDS_PER_FRAME + sIndirectRingCursor)
+    const U64 base   = ((U64)region * INDIRECT_RING_COMMANDS_PER_FRAME + local)
                      * sizeof(VkDrawIndexedIndirectCommand);
-    sIndirectRingCursor += count;
     out_buffer = sIndirectRingBuffer;
     out_offset = (VkDeviceSize)base;
     out_mapped = sIndirectRingMapped + base;
@@ -13884,13 +13907,13 @@ bool beginShaderDrawOrSkip(LLGLSLShader* shader, U32 render_mode, VkCommandBuffe
         }
         else
         {
-            static U32 s_rt_resume_count = 0;
-            ++s_rt_resume_count;
-            if ((s_rt_resume_count & (s_rt_resume_count - 1)) == 0)
+            static std::atomic<U32> s_rt_resume_count{0};
+            const U32 resume_n = s_rt_resume_count.fetch_add(1, std::memory_order_relaxed) + 1;
+            if ((resume_n & (resume_n - 1)) == 0)
             {
                 LL_WARNS("Vulkan") << "draw with bound RT outside pass scope: resuming"
                                    << " shader='" << shader->mName
-                                   << "' count=" << s_rt_resume_count << LL_ENDL;
+                                   << "' count=" << resume_n << LL_ENDL;
             }
             bound_rt->resumeVkDynamicRendering();
             if (!isInRenderPassScope())

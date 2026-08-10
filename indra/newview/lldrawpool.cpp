@@ -585,8 +585,16 @@ U32 LLRenderPass::establishPerDrawId(LLDrawInfo* params, LLGLSLShader* cur, bool
     U32 id = 0;
     if (params != nullptr)
     {
-        const bool ok = params->ensureVkDrawDataSlot(slots);
-        id = ok ? params->mVkDrawDataSlot : LLVKLoader::drawDataWriteScratch(slots);
+        if (params->mVkDrawDataSlot == LLVKLoader::BINDLESS_INVALID_SLOT
+            || memcmp(params->mVkDrawDataSlots, slots, LLVKLoader::DRAWDATA_SLOT_UINTS * 4) == 0)
+        {
+            const bool ok = params->ensureVkDrawDataSlot(slots);
+            id = ok ? params->mVkDrawDataSlot : LLVKLoader::drawDataWriteScratch(slots);
+        }
+        else
+        {
+            id = LLVKLoader::drawDataWriteScratch(slots);
+        }
     }
     else
     {
@@ -598,16 +606,16 @@ U32 LLRenderPass::establishPerDrawId(LLDrawInfo* params, LLGLSLShader* cur, bool
     LLVKLoader::commitPerDrawID(id, cur->mVkUsesSkinSet, skin_avatar, skin_hash);
 
     // MDI 供給検証器: α author + β heap-identity(多テクスチャ)
-    mdiAuthorAndCheck(params, slots, id, batch_textures);
+    mdiAuthorAndCheck(params, slots, id, batch_textures, LLVKContract::MDI_SITE_ESTABLISH);
     return id;
 }
 
 // MDI 供給検証器(docs/vknative_mdi_supply_verifier.md §5.1/§6.1)。
 // α = DrawData 16-uint 指紋を shadow に stamp。β = 各テクスチャ slot の heap 実体が
 // 当該 draw の tex view を保持しているか照合(番号正・実体別=当初 particle 混入)。
-void LLRenderPass::mdiAuthorAndCheck(const LLDrawInfo* params, const U32* slots, U32 id, bool batch_textures)
+void LLRenderPass::mdiAuthorAndCheck(const LLDrawInfo* params, const U32* slots, U32 id, bool batch_textures, U8 site)
 {
-    LLVKContract::mdiAuthor(id, LLVKContract::mdiHash(slots), (const void*)params);
+    LLVKContract::mdiAuthor(id, LLVKContract::mdiHash(slots), (const void*)params, site);
 
     LLGLSLShader* cur = LLGLSLShader::sCurBoundShaderPtr;
     if (cur == nullptr || !cur->mVkUsesHeapSet || params == nullptr)
@@ -641,10 +649,10 @@ void LLRenderPass::mdiAuthorAndCheck(const LLDrawInfo* params, const U32* slots,
     }
 }
 
-void LLRenderPass::mdiSetFirstInstance(U32& first_instance, U32 id, const void* src)
+void LLRenderPass::mdiSetFirstInstance(U32& first_instance, U32 id, const void* src, U8 site)
 {
     first_instance = id;
-    LLVKContract::mdiReference(id, src);
+    LLVKContract::mdiReference(id, src, site);
 }
 
 U32 LLRenderPass::buildAndOverrideScenePerDrawSet(LLDrawInfo* params, bool batch_textures,
@@ -1320,6 +1328,59 @@ static U32 shamdiRiggedCellForPass(U32 pass)
     }
 }
 
+void LLRenderPass::freezeAuthorShadowSources()
+{
+    if (!LLVKLoader::isVulkanInitialized() || !LLVKLoader::isIndirectDrawEnabled() || gSnapshot)
+    {
+        return;
+    }
+    const U32 frame = LLVKLoader::getMonotonicFrameCount();
+    const std::vector<U64>* bits = LLVKBucket::currentVisBits();
+    for (U32 pass = 0; pass < LLRenderPass::NUM_RENDER_TYPES; ++pass)
+    {
+        const std::vector<LLVKBucket::Bucket*>& buckets = LLVKBucket::bucketsForPass(pass);
+        if (buckets.empty())
+        {
+            continue;
+        }
+        const bool bt = LLVKBucket::mdiBatchTextures(pass);
+        for (LLVKBucket::Bucket* bucket : buckets)
+        {
+            LLVKBucket::rebuildTemplateIfDirty(*bucket);
+            for (LLVKBucket::Range& range : bucket->mRanges)
+            {
+                if (range.mRecords.empty())
+                {
+                    continue;
+                }
+                const U32 gid = range.mGroupId;
+                const bool vis = bits != nullptr && gid != LLVKBucket::INVALID_GROUP_ID
+                    && (gid >> 6) < bits->size()
+                    && ((*bits)[gid >> 6] & (1ULL << (gid & 63))) != 0;
+                for (LLPointer<LLDrawInfo>& info : range.mRecords)
+                {
+                    LLDrawInfo& rec = *info;
+                    if (rec.mVkAuthorFrame == frame)
+                    {
+                        continue;
+                    }
+                    rec.mVkAuthorFrame = frame;
+                    U32 slots[LLVKLoader::DRAWDATA_SLOT_UINTS];
+                    computeDrawDataSlots(&rec, bt, slots);
+                    if (rec.ensureVkDrawDataSlot(slots))
+                    {
+                        mdiAuthorAndCheck(&rec, slots, rec.mVkDrawDataSlot, bt, LLVKContract::MDI_SITE_FREEZE);
+                    }
+                    if (vis && rec.mAvatar.notNull() && rec.mSkinInfo != nullptr)
+                    {
+                        rec.mAvatar->updateSkinInfoMatrixPalette(rec.mSkinInfo);
+                    }
+                }
+            }
+        }
+    }
+}
+
 void LLRenderPass::pushBatches(U32 type, bool texture, bool batch_textures)
 {
     LL_PROFILE_ZONE_SCOPED_CATEGORY_DRAWPOOL;
@@ -1340,16 +1401,16 @@ void LLRenderPass::pushBatches(U32 type, bool texture, bool batch_textures)
             if (bits != nullptr)
             {
                 const U32 shcell = shamdiCellForPass(type);
-                const U64 r0 = LLVKLoader::gVkPerf.mdi_rec.load();
-                const U64 d0 = LLVKLoader::gVkPerf.mdi_dyn.load();
+                U64 rec_n = 0;
+                U64 dyn_n = 0;
                 for (LLVKBucket::Bucket* bucket : LLVKBucket::bucketsForPass(type))
                 {
-                    pushIndirectBucket(*bucket, *bits, true);
+                    pushIndirectBucket(*bucket, *bits, true, true, &rec_n, &dyn_n);
                 }
                 if (shcell < 4)
                 {
-                    LLVKLoader::gVkPerf.shamdi[shcell][0] += LLVKLoader::gVkPerf.mdi_rec.load() - r0;
-                    LLVKLoader::gVkPerf.shamdi[shcell][1] += LLVKLoader::gVkPerf.mdi_dyn.load() - d0;
+                    LLVKLoader::gVkPerf.shamdi[shcell][0] += rec_n;
+                    LLVKLoader::gVkPerf.shamdi[shcell][1] += dyn_n;
                 }
                 return;
             }
@@ -1419,7 +1480,7 @@ static bool pushIndirectSpans(const std::vector<MdiFireSpan>& spans, VkBuffer ri
     return true;
 }
 
-void LLRenderPass::pushIndirectBucket(LLVKBucket::Bucket& bucket, const std::vector<U64>& vis_bits, bool textured, bool emit_dyn)
+void LLRenderPass::pushIndirectBucket(LLVKBucket::Bucket& bucket, const std::vector<U64>& vis_bits, bool textured, bool emit_dyn, U64* out_rec, U64* out_dyn)
 {
     LLVKBucket::rebuildTemplateIfDirty(bucket);
     if (bucket.mTplCommands.empty() && bucket.mTplDyn.empty())
@@ -1485,14 +1546,25 @@ void LLRenderPass::pushIndirectBucket(LLVKBucket::Bucket& bucket, const std::vec
                     LLDrawInfo* rec = bucket.mTplRecords[c];
                     if (rec != nullptr)
                     {
-                        const bool bt = LLVKBucket::mdiBatchTextures(bucket.mPass);
-                        U32 slots[LLVKLoader::DRAWDATA_SLOT_UINTS];
-                        computeDrawDataSlots(rec, bt, slots);
-                        rec->ensureVkDrawDataSlot(slots);
+                        if (rec->mVkAuthorFrame != LLVKLoader::getMonotonicFrameCount())
+                        {
+                            if (LLVKLoader::isShadowRecordPhase())
+                            {
+                                LLVKContract::cause(LLVKContract::C_RECORD_PHASE_ACQUIRE);
+                            }
+                            rec->mVkAuthorFrame = LLVKLoader::getMonotonicFrameCount();
+                            const bool bt = LLVKBucket::mdiBatchTextures(bucket.mPass);
+                            U32 slots[LLVKLoader::DRAWDATA_SLOT_UINTS];
+                            computeDrawDataSlots(rec, bt, slots);
+                            rec->ensureVkDrawDataSlot(slots);
+                            if (rec->mVkDrawDataSlot != 0xFFFFFFFFu)
+                            {
+                                mdiAuthorAndCheck(rec, slots, rec->mVkDrawDataSlot, bt, LLVKContract::MDI_SITE_TPL_FIRE);
+                            }
+                        }
                         if (rec->mVkDrawDataSlot != 0xFFFFFFFFu)
                         {
-                            mdiAuthorAndCheck(rec, slots, rec->mVkDrawDataSlot, bt);
-                            mdiSetFirstInstance(cmds[w].firstInstance, rec->mVkDrawDataSlot, (const void*)rec);
+                            mdiSetFirstInstance(cmds[w].firstInstance, rec->mVkDrawDataSlot, (const void*)rec, LLVKContract::MDI_SITE_TPL_FIRE);
                         }
                     }
                     ++w;
@@ -1506,6 +1578,10 @@ void LLRenderPass::pushIndirectBucket(LLVKBucket::Bucket& bucket, const std::vec
             if (w > 0 && pushIndirectSpans(s_fire_spans, ring_buf, ring_offset))
             {
                 LLVKLoader::gVkPerf.mdi_rec += w;
+                if (out_rec != nullptr)
+                {
+                    *out_rec += w;
+                }
             }
         }
         else
@@ -1542,6 +1618,10 @@ void LLRenderPass::pushIndirectBucket(LLVKBucket::Bucket& bucket, const std::vec
                     pushUntexturedBatch(*bucket.mTplDyn[d]);
                 }
                 ++LLVKLoader::gVkPerf.mdi_dyn;
+                if (out_dyn != nullptr)
+                {
+                    ++*out_dyn;
+                }
             }
         }
     }
@@ -1645,6 +1725,10 @@ namespace
             {
                 draw_id = (p->mVkDrawDataSlot == LLVKLoader::BINDLESS_INVALID_SLOT)
                               ? 0 : p->mVkDrawDataSlot;
+                if (draw_id != 0)
+                {
+                    LLVKContract::mdiAuthor(draw_id, LLVKContract::mdiHash(p->mVkDrawDataSlots), (const void*)p, LLVKContract::MDI_SITE_RIGGED_FAST);
+                }
             }
             else
             {
@@ -1657,7 +1741,7 @@ namespace
                 draw_id = (p->mVkDrawDataSlot == LLVKLoader::BINDLESS_INVALID_SLOT)
                               ? 0 : p->mVkDrawDataSlot;
 
-                LLRenderPass::mdiAuthorAndCheck(p, slots, draw_id, batch_textures);
+                LLRenderPass::mdiAuthorAndCheck(p, slots, draw_id, batch_textures, LLVKContract::MDI_SITE_RIGGED);
 
                 if (LLVKLoader::publishDrawSkinBase(draw_id, p->mAvatar.get(),
                                                     p->mSkinInfo->mHash)
@@ -1677,7 +1761,7 @@ namespace
             rec.cmd.instanceCount = 1;
             rec.cmd.firstIndex    = is.offset / vb->getIndicesStride() + p->mOffset;
             rec.cmd.vertexOffset  = (S32)vs.first;
-            LLRenderPass::mdiSetFirstInstance(rec.cmd.firstInstance, draw_id, (const void*)p);
+            LLRenderPass::mdiSetFirstInstance(rec.cmd.firstInstance, draw_id, (const void*)p, refreshed ? LLVKContract::MDI_SITE_RIGGED_FAST : LLVKContract::MDI_SITE_RIGGED);
             s_items.push_back(rec);
         }
 
@@ -1869,16 +1953,16 @@ void LLRenderPass::pushMaskBatches(U32 type, bool texture, bool batch_textures)
         if (bits != nullptr)
         {
             const U32 shcell = shamdiCellForPass(type);
-            const U64 r0 = LLVKLoader::gVkPerf.mdi_rec.load();
-            const U64 d0 = LLVKLoader::gVkPerf.mdi_dyn.load();
+            U64 rec_n = 0;
+            U64 dyn_n = 0;
             for (LLVKBucket::Bucket* bucket : LLVKBucket::bucketsForPass(type))
             {
-                pushIndirectBucket(*bucket, *bits, true);
+                pushIndirectBucket(*bucket, *bits, true, true, &rec_n, &dyn_n);
             }
             if (shcell < 4)
             {
-                LLVKLoader::gVkPerf.shamdi[shcell][0] += LLVKLoader::gVkPerf.mdi_rec.load() - r0;
-                LLVKLoader::gVkPerf.shamdi[shcell][1] += LLVKLoader::gVkPerf.mdi_dyn.load() - d0;
+                LLVKLoader::gVkPerf.shamdi[shcell][0] += rec_n;
+                LLVKLoader::gVkPerf.shamdi[shcell][1] += dyn_n;
             }
             return;
         }

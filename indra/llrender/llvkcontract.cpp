@@ -73,7 +73,11 @@ const char* CAUSE_NAMES[CAUSE_COUNT] =
     "mdi_overwrite",
     "mdi_heap_identity",
     "mdi_runinv",
-    "mdi_geom"
+    "mdi_geom",
+    "record_phase_acquire",
+    "record_phase_tpldirty",
+    "vbstage_offmain",
+    "publish_in_record"
 };
 
 std::string (*sDescribe)(const void*) = nullptr;
@@ -482,7 +486,9 @@ struct MdiSlot
     U64 hash         = 0;
     U32 author_frame = 0xFFFFFFFFu;
     U32 ref_frame    = 0xFFFFFFFFu;
-};                                                  // 16 B/slot（設計 §8）
+    U8  author_site  = 0;
+    U8  ref_site     = 0;
+};
 static std::vector<MdiSlot>     sMdiShadow;
 static std::vector<const void*> sMdiRefSrc;         // 名指し用・verbose 時のみ確保（設計 §4 副表）
 
@@ -495,7 +501,7 @@ void mdiInit(U32 total_slots)
     }
 }
 
-void mdiAuthor(U32 id, U64 h, const void* src)
+void mdiAuthor(U32 id, U64 h, const void* src, U8 site)
 {
     if (sMdiShadow.empty() || id >= sMdiShadow.size())
     {
@@ -513,14 +519,18 @@ void mdiAuthor(U32 id, U64 h, const void* src)
             const std::string culprit = (sDescribe && src)        ? sDescribe(src)        : std::string("?");
             LL_WARNS("VKContract") << "VKC mdi_overwrite slot=" << id
                                    << " victim=" << victim << " culprit=" << culprit
-                                   << " hash=" << s.hash << "->" << h << LL_ENDL;
+                                   << " hash=" << s.hash << "->" << h
+                                   << " asite_old=" << (U32)s.author_site
+                                   << " asite_new=" << (U32)site
+                                   << " rsite=" << (U32)s.ref_site << LL_ENDL;
         }
     }
     s.hash         = h;
     s.author_frame = cur;
+    s.author_site  = site;
 }
 
-void mdiReference(U32 id, const void* src)
+void mdiReference(U32 id, const void* src, U8 site)
 {
     // 設計 §6 guard: DrawData を実読しない非 bindless draw は対象外（INHERIT/slot0 集約の偽陽性を排除）
     LLGLSLShader* sh = LLGLSLShader::sCurBoundShaderPtr;
@@ -542,10 +552,13 @@ void mdiReference(U32 id, const void* src)
         {
             const std::string who = (sDescribe && src) ? sDescribe(src) : std::string("?");
             LL_WARNS("VKContract") << "VKC mdi_stale slot=" << slot << " ref=" << who
-                                   << " author_frame=" << s.author_frame << " cur=" << cur << LL_ENDL;
+                                   << " author_frame=" << s.author_frame << " cur=" << cur
+                                   << " asite=" << (U32)s.author_site
+                                   << " rsite=" << (U32)site << LL_ENDL;
         }
     }
     s.ref_frame = cur;
+    s.ref_site  = site;
     if (slot < sMdiRefSrc.size())
     {
         sMdiRefSrc[slot] = src;

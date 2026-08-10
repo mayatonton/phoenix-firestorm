@@ -13777,9 +13777,6 @@ void LLPipeline::renderShadowOpaqueBucketizedMultiview(LLCamera& cam, LLCullResu
     LLGLEnable clamp_depth(GL_DEPTH_CLAMP);
     LLGLDepthTest depth_test(GL_TRUE, GL_TRUE, GL_LESS);
 
-    updateCull(cam, result);
-    stateSort(cam, result);
-
     ScopedIdentityModelView mv_scope;
 
     LLVertexBuffer::unbind();
@@ -13953,14 +13950,14 @@ void LLPipeline::renderAlphaObjectsMultiview(bool rigged)
             const std::vector<U64>* bits = LLVKBucket::currentVisBits();
             if (bits != nullptr)
             {
-                const U64 r0 = LLVKLoader::gVkPerf.mdi_rec.load();
-                const U64 d0 = LLVKLoader::gVkPerf.mdi_dyn.load();
+                U64 rec_n = 0;
+                U64 dyn_n = 0;
                 for (LLVKBucket::Bucket* bucket : LLVKBucket::bucketsForPass(type))
                 {
-                    mSimplePool->pushIndirectBucket(*bucket, *bits, true, false);
+                    mSimplePool->pushIndirectBucket(*bucket, *bits, true, false, &rec_n, &dyn_n);
                 }
-                LLVKLoader::gVkPerf.shamdi[3][0] += LLVKLoader::gVkPerf.mdi_rec.load() - r0;
-                LLVKLoader::gVkPerf.shamdi[3][1] += LLVKLoader::gVkPerf.mdi_dyn.load() - d0;
+                LLVKLoader::gVkPerf.shamdi[3][0] += rec_n;
+                LLVKLoader::gVkPerf.shamdi[3][1] += dyn_n;
                 mdi_ran = true;
             }
         }
@@ -14045,9 +14042,6 @@ void LLPipeline::renderShadowOpaqueBucketized(LLCamera& cam, LLCullResult& resul
 {
     LL_PROFILE_ZONE_SCOPED_CATEGORY_PIPELINE;
     LL_PROFILE_GPU_ZONE("renderShadowOpaqueBucketized");
-
-    updateCull(cam, result);
-    stateSort(cam, result);
 
     LLVertexBuffer::unbind();
     for (int jj = 0; jj < 2; ++jj)
@@ -15223,6 +15217,17 @@ void LLPipeline::generateSunShadow(LLCamera& camera)
             }
         }
 
+        if (union_valid)
+        {
+            LLPipelineFrameContext::getInstance().setShadowPass(true);
+            ScopedShadowBatchCull cull_scope(mv_batch_cull_radius);
+            updateCull(union_cam, union_result);
+            stateSort(union_cam, union_result);
+            LLPipelineFrameContext::getInstance().setShadowPass(false);
+        }
+        LLRenderPass::freezeAuthorShadowSources();
+        LLVKLoader::setShadowRecordPhase(true);
+
         U32 mv_view_mask = 0;
         VkImageView mv_depth_view = VK_NULL_HANDLE;
         {
@@ -15263,6 +15268,7 @@ void LLPipeline::generateSunShadow(LLCamera& camera)
             }
             }
         }
+        LLVKLoader::setShadowRecordPhase(false);
         getFrameRT()->sunShadowLayered.bindForShaderRead(0, true);
 
         if (shadowLayeredOracleEnabled() && !gCubeSnapshot && RenderShadowDetail > 0)
@@ -15305,6 +15311,21 @@ void LLPipeline::generateSunShadow(LLCamera& camera)
         else
         {
             static LLCullResult sun_result[4];
+            {
+                LLPipelineFrameContext::getInstance().setShadowPass(true);
+                for (int j = 0; j < 4; ++j)
+                {
+                    if (!cascade_valid[j]) { continue; }
+                    set_current_modelview(view[j]);
+                    set_current_projection(proj[j]);
+                    ScopedShadowBatchCull cull_scope(cascade_batch_cull_radius[j]);
+                    updateCull(tight_shadow_cam[j], sun_result[j]);
+                    stateSort(tight_shadow_cam[j], sun_result[j]);
+                }
+                LLPipelineFrameContext::getInstance().setShadowPass(false);
+            }
+            LLRenderPass::freezeAuthorShadowSources();
+            LLVKLoader::setShadowRecordPhase(true);
             for (int j = 0; j < 4; ++j)
             {
                 if (!cascade_valid[j]) { continue; }
@@ -15324,6 +15345,7 @@ void LLPipeline::generateSunShadow(LLCamera& camera)
                 }
                 }
             }
+            LLVKLoader::setShadowRecordPhase(false);
             getFrameRT()->sunShadowLayered.bindForShaderRead(0, true);
         }
     }
@@ -15462,6 +15484,15 @@ void LLPipeline::generateSunShadow(LLCamera& camera)
 
                 LLVKLoader::gVkPerfShadowMapIndex = 4u + (U32)i;
 
+                {
+                    LLPipelineFrameContext::getInstance().setShadowPass(true);
+                    updateCull(shadow_cam, spot_result[i]);
+                    stateSort(shadow_cam, spot_result[i]);
+                    LLPipelineFrameContext::getInstance().setShadowPass(false);
+                }
+                LLRenderPass::freezeAuthorShadowSources();
+                LLVKLoader::setShadowRecordPhase(true);
+
                 LLRenderTarget& spot_rt = mSpotShadow[i];
 
                 {
@@ -15480,6 +15511,7 @@ void LLPipeline::generateSunShadow(LLCamera& camera)
                 RenderSpotLight = nullptr;
                 }
                 }
+                LLVKLoader::setShadowRecordPhase(false);
                 spot_rt.bindForShaderRead(0, true);
             }
         }

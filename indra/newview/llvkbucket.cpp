@@ -23,6 +23,7 @@
 #include "llviewerregion.h"
 #include "llviewertexture.h"
 #include "llvkloader.h"
+#include "llvkcontract.h"
 
 #include <algorithm>
 #include <array>
@@ -370,6 +371,10 @@ void rebuildTemplateIfDirty(Bucket& bucket)
     if (!bucket.mTplDirty)
     {
         return;
+    }
+    if (LLVKLoader::isShadowRecordPhase())
+    {
+        LLVKContract::cause(LLVKContract::C_RECORD_PHASE_TPLDIRTY);
     }
     bucket.mTplDirty = false;
     bucket.mTplCommands.clear();

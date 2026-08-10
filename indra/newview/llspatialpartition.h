@@ -161,6 +161,7 @@ public:
     U32   mVkDrawDataSlot = 0xFFFFFFFFu;
     U32   mVkDrawDataSlots[LLVKLoader::DRAWDATA_SLOT_UINTS] = {};
     U32   mVkSkinFrame = 0xFFFFFFFFu;
+    U32   mVkAuthorFrame = 0;
     bool ensureVkDrawDataSlot(const U32 slots[LLVKLoader::DRAWDATA_SLOT_UINTS]);
 
     LLVKBucket::Bucket* mVkTplBucket = nullptr;
