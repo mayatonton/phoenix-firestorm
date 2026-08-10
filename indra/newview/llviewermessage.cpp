@@ -3875,7 +3875,7 @@ void process_agent_movement_complete(LLMessageSystem* msg, void**)
     {
         // Could happen if you were immediately god-teleported away on login,
         // maybe other cases.  Continue, but warn.
-        LL_WARNS("Teleport", "Messaging") << "agent_movement_complete() with NULL avatarp." << LL_ENDL;
+        LL_DEBUGS("Teleport", "Messaging") << "agent_movement_complete() with NULL avatarp." << LL_ENDL;
     }
 
     F32 x, y;
@@ -4723,6 +4723,16 @@ void process_kill_object(LLMessageSystem *mesgsys, void **user_data)
                 LL_DEBUGS("MessageBlip") << "Kill blip for local " << local_id << " at " << objectp->getPositionAgent() << LL_ENDL;
             }
 
+            if (objectp->isAvatar() && id != gAgentID)
+            {
+                LLVOAvatar* av = (LLVOAvatar*)objectp;
+                if (!av->isFullyLoaded() && !av->isControlAvatar())
+                {
+                    av->deferKill();
+                    continue;
+                }
+            }
+
             // Do the kill
             gObjectList.killObject(objectp);
         }
@@ -5233,7 +5243,7 @@ void process_avatar_animation(LLMessageSystem *mesgsys, void **user_data)
     {
         // no agent by this ID...error?
         if (!gSavedPerAccountSettings.getBOOL("FSRenderFriendsOnly")) // <FS:Ansariel> FIRE-32520: Prevent log spam when show friends only is enabled
-            LL_WARNS("Messaging") << "Received animation state for unknown avatar " << uuid << LL_ENDL;
+            LL_DEBUGS("Messaging") << "Received animation state for unknown avatar " << uuid << LL_ENDL;
         return;
     }
 
@@ -5253,6 +5263,12 @@ void process_avatar_animation(LLMessageSystem *mesgsys, void **user_data)
         {
             mesgsys->getUUIDFast(_PREHASH_AnimationList, _PREHASH_AnimID, animation_id, i);
             mesgsys->getS32Fast(_PREHASH_AnimationList, _PREHASH_AnimSequenceID, anim_sequence_id, i);
+
+            if (animation_id.isNull())
+            {
+                LL_DEBUGS("Motion") << "Dropping null animation id signaled for " << uuid << LL_ENDL;
+                continue;
+            }
 
             // <FS:Zi> Asset blacklist
             if (FSAssetBlacklist::getInstance()->isBlacklisted(animation_id, LLAssetType::AT_ANIMATION))
@@ -5331,6 +5347,11 @@ void process_avatar_animation(LLMessageSystem *mesgsys, void **user_data)
         {
             mesgsys->getUUIDFast(_PREHASH_AnimationList, _PREHASH_AnimID, animation_id, i);
             mesgsys->getS32Fast(_PREHASH_AnimationList, _PREHASH_AnimSequenceID, anim_sequence_id, i);
+            if (animation_id.isNull())
+            {
+                LL_DEBUGS("Motion") << "Dropping null animation id signaled for " << uuid << LL_ENDL;
+                continue;
+            }
             avatarp->mSignaledAnimations[animation_id] = anim_sequence_id;
         }
     }
@@ -5419,7 +5440,14 @@ void process_avatar_appearance(LLMessageSystem *mesgsys, void **user_data)
     }
     else
     {
-        LL_WARNS("Messaging") << "avatar_appearance sent for unknown avatar " << uuid << LL_ENDL;
+        if (LLVOAvatar::cacheAppearanceFromMessage(uuid, mesgsys))
+        {
+            LL_DEBUGS("Messaging") << "avatar_appearance sent for unknown avatar " << uuid << LL_ENDL;
+        }
+        else
+        {
+            LL_WARNS("Messaging") << "avatar_appearance sent for unknown avatar " << uuid << LL_ENDL;
+        }
     }
 }
 

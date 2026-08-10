@@ -1783,37 +1783,39 @@ bool LLAppViewer::doFrame()
                     if (s_count_begin_failed == 1 || s_count_begin_failed == 10
                         || s_count_begin_failed == 100 || s_count_begin_failed == 1000)
                     {
-                        LL_WARNS("Vulkan") << "atomic 13.LLAppViewer beginFrame return false "
-                                              "= display() 進入時 sInFrame=false 維持 (count="
+                        LL_WARNS("Vulkan") << "atomic 13.LLAppViewer beginFrame return false (count="
                                            << (S64)s_count_begin_failed
-                                           << ") = scene render cmd NULL fire 候補 frame"
+                                           << ") = frame record skipped"
                                            << LL_ENDL;
                     }
                 }
                 FSAuxWindow::preDisplay();
+                if (!LLVKLoader::isVulkanInitialized() || LLVKLoader::frameCanRecord())
                 {
-                    LLVKLoader::VkPerfPhaseScope ph(1);
-                    display();
-                }
-
-                if (LLStartUp::getStartupState() == STATE_STARTED) // <FS:Beq/> FIRE-34590 - Bugsplat caused by updating maps before world is loaded.
-                {
-                    LLPerfStats::RecordSceneTime T(LLPerfStats::StatType_t::RENDER_IDLE);
-                    LL_PROFILE_ZONE_NAMED_CATEGORY_APP("df Snapshot");
-                    pingMainloopTimeout("Main:Snapshot");
                     {
-                        LLVKLoader::VkPerfPhaseScope ph(2);
-                        if (!LLVKLoader::isUISceneSplit())
-                        {
-                            gPipeline.mReflectionMapManager.update();
-                        }
+                        LLVKLoader::VkPerfPhaseScope ph(1);
+                        display();
                     }
+
+                    if (LLStartUp::getStartupState() == STATE_STARTED) // <FS:Beq/> FIRE-34590 - Bugsplat caused by updating maps before world is loaded.
                     {
-                        LLVKLoader::VkPerfMainScope mlp(8);
-                        LLFloaterSnapshot::update(); // take snapshots
-                        LLFloaterSimpleSnapshot::update();
-                        LLFloaterFlickr::update(); // <FS:Beq/> FIRE-35002 - Flickr preview not updating whne opened directly from tool tray icon
-                        FSFloaterPrimfeed::update(); // <FS:Beq/> Primfeed support
+                        LLPerfStats::RecordSceneTime T(LLPerfStats::StatType_t::RENDER_IDLE);
+                        LL_PROFILE_ZONE_NAMED_CATEGORY_APP("df Snapshot");
+                        pingMainloopTimeout("Main:Snapshot");
+                        {
+                            LLVKLoader::VkPerfPhaseScope ph(2);
+                            if (!LLVKLoader::isUISceneSplit())
+                            {
+                                gPipeline.mReflectionMapManager.update();
+                            }
+                        }
+                        {
+                            LLVKLoader::VkPerfMainScope mlp(8);
+                            LLFloaterSnapshot::update(); // take snapshots
+                            LLFloaterSimpleSnapshot::update();
+                            LLFloaterFlickr::update(); // <FS:Beq/> FIRE-35002 - Flickr preview not updating whne opened directly from tool tray icon
+                            FSFloaterPrimfeed::update(); // <FS:Beq/> Primfeed support
+                        }
                     }
                 }
 
@@ -1981,10 +1983,20 @@ bool LLAppViewer::doFrame()
                         if (!s_backstop_warned)
                         {
                             s_backstop_warned = true;
-                            LL_WARNS("FramePace") << "frame pace backstop engaged: pacing lost upstream"
-                                                  << " (engaged " << s_backstop_frames << "/" << s_backstop_win_frames
-                                                  << " frames, slept " << (s_backstop_sleep_us / 1000) << "ms/5s"
-                                                  << ", cap=" << backstop_fps << "fps)" << LL_ENDL;
+                            if (LLVKLoader::immediatePresentActive())
+                            {
+                                LL_DEBUGS("FramePace") << "frame pace backstop engaged: pacing carried (vsync off)"
+                                                       << " (engaged " << s_backstop_frames << "/" << s_backstop_win_frames
+                                                       << " frames, slept " << (s_backstop_sleep_us / 1000) << "ms/5s"
+                                                       << ", cap=" << backstop_fps << "fps)" << LL_ENDL;
+                            }
+                            else
+                            {
+                                LL_WARNS("FramePace") << "frame pace backstop engaged: pacing lost upstream"
+                                                      << " (engaged " << s_backstop_frames << "/" << s_backstop_win_frames
+                                                      << " frames, slept " << (s_backstop_sleep_us / 1000) << "ms/5s"
+                                                      << ", cap=" << backstop_fps << "fps)" << LL_ENDL;
+                            }
                         }
                         else
                         {
@@ -2101,10 +2113,20 @@ bool LLAppViewer::doFrame()
                                         msg->sendReliable(regionp->getHost());
                                     }
                                 }
-                                LL_WARNS("AssetRetry") << "scene resync probe: lost=" << loss_delta
-                                                       << " probed=" << probed
-                                                       << " max_lid=" << max_lid
-                                                       << " region=" << regionp->getRegionID() << LL_ENDL;
+                                if (probed > 0)
+                                {
+                                    LL_WARNS("AssetRetry") << "scene resync probe: lost=" << loss_delta
+                                                           << " probed=" << probed
+                                                           << " max_lid=" << max_lid
+                                                           << " region=" << regionp->getRegionID() << LL_ENDL;
+                                }
+                                else
+                                {
+                                    LL_DEBUGS("AssetRetry") << "scene resync probe: lost=" << loss_delta
+                                                            << " probed=" << probed
+                                                            << " max_lid=" << max_lid
+                                                            << " region=" << regionp->getRegionID() << LL_ENDL;
+                                }
                             }
                         }
                     }
@@ -2760,6 +2782,7 @@ bool LLAppViewer::cleanup()
     //Note:
     //SUBSYSTEM_CLEANUP(LLViewerMedia) has to be put before gTextureList.shutdown()
     //because some new image might be generated during cleaning up media. --bao
+    gGLTFMaterialList.cleanup();
     gTextureList.shutdown(); // shutdown again in case a callback added something
     LLUIImageList::getInstance()->cleanUp();
 
@@ -2820,6 +2843,8 @@ bool LLAppViewer::cleanup()
     LLSingletonBase::deleteAll();
 
     LLSplashScreen::hide();
+
+    LLImageGL::cleanupClass();
 
     LLVKLoader::shutdownVulkan();
 
@@ -4016,6 +4041,7 @@ bool LLAppViewer::initWindow()
     LL_PROFILE_ZONE_SCOPED;
     LL_INFOS("AppInit") << "Initializing window..." << LL_ENDL;
 
+    LLVKLoader::seedVsyncEnabled(gSavedSettings.getBOOL("RenderVSyncEnable"));
     LLVKLoader::initVulkan();
     LLVKLoader::setVkDeviceLostHook(&vkDeviceLostQuitHook);
 
@@ -5332,6 +5358,13 @@ void LLAppViewer::fastQuit(S32 error_code)
     removeMarkerFiles();
     // get outta here
     _exit(final_error_code);
+}
+
+void LLAppViewer::exitWithoutStaticDestructors()
+{
+#if !defined(LL_SANITIZE)
+    _exit(0);
+#endif
 }
 
 void LLAppViewer::requestQuit()
@@ -6945,7 +6978,7 @@ void LLAppViewer::removeWatchdogMarker() const
     if (!mSecondInstance)
     {
         std::string error_marker_file = gDirUtilp->getExpandedFilename(LL_PATH_LOGS, WATCHDOG_MARKER_FILE_NAME);
-        LLFile::remove(error_marker_file);
+        LLFile::remove(error_marker_file, ENOENT);
     }
 }
 

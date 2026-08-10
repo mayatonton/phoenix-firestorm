@@ -37,6 +37,8 @@
 #include "llvkuboreg.h"
 #include "llimagegl.h"
 
+extern bool gSnapshot;
+
 LLDrawPoolMaterials::LLDrawPoolMaterials()
 :  LLRenderPass(LLDrawPool::POOL_MATERIALS)
 {
@@ -144,6 +146,25 @@ void LLDrawPoolMaterials::renderDeferred(S32 pass)
         type += 1;
     }
 
+    if (!rigged
+        && LLVKBucket::isCameraMdiPass(type)
+        && LLVKBucket::emitActive(type)
+        && LLVKLoader::isIndirectDrawEnabled()
+        && mShader != nullptr
+        && mShader->mVkUsesHeapSet
+        && !gSnapshot)
+    {
+        const std::vector<U64>* bits = LLVKBucket::currentVisBits();
+        if (bits != nullptr)
+        {
+            for (LLVKBucket::Bucket* bucket : LLVKBucket::bucketsForPass(type))
+            {
+                pushIndirectBucket(*bucket, *bits, true);
+            }
+            return;
+        }
+    }
+
     GLint diffuseChannel = mShader->enableTexture(LLShaderMgr::DIFFUSE_MAP);
     GLint specChannel = mShader->enableTexture(LLShaderMgr::SPECULAR_MAP);
     GLint normChannel = mShader->enableTexture(LLShaderMgr::BUMP_MAP);
@@ -167,6 +188,14 @@ void LLDrawPoolMaterials::renderDeferred(S32 pass)
         if (mat_bindless)
         {
             ++LLVKLoader::gVkPerf.mat_bindless_draws;
+        }
+        if (!rigged)
+        {
+            ++LLVKLoader::gVkPerf.mat_cen[pass][0];
+            if (params.mVkTplBucket != nullptr)
+            {
+                ++LLVKLoader::gVkPerf.mat_cen[pass][1];
+            }
         }
 
         if (normChannel > -1 && params.mNormalMap != lastNormalMap)

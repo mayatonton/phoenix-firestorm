@@ -278,6 +278,7 @@ struct TerrainRun
 void appendTerrainRunCmd(TerrainRun& run, LLFace* facep)
 {
     LLVertexBuffer* vb = facep->getVertexBuffer();
+    vb->markVkConsumed();
     const LLVKLoader::MegaSliceV& vs = vb->getVkVertexSlice();
     const LLVKLoader::MegaSliceI& is = vb->getVkIndexSlice();
     VkDrawIndexedIndirectCommand dc;

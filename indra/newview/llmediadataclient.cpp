@@ -365,7 +365,7 @@ void LLMediaDataClient::serviceQueue()
 
         if(request->getRetryCount() < mMaxNumRetries)
         {
-            LL_WARNS("LLMediaDataClient") << "Could not send request " << *request << " (empty cap url), will retry." << LL_ENDL;
+            LL_DEBUGS("LLMediaDataClient") << "Could not send request " << *request << " (empty cap url), will retry." << LL_ENDL;
             // Put this request back at the head of its queue, and retry next time the queue timer fires.
             request->incRetryCount();
             pushBack(request);
@@ -610,7 +610,7 @@ void LLMediaDataClient::Handler::onSuccess(LLCore::HttpResponse * response, cons
 
     if (mRequest->isDead())
     {
-        LL_WARNS("LLMediaDataClient") << "dead request " << *mRequest << LL_ENDL;
+        LL_DEBUGS("LLMediaDataClient") << "dead request " << *mRequest << LL_ENDL;
         return;
     }
 

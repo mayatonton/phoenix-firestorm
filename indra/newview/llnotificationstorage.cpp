@@ -118,7 +118,14 @@ bool LLNotificationStorage::readNotifications(LLSD& pNotificationData, bool is_n
     didFileRead = notifyFile.is_open();
     if (!didFileRead)
     {
-        LL_WARNS("LLNotificationStorage") << "Failed to open file '" << filename << "'" << LL_ENDL;
+        if (LLFile::isfile(filename))
+        {
+            LL_WARNS("LLNotificationStorage") << "Failed to open file '" << filename << "'" << LL_ENDL;
+        }
+        else
+        {
+            LL_DEBUGS("LLNotificationStorage") << "Failed to open file '" << filename << "'" << LL_ENDL;
+        }
     }
     else
     {

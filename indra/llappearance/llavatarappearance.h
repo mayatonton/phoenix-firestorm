@@ -157,6 +157,7 @@ public:
     const avatar_joint_list_t& getSkeleton() { return mSkeleton; }
     typedef std::map<std::string, std::string, std::less<>> joint_alias_map_t;
     const joint_alias_map_t& getJointAliases();
+    bool isKnownJointName(std::string_view name) override;
     typedef std::map<std::string, std::string> joint_parent_map_t; // matrix plus parent
     typedef std::map<std::string, glm::mat4> joint_rest_map_t;
     void getJointMatricesAndHierarhy(std::vector<LLJointData> &data) const;

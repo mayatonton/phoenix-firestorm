@@ -51,6 +51,7 @@
 #include <glslang/Public/ResourceLimits.h>
 #include <glslang/SPIRV/GlslangToSpv.h>
 #include <atomic>
+#include <cstring>
 #include <map>
 #include <memory>
 #include <mutex>
@@ -1649,17 +1650,105 @@ bool LLGLSLShader::generatePerProgramSPIRV(const std::vector<StageSource>& stage
 
     LLShaderMgr* mgr = LLShaderMgr::instance();
 
+    std::map<GLenum, std::vector<size_t>> stages_by_type;
+    for (size_t i = 0; i < stages.size(); ++i)
+    {
+        stages_by_type[stages[i].type].push_back(i);
+    }
+
+    static const GLenum kFixedStageOrder[] = {
+        GL_VERTEX_SHADER,
+        GL_GEOMETRY_SHADER,
+        GL_FRAGMENT_SHADER,
+    };
+
+    std::vector<std::pair<GLenum, std::string>> stage_concats;
+    stage_concats.reserve(stages_by_type.size());
+
+    for (GLenum stage_type : kFixedStageOrder)
+    {
+        auto stage_it = stages_by_type.find(stage_type);
+        if (stage_it == stages_by_type.end())
+        {
+            continue;
+        }
+        const std::vector<size_t>& stage_indices = stage_it->second;
+
+        std::string concatenated;
+        concatenated.append("#version 460\n");
+        concatenated.append("#extension GL_KHR_vulkan_glsl : enable\n");
+        if (LLVKLoader::isBindlessActiveVk())
+        {
+            concatenated.append("#extension GL_EXT_nonuniform_qualifier : enable\n");
+        }
+        concatenated.append("#define LL_VULKAN_GLSL 1\n");
+
+        const std::vector<std::string>* utility_files = nullptr;
+        const std::map<std::string, std::vector<std::string>>* source_cache = nullptr;
+        if (stage_type == GL_VERTEX_SHADER)
+        {
+            utility_files = &mVulkanAttachedVertexUtilities;
+            source_cache  = &mgr->mVertexShaderSourceCache;
+        }
+        else if (stage_type == GL_FRAGMENT_SHADER)
+        {
+            utility_files = &mVulkanAttachedFragmentUtilities;
+            source_cache  = &mgr->mFragmentShaderSourceCache;
+        }
+        if (utility_files && source_cache)
+        {
+            for (const std::string& util_file : *utility_files)
+            {
+                auto it = source_cache->find(util_file);
+                if (it == source_cache->end())
+                {
+                    LL_WARNS("Vulkan") << "generatePerProgramSPIRV: missing utility source '"
+                                       << util_file << "' for program '" << mName
+                                       << "' stage "
+                                       << (stage_type == GL_VERTEX_SHADER ? "V" :
+                                           stage_type == GL_FRAGMENT_SHADER ? "F" : "G")
+                                       << LL_ENDL;
+                    return false;
+                }
+                const std::vector<std::string>& util_sources = it->second;
+                for (size_t i = 1; i < util_sources.size(); ++i)
+                {
+                    concatenated.append(util_sources[i]);
+                    if (!util_sources[i].empty() && util_sources[i].back() != '\n')
+                    {
+                        concatenated.append("\n");
+                    }
+                }
+            }
+        }
+
+        for (size_t idx : stage_indices)
+        {
+            const auto& stage = stages[idx];
+            for (size_t i = 1; i < stage.sources.size(); ++i)
+            {
+                concatenated.append(stage.sources[i]);
+            }
+        }
+
+        if (concatenated.empty())
+        {
+            return false;
+        }
+
+        stage_concats.emplace_back(stage_type, std::move(concatenated));
+    }
+
     HBXXH128 program_hash_obj;
     program_hash_obj.update(std::string("vulkanize:v5_p2_inout_pair_prepass_group_fix"));
     program_hash_obj.update(std::string("auto_loc=1"));
     program_hash_obj.update(std::string("spv_debug_names=1"));
-    for (const auto& stage : stages)
+    program_hash_obj.update(std::string("key:v2_full_concat"));
+    program_hash_obj.update(std::string(glslang::GetGlslVersionString()));
+    for (const auto& sc : stage_concats)
     {
-        program_hash_obj.update(stage.file_name);
-        for (const auto& src : stage.sources)
-        {
-            program_hash_obj.update(src);
-        }
+        program_hash_obj.update(std::string("stage:") + std::to_string((U32)sc.first));
+        program_hash_obj.update(sc.second);
     }
     LLUUID program_hash = program_hash_obj.digest();
 
@@ -1668,12 +1757,6 @@ bool LLGLSLShader::generatePerProgramSPIRV(const std::vector<StageSource>& stage
     {
         cache_path = gDirUtilp->add(mgr->mShaderCacheDir,
                                     program_hash.asString() + "_program.spv");
-    }
-
-    std::map<GLenum, std::vector<size_t>> stages_by_type;
-    for (size_t i = 0; i < stages.size(); ++i)
-    {
-        stages_by_type[stages[i].type].push_back(i);
     }
 
     struct StageSpv { GLenum type; std::vector<unsigned int> spirv; };
@@ -1733,89 +1816,20 @@ bool LLGLSLShader::generatePerProgramSPIRV(const std::vector<StageSource>& stage
         std::vector<EShLanguage> stage_langs_in_order;
         std::vector<GLenum> stage_types_in_order;
 
-        concat_buffers.reserve(stages_by_type.size());
+        concat_buffers.reserve(stage_concats.size());
 
         LocationAllocator alloc;
-        static const GLenum kFixedStageOrder[] = {
-            GL_VERTEX_SHADER,
-            GL_GEOMETRY_SHADER,
-            GL_FRAGMENT_SHADER,
-        };
 
-        for (GLenum stage_type : kFixedStageOrder)
+        for (const auto& sc : stage_concats)
         {
-            auto stage_it = stages_by_type.find(stage_type);
-            if (stage_it == stages_by_type.end())
-            {
-                continue;
-            }
-            const std::vector<size_t>& stage_indices = stage_it->second;
-
+            GLenum stage_type = sc.first;
             EShLanguage lang = toGlslangStage(stage_type);
             if (lang == EShLangCount)
             {
                 return false;
             }
 
-            std::string concatenated;
-            concatenated.append("#version 460\n");
-            concatenated.append("#extension GL_KHR_vulkan_glsl : enable\n");
-            if (LLVKLoader::isBindlessActiveVk())
-            {
-                concatenated.append("#extension GL_EXT_nonuniform_qualifier : enable\n");
-            }
-            concatenated.append("#define LL_VULKAN_GLSL 1\n");
-
-            const std::vector<std::string>* utility_files = nullptr;
-            const std::map<std::string, std::vector<std::string>>* source_cache = nullptr;
-            if (stage_type == GL_VERTEX_SHADER)
-            {
-                utility_files = &mVulkanAttachedVertexUtilities;
-                source_cache  = &mgr->mVertexShaderSourceCache;
-            }
-            else if (stage_type == GL_FRAGMENT_SHADER)
-            {
-                utility_files = &mVulkanAttachedFragmentUtilities;
-                source_cache  = &mgr->mFragmentShaderSourceCache;
-            }
-            if (utility_files && source_cache)
-            {
-                for (const std::string& util_file : *utility_files)
-                {
-                    auto it = source_cache->find(util_file);
-                    if (it == source_cache->end())
-                    {
-                        continue;
-                    }
-                    const std::vector<std::string>& util_sources = it->second;
-                    for (size_t i = 1; i < util_sources.size(); ++i)
-                    {
-                        concatenated.append(util_sources[i]);
-                        if (!util_sources[i].empty() && util_sources[i].back() != '\n')
-                        {
-                            concatenated.append("\n");
-                        }
-                    }
-                }
-            }
-
-            for (size_t idx : stage_indices)
-            {
-                const auto& stage = stages[idx];
-                for (size_t i = 1; i < stage.sources.size(); ++i)
-                {
-                    concatenated.append(stage.sources[i]);
-                }
-            }
-
-            if (concatenated.empty())
-            {
-                return false;
-            }
-
-            concatenated = vulkanizeStageSource(concatenated, stage_type, alloc);
-
-            concat_buffers.push_back(std::move(concatenated));
+            concat_buffers.push_back(vulkanizeStageSource(sc.second, stage_type, alloc));
 
             auto shader = std::make_unique<glslang::TShader>(lang);
             const char* src_cstr = concat_buffers.back().c_str();
@@ -2286,6 +2300,74 @@ VkImageView LLGLSLShader::vkResolveEnumBoundView(S32 uniform_enum) const
     return VK_NULL_HANDLE;
 }
 
+bool LLGLSLShader::vkPruneEnumBoundView(S32 uniform_enum)
+{
+    if (uniform_enum < 0 || uniform_enum >= (S32)mVkEnumBoundView.size())
+    {
+        return false;
+    }
+    VkEnumBoundView& e = mVkEnumBoundView[uniform_enum];
+    if (!e.bound)
+    {
+        return false;
+    }
+    if (e.rtp != nullptr)
+    {
+        if (e.rtp == LLRenderTarget::getCurrentBoundTarget()
+            || e.rtp->isVkActivePassAttachment(e.rt_attachment, e.rt_depth))
+        {
+            return false;
+        }
+        if (e.rt_depth ? e.rtp->hasVkDepth() : e.rtp->hasVkImage(e.rt_attachment))
+        {
+            return false;
+        }
+        e.imagep = nullptr;
+        e.cubep  = nullptr;
+        e.rtp    = nullptr;
+        e.bound  = false;
+        return true;
+    }
+    if (e.imagep.notNull() && e.imagep->hasVkImage())
+    {
+        return false;
+    }
+    if (e.cubep.notNull() && e.cubep->hasVkCubeImage())
+    {
+        return false;
+    }
+    e.imagep = nullptr;
+    e.cubep  = nullptr;
+    e.bound  = false;
+    return true;
+}
+
+bool LLGLSLShader::vkL3NullIsAttachment(const LLGLSLShader* cur, S32 enum_value)
+{
+    if (cur == nullptr || enum_value < 0 || enum_value >= (S32)cur->mVkEnumBoundView.size())
+    {
+        return false;
+    }
+    const VkEnumBoundView& e = cur->mVkEnumBoundView[enum_value];
+    if (e.rtp == nullptr)
+    {
+        return false;
+    }
+    return e.rtp == LLRenderTarget::getCurrentBoundTarget()
+        || e.rtp->isVkActivePassAttachment(e.rt_attachment, e.rt_depth);
+}
+
+bool LLGLSLShader::vkUnitNullIsAttachment(S32 unit)
+{
+    LLTexUnit* tu = gGL.getTexUnit(unit);
+    if (tu == nullptr || tu->mCurrRenderTarget == nullptr)
+    {
+        return false;
+    }
+    return tu->mCurrRenderTarget == LLRenderTarget::getCurrentBoundTarget()
+        || tu->mCurrRenderTarget->isVkActivePassAttachment(tu->mCurrRTAttachment, tu->mCurrRTDepth);
+}
+
 U8 LLGLSLShader::vkResolveEnumBoundDim(S32 uniform_enum) const
 {
     if (uniform_enum < 0 || uniform_enum >= (S32)mVkEnumBoundView.size())
@@ -2312,24 +2394,6 @@ U8 LLGLSLShader::vkResolveEnumBoundDim(S32 uniform_enum) const
         }
     }
     return VKSD_2D;
-}
-
-void LLGLSLShader::vkWarnL3Fallback(LLGLSLShader* shader, U32 binding, S32 enum_value, VkImageView old_view)
-{
-    if (shader == nullptr || enum_value < 0 || old_view == VK_NULL_HANDLE)
-    {
-        return;
-    }
-    static std::set<std::pair<const void*, U32>> logged_sites;
-    if (!logged_sites.insert(std::make_pair((const void*)shader, binding)).second)
-    {
-        return;
-    }
-    const std::vector<std::string>& reserved = LLShaderMgr::instance()->mReservedUniforms;
-    std::string ename = (enum_value < (S32)reserved.size()) ? reserved[enum_value] : std::string();
-    LL_WARNS("BindReg") << "BindRegFallback shader=" << shader->mName
-        << " binding=" << binding
-        << " enum=" << enum_value << "(" << ename << ")" << LL_ENDL;
 }
 
 U64 LLGLSLShader::vkComputePerDrawRingSig(LLGLSLShader* cur)
@@ -2833,7 +2897,8 @@ bool LLGLSLShader::createVkPipeline(U32 perProgramUBOSize, bool needsSharedWater
         const bool keep = (enum_value == -2);
         const bool declared = (binding < MAX_VK_BINDING)
                               && (mVkBindingDeclaredType[binding] & VKBD_SAMPLER) != 0;
-        if (!keep && !declared)
+        if (!keep && (!declared
+            || (mVkBindingDeclaredType[binding] == VKBD_SAMPLER && !mVkBindingSamplerUsed[binding])))
         {
             return;
         }
@@ -2984,6 +3049,7 @@ bool LLGLSLShader::createVkPipeline(U32 perProgramUBOSize, bool needsSharedWater
         {
             if (mVkBindingDeclaredType[bnd] != VKBD_SAMPLER && mVkBindingDeclaredType[bnd] != VKBD_UBO) continue;
             if (present[bnd]) continue;
+            if (mVkBindingDeclaredType[bnd] == VKBD_SAMPLER && !mVkBindingSamplerUsed[bnd]) continue;
             VkDescriptorSetLayoutBinding b = {};
             b.binding         = bnd;
             b.descriptorType  = (mVkBindingDeclaredType[bnd] == VKBD_UBO)
@@ -3678,7 +3744,8 @@ void LLGLSLShader::populateAndBindUniversalDescriptorSet()
         S32 enum_value = cur->mVkBindingToEnum[N];
         S32 resolved_unit = -1;
         const bool l3_hit = (enum_value >= 0 && enum_value < (S32)cur->mVkEnumBoundView.size()
-                             && cur->mVkEnumBoundView[enum_value].bound);
+                             && cur->mVkEnumBoundView[enum_value].bound
+                             && !cur->vkPruneEnumBoundView(enum_value));
 
         if (enum_value == -2)
         {
@@ -3697,7 +3764,6 @@ void LLGLSLShader::populateAndBindUniversalDescriptorSet()
         {
             resolved_unit = channel;
             view = live_view((U32)channel);
-            vkWarnL3Fallback(cur, N, enum_value, view);
         }
         else
         {
@@ -3708,7 +3774,6 @@ void LLGLSLShader::populateAndBindUniversalDescriptorSet()
                 {
                     resolved_unit = unit;
                     view = live_view((U32)unit);
-                    vkWarnL3Fallback(cur, N, enum_value, view);
                 }
             }
         }
@@ -3736,7 +3801,9 @@ void LLGLSLShader::populateAndBindUniversalDescriptorSet()
         bool used_fallback = (view == VK_NULL_HANDLE);
         if (used_fallback && vkc_fb_reason == nullptr)
         {
-            vkc_fb_reason = "no_view";
+            const bool attach = l3_hit ? vkL3NullIsAttachment(cur, enum_value)
+                                       : (resolved_unit >= 0 && vkUnitNullIsAttachment(resolved_unit));
+            vkc_fb_reason = attach ? "attachment" : "no_view";
         }
         if (!used_fallback)
         {
@@ -3760,11 +3827,17 @@ void LLGLSLShader::populateAndBindUniversalDescriptorSet()
         }
         if (used_fallback)
         {
-            LLVKContract::note(resolved_unit == 0 ? LLVKContract::C_FB_VIEW_DIFFUSE
-                                                  : LLVKContract::C_FB_VIEW_AUX,
-                               cur->mName);
-            LLVKContract::watchFbProbe(resolved_unit == 0, vkc_fb_reason);
-            LLVKContract::noteFbSlot(cur, cur->mName, N, vkc_fb_reason);
+            if (vkc_fb_reason != nullptr && std::strcmp(vkc_fb_reason, "no_view") == 0)
+            {
+                LLVKContract::noteFbNoView(cur, cur->mName, N);
+            }
+            else
+            {
+                LLVKContract::note(resolved_unit == 0 ? LLVKContract::C_FB_VIEW_DIFFUSE
+                                                      : LLVKContract::C_FB_VIEW_AUX,
+                                   cur->mName);
+                LLVKContract::noteFbSlot(cur, cur->mName, N, vkc_fb_reason);
+            }
             const U8 sdim = cur->mVkBindingSamplerDim[N];
             view = cur->mVkBindingSamplerShadow[N] ? LLVKLoader::getDefaultFallbackShadowVkImageView()
                  : (sdim == VKSD_CUBE_ARRAY) ? LLVKLoader::getDefaultFallbackCubeArrayVkImageView()

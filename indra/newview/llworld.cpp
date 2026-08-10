@@ -533,10 +533,10 @@ LLViewerRegion* LLWorld::addRegion(const U64 &region_handle, const LLHost &host,
     {
         LLHost old_host = regionp->getHost();
         // region already exists!
-        if (host == old_host && regionp->isAlive())
+        if (host == old_host && (regionp->isAlive() || !regionp->hasEverBeenAlive()))
         {
             // This is a duplicate for the same host and it's alive, don't bother.
-            LL_INFOS() << "Region already exists and is alive, using existing region" << LL_ENDL;
+            LL_INFOS() << "Region already exists, using existing region" << LL_ENDL;
             return regionp;
         }
 

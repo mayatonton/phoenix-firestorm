@@ -107,11 +107,28 @@ void LLWearableData::pushWearable(const LLWearableType::EType type,
     {
 // [RLVa:KB] - Checked: 2010-06-08 (RLVa-1.2.0)
         // Don't add the same wearable twice
-        U32 idxWearable = 0;
-        if (!getWearableIndex(wearable, idxWearable))
+        wearableentry_map_t::iterator wearable_iter = mWearableDatas.find(type);
+        if (wearable_iter == mWearableDatas.end())
+        {
             mWearableDatas[type].push_back(wearable);
+        }
         else
-            llassert(false); // pushWearable() on an already added wearable is a bug *somewhere*
+        {
+            wearableentry_vec_t& wearable_vec = wearable_iter->second;
+            bool already_added = false;
+            for (U32 index = 0; index < wearable_vec.size(); index++)
+            {
+                if (wearable_vec[index] == wearable)
+                {
+                    already_added = true;
+                    break;
+                }
+            }
+            if (!already_added)
+                wearable_vec.push_back(wearable);
+            else
+                llassert(false); // pushWearable() on an already added wearable is a bug *somewhere*
+        }
 // [/RLVa:KB]
 //      mWearableDatas[type].push_back(wearable);       mWearableDatas[type].push_back(wearable);
         if (trigger_updated)

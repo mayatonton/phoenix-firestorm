@@ -1348,6 +1348,12 @@ std::string LLFontGL::getFontPathSystem()
         LL_INFOS() << "from SHGetKnownFolderPath(): " << fontpath << LL_ENDL;
         return fontpath;
     }
+
+#elif LL_LINUX
+    // Linux has no single canonical system font directory. Fallback fonts are
+    // resolved by fontconfig (see LLWindowSDL2::getFontListSDL), so an empty
+    // system path is the expected, non-error result here.
+    return {};
 #endif
 
     LL_WARNS() << "Could not determine system fonts path" << LL_ENDL;

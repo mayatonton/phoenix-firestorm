@@ -255,7 +255,7 @@ void LLMuteList::clearCachedMutes()
 {
     mMutes.clear();
     mLegacyMutes.clear();
-    LL_WARNS() << "Cached mutes cleared" << LL_ENDL;
+    LL_DEBUGS() << "Cached mutes cleared" << LL_ENDL;
 }
 
 const char* LLMuteList::sourceToString(EMuteListSource source)

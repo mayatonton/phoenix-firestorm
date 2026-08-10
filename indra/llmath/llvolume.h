@@ -1055,6 +1055,7 @@ public:
 
     S32 getSculptLevel() const                              { return mSculptLevel; }
     void setSculptLevel(S32 level)                          { mSculptLevel = level; }
+    bool isSculptVisiblePlaceholder() const                 { return mSculptVisiblePlaceholder; }
 
 
 
@@ -1139,6 +1140,7 @@ public:
     bool mUnique;
     F32 mDetail;
     S32 mSculptLevel;
+    bool mSculptVisiblePlaceholder;
     F32 mSurfaceArea; //unscaled surface area
     bool mIsMeshAssetLoaded;
     bool mIsMeshAssetUnavaliable;

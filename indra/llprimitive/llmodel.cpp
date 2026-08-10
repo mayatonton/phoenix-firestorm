@@ -34,7 +34,6 @@
 #include "hbxxh.h"
 #include "llcontrol.h"
 #include <cmath>
-#include <atomic>
 
 #ifdef LL_USESYSTEMLIBS
 # include <zlib.h>
@@ -1683,6 +1682,9 @@ void LLMeshSkinInfo::fromLLSD(LLSD& skin)
 
     if (skin.has("inverse_bind_matrix"))
     {
+        U32 ibm_bad_count = 0;
+        U32 ibm_first_bad = 0;
+        LLMatrix4 ibm_first_mat;
         for (U32 i = 0; i < skin["inverse_bind_matrix"].size(); ++i)
         {
             LLMatrix4 mat;
@@ -1698,14 +1700,10 @@ void LLMeshSkinInfo::fromLLSD(LLSD& skin)
 
             if (ibm_bad)
             {
-                static std::atomic<U32> s_ibm_nan_warn{0};
-                if (s_ibm_nan_warn.fetch_add(1, std::memory_order_relaxed) < 40u)
+                if (ibm_bad_count++ == 0)
                 {
-                    LL_WARNS("MESHSKININFO") << "VKC bad_invbind_at_decode mesh=" << mMeshID
-                        << " joint#" << i
-                        << " name=" << ((i < mJointNames.size()) ? mJointNames[i] : std::string("?"))
-                        << " m=(" << mat.mMatrix[0][0] << "," << mat.mMatrix[0][1] << "," << mat.mMatrix[0][2] << "," << mat.mMatrix[0][3] << ")"
-                        << " -> sanitized to identity" << LL_ENDL;
+                    ibm_first_bad = i;
+                    ibm_first_mat = mat;
                 }
                 mInvBindMatrix.push_back(LLMatrix4a::identity());
             }
@@ -1713,6 +1711,16 @@ void LLMeshSkinInfo::fromLLSD(LLSD& skin)
             {
                 mInvBindMatrix.push_back(LLMatrix4a(mat));
             }
+        }
+
+        if (ibm_bad_count > 0)
+        {
+            LL_INFOS("MESHSKININFO") << "VKC bad_invbind_at_decode mesh=" << mMeshID
+                << " bad_joints=" << ibm_bad_count << "/" << skin["inverse_bind_matrix"].size()
+                << " first joint#" << ibm_first_bad
+                << " name=" << ((ibm_first_bad < mJointNames.size()) ? mJointNames[ibm_first_bad] : std::string("?"))
+                << " m=(" << ibm_first_mat.mMatrix[0][0] << "," << ibm_first_mat.mMatrix[0][1] << "," << ibm_first_mat.mMatrix[0][2] << "," << ibm_first_mat.mMatrix[0][3] << ")"
+                << " -> sanitized to identity" << LL_ENDL;
         }
 
         if (mJointNames.size() != mInvBindMatrix.size())

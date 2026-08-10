@@ -91,7 +91,7 @@ void LLAvatarRenderInfoAccountant::avatarRenderInfoGetCoro(std::string url, U64 
     LLWorld *world_inst = LLWorld::getInstance();
     if (!world_inst)
     {
-        LL_WARNS("AvatarRenderInfoAccountant") << "Avatar render weight info received but world no longer exists "
+        LL_INFOS("AvatarRenderInfoAccountant") << "Avatar render weight info received but world no longer exists "
             << regionHandle << LL_ENDL;
         return;
     }
@@ -99,7 +99,7 @@ void LLAvatarRenderInfoAccountant::avatarRenderInfoGetCoro(std::string url, U64 
     LLViewerRegion * regionp = world_inst->getRegionFromHandle(regionHandle);
     if (!regionp)
     {
-        LL_WARNS("AvatarRenderInfoAccountant") << "Avatar render weight info received but region not found for "
+        LL_INFOS("AvatarRenderInfoAccountant") << "Avatar render weight info received but region not found for "
                 << regionHandle << LL_ENDL;
         return;
     }
@@ -111,7 +111,7 @@ void LLAvatarRenderInfoAccountant::avatarRenderInfoGetCoro(std::string url, U64 
 
     if (!status)
     {
-        LL_WARNS("AvatarRenderInfoAccountant") << "HTTP status, " << status.toTerseString() << LL_ENDL;
+        LL_DEBUGS("AvatarRenderInfoAccountant") << "HTTP status, " << status.toTerseString() << LL_ENDL;
         return;
     }
 
@@ -267,7 +267,7 @@ void LLAvatarRenderInfoAccountant::avatarRenderInfoReportCoro(std::string url, U
     world_inst = LLWorld::getInstance();
     if (!world_inst)
     {
-        LL_WARNS("AvatarRenderInfoAccountant") << "Avatar render weight POST result but world no longer exists "
+        LL_INFOS("AvatarRenderInfoAccountant") << "Avatar render weight POST result but world no longer exists "
             << regionHandle << LL_ENDL;
         return;
     }

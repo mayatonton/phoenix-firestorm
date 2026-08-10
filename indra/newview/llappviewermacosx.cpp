@@ -139,6 +139,10 @@ void cleanupViewer()
 
     delete gViewerAppPtr;
     gViewerAppPtr = NULL;
+    if (!LLApp::isError())
+    {
+        LLAppViewer::exitWithoutStaticDestructors();
+    }
 }
 
 void clearDumpLogsDir()

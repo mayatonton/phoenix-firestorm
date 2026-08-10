@@ -1062,10 +1062,15 @@ void LLVOVolume::updateTextureVirtualSize(bool forced)
 
             S32 texture_discard = mSculptTexture->getRawImageLevel(); //try to match the texture
             S32 current_discard = getVolume() ? getVolume()->getSculptLevel() : -2 ;
+            bool sculpt_data_absent = !mSculptTexture->getRawImage()
+                                   && !mSculptTexture->getSavedRawImage();
+            bool want_placeholder = mSculptTexture->isMissingAsset() && sculpt_data_absent;
 
-            if (texture_discard >= 0 && //texture has some data available
-                (texture_discard < current_discard || //texture has more data than last rebuild
-                current_discard < 0)) //no previous rebuild
+            if (want_placeholder
+                ? !(getVolume() && getVolume()->isSculptVisiblePlaceholder())
+                : (texture_discard >= 0 && //texture has some data available
+                   (texture_discard < current_discard || //texture has more data than last rebuild
+                   current_discard < 0))) //no previous rebuild
             {
                 gPipeline.markRebuild(mDrawable, LLDrawable::REBUILD_VOLUME);
                 mSculptChanged = true;
@@ -1353,25 +1358,7 @@ bool LLVOVolume::setVolume(const LLVolumeParams &params_in, const S32 detail, bo
                     }
                 }
 
-                if (!mSkinInfo && !mSkinInfoUnavaliable)
-                {
-                    LLUUID mesh_id = volume_params.getSculptID();
-                    if (gMeshRepo.hasHeader(mesh_id) && !gMeshRepo.hasSkinInfo(mesh_id))
-                    {
-                        // If header is present but has no data about skin,
-                        // no point fetching
-                        mSkinInfoUnavaliable = true;
-                    }
-
-                    if (!mSkinInfoUnavaliable)
-                    {
-                        const LLMeshSkinInfo* skin_info = gMeshRepo.getSkinInfo(mesh_id, this);
-                        if (skin_info)
-                        {
-                            notifySkinInfoLoaded(skin_info);
-                        }
-                    }
-                }
+                resolveMeshSkinTerminal();
             }
             else // otherwise is sculptie
             {
@@ -1516,7 +1503,8 @@ void LLVOVolume::sculpt()
             discard_level = mSculptTexture->getSavedRawImageLevel();
         }
 
-        if (!raw_image || raw_image->getWidth() < mSculptTexture->getWidth() || raw_image->getHeight() < mSculptTexture->getHeight())
+        if ((!raw_image || raw_image->getWidth() < mSculptTexture->getWidth() || raw_image->getHeight() < mSculptTexture->getHeight())
+            && !mSculptTexture->isMissingAsset())
         {
             // last resort, read back from GL
             mSculptTexture->readbackRawImage();
@@ -1574,7 +1562,8 @@ void LLVOVolume::sculpt()
             return;
         }
 
-        if (current_discard == discard_level)  // no work to do here
+        if (current_discard == discard_level &&  // no work to do here
+            !(!raw_image && mSculptTexture->isMissingAsset() && !getVolume()->isSculptVisiblePlaceholder()))
             return;
 
         if(!raw_image)
@@ -4003,6 +3992,90 @@ bool LLVOVolume::isMesh() const
     return false;
 }
 
+void LLVOVolume::resolveMeshSkinTerminal()
+{
+    if (getVolume() == nullptr)
+    {
+        return;
+    }
+    if (!isMesh())
+    {
+        return;
+    }
+    if (!mSkinInfo && !mSkinInfoUnavaliable)
+    {
+        LLUUID mesh_id = getVolume()->getParams().getSculptID();
+        if (gMeshRepo.hasHeader(mesh_id) && !gMeshRepo.hasSkinInfo(mesh_id))
+        {
+            if (getVolume()->isMeshAssetLoaded())
+            {
+                notifySkinInfoUnavailable();
+            }
+            else
+            {
+                mSkinInfoUnavaliable = true;
+            }
+        }
+        if (!mSkinInfoUnavaliable)
+        {
+            const LLMeshSkinInfo* skin_info = gMeshRepo.getSkinInfo(mesh_id, this);
+            if (skin_info)
+            {
+                notifySkinInfoLoaded(skin_info);
+            }
+        }
+    }
+}
+
+bool LLVOVolume::isGeometryDrawExpected() const
+{
+    LLVolume* volume = getVolume();
+    if (volume == nullptr)
+    {
+        return false;
+    }
+    if (isMesh() && (!volume->isMeshAssetLoaded() || !gMeshRepo.meshRezEnabled()))
+    {
+        return false;
+    }
+    if (mGLTFAsset)
+    {
+        return false;
+    }
+    if (mDrawable.notNull() && mDrawable->isState(LLDrawable::FORCE_INVISIBLE))
+    {
+        return false;
+    }
+    if (LLPipeline::isParcelHideAlive(mDrawable))
+    {
+        return false;
+    }
+    if (enableVolumeSAPProtection())
+    {
+        static LLCachedControl<F32> volume_sa_thresh(gSavedSettings, "RenderVolumeSAThreshold");
+        static LLCachedControl<F32> sculpt_sa_thresh(gSavedSettings, "RenderSculptSAThreshold");
+        const F32 max_for_this_vol = isSculpted() ? (F32)sculpt_sa_thresh : (F32)volume_sa_thresh;
+        if (mVolumeSurfaceArea > max_for_this_vol)
+        {
+            return false;
+        }
+    }
+    for (S32 i = 0, n = volume->getNumVolumeFaces(); i < n; ++i)
+    {
+        const LLVolumeFace& vf = volume->getVolumeFace(i);
+        if (vf.mNumVertices > 0)
+        {
+            LLVector4a range;
+            range.setSub(vf.mExtents[1], vf.mExtents[0]);
+            if (range.getLength3().getF32() > F_APPROXIMATELY_ZERO)
+            {
+                return true;
+            }
+        }
+    }
+    return false;
+}
+
 bool LLVOVolume::hasLightTexture() const
 {
     if (getLightImageParams())
@@ -5802,6 +5875,7 @@ struct LLGeoStagedRebuild
     bool mHadFailedFace = false;
     bool mHadSkippedFace = false;
     std::vector<LLGeoFaceApply> mFaces;
+    std::vector<LLPointer<LLDrawable> > mStagedDrawables;
     std::vector<std::pair<U32, LLSpatialGroup::buffer_texture_map_t> > mBufferMaps;
 };
 
@@ -5852,36 +5926,27 @@ namespace
 
     bool applyGeoStaged(LLSpatialGroup* group, LLGeoStagedRebuild& staged, built_map_t* prebuilt = nullptr)
     {
-        auto watch_id = [](const LLGeoFaceApply& e) -> U32
-        {
-            const LLViewerObject* vo = e.mDrawable.notNull() ? e.mDrawable->getVObj() : nullptr;
-            return vo != nullptr ? vo->getLocalID() : 0;
-        };
         for (const LLGeoFaceApply& e : staged.mFaces)
         {
             LLDrawable* drawablep = e.mDrawable.get();
             if (drawablep == nullptr || drawablep->isDead())
             {
-                LLVKContract::watchStageEvent(watch_id(e), "apply_abort_dead");
                 return false;
             }
             if (drawablep->getSpatialGroup() != group)
             {
                 if (prebuilt != nullptr)
                 {
-                    LLVKContract::watchStageEvent(watch_id(e), "apply_abort_moved");
                     return false;
                 }
                 continue;
             }
             if (e.mTEOffset < 0 || e.mTEOffset >= drawablep->getNumFaces())
             {
-                LLVKContract::watchStageEvent(watch_id(e), "apply_abort_te");
                 return false;
             }
             if (drawablep->getFace(e.mTEOffset) != e.mFace)
             {
-                LLVKContract::watchStageEvent(watch_id(e), "apply_abort_face");
                 return false;
             }
             if (!e.mFieldsApplied && !e.mAllocFailed)
@@ -5889,22 +5954,27 @@ namespace
                 if ((U32)e.mFace->getGeomCount() != e.mGeomCount ||
                     (U32)e.mFace->getIndicesCount() != e.mIndicesCount)
                 {
-                    LLVKContract::watchStageEvent(watch_id(e), "apply_abort_count");
                     return false;
                 }
             }
             if (e.mFieldsApplied && !e.mAllocFailed && e.mFace->getVertexBuffer() == nullptr)
             {
-                LLVKContract::watchStageEvent(watch_id(e), "apply_abort_nullvb");
                 return false;
             }
         }
 
         std::unordered_set<LLDrawable*> staged_drawables;
-        staged_drawables.reserve(staged.mFaces.size());
+        staged_drawables.reserve(staged.mFaces.size() + staged.mStagedDrawables.size());
         for (const LLGeoFaceApply& e : staged.mFaces)
         {
             staged_drawables.insert(e.mDrawable.get());
+        }
+        for (const LLPointer<LLDrawable>& d : staged.mStagedDrawables)
+        {
+            if (d.notNull())
+            {
+                staged_drawables.insert(d.get());
+            }
         }
 
         std::unordered_set<LLDrawable*> preserve;
@@ -5929,8 +5999,7 @@ namespace
         }
 
         std::vector<LLDrawable*> evict_orphans;
-        group->clearDrawMapStaged(preserve, staged_drawables, LLVKContract::SITE_CLEAR_APPLY,
-                                  &evict_orphans);
+        group->clearDrawMapStaged(preserve, staged_drawables, &evict_orphans);
         for (LLDrawable* orphan : evict_orphans)
         {
             gPipeline.markRebuild(orphan, LLDrawable::REBUILD_GEOMETRY);
@@ -5955,7 +6024,6 @@ namespace
                 {
                     gPipeline.markRebuild(e.mDrawable, LLDrawable::REBUILD_VOLUME);
                 }
-                LLVKContract::watchStageEvent(watch_id(e), "apply_moved");
                 continue;
             }
 
@@ -5966,7 +6034,6 @@ namespace
                     facep->setVertexBuffer(nullptr);
                     facep->setSize(0, 0);
                 }
-                LLVKContract::watchStageEvent(watch_id(e), "apply_allocfail");
                 continue;
             }
 
@@ -5988,8 +6055,6 @@ namespace
                     }
                 }
             }
-            LLVKContract::watchStageEvent(watch_id(e), "apply_reg", (U32)e.mPasses.size());
-
             U32 live_snaps = 0;
             for (const LLDrawInfoSnapshot& snap : e.mSnaps)
             {
@@ -6005,7 +6070,6 @@ namespace
                 if (!hidden_selected)
                 {
                     staged.mHadFailedFace = true;
-                    LLVKContract::watchStageEvent(watch_id(e), "apply_norec");
                 }
             }
         }
@@ -6063,7 +6127,6 @@ static LLDrawInfoSnapshot captureRegisterSnapshot(LLFace* facep, U32 type)
            ( ((!pObj->isHUDAttachment()) || (!gRlvAttachmentLocks.isLockedAttachment(pObj->getRootEdit()))) &&
              (RlvActions::canEdit(pObj)) ) ) )
     {
-        LLVKContract::watchStageEvent(pObj->getLocalID(), "reg_hidden");
         s.mSkip = true;
         return s;
     }
@@ -6214,7 +6277,6 @@ static void buildDrawInfoFromSnapshot(built_map_t& out, LLDrawInfoSnapshot& s, c
 {
     if (vb.mVb == nullptr)
     {
-        LLVKContract::watchStageEvent(s.mFSPickerLocalID, "reg_nullvb");
         static std::atomic<U32> s_null_vb_faces{0};
         const U32 n = ++s_null_vb_faces;
         if ((n & (n - 1)) == 0)
@@ -6230,8 +6292,6 @@ static void buildDrawInfoFromSnapshot(built_map_t& out, LLDrawInfoSnapshot& s, c
         LL_WARNS() << "Non fullbright face has no normals!" << LL_ENDL;
         return;
     }
-
-    LLDrawable* srcd = s.mSrcDrawable.get();
 
     std::vector<BuiltDraw>& draw_vec = out[s.mPassType];
 
@@ -6362,8 +6422,6 @@ static void buildDrawInfoFromSnapshot(built_map_t& out, LLDrawInfoSnapshot& s, c
         }
         draw_vec.push_back(std::move(bd));
     }
-
-    LLVKContract::sentinelRegister(srcd);
 
     llassert(info->mGLTFMaterial == nullptr || (vb.mVb->getTypeMask() & LLVertexBuffer::MAP_TANGENT) != 0);
     llassert(s.mType != LLPipeline::RENDER_TYPE_PASS_GLTF_PBR || info->mGLTFMaterial != nullptr);
@@ -6632,6 +6690,8 @@ void LLVolumeGeometryManager::rebuildGeom(LLSpatialGroup* group)
 
             vobj->updateTextureVirtualSize(true);
             vobj->preRebuild();
+
+            staged.mStagedDrawables.push_back(drawablep);
 
             drawablep->clearState(LLDrawable::HAS_ALPHA);
 
@@ -7467,9 +7527,6 @@ U32 LLVolumeGeometryManager::genDrawInfo(LLSpatialGroup* group, U32 mask, LLFace
 
             if (buffer.isNull())
             {
-                LLVKContract::watchStageEvent(facep->getViewerObject() != nullptr
-                                              ? facep->getViewerObject()->getLocalID() : 0,
-                                              "alloc_null");
                 // Bulk allocation failed
                 if (apply != nullptr)
                 {
@@ -7544,7 +7601,6 @@ U32 LLVolumeGeometryManager::genDrawInfo(LLSpatialGroup* group, U32 mask, LLFace
                             {
                                 LL_WARNS() << "Failed to get geometry for face!" << LL_ENDL;
                             }
-                            LLVKContract::watchStageEvent(vobj->getLocalID(), "inline");
                         }
                     }
 

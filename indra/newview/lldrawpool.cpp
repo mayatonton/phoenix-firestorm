@@ -28,6 +28,7 @@
 
 #include <algorithm>
 #include <atomic>
+#include <cstring>
 #include <mutex>
 #include <set>
 #include <tuple>
@@ -117,24 +118,11 @@ extern bool gCubeSnapshot;
 extern bool gHeroProbeMirrorRender;
 extern bool gSnapshot;
 
-static U32 vkContractObjId(const void* p)
-{
-    const LLDrawInfo* di = static_cast<const LLDrawInfo*>(p);
-    return di != nullptr ? (U32)di->mFSPickerLocalID : 0u;
-}
-
-static U32 vkContractPassBucket()
-{
-    return (gCubeSnapshot || gHeroProbeMirrorRender) ? 3u : LLVKLoader::gVkPerfPassTag;
-}
-
 struct VkContractResolverInit
 {
     VkContractResolverInit()
     {
         LLVKContract::setResolvers(&vkContractDescribeDrawInfo, &vkContractDrawInfoKey);
-        LLVKContract::setObjIdResolver(&vkContractObjId);
-        LLVKContract::setPassBucketResolver(&vkContractPassBucket);
     }
 };
 static VkContractResolverInit sVkContractResolverInit;
@@ -166,7 +154,7 @@ struct E3PalTimer
     {
         if (mOn)
         {
-            LLVKLoader::gVkPerf.e3_pal_us += (U64)LLTimer::getTotalTime() - mT0;
+            LLVKLoader::gVkPerf.e3_pal_us[e3RigBucket()] += (U64)LLTimer::getTotalTime() - mT0;
         }
     }
 };
@@ -557,6 +545,7 @@ void LLRenderPass::computeDrawDataSlots(const LLDrawInfo* params, bool batch_tex
 
     slots[4] = slots[5] = slots[6] = slots[7] = 0;
     slots[8] = slots[9] = slots[10] = slots[11] = 0;
+    slots[12] = slots[13] = slots[14] = slots[15] = 0;
     if (params != nullptr)
     {
         memcpy(&slots[4], params->mSpecColor.mV, sizeof(F32) * 4);
@@ -564,10 +553,12 @@ void LLRenderPass::computeDrawDataSlots(const LLDrawInfo* params, bool batch_tex
         const F32 env_intensity       = params->mEnvIntensity;
         const F32 minimum_alpha       = params->mAlphaMaskCutoff;
         const F32 aya_sss_skin_flag   = params->mIsSSSTarget ? 1.f : 0.f;
+        const F32 object_alpha        = params->mObjectAlpha;
         memcpy(&slots[8],  &emissive_brightness, sizeof(F32));
         memcpy(&slots[9],  &env_intensity,       sizeof(F32));
         memcpy(&slots[10], &minimum_alpha,       sizeof(F32));
         memcpy(&slots[11], &aya_sss_skin_flag,   sizeof(F32));
+        memcpy(&slots[12], &object_alpha,        sizeof(F32));
     }
 }
 
@@ -605,7 +596,55 @@ U32 LLRenderPass::establishPerDrawId(LLDrawInfo* params, LLGLSLShader* cur, bool
                                   ? (const void*)params->mAvatar.get() : nullptr;
     const U64   skin_hash   = (skin_avatar != nullptr) ? params->mSkinInfo->mHash : 0;
     LLVKLoader::commitPerDrawID(id, cur->mVkUsesSkinSet, skin_avatar, skin_hash);
+
+    // MDI 供給検証器: α author + β heap-identity(多テクスチャ)
+    mdiAuthorAndCheck(params, slots, id, batch_textures);
     return id;
+}
+
+// MDI 供給検証器(docs/vknative_mdi_supply_verifier.md §5.1/§6.1)。
+// α = DrawData 16-uint 指紋を shadow に stamp。β = 各テクスチャ slot の heap 実体が
+// 当該 draw の tex view を保持しているか照合(番号正・実体別=当初 particle 混入)。
+void LLRenderPass::mdiAuthorAndCheck(const LLDrawInfo* params, const U32* slots, U32 id, bool batch_textures)
+{
+    LLVKContract::mdiAuthor(id, LLVKContract::mdiHash(slots), (const void*)params);
+
+    LLGLSLShader* cur = LLGLSLShader::sCurBoundShaderPtr;
+    if (cur == nullptr || !cur->mVkUsesHeapSet || params == nullptr)
+    {
+        return;
+    }
+    const VkImageView fallback = LLVKLoader::bindlessFallbackView();
+    // 既定テクスチャ slot（heap 枯渇/未 resident 時の fb_heap_default 落ち先・非ゼロ）を除外（設計 §6.1）
+    const U32 def_slot = (LLImageGL::sDefaultGLTexture != nullptr)
+                             ? LLImageGL::sDefaultGLTexture->getVkHeapSlot() : 0u;
+    const U32 n = (batch_textures && params->mTextureList.size() > 1)
+                      ? llmin((U32)params->mTextureList.size(), 4u) : 1u;
+    for (U32 i = 0; i < n; ++i)
+    {
+        const U32 slot = slots[i];
+        if (slot == 0 || slot == def_slot)
+        {
+            continue;   // 未 resident 白/既定 slot は fb_heap_default 管轄=β 対象外
+        }
+        LLTexture* t = (n > 1) ? params->mTextureList[i].get() : params->mTexture.get();
+        LLImageGL* gl = (t != nullptr) ? t->getGLTexture() : nullptr;
+        const VkImageView intended = (gl != nullptr) ? gl->getVkImageView() : VK_NULL_HANDLE;
+        const VkImageView actual   = LLVKLoader::bindlessSlotView(slot);
+        if (intended != VK_NULL_HANDLE && actual != VK_NULL_HANDLE
+            && actual != fallback && actual != intended)
+        {
+            LLVKContract::causeNamed(LLVKContract::C_MDI_HEAP_IDENTITY,
+                                     std::string("slot=") + std::to_string(slot)
+                                         + " ch=" + std::to_string(i));
+        }
+    }
+}
+
+void LLRenderPass::mdiSetFirstInstance(U32& first_instance, U32 id, const void* src)
+{
+    first_instance = id;
+    LLVKContract::mdiReference(id, src);
 }
 
 U32 LLRenderPass::buildAndOverrideScenePerDrawSet(LLDrawInfo* params, bool batch_textures,
@@ -757,15 +796,32 @@ U32 LLRenderPass::buildAndOverrideScenePerDrawSet(LLDrawInfo* params, bool batch
             VkImageView view_to_write = VK_NULL_HANDLE;
             if (i < real_count)
             {
-                view_to_write = gGL.getTexUnit((S32)i)->getLiveVkImageView();
-                if (view_to_write != VK_NULL_HANDLE &&
-                    (100 + i) < LLGLSLShader::MAX_VK_BINDING &&
-                    gGL.getTexUnit((S32)i)->getLiveVkImageViewDim() != cur->mVkBindingSamplerDim[100 + i])
+                LLTexUnit* tu_i = gGL.getTexUnit((S32)i);
+                view_to_write = tu_i->getLiveVkImageView();
+                const char* reason = nullptr;
+                if (view_to_write == VK_NULL_HANDLE)
+                {
+                    reason = LLGLSLShader::vkUnitNullIsAttachment((S32)i) ? "attachment" : "no_view";
+                }
+                else if ((100 + i) < LLGLSLShader::MAX_VK_BINDING &&
+                         tu_i->getLiveVkImageViewDim() != cur->mVkBindingSamplerDim[100 + i])
                 {
                     view_to_write = VK_NULL_HANDLE;
+                    reason = "dim_unit";
                 }
                 if (view_to_write == VK_NULL_HANDLE)
                 {
+                    if (reason != nullptr && std::strcmp(reason, "no_view") == 0)
+                    {
+                        LLVKContract::noteFbNoView(cur, cur->mName, 100 + i);
+                    }
+                    else
+                    {
+                        LLVKContract::note(i == 0 ? LLVKContract::C_FB_VIEW_DIFFUSE
+                                                  : LLVKContract::C_FB_VIEW_AUX,
+                                           cur->mName);
+                        LLVKContract::noteFbSlot(cur, cur->mName, 100 + i, reason);
+                    }
                     view_to_write = fallback_view;
                 }
             }
@@ -793,14 +849,29 @@ U32 LLRenderPass::buildAndOverrideScenePerDrawSet(LLDrawInfo* params, bool batch
             VkImageView view_to_write = VK_NULL_HANDLE;
             if (i == 0)
             {
-                view_to_write = gGL.getTexUnit(0)->getLiveVkImageView();
-                if (view_to_write != VK_NULL_HANDLE &&
-                    gGL.getTexUnit(0)->getLiveVkImageViewDim() != cur->mVkBindingSamplerDim[100])
+                LLTexUnit* tu0 = gGL.getTexUnit(0);
+                view_to_write = tu0->getLiveVkImageView();
+                const char* reason = nullptr;
+                if (view_to_write == VK_NULL_HANDLE)
+                {
+                    reason = LLGLSLShader::vkUnitNullIsAttachment(0) ? "attachment" : "no_view";
+                }
+                else if (tu0->getLiveVkImageViewDim() != cur->mVkBindingSamplerDim[100])
                 {
                     view_to_write = VK_NULL_HANDLE;
+                    reason = "dim_unit";
                 }
                 if (view_to_write == VK_NULL_HANDLE)
                 {
+                    if (reason != nullptr && std::strcmp(reason, "no_view") == 0)
+                    {
+                        LLVKContract::noteFbNoView(cur, cur->mName, 100);
+                    }
+                    else
+                    {
+                        LLVKContract::note(LLVKContract::C_FB_VIEW_DIFFUSE, cur->mName);
+                        LLVKContract::noteFbSlot(cur, cur->mName, 100, reason);
+                    }
                     view_to_write = fallback_view;
                 }
             }
@@ -836,32 +907,53 @@ U32 LLRenderPass::buildAndOverrideScenePerDrawSet(LLDrawInfo* params, bool batch
             const S32 enum1 = cur->mVkBindingToEnum[1];
             const S32 unit1 = (cur->mVkBindingToChannel[1] >= 0) ? cur->mVkBindingToChannel[1] : 0;
             const bool l3_hit = (enum1 >= 0 && enum1 < (S32)cur->mVkEnumBoundView.size()
-                                 && cur->mVkEnumBoundView[enum1].bound);
+                                 && cur->mVkEnumBoundView[enum1].bound
+                                 && !cur->vkPruneEnumBoundView(enum1));
             VkImageView view_to_write = VK_NULL_HANDLE;
             VkSampler   sampler1      = VK_NULL_HANDLE;
+            const char* reason1       = nullptr;
             if (l3_hit)
             {
                 view_to_write = cur->vkResolveEnumBoundView(enum1);
                 sampler1      = cur->mVkEnumBoundView[enum1].sampler;
-                if (view_to_write != VK_NULL_HANDLE &&
-                    cur->vkResolveEnumBoundDim(enum1) != cur->mVkBindingSamplerDim[1])
+                if (view_to_write == VK_NULL_HANDLE)
+                {
+                    reason1 = LLGLSLShader::vkL3NullIsAttachment(cur, enum1) ? "attachment" : "no_view";
+                }
+                else if (cur->vkResolveEnumBoundDim(enum1) != cur->mVkBindingSamplerDim[1])
                 {
                     view_to_write = VK_NULL_HANDLE;
+                    reason1 = "dim_l3";
                 }
             }
             else
             {
-                view_to_write = gGL.getTexUnit(unit1)->getLiveVkImageView();
-                sampler1      = gGL.getTexUnit(unit1)->getLiveVkSampler();
-                LLGLSLShader::vkWarnL3Fallback(cur, 1, enum1, view_to_write);
-                if (view_to_write != VK_NULL_HANDLE &&
-                    gGL.getTexUnit(unit1)->getLiveVkImageViewDim() != cur->mVkBindingSamplerDim[1])
+                LLTexUnit* tu1 = gGL.getTexUnit(unit1);
+                view_to_write = tu1->getLiveVkImageView();
+                sampler1      = tu1->getLiveVkSampler();
+                if (view_to_write == VK_NULL_HANDLE)
+                {
+                    reason1 = LLGLSLShader::vkUnitNullIsAttachment(unit1) ? "attachment" : "no_view";
+                }
+                else if (tu1->getLiveVkImageViewDim() != cur->mVkBindingSamplerDim[1])
                 {
                     view_to_write = VK_NULL_HANDLE;
+                    reason1 = "dim_unit";
                 }
             }
             if (view_to_write == VK_NULL_HANDLE)
             {
+                if (reason1 != nullptr && std::strcmp(reason1, "no_view") == 0)
+                {
+                    LLVKContract::noteFbNoView(cur, cur->mName, 1);
+                }
+                else
+                {
+                    LLVKContract::note((!l3_hit && unit1 == 0) ? LLVKContract::C_FB_VIEW_DIFFUSE
+                                                               : LLVKContract::C_FB_VIEW_AUX,
+                                       cur->mName);
+                    LLVKContract::noteFbSlot(cur, cur->mName, 1, reason1);
+                }
                 view_to_write = fallback_view;
             }
             if (view_to_write != fallback_view)
@@ -921,7 +1013,8 @@ U32 LLRenderPass::buildAndOverrideScenePerDrawSet(LLDrawInfo* params, bool batch
         VkImageView view = VK_NULL_HANDLE;
         S32 resolved_unit = -1;
         const bool l3_hit = (enum_value >= 0 && enum_value < (S32)cur->mVkEnumBoundView.size()
-                             && cur->mVkEnumBoundView[enum_value].bound);
+                             && cur->mVkEnumBoundView[enum_value].bound
+                             && !cur->vkPruneEnumBoundView(enum_value));
         if (l3_hit)
         {
             view = cur->vkResolveEnumBoundView(enum_value);
@@ -930,7 +1023,6 @@ U32 LLRenderPass::buildAndOverrideScenePerDrawSet(LLDrawInfo* params, bool batch
         {
             resolved_unit = channel;
             view = gGL.getTexUnit((S32)channel)->getLiveVkImageView();
-            LLGLSLShader::vkWarnL3Fallback(cur, N, enum_value, view);
         }
         else if (enum_value >= 0 && enum_value < (S32)cur->mTexture.size())
         {
@@ -939,7 +1031,6 @@ U32 LLRenderPass::buildAndOverrideScenePerDrawSet(LLDrawInfo* params, bool batch
             {
                 resolved_unit = unit;
                 view = gGL.getTexUnit((S32)unit)->getLiveVkImageView();
-                LLGLSLShader::vkWarnL3Fallback(cur, N, enum_value, view);
             }
         }
         if (l3_hit)
@@ -955,7 +1046,9 @@ U32 LLRenderPass::buildAndOverrideScenePerDrawSet(LLDrawInfo* params, bool batch
         bool need_typed_fallback = (view == VK_NULL_HANDLE);
         if (need_typed_fallback)
         {
-            vkc_fb_reason = "no_view";
+            const bool attach = l3_hit ? LLGLSLShader::vkL3NullIsAttachment(cur, enum_value)
+                                       : (resolved_unit >= 0 && LLGLSLShader::vkUnitNullIsAttachment(resolved_unit));
+            vkc_fb_reason = attach ? "attachment" : "no_view";
         }
         if (!need_typed_fallback)
         {
@@ -979,11 +1072,17 @@ U32 LLRenderPass::buildAndOverrideScenePerDrawSet(LLDrawInfo* params, bool batch
         }
         if (need_typed_fallback)
         {
-            LLVKContract::note(resolved_unit == 0 ? LLVKContract::C_FB_VIEW_DIFFUSE
-                                                  : LLVKContract::C_FB_VIEW_AUX,
-                               cur->mName);
-            LLVKContract::watchFbProbe(resolved_unit == 0, vkc_fb_reason);
-            LLVKContract::noteFbSlot(cur, cur->mName, N, vkc_fb_reason);
+            if (vkc_fb_reason != nullptr && std::strcmp(vkc_fb_reason, "no_view") == 0)
+            {
+                LLVKContract::noteFbNoView(cur, cur->mName, N);
+            }
+            else
+            {
+                LLVKContract::note(resolved_unit == 0 ? LLVKContract::C_FB_VIEW_DIFFUSE
+                                                      : LLVKContract::C_FB_VIEW_AUX,
+                                   cur->mName);
+                LLVKContract::noteFbSlot(cur, cur->mName, N, vkc_fb_reason);
+            }
             const U8 sdim_fb = cur->mVkBindingSamplerDim[N];
             view = cur->mVkBindingSamplerShadow[N] ? LLVKLoader::getDefaultFallbackShadowVkImageView()
                  : (sdim_fb == LLGLSLShader::VKSD_CUBE_ARRAY) ? LLVKLoader::getDefaultFallbackCubeArrayVkImageView()
@@ -1191,12 +1290,45 @@ void LLRenderPass::drawInfoBindless(LLDrawInfo& params, BindlessEstablish mode, 
     vkcVerifyDrawModelview(params);
 }
 
+static U32 shamdiCellForPass(U32 pass)
+{
+    switch (pass)
+    {
+        case LLRenderPass::PASS_ALPHA_MASK:            return 0;
+        case LLRenderPass::PASS_FULLBRIGHT_ALPHA_MASK: return 1;
+        case LLRenderPass::PASS_MATERIAL_ALPHA_MASK:
+        case LLRenderPass::PASS_SPECMAP_MASK:
+        case LLRenderPass::PASS_NORMMAP_MASK:
+        case LLRenderPass::PASS_NORMSPEC_MASK:
+        case LLRenderPass::PASS_GRASS:                 return 2;
+        case LLRenderPass::PASS_ALPHA:                 return 3;
+        default:                                       return 0xFFFFFFFFu;
+    }
+}
+
+static U32 shamdiRiggedCellForPass(U32 pass)
+{
+    switch (pass)
+    {
+        case LLRenderPass::PASS_ALPHA_MASK_RIGGED:            return 4;
+        case LLRenderPass::PASS_FULLBRIGHT_ALPHA_MASK_RIGGED: return 5;
+        case LLRenderPass::PASS_MATERIAL_ALPHA_MASK_RIGGED:
+        case LLRenderPass::PASS_SPECMAP_MASK_RIGGED:
+        case LLRenderPass::PASS_NORMMAP_MASK_RIGGED:
+        case LLRenderPass::PASS_NORMSPEC_MASK_RIGGED:         return 6;
+        default:                                              return 0xFFFFFFFFu;
+    }
+}
+
 void LLRenderPass::pushBatches(U32 type, bool texture, bool batch_textures)
 {
     LL_PROFILE_ZONE_SCOPED_CATEGORY_DRAWPOOL;
     if (texture)
     {
-        if (LLVKBucket::isCameraMdiPass(type)
+        if ((LLVKBucket::isCameraMdiPass(type)
+             || (LLVKBucket::isShadowMdiPass(type)
+                 && LLGLSLShader::sCurBoundShaderPtr != nullptr
+                 && LLGLSLShader::sCurBoundShaderPtr->mVkShadowCutoffFromSlot))
             && LLVKBucket::emitActive(type)
             && LLVKLoader::isIndirectDrawEnabled()
             && batch_textures
@@ -1207,9 +1339,17 @@ void LLRenderPass::pushBatches(U32 type, bool texture, bool batch_textures)
             const std::vector<U64>* bits = LLVKBucket::currentVisBits();
             if (bits != nullptr)
             {
+                const U32 shcell = shamdiCellForPass(type);
+                const U64 r0 = LLVKLoader::gVkPerf.mdi_rec.load();
+                const U64 d0 = LLVKLoader::gVkPerf.mdi_dyn.load();
                 for (LLVKBucket::Bucket* bucket : LLVKBucket::bucketsForPass(type))
                 {
                     pushIndirectBucket(*bucket, *bits, true);
+                }
+                if (shcell < 4)
+                {
+                    LLVKLoader::gVkPerf.shamdi[shcell][0] += LLVKLoader::gVkPerf.mdi_rec.load() - r0;
+                    LLVKLoader::gVkPerf.shamdi[shcell][1] += LLVKLoader::gVkPerf.mdi_dyn.load() - d0;
                 }
                 return;
             }
@@ -1249,7 +1389,14 @@ void LLRenderPass::pushUntexturedBatches(U32 type)
     });
 }
 
-static bool pushIndirectSpans(LLVKBucket::Bucket& bucket, VkBuffer ring_buf, VkDeviceSize ring_offset)
+struct MdiFireSpan
+{
+    const LLVKBucket::TplChunkSpan* mTpl;
+    U32                             mFirst;
+    U32                             mCount;
+};
+
+static bool pushIndirectSpans(const std::vector<MdiFireSpan>& spans, VkBuffer ring_buf, VkDeviceSize ring_offset)
 {
     LLGLSLShader* shader = LLGLSLShader::sCurBoundShaderPtr;
     LLVKContract::DrawScope vkc_scope(nullptr, "mdi");
@@ -1258,9 +1405,9 @@ static bool pushIndirectSpans(LLVKBucket::Bucket& bucket, VkBuffer ring_buf, VkD
     {
         return false;
     }
-    for (const LLVKBucket::TplChunkSpan& span : bucket.mTplChunkSpans)
+    for (const MdiFireSpan& span : spans)
     {
-        span.mRep->mVertexBuffer->setBuffer();
+        span.mTpl->mRep->mVertexBuffer->setBuffer();
         vkCmdDrawIndexedIndirect(cmd, ring_buf,
                                  ring_offset + (VkDeviceSize)span.mFirst * sizeof(VkDrawIndexedIndirectCommand),
                                  span.mCount,
@@ -1272,7 +1419,7 @@ static bool pushIndirectSpans(LLVKBucket::Bucket& bucket, VkBuffer ring_buf, VkD
     return true;
 }
 
-void LLRenderPass::pushIndirectBucket(LLVKBucket::Bucket& bucket, const std::vector<U64>& vis_bits, bool textured)
+void LLRenderPass::pushIndirectBucket(LLVKBucket::Bucket& bucket, const std::vector<U64>& vis_bits, bool textured, bool emit_dyn)
 {
     LLVKBucket::rebuildTemplateIfDirty(bucket);
     if (bucket.mTplCommands.empty() && bucket.mTplDyn.empty())
@@ -1313,28 +1460,52 @@ void LLRenderPass::pushIndirectBucket(LLVKBucket::Bucket& bucket, const std::vec
             applyModelMatrix(&bucket.mRegion->mRenderMatrix);
             gGL.syncMatrices();
             VkDrawIndexedIndirectCommand* cmds = (VkDrawIndexedIndirectCommand*)ring_mapped;
-            std::memcpy(cmds, bucket.mTplCommands.data(),
-                        n * sizeof(VkDrawIndexedIndirectCommand));
             U64 zeroed = 0;
-            for (size_t c = 0; c < n; ++c)
+            U32 w = 0;
+            static thread_local std::vector<MdiFireSpan> s_fire_spans;
+            s_fire_spans.clear();
+            for (const LLVKBucket::TplChunkSpan& tpl_span : bucket.mTplChunkSpans)
             {
-                const bool gvis = id_visible(bucket.mTplGroupIds[c]);
-                bool vis = gvis;
-                if (vis && cull_radius > 0.f)
+                const U32 span_w0 = w;
+                for (U32 c = tpl_span.mFirst; c < tpl_span.mFirst + tpl_span.mCount; ++c)
                 {
-                    const F32 r = bucket.mTplRadius[c];
-                    vis = !(r >= 0.f && r < cull_radius);
+                    const bool gvis = id_visible(bucket.mTplGroupIds[c]);
+                    bool vis = gvis;
+                    if (vis && cull_radius > 0.f)
+                    {
+                        const F32 r = bucket.mTplRadius[c];
+                        vis = !(r >= 0.f && r < cull_radius);
+                    }
+                    if (!vis)
+                    {
+                        ++zeroed;
+                        continue;
+                    }
+                    cmds[w] = bucket.mTplCommands[c];
+                    LLDrawInfo* rec = bucket.mTplRecords[c];
+                    if (rec != nullptr)
+                    {
+                        const bool bt = LLVKBucket::mdiBatchTextures(bucket.mPass);
+                        U32 slots[LLVKLoader::DRAWDATA_SLOT_UINTS];
+                        computeDrawDataSlots(rec, bt, slots);
+                        rec->ensureVkDrawDataSlot(slots);
+                        if (rec->mVkDrawDataSlot != 0xFFFFFFFFu)
+                        {
+                            mdiAuthorAndCheck(rec, slots, rec->mVkDrawDataSlot, bt);
+                            mdiSetFirstInstance(cmds[w].firstInstance, rec->mVkDrawDataSlot, (const void*)rec);
+                        }
+                    }
+                    ++w;
                 }
-                if (!vis)
+                if (w > span_w0)
                 {
-                    cmds[c].instanceCount = 0;
-                    ++zeroed;
+                    s_fire_spans.push_back({ &tpl_span, span_w0, w - span_w0 });
                 }
             }
             LLVKLoader::gVkPerf.mdi_zero += zeroed;
-            if (pushIndirectSpans(bucket, ring_buf, ring_offset))
+            if (w > 0 && pushIndirectSpans(s_fire_spans, ring_buf, ring_offset))
             {
-                LLVKLoader::gVkPerf.mdi_rec += (U64)n - zeroed;
+                LLVKLoader::gVkPerf.mdi_rec += w;
             }
         }
         else
@@ -1345,7 +1516,7 @@ void LLRenderPass::pushIndirectBucket(LLVKBucket::Bucket& bucket, const std::vec
                 {
                     if (textured)
                     {
-                        pushBatch(*bucket.mTplRecords[c], true, true);
+                        pushBatch(*bucket.mTplRecords[c], true, LLVKBucket::mdiBatchTextures(bucket.mPass));
                     }
                     else
                     {
@@ -1356,44 +1527,37 @@ void LLRenderPass::pushIndirectBucket(LLVKBucket::Bucket& bucket, const std::vec
         }
     }
 
-    for (size_t d = 0; d < bucket.mTplDyn.size(); ++d)
+    if (emit_dyn)
     {
-        if (id_visible(bucket.mTplDynGroupIds[d]))
+        for (size_t d = 0; d < bucket.mTplDyn.size(); ++d)
         {
-            if (textured)
+            if (id_visible(bucket.mTplDynGroupIds[d]))
             {
-                pushBatch(*bucket.mTplDyn[d], true, true);
+                if (textured)
+                {
+                    pushBatch(*bucket.mTplDyn[d], true, LLVKBucket::mdiBatchTextures(bucket.mPass));
+                }
+                else
+                {
+                    pushUntexturedBatch(*bucket.mTplDyn[d]);
+                }
+                ++LLVKLoader::gVkPerf.mdi_dyn;
             }
-            else
-            {
-                pushUntexturedBatch(*bucket.mTplDyn[d]);
-            }
-            ++LLVKLoader::gVkPerf.mdi_dyn;
         }
     }
 }
 
 namespace
 {
-    bool riggedMdiKillSwitchOn()
-    {
-        static const bool s_on = []()
-        {
-            const char* e = getenv("AYASTORM_RIGGED_MDI");
-            return e != nullptr && e[0] == '1';
-        }();
-        return s_on;
-    }
-
     bool riggedMdiEligible(U32 type)
     {
         (void)type;
-        return riggedMdiKillSwitchOn()
-            && LLPipelineFrameContext::getInstance().isShadowPass()
+        return LLPipelineFrameContext::getInstance().isShadowPass()
             && LLVKLoader::isIndirectDrawEnabled()
             && LLVKLoader::skinBindlessEnabled()
             && LLGLSLShader::sCurBoundShaderPtr != nullptr
-            && LLGLSLShader::sCurBoundShaderPtr->mVkUsesHeapSet
+            && LLGLSLShader::sCurBoundShaderPtr->mVkUsesSkinSet
+            && LLGLSLShader::sCurBoundShaderPtr->mVkPerDrawSupplySlotComplete
             && !gSnapshot;
     }
 
@@ -1429,13 +1593,17 @@ namespace
         return true;
     }
 
-    bool pushRiggedBatchesIndirect(U32 type, bool batch_textures)
+    bool pushRiggedBatchesIndirect(LLRenderPass* self, U32 type, bool texture, bool batch_textures,
+                                   U32 shamdi_cell)
     {
         LLGLSLShader* shader = LLGLSLShader::sCurBoundShaderPtr;
 
         static thread_local std::vector<RiggedMdiRec> s_items;
+        static thread_local std::vector<LLDrawInfo*>  s_dyn;
         s_items.clear();
+        s_dyn.clear();
 
+        U64               acceptedRec   = 0;
         const LLVOAvatar* lastAvatar    = nullptr;
         U64               lastMeshId    = 0;
         bool              skipLastSkin  = false;
@@ -1453,7 +1621,7 @@ namespace
             {
                 continue;
             }
-            ++LLVKLoader::gVkPerf.rigged_rec;
+            ++acceptedRec;
             if (!p->mCount || vkShadowCullBatch(*p))
             {
                 continue;
@@ -1467,8 +1635,10 @@ namespace
             const LLVKLoader::MegaSliceI& is = vb->getVkIndexSlice();
             if (vs.buffer == VK_NULL_HANDLE || is.buffer == VK_NULL_HANDLE)
             {
+                s_dyn.push_back(p);
                 continue;
             }
+            vb->markVkConsumed();
 
             U32 draw_id;
             if (refreshed)
@@ -1486,6 +1656,8 @@ namespace
                 }
                 draw_id = (p->mVkDrawDataSlot == LLVKLoader::BINDLESS_INVALID_SLOT)
                               ? 0 : p->mVkDrawDataSlot;
+
+                LLRenderPass::mdiAuthorAndCheck(p, slots, draw_id, batch_textures);
 
                 if (LLVKLoader::publishDrawSkinBase(draw_id, p->mAvatar.get(),
                                                     p->mSkinInfo->mHash)
@@ -1505,7 +1677,7 @@ namespace
             rec.cmd.instanceCount = 1;
             rec.cmd.firstIndex    = is.offset / vb->getIndicesStride() + p->mOffset;
             rec.cmd.vertexOffset  = (S32)vs.first;
-            rec.cmd.firstInstance = draw_id;
+            LLRenderPass::mdiSetFirstInstance(rec.cmd.firstInstance, draw_id, (const void*)p);
             s_items.push_back(rec);
         }
 
@@ -1564,6 +1736,37 @@ namespace
             return false;
         }
         LLVKLoader::gVkPerf.mdi_rec += (U64)s_cmds.size();
+        LLVKLoader::gVkPerf.rigged_rec += acceptedRec;
+
+        U64 dynDrawn = 0;
+        if (!s_dyn.empty())
+        {
+            const LLVOAvatar* dynAvatar = nullptr;
+            U64               dynMeshId = 0;
+            bool              dynSkip   = false;
+            for (LLDrawInfo* p : s_dyn)
+            {
+                if (LLRenderPass::uploadMatrixPalette(p->mAvatar, p->mSkinInfo,
+                                                      dynAvatar, dynMeshId, dynSkip))
+                {
+                    if (texture)
+                    {
+                        self->pushBatch(*p, true, batch_textures);
+                    }
+                    else
+                    {
+                        self->pushUntexturedBatch(*p);
+                    }
+                    ++LLVKLoader::gVkPerf.mdi_dyn;
+                    ++dynDrawn;
+                }
+            }
+        }
+        if (shamdi_cell < 8)
+        {
+            LLVKLoader::gVkPerf.shamdi[shamdi_cell][0] += (U64)s_cmds.size();
+            LLVKLoader::gVkPerf.shamdi[shamdi_cell][1] += dynDrawn;
+        }
         return true;
     }
 }
@@ -1574,7 +1777,8 @@ void LLRenderPass::pushRiggedBatches(U32 type, bool texture, bool batch_textures
     const bool e3on = LLVKLoader::perfLogEnabled();
     const U64  e3t0 = e3on ? (U64)LLTimer::getTotalTime() : 0;
 
-    if (riggedMdiEligible(type) && pushRiggedBatchesIndirect(type, batch_textures))
+    if (riggedMdiEligible(type)
+        && pushRiggedBatchesIndirect(this, type, texture, batch_textures, 7))
     {
         if (e3on)
         {
@@ -1582,6 +1786,10 @@ void LLRenderPass::pushRiggedBatches(U32 type, bool texture, bool batch_textures
         }
         return;
     }
+
+    const bool opWalk = LLPipelineFrameContext::getInstance().isShadowPass()
+        && LLGLSLShader::sCurBoundShaderPtr != nullptr
+        && LLGLSLShader::sCurBoundShaderPtr->mVkPerDrawSupplySlotComplete;
 
     if (texture)
     {
@@ -1598,6 +1806,10 @@ void LLRenderPass::pushRiggedBatches(U32 type, bool texture, bool batch_textures
             if (uploadMatrixPalette(pparams->mAvatar, pparams->mSkinInfo, lastAvatar, lastMeshId, skipLastSkin))
             {
                 ++LLVKLoader::gVkPerf.rigged_rec;
+                if (opWalk)
+                {
+                    ++LLVKLoader::gVkPerf.shamdi[7][2];
+                }
                 pushBatch(*pparams, texture, batch_textures);
             }
         }
@@ -1615,6 +1827,9 @@ void LLRenderPass::pushRiggedBatches(U32 type, bool texture, bool batch_textures
 void LLRenderPass::pushUntexturedRiggedBatches(U32 type)
 {
     LL_PROFILE_ZONE_SCOPED_CATEGORY_DRAWPOOL;
+    const bool opWalk = LLPipelineFrameContext::getInstance().isShadowPass()
+        && LLGLSLShader::sCurBoundShaderPtr != nullptr
+        && LLGLSLShader::sCurBoundShaderPtr->mVkPerDrawSupplySlotComplete;
     const LLVOAvatar* lastAvatar = nullptr;
     U64 lastMeshId = 0;
     bool skipLastSkin = false;
@@ -1628,6 +1843,10 @@ void LLRenderPass::pushUntexturedRiggedBatches(U32 type)
         if (uploadMatrixPalette(pparams->mAvatar, pparams->mSkinInfo, lastAvatar, lastMeshId, skipLastSkin))
         {
             ++LLVKLoader::gVkPerf.rigged_rec;
+            if (opWalk)
+            {
+                ++LLVKLoader::gVkPerf.shamdi[7][2];
+            }
             pushUntexturedBatch(*pparams);
         }
     }
@@ -1636,18 +1855,48 @@ void LLRenderPass::pushUntexturedRiggedBatches(U32 type)
 void LLRenderPass::pushMaskBatches(U32 type, bool texture, bool batch_textures)
 {
     LL_PROFILE_ZONE_SCOPED_CATEGORY_DRAWPOOL;
-    auto* begin = gPipeline.beginRenderMap(type);
-    auto* end = gPipeline.endRenderMap(type);
-    for (LLCullResult::drawinfo_iterator i = begin; i != end; )
+    if ((LLVKBucket::isCameraMdiPass(type)
+         || (LLVKBucket::isShadowMdiPass(type)
+             && LLGLSLShader::sCurBoundShaderPtr != nullptr
+             && LLGLSLShader::sCurBoundShaderPtr->mVkShadowCutoffFromSlot))
+        && LLVKBucket::emitActive(type)
+        && LLVKLoader::isIndirectDrawEnabled()
+        && LLGLSLShader::sCurBoundShaderPtr != nullptr
+        && LLGLSLShader::sCurBoundShaderPtr->mVkUsesHeapSet
+        && !gSnapshot)
     {
-        LLDrawInfo* pparams = *i;
-        LLCullResult::increment_iterator(i, end);
+        const std::vector<U64>* bits = LLVKBucket::currentVisBits();
+        if (bits != nullptr)
+        {
+            const U32 shcell = shamdiCellForPass(type);
+            const U64 r0 = LLVKLoader::gVkPerf.mdi_rec.load();
+            const U64 d0 = LLVKLoader::gVkPerf.mdi_dyn.load();
+            for (LLVKBucket::Bucket* bucket : LLVKBucket::bucketsForPass(type))
+            {
+                pushIndirectBucket(*bucket, *bits, true);
+            }
+            if (shcell < 4)
+            {
+                LLVKLoader::gVkPerf.shamdi[shcell][0] += LLVKLoader::gVkPerf.mdi_rec.load() - r0;
+                LLVKLoader::gVkPerf.shamdi[shcell][1] += LLVKLoader::gVkPerf.mdi_dyn.load() - d0;
+            }
+            return;
+        }
+    }
+    const bool maskObjAlphaPC = !LLGLSLShader::sCurBoundShaderPtr->mVkShadowCutoffFromSlot
+        && LLPipelineFrameContext::getInstance().isShadowPass();
+    LLVKBucket::forEachSource(type, [&](LLDrawInfo& params)
+    {
         if (!LLGLSLShader::sCurBoundShaderPtr->mVkShadowCutoffFromSlot)
         {
-            LLGLSLShader::sCurBoundShaderPtr->setMinimumAlpha(pparams->mAlphaMaskCutoff);
+            LLGLSLShader::sCurBoundShaderPtr->setMinimumAlpha(params.mAlphaMaskCutoff);
         }
-        pushBatch(*pparams, texture, batch_textures);
-    }
+        if (maskObjAlphaPC)
+        {
+            LLGLSLShader::sCurBoundShaderPtr->setObjectAlpha(params.mObjectAlpha);
+        }
+        pushBatch(params, texture, batch_textures);
+    });
 }
 
 void LLRenderPass::pushRiggedMaskBatches(U32 type, bool texture, bool batch_textures)
@@ -1655,6 +1904,24 @@ void LLRenderPass::pushRiggedMaskBatches(U32 type, bool texture, bool batch_text
     LL_PROFILE_ZONE_SCOPED_CATEGORY_DRAWPOOL;
     const bool e3on = LLVKLoader::perfLogEnabled();
     const U64  e3t0 = e3on ? (U64)LLTimer::getTotalTime() : 0;
+
+    if (riggedMdiEligible(type)
+        && LLGLSLShader::sCurBoundShaderPtr->mVkUsesHeapSet
+        && LLGLSLShader::sCurBoundShaderPtr->mVkShadowCutoffFromSlot
+        && pushRiggedBatchesIndirect(this, type, texture, batch_textures,
+                                     shamdiRiggedCellForPass(type)))
+    {
+        if (e3on)
+        {
+            LLVKLoader::gVkPerf.e3_rig_us[e3RigBucket()] += (U64)LLTimer::getTotalTime() - e3t0;
+        }
+        return;
+    }
+
+    const U32 wcell = (LLGLSLShader::sCurBoundShaderPtr != nullptr
+                       && LLGLSLShader::sCurBoundShaderPtr->mVkShadowCutoffFromSlot)
+                          ? shamdiRiggedCellForPass(type)
+                          : 0xFFFFFFFFu;
     const LLVOAvatar* lastAvatar = nullptr;
     U64 lastMeshId = 0;
     bool skipLastSkin = false;
@@ -1671,11 +1938,19 @@ void LLRenderPass::pushRiggedMaskBatches(U32 type, bool texture, bool batch_text
         if (!LLGLSLShader::sCurBoundShaderPtr->mVkShadowCutoffFromSlot)
         {
             LLGLSLShader::sCurBoundShaderPtr->setMinimumAlpha(pparams->mAlphaMaskCutoff);
+            if (LLPipelineFrameContext::getInstance().isShadowPass())
+            {
+                LLGLSLShader::sCurBoundShaderPtr->setObjectAlpha(pparams->mObjectAlpha);
+            }
         }
 
         if (uploadMatrixPalette(pparams->mAvatar, pparams->mSkinInfo, lastAvatar, lastMeshId, skipLastSkin))
         {
             ++LLVKLoader::gVkPerf.rigged_rec;
+            if (wcell < 8)
+            {
+                ++LLVKLoader::gVkPerf.shamdi[wcell][2];
+            }
             pushBatch(*pparams, texture, batch_textures);
         }
     }
@@ -2057,23 +2332,17 @@ void LLRenderPass::pushVelocityBatchesTextured(U32 type)
     static LLCachedControl<bool> self_blur(gSavedSettings, "RenderMotionBlurSelfAvatar", true);
     static LLCachedControl<bool> others_blur(gSavedSettings, "RenderMotionBlurOtherAvatars", true);
 
-    auto* begin = gPipeline.beginRenderMap(type);
-    auto* end   = gPipeline.endRenderMap(type);
-
-    for (LLCullResult::drawinfo_iterator i = begin; i != end; )
+    LLVKBucket::forEachSource(type, [&](LLDrawInfo& params)
     {
-        LLDrawInfo& params = **i;
-        LLCullResult::increment_iterator(i, end);
-
         if (!params.mVertexBuffer.notNull())
         {
-            continue;
+            return;
         }
 
         if (params.mAttachedToAvatar.notNull() &&
             (params.mAttachedToAvatar->isSelf() ? !self_blur : !others_blur))
         {
-            continue;
+            return;
         }
 
         LLGLDisable cull_face(params.mGLTFMaterial && params.mGLTFMaterial->mDoubleSided ? GL_CULL_FACE : 0);
@@ -2108,7 +2377,7 @@ void LLRenderPass::pushVelocityBatchesTextured(U32 type)
         {
             *params.mLastModelMatrix = *current_mat;
         }
-    }
+    });
 }
 
 void LLRenderPass::pushRiggedVelocityBatchesTextured(U32 type)
@@ -2205,6 +2474,8 @@ void LLRenderPass::pushGLTFBatches(U32 type, bool textured)
 void LLRenderPass::pushGLTFBatches(U32 type)
 {
     LL_PROFILE_ZONE_SCOPED_CATEGORY_DRAWPOOL;
+    const bool gltfObjAlphaPC = LLPipelineFrameContext::getInstance().isShadowPass()
+        && LLGLSLShader::sCurBoundShaderPtr != nullptr;
     auto* begin = gPipeline.beginRenderMap(type);
     auto* end = gPipeline.endRenderMap(type);
     for (LLCullResult::drawinfo_iterator i = begin; i != end; )
@@ -2213,6 +2484,10 @@ void LLRenderPass::pushGLTFBatches(U32 type)
         LLDrawInfo& params = **i;
         LLCullResult::increment_iterator(i, end);
 
+        if (gltfObjAlphaPC && params.mGLTFMaterial != nullptr)
+        {
+            LLGLSLShader::sCurBoundShaderPtr->setObjectAlpha(params.mGLTFMaterial->mBaseColor.mV[3]);
+        }
         pushGLTFBatch(params);
     }
 }
@@ -2300,6 +2575,8 @@ void LLRenderPass::pushRiggedGLTFBatches(U32 type, bool textured)
 void LLRenderPass::pushRiggedGLTFBatches(U32 type)
 {
     LL_PROFILE_ZONE_SCOPED_CATEGORY_DRAWPOOL;
+    const bool gltfObjAlphaPC = LLPipelineFrameContext::getInstance().isShadowPass()
+        && LLGLSLShader::sCurBoundShaderPtr != nullptr;
     const LLVOAvatar* lastAvatar = nullptr;
     U64 lastMeshId = 0;
     bool skipLastSkin = false;
@@ -2312,6 +2589,10 @@ void LLRenderPass::pushRiggedGLTFBatches(U32 type)
         LLDrawInfo& params = **i;
         LLCullResult::increment_iterator(i, end);
 
+        if (gltfObjAlphaPC && params.mGLTFMaterial != nullptr)
+        {
+            LLGLSLShader::sCurBoundShaderPtr->setObjectAlpha(params.mGLTFMaterial->mBaseColor.mV[3]);
+        }
         pushRiggedGLTFBatch(params, lastAvatar, lastMeshId, skipLastSkin);
     }
 }

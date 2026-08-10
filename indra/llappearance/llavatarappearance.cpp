@@ -1691,6 +1691,11 @@ const LLAvatarAppearance::joint_alias_map_t& LLAvatarAppearance::getJointAliases
     return mJointAliasMap;
 }
 
+bool LLAvatarAppearance::isKnownJointName(std::string_view name)
+{
+    return getJointAliases().count(name) > 0;
+}
+
 void LLAvatarAppearance::getJointMatricesAndHierarhy(std::vector<LLJointData> &data) const
 {
     glm::mat4 identity(1.f);

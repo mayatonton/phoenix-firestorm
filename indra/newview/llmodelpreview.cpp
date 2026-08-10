@@ -4348,6 +4348,7 @@ bool LLModelPreview::render()
         gGL.loadIdentity();
 
         gGL.color4fv(canvas_col().mV); // <FS:Beq/> restore changes removed by the lab
+        gGL.getTexUnit(0)->unbind(LLTexUnit::TT_TEXTURE);
         gl_rect_2d_simple(width, height);
 
         gGL.matrixMode(LLRender::MM_PROJECTION);

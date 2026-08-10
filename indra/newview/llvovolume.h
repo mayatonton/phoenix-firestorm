@@ -322,6 +322,8 @@ public:
     virtual bool isFlexible() const override;
     virtual bool isSculpted() const override;
     virtual bool isMesh() const override;
+    bool isGeometryDrawExpected() const;
+    void resolveMeshSkinTerminal();
     virtual bool isRiggedMesh() const override;
     virtual bool hasLightTexture() const override;
 

@@ -179,23 +179,10 @@ bool LLViewerDynamicTexture::updateAllInstances()
     LLRenderTarget& preview_target = gPipeline.mPreviewScreen; 
     // </FS:Beq>
     LLRenderTarget& bake_target = gPipeline.mBakeMap;
-    if (!preview_target.isComplete() || !bake_target.isComplete())
+    if (!gPipeline.mainChainComplete())
     {
-        llassert(false);
         return false;
     }
-    llassert(preview_target.getWidth() >= LLPipeline::MAX_PREVIEW_WIDTH);
-    llassert(preview_target.getHeight() >= LLPipeline::MAX_PREVIEW_HEIGHT); // <FS:Beq/> make this consistent with other render targets
-    llassert(bake_target.getWidth() >= (U32) LLAvatarAppearanceDefines::SCRATCH_TEX_WIDTH);
-    llassert(bake_target.getHeight() >= (U32) LLAvatarAppearanceDefines::SCRATCH_TEX_HEIGHT);
-
-    preview_target.bindTarget();
-    gGL.setColorMask(true, true);
-    preview_target.clear();
-
-    LLGLSLShader::unbind();
-    LLVertexBuffer::unbind();
-
     bool result = false;
     bool ret = false ;
     auto update_func = [&](LLViewerDynamicTexture* dynamicTexture, LLRenderTarget& renderTarget, S32 width, S32 height)
@@ -232,6 +219,16 @@ bool LLViewerDynamicTexture::updateAllInstances()
             }
         };
 
+    {
+    LLRTScope rts_preview(preview_target, false, "dyntex_preview");
+    if (rts_preview)
+    {
+    gGL.setColorMask(true, true);
+    preview_target.clear();
+
+    LLGLSLShader::unbind();
+    LLVertexBuffer::unbind();
+
     // ORDER_FIRST is unused, ORDER_MIDDLE is various ui preview
     for(S32 order = 0; order < ORDER_LAST; ++order)
     {
@@ -240,10 +237,14 @@ bool LLViewerDynamicTexture::updateAllInstances()
             update_func(dynamicTexture, preview_target, LLPipeline::MAX_PREVIEW_WIDTH, LLPipeline::MAX_PREVIEW_WIDTH);
         }
     }
-    preview_target.flush();
+    }
+    }
 
     // ORDER_LAST is baked skin preview, ORDER_RESET resets appearance parameters and does not render.
-    bake_target.bindTarget();
+    {
+    LLRTScope rts_bake(bake_target, false, "dyntex_bake");
+    if (rts_bake)
+    {
     bake_target.clear();
 
     result = false;
@@ -255,7 +256,8 @@ bool LLViewerDynamicTexture::updateAllInstances()
             update_func(dynamicTexture, bake_target, LLAvatarAppearanceDefines::SCRATCH_TEX_WIDTH, LLAvatarAppearanceDefines::SCRATCH_TEX_HEIGHT);
         }
     }
-    bake_target.flush();
+    }
+    }
 
     gGL.flush();
 

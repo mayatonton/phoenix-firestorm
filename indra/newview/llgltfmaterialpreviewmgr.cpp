@@ -422,6 +422,11 @@ bool LLGLTFPreviewTexture::render()
 
     if (!mShouldRender) { return false; }
 
+    if (!gPipeline.probeChainComplete())
+    {
+        return false;
+    }
+
     gGL.setClearColor(0, 0, 0, 0);
     if (mBoundTarget != nullptr)
     {
@@ -499,7 +504,10 @@ bool LLGLTFPreviewTexture::render()
     {
         // Alpha blend rendering
 
-        screen.bindTarget();
+        {
+        LLRTScope rts(screen, false, "gltf_preview");
+        if (rts)
+        {
         screen.clear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
 
         LLGLSLShader& shader = gDeferredPBRAlphaProgram;
@@ -524,7 +532,8 @@ bool LLGLTFPreviewTexture::render()
 
         gPipeline.unbindDeferredShader(shader);
 
-        screen.flush();
+        }
+        }
     }
 
     // *HACK: Hide mExposureMap from generateExposure

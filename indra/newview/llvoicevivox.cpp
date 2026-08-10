@@ -1304,7 +1304,14 @@ bool LLVivoxVoiceClient::provisionVoiceAccount()
         }
         else if (!status)
         {
-            LL_WARNS("Voice") << "Unable to provision voice account." << LL_ENDL;
+            if (gAgent.getRegion() && gAgent.getRegion()->isRegionWebRTCEnabled())
+            {
+                LL_DEBUGS("Voice") << "Unable to provision voice account." << LL_ENDL;
+            }
+            else
+            {
+                LL_WARNS("Voice") << "Unable to provision voice account." << LL_ENDL;
+            }
             LLVoiceVivoxStats::getInstance()->provisionAttemptEnd(false);
             return false;
         }
@@ -3150,7 +3157,14 @@ void LLVivoxVoiceClient::daemonDied()
 void LLVivoxVoiceClient::giveUp()
 {
     // All has failed.  Clean up and stop trying.
-    LL_WARNS("Voice") << "Terminating Voice Service" << LL_ENDL;
+    if (gAgent.getRegion() && gAgent.getRegion()->isRegionWebRTCEnabled())
+    {
+        LL_DEBUGS("Voice") << "Terminating Voice Service" << LL_ENDL;
+    }
+    else
+    {
+        LL_WARNS("Voice") << "Terminating Voice Service" << LL_ENDL;
+    }
     closeSocket();
     cleanUp();
 }

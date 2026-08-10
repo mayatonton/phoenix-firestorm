@@ -229,6 +229,38 @@ bool LLShaderMgr::attachShaderFeatures(LLGLSLShader * shader)
         }
     }
 
+    if (features->hasDepthRead || features->hasGBufferRead || features->hasFullGBuffer)
+    {
+        if (!shader->attachFragmentObject("deferred/depthReadUtil.glsl"))
+        {
+            return false;
+        }
+    }
+
+    if (features->hasGBufferRead || features->hasFullGBuffer)
+    {
+        if (!shader->attachFragmentObject("deferred/normalReadUtil.glsl"))
+        {
+            return false;
+        }
+    }
+
+    if (features->hasProjectedLight)
+    {
+        if (!shader->attachFragmentObject("deferred/projectionLightUtil.glsl"))
+        {
+            return false;
+        }
+    }
+
+    if (features->hasPbrIbl)
+    {
+        if (!shader->attachFragmentObject("deferred/pbrIblUtil.glsl"))
+        {
+            return false;
+        }
+    }
+
     if (features->hasFullGBuffer)
     {
         if (!shader->attachFragmentObject("deferred/gbufferUtil.glsl"))
@@ -248,6 +280,14 @@ bool LLShaderMgr::attachShaderFeatures(LLGLSLShader * shader)
     if (features->hasShadows)
     {
         if (!shader->attachFragmentObject("deferred/shadowUtil.glsl"))
+        {
+            return false;
+        }
+    }
+
+    if (features->hasSpotShadows)
+    {
+        if (!shader->attachFragmentObject("deferred/spotShadowUtil.glsl"))
         {
             return false;
         }
@@ -642,7 +682,7 @@ GLuint LLShaderMgr::loadShaderFile(const std::string& filename, S32 & shader_lev
             extra_code_text[extra_code_count++] =
                 strdup("layout(set=2, binding=1) uniform sampler2D ayaTexHeap[];\n");
             extra_code_text[extra_code_count++] =
-                strdup("struct AyaDrawData { uvec4 tex_slots; vec4 spec_color; vec4 misc; };\nlayout(set=2, binding=0, std430) readonly buffer AyaDrawDataBlock { AyaDrawData aya_dd[]; };\n");
+                strdup("struct AyaDrawData { uvec4 tex_slots; vec4 spec_color; vec4 misc; vec4 misc2; };\nlayout(set=2, binding=0, std430) readonly buffer AyaDrawDataBlock { AyaDrawData aya_dd[]; };\n");
             extra_code_text[extra_code_count++] =
                 strdup("layout(location=19) flat in int aya_draw_id;\n");
 

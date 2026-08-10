@@ -31,12 +31,9 @@
 
 #ifdef LL_VULKAN_GLSL
 layout(location = 0) out vec4 frag_color;
-layout(set = 1, binding = 1) uniform sampler2D diffuseRect;
 layout(location = 0) in vec2 vary_fragcoord;
 #else
 out vec4 frag_color;
-
-uniform sampler2D diffuseRect;
 
 in vec2 vary_fragcoord;
 #endif

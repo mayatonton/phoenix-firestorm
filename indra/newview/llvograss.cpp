@@ -704,7 +704,7 @@ void LLGrassPartition::getGeometry(LLSpatialGroup* group)
     U32 index_count = 0;
     U32 vertex_count = 0;
 
-    group->clearDrawMap(LLVKContract::SITE_CLEAR_REBUILD_GENERIC);
+    group->clearDrawMap();
 
     LLVertexBuffer* buffer = group->mVertexBuffer;
 

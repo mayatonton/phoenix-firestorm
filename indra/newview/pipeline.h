@@ -108,8 +108,13 @@ public:
     void requestResizeScreenTexture(); // set flag only, no work, safer for callbacks...
     void requestResizeShadowTexture(); // set flag only, no work, safer for callbacks...
 
-    void resizeScreenTexture();
-    void resizeShadowTexture();
+    bool resizeScreenTexture();
+    bool resizeShadowTexture();
+
+    bool mainChainComplete() const;
+    bool probeChainComplete() const;
+    bool heroChainComplete() const;
+    bool allocateProbeChains();
 
     void releaseGLBuffers();
     void releaseLUTBuffers();
@@ -398,7 +403,9 @@ public:
     // apply atmospheric haze based on contents of color and depth buffer
     // should be called just before rendering water when camera is under water
     // and just before rendering alpha when camera is above water
-    void doAtmospherics();
+    bool doAtmospherics();
+
+    bool snapshotSceneDepthToWaterDis();
 
     // apply water haze based on contents of color and depth buffer
     // should be called just before rendering pre-water alpha objects
@@ -407,7 +414,7 @@ public:
     // <FS:AYA r15 P1> godrays: shadow-driven screen-space light shaft pass.
     // Called from renderGeomPostDeferred right after doAtmospherics() so the
     // additive radiance is integrated into the HDR scene buffer before tonemap.
-    void doGodrays();
+    void doGodrays(bool scene_depth_ok);
 
     // <FS:AYA r20 P0a> skin SSS prototype: screen-space 5-tap separable blur
     // with wavelength-dependent per-channel weights. Called from
@@ -931,7 +938,6 @@ public:
     // z (atmospherics / HQ DoF gate keep stock behaviour). Main RT only.
     LLRenderTarget          mAYAAlphaDepth;
     // </AYAstorm r30 P5 transparent-DoF L2-β>
-    LLRenderTarget          mSceneDepthCopy;
 
     // <AYAstorm r30 P5 transparent-DoF C-(a)> Dedicated color attachment
     // for forward alpha BLEND draws. Shares depth with getFrameRT()->screen so
@@ -1021,6 +1027,7 @@ public:
     LLPointer<LLImageGL> mLightFunc;
     LLPointer<LLImageGL> mColorGradingLUT;
     std::string         mColorGradingLUTName;
+    bool                mColorGradingLUTValid = false;
 
     //smaa
     LLPointer<LLImageGL> mSMAAAreaMap;

@@ -141,6 +141,11 @@ public:
     bool hasAtmospherics = false;
     bool hasGamma = false;
     bool hasShadows = false;
+    bool hasSpotShadows = false;
+    bool hasGBufferRead = false;
+    bool hasDepthRead = false;
+    bool hasProjectedLight = false;
+    bool hasPbrIbl = false;
     bool hasAmbientOcclusion = false;
     bool hasSrgb = false;
     bool isDeferred = false;
@@ -368,8 +373,10 @@ public:
     void vkCaptureEnumBoundView(S32 uniform_enum, S32 channel);
     void vkCaptureChannelBoundView(S32 channel);
     VkImageView vkResolveEnumBoundView(S32 uniform_enum) const;
+    bool vkPruneEnumBoundView(S32 uniform_enum);
     U8 vkResolveEnumBoundDim(S32 uniform_enum) const;
-    static void vkWarnL3Fallback(LLGLSLShader* shader, U32 binding, S32 enum_value, VkImageView old_view);
+    static bool vkL3NullIsAttachment(const LLGLSLShader* cur, S32 enum_value);
+    static bool vkUnitNullIsAttachment(S32 unit);
 
     U32 mVkPerProgramUBOBinding = 0;
 
@@ -455,6 +462,8 @@ public:
     bool                       mWritePerProgramUBOMinimumAlpha = false;
 
     bool                       mVkShadowCutoffFromSlot = false;
+
+    bool                       mVkPerDrawSupplySlotComplete = false;
 
     bool createVkPipeline(U32 perProgramUBOSize = 0, bool needsSharedWaterVUBO = false);
 

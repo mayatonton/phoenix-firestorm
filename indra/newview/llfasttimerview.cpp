@@ -26,6 +26,8 @@
 
 #include "llviewerprecompiledheaders.h"
 
+#include <optional>
+
 #include "llfasttimerview.h"
 
 #include "llviewerwindow.h"
@@ -510,6 +512,11 @@ void saveChart(const std::string& label, const char* suffix, LLImageRaw* scratch
 
 void LLFastTimerView::exportCharts(const std::string& base, const std::string& target)
 {
+    if (!LLVKLoader::isVulkanInitialized())
+    {
+        return;
+    }
+
     //allocate render target for drawing charts
     LLRenderTarget buffer;
     buffer.allocate(1024,512, GL_RGB);
@@ -559,13 +566,6 @@ void LLFastTimerView::exportCharts(const std::string& base, const std::string& t
 
     //render charts
     gGL.getTexUnit(0)->unbind(LLTexUnit::TT_TEXTURE);
-
-    const bool vk = LLVKLoader::isVulkanInitialized();
-
-    if (!vk)
-    {
-        buffer.bindTarget();
-    }
 
     for (std::set<std::string>::iterator iter = chart_names.begin(); iter != chart_names.end(); ++iter)
     {
@@ -653,187 +653,179 @@ void LLFastTimerView::exportCharts(const std::string& base, const std::string& t
 
         LLVector3 last_p;
 
-        if (vk)
-        {
-            LLVKLoader::beginOffscreenFrameVk();
-            buffer.bindTarget();
-        }
-
-        buffer.clear();
-
-        last_p.clear();
-
         LLGLDisable cull(GL_CULL_FACE);
 
         LLVector3 base_col(0, 0.7f, 0.f);
         LLVector3 cur_col(1.f, 0.f, 0.f);
 
-        gGL.setSceneBlendType(LLRender::BT_ADD);
-
-        gGL.color3fv(base_col.mV);
-        for (U32 i = 0; i < base_times.size(); ++i)
-        {
-            gGL.begin(LLRender::TRIANGLE_STRIP);
-            gGL.vertex3fv(last_p.mV);
-            gGL.vertex3f(last_p.mV[0], 0.f, 0.f);
-            last_p.set((F32)i/(F32) base_times.size(), (F32)(base_times[i]/max_time), 0.f);
-            gGL.vertex3fv(last_p.mV);
-            gGL.vertex3f(last_p.mV[0], 0.f, 0.f);
-            gGL.end();
-        }
-
-        gGL.flush();
-
-
-        last_p.clear();
-        {
-            LLGLEnable blend(GL_BLEND);
-
-            gGL.color3fv(cur_col.mV);
-            for (U32 i = 0; i < cur_times.size(); ++i)
-            {
-                gGL.begin(LLRender::TRIANGLE_STRIP);
-                gGL.vertex3f(last_p.mV[0], 0.f, 0.f);
-                gGL.vertex3fv(last_p.mV);
-                last_p.set((F32) i / (F32) cur_times.size(), (F32)(cur_times[i]/max_time), 0.f);
-                gGL.vertex3f(last_p.mV[0], 0.f, 0.f);
-                gGL.vertex3fv(last_p.mV);
-                gGL.end();
-            }
-
-            gGL.flush();
-        }
-
-        if (vk)
-        {
-            buffer.flush();
-            LLVKLoader::endOffscreenFrameVk();
-            saveChart(label, "time", scratch, buffer);
-        }
-        else
-        {
-            saveChart(label, "time", scratch, buffer);
-        }
-
-        if (vk)
         {
             LLVKLoader::beginOffscreenFrameVk();
-            buffer.bindTarget();
-        }
-
-        buffer.clear();
-
-        last_p.clear();
-
-        gGL.color3fv(base_col.mV);
-        for (U32 i = 0; i < base_calls.size(); ++i)
-        {
-            gGL.begin(LLRender::TRIANGLE_STRIP);
-            gGL.vertex3fv(last_p.mV);
-            gGL.vertex3f(last_p.mV[0], 0.f, 0.f);
-            last_p.set((F32) i / (F32) base_calls.size(), (F32)base_calls[i]/max_calls, 0.f);
-            gGL.vertex3fv(last_p.mV);
-            gGL.vertex3f(last_p.mV[0], 0.f, 0.f);
-            gGL.end();
-        }
-
-        gGL.flush();
-
-        {
-            LLGLEnable blend(GL_BLEND);
-            gGL.color3fv(cur_col.mV);
-            last_p.clear();
-
-            for (U32 i = 0; i < cur_calls.size(); ++i)
+            bool chart_ok = false;
             {
-                gGL.begin(LLRender::TRIANGLE_STRIP);
-                gGL.vertex3f(last_p.mV[0], 0.f, 0.f);
-                gGL.vertex3fv(last_p.mV);
-                last_p.set((F32) i / (F32) cur_calls.size(), (F32) cur_calls[i]/max_calls, 0.f);
-                gGL.vertex3f(last_p.mV[0], 0.f, 0.f);
-                gGL.vertex3fv(last_p.mV);
-                gGL.end();
+                LLRTScope s(buffer, false, "ft_chart");
+                if (s)
+                {
+                    chart_ok = true;
+                    buffer.clear();
 
+                    last_p.clear();
+
+                    gGL.setSceneBlendType(LLRender::BT_ADD);
+
+                    gGL.color3fv(base_col.mV);
+                    for (U32 i = 0; i < base_times.size(); ++i)
+                    {
+                        gGL.begin(LLRender::TRIANGLE_STRIP);
+                        gGL.vertex3fv(last_p.mV);
+                        gGL.vertex3f(last_p.mV[0], 0.f, 0.f);
+                        last_p.set((F32)i/(F32) base_times.size(), (F32)(base_times[i]/max_time), 0.f);
+                        gGL.vertex3fv(last_p.mV);
+                        gGL.vertex3f(last_p.mV[0], 0.f, 0.f);
+                        gGL.end();
+                    }
+
+                    gGL.flush();
+
+
+                    last_p.clear();
+                    {
+                        LLGLEnable blend(GL_BLEND);
+
+                        gGL.color3fv(cur_col.mV);
+                        for (U32 i = 0; i < cur_times.size(); ++i)
+                        {
+                            gGL.begin(LLRender::TRIANGLE_STRIP);
+                            gGL.vertex3f(last_p.mV[0], 0.f, 0.f);
+                            gGL.vertex3fv(last_p.mV);
+                            last_p.set((F32) i / (F32) cur_times.size(), (F32)(cur_times[i]/max_time), 0.f);
+                            gGL.vertex3f(last_p.mV[0], 0.f, 0.f);
+                            gGL.vertex3fv(last_p.mV);
+                            gGL.end();
+                        }
+
+                        gGL.flush();
+                    }
+                }
             }
-
-            gGL.flush();
-        }
-
-        if (vk)
-        {
-            buffer.flush();
             LLVKLoader::endOffscreenFrameVk();
-            saveChart(label, "calls", scratch, buffer);
-        }
-        else
-        {
-            saveChart(label, "calls", scratch, buffer);
+            if (chart_ok)
+            {
+                saveChart(label, "time", scratch, buffer);
+            }
         }
 
-        if (vk)
         {
             LLVKLoader::beginOffscreenFrameVk();
-            buffer.bindTarget();
-        }
-
-        buffer.clear();
-
-        gGL.color3fv(base_col.mV);
-        U32 count = 0;
-        U32 total_count = static_cast<U32>(base_execution.size());
-
-        last_p.clear();
-
-        for (std::vector<LLSD::Real>::iterator iter = base_execution.begin(); iter != base_execution.end(); ++iter)
-        {
-            gGL.begin(LLRender::TRIANGLE_STRIP);
-            gGL.vertex3fv(last_p.mV);
-            gGL.vertex3f(last_p.mV[0], 0.f, 0.f);
-            last_p.set((F32)count/(F32)total_count, (F32)(*iter/max_execution), 0.f);
-            gGL.vertex3fv(last_p.mV);
-            gGL.vertex3f(last_p.mV[0], 0.f, 0.f);
-            gGL.end();
-            count++;
-        }
-
-        last_p.clear();
-
-        {
-            LLGLEnable blend(GL_BLEND);
-            gGL.color3fv(cur_col.mV);
-            count = 0;
-            total_count = static_cast<U32>(cur_execution.size());
-
-            for (std::vector<LLSD::Real>::iterator iter = cur_execution.begin(); iter != cur_execution.end(); ++iter)
+            bool chart_ok = false;
             {
-                gGL.begin(LLRender::TRIANGLE_STRIP);
-                gGL.vertex3f(last_p.mV[0], 0.f, 0.f);
-                gGL.vertex3fv(last_p.mV);
-                last_p.set((F32)count/(F32)total_count, (F32)(*iter/max_execution), 0.f);
-                gGL.vertex3f(last_p.mV[0], 0.f, 0.f);
-                gGL.vertex3fv(last_p.mV);
-                gGL.end();
-                count++;
+                LLRTScope s(buffer, false, "ft_chart");
+                if (s)
+                {
+                    chart_ok = true;
+                    buffer.clear();
+
+                    last_p.clear();
+
+                    gGL.color3fv(base_col.mV);
+                    for (U32 i = 0; i < base_calls.size(); ++i)
+                    {
+                        gGL.begin(LLRender::TRIANGLE_STRIP);
+                        gGL.vertex3fv(last_p.mV);
+                        gGL.vertex3f(last_p.mV[0], 0.f, 0.f);
+                        last_p.set((F32) i / (F32) base_calls.size(), (F32)base_calls[i]/max_calls, 0.f);
+                        gGL.vertex3fv(last_p.mV);
+                        gGL.vertex3f(last_p.mV[0], 0.f, 0.f);
+                        gGL.end();
+                    }
+
+                    gGL.flush();
+
+                    {
+                        LLGLEnable blend(GL_BLEND);
+                        gGL.color3fv(cur_col.mV);
+                        last_p.clear();
+
+                        for (U32 i = 0; i < cur_calls.size(); ++i)
+                        {
+                            gGL.begin(LLRender::TRIANGLE_STRIP);
+                            gGL.vertex3f(last_p.mV[0], 0.f, 0.f);
+                            gGL.vertex3fv(last_p.mV);
+                            last_p.set((F32) i / (F32) cur_calls.size(), (F32) cur_calls[i]/max_calls, 0.f);
+                            gGL.vertex3f(last_p.mV[0], 0.f, 0.f);
+                            gGL.vertex3fv(last_p.mV);
+                            gGL.end();
+
+                        }
+
+                        gGL.flush();
+                    }
+                }
             }
-
-            gGL.flush();
-        }
-
-        if (vk)
-        {
-            buffer.flush();
             LLVKLoader::endOffscreenFrameVk();
-            saveChart(label, "execution", scratch, buffer);
+            if (chart_ok)
+            {
+                saveChart(label, "calls", scratch, buffer);
+            }
         }
-        else
-        {
-            saveChart(label, "execution", scratch, buffer);
-        }
-    }
 
-    if (!vk)
-    {
-        buffer.flush();
+        {
+            LLVKLoader::beginOffscreenFrameVk();
+            bool chart_ok = false;
+            {
+                LLRTScope s(buffer, false, "ft_chart");
+                if (s)
+                {
+                    chart_ok = true;
+                    buffer.clear();
+
+                    gGL.color3fv(base_col.mV);
+                    U32 count = 0;
+                    U32 total_count = static_cast<U32>(base_execution.size());
+
+                    last_p.clear();
+
+                    for (std::vector<LLSD::Real>::iterator iter = base_execution.begin(); iter != base_execution.end(); ++iter)
+                    {
+                        gGL.begin(LLRender::TRIANGLE_STRIP);
+                        gGL.vertex3fv(last_p.mV);
+                        gGL.vertex3f(last_p.mV[0], 0.f, 0.f);
+                        last_p.set((F32)count/(F32)total_count, (F32)(*iter/max_execution), 0.f);
+                        gGL.vertex3fv(last_p.mV);
+                        gGL.vertex3f(last_p.mV[0], 0.f, 0.f);
+                        gGL.end();
+                        count++;
+                    }
+
+                    last_p.clear();
+
+                    {
+                        LLGLEnable blend(GL_BLEND);
+                        gGL.color3fv(cur_col.mV);
+                        count = 0;
+                        total_count = static_cast<U32>(cur_execution.size());
+
+                        for (std::vector<LLSD::Real>::iterator iter = cur_execution.begin(); iter != cur_execution.end(); ++iter)
+                        {
+                            gGL.begin(LLRender::TRIANGLE_STRIP);
+                            gGL.vertex3f(last_p.mV[0], 0.f, 0.f);
+                            gGL.vertex3fv(last_p.mV);
+                            last_p.set((F32)count/(F32)total_count, (F32)(*iter/max_execution), 0.f);
+                            gGL.vertex3f(last_p.mV[0], 0.f, 0.f);
+                            gGL.vertex3fv(last_p.mV);
+                            gGL.end();
+                            count++;
+                        }
+
+                        gGL.flush();
+                    }
+                }
+            }
+            LLVKLoader::endOffscreenFrameVk();
+            if (chart_ok)
+            {
+                saveChart(label, "execution", scratch, buffer);
+            }
+        }
     }
 
     gGL.popMatrix();

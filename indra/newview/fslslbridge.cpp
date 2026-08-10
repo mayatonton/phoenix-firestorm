@@ -87,6 +87,7 @@ private:
 // Bridge functionality
 //
 FSLSLBridge::FSLSLBridge():
+                    mBridgeURLRegionHandle(0),
                     mBridgeCreating(false),
                     mpBridge(nullptr),
                     mBridgeFolderID(LLUUID::null),
@@ -99,11 +100,22 @@ FSLSLBridge::FSLSLBridge():
     mCurrentFullName = llformat("%s%d.%d", FS_BRIDGE_NAME.c_str(), FS_BRIDGE_MAJOR_VERSION, FS_BRIDGE_MINOR_VERSION);
 
     gIdleCallbacks.addFunction(onIdle, this);
+    mRegionChangedConnection = gAgent.addRegionChangedCallback(boost::bind(&FSLSLBridge::onRegionChanged, this));
 }
 
 FSLSLBridge::~FSLSLBridge()
 {
+    mRegionChangedConnection.disconnect();
     gIdleCallbacks.deleteFunction(onIdle, this);
+}
+
+void FSLSLBridge::onRegionChanged()
+{
+    LLViewerRegion* regionp = gAgent.getRegion();
+    if (regionp && !mCurrentURL.empty() && regionp->getHandle() != mBridgeURLRegionHandle)
+    {
+        mCurrentURL.clear();
+    }
 }
 
 void FSLSLBridge::onIdle(void* userdata)
@@ -248,6 +260,7 @@ bool FSLSLBridge::lslToViewer(std::string_view message, const LLUUID& fromID, co
 
         // Get URL
         mCurrentURL = bURL;
+        mBridgeURLRegionHandle = (gAgent.getRegion() ? gAgent.getRegion()->getHandle() : 0);
         LL_INFOS("FSLSLBridge") << "New Bridge URL is: " << mCurrentURL << LL_ENDL;
 
         if (!mpBridge)

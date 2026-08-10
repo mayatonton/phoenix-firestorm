@@ -28,7 +28,9 @@
 #define LL_LLDRAWPOOLWATER_H
 
 #include "lldrawpool.h"
+#include "llrendertarget.h"
 
+#include <optional>
 
 class LLFace;
 class LLHeavenBody;
@@ -85,6 +87,8 @@ protected:
 
     bool mRenderWaterMipNormal;
     // </FS:Zi>
+
+    std::optional<LLRTScope> mForwardScope;
 };
 
 void cgErrorCallback();

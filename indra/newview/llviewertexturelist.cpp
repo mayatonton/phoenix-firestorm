@@ -84,6 +84,7 @@ U32 LLViewerTextureList::sNumFastCacheReads = 0;
 LLViewerTextureList gTextureList;
 
 extern LLGLSLShader gCopyProgram;
+extern U32 gFpsLogCount;
 
 ETexListType get_element_type(S32 priority)
 {
@@ -303,7 +304,7 @@ LLViewerTextureList::~LLViewerTextureList()
 void LLViewerTextureList::shutdown()
 {
     LL_PROFILE_ZONE_SCOPED_CATEGORY_TEXTURE;
-    LL_WARNS() << "Shutdown called" << LL_ENDL;
+    LL_DEBUGS() << "Shutdown called" << LL_ENDL;
     // clear out preloads
     mImagePreloads.clear();
 
@@ -873,6 +874,7 @@ void LLViewerTextureList::updateImages(F32 max_time)
         {
             s_stuck_sweep_timer.reset();
             U32 stuck = 0;
+            U32 unmet = 0;
             for (image_list_t::iterator sit = mImageList.begin(); sit != mImageList.end(); ++sit)
             {
                 LLViewerFetchedTexture* stuck_imagep = *sit;
@@ -885,8 +887,51 @@ void LLViewerTextureList::updateImages(F32 max_time)
                                                << " " << stuck_imagep->fetchRetryStuckInfo() << LL_ENDL;
                     }
                 }
+                if (stuck_imagep && stuck_imagep->sweepFetchObligation())
+                {
+                    ++unmet;
+                    if (unmet <= 3)
+                    {
+                        LL_WARNS("AssetStuck") << "unmet fetch obligation texture " << stuck_imagep->getID()
+                                               << " vsize=" << (S32)stuck_imagep->getMaxVirtualSize()
+                                               << " discard=" << stuck_imagep->getDiscardLevel()
+                                               << " desired=" << (S32)stuck_imagep->getDesiredDiscardLevel()
+                                               << " sweeps=" << stuck_imagep->getFetchObligationUnmetSweeps() << LL_ENDL;
+                    }
+                }
+            }
+            if (unmet > 3)
+            {
+                LL_WARNS("AssetStuck") << "unmet fetch obligation total=" << unmet << LL_ENDL;
             }
             gAssetOracleTexStuck.store(stuck);
+
+            LLTextureFetch* fetcherp = LLAppViewer::getTextureFetch();
+            if (fetcherp)
+            {
+                static U32 s_pump_last_pulse[LLTextureFetch::TEX_PUMP_COUNT] = {};
+                static U32 s_pump_streak[LLTextureFetch::TEX_PUMP_COUNT] = {};
+                for (S32 p = 0; p < LLTextureFetch::TEX_PUMP_COUNT; ++p)
+                {
+                    LLTextureFetch::e_tex_pump pump = (LLTextureFetch::e_tex_pump)p;
+                    LLTextureFetch::TexPumpStat stat = fetcherp->getTexPumpStat(pump);
+                    if (stat.waiting > 0 && stat.pulse == s_pump_last_pulse[p])
+                    {
+                        ++s_pump_streak[p];
+                    }
+                    else
+                    {
+                        s_pump_streak[p] = 0;
+                    }
+                    s_pump_last_pulse[p] = stat.pulse;
+                    if (s_pump_streak[p] == 4 || (s_pump_streak[p] > 4 && (s_pump_streak[p] - 4) % 4 == 0))
+                    {
+                        LL_WARNS("AssetStuck") << "texfetch_pump_stall pump=" << LLTextureFetch::getTexPumpName(pump)
+                                               << " waiting=" << stat.waiting
+                                               << " windows=" << s_pump_streak[p] << LL_ENDL;
+                    }
+                }
+            }
         }
     }
 
@@ -973,6 +1018,7 @@ void LLViewerTextureList::updateImageDecodePriority(LLViewerFetchedTexture* imag
 
     constexpr F32 BIAS_TRS_OUT_OF_SCREEN = 1.5f;
     constexpr F32 BIAS_TRS_ON_SCREEN = 1.f;
+    constexpr F32 SHADOW_DEMAND_FLOOR = 4096.f;
 
     if (imagep->getBoostLevel() < LLViewerFetchedTexture::BOOST_HIGH)  // don't bother checking face list for boosted textures
     {
@@ -1001,6 +1047,7 @@ void LLViewerTextureList::updateImageDecodePriority(LLViewerFetchedTexture* imag
         ++LLVKLoader::gVkPerf.img_pri_full;
         F32 max_vsize = 0.f;
         bool on_screen = false;
+        bool shadow_seen = false;
         bool had_rigged = false;
 
         U32 face_count = 0;
@@ -1041,6 +1088,24 @@ void LLViewerTextureList::updateImageDecodePriority(LLViewerFetchedTexture* imag
                     F32 vsize = face->getPixelArea();
 
                     on_screen |= face->mInFrustum;
+
+                    if (!shadow_seen)
+                    {
+                        LLDrawable* drawable = face->getDrawable();
+                        LLSpatialGroup* fgroup = drawable ? drawable->getSpatialGroup() : nullptr;
+                        if (fgroup)
+                        {
+                            const S32 cur = LLViewerOctreeEntryData::getCurrentFrame();
+                            for (S32 cid = LLViewerCamera::CAMERA_SUN_SHADOW0; cid <= LLViewerCamera::CAMERA_SPOT_SHADOW1; ++cid)
+                            {
+                                if (fgroup->getVisible((LLViewerCamera::eCameraID)cid) >= cur - 2)
+                                {
+                                    shadow_seen = true;
+                                    break;
+                                }
+                            }
+                        }
+                    }
 
                     // Scale desired texture resolution higher or lower depending on texture scale
                     //
@@ -1093,6 +1158,12 @@ void LLViewerTextureList::updateImageDecodePriority(LLViewerFetchedTexture* imag
         { // this texture is used in so many places we should just boost it and not bother checking its vsize
             // this is especially important because the above is not time sliced and can hit multiple ms for a single texture
             max_vsize = MAX_IMAGE_AREA;
+        }
+
+        if (shadow_seen)
+        {
+            max_vsize = llmax(max_vsize, SHADOW_DEMAND_FLOOR);
+            on_screen = true;
         }
 
         if (imagep->getType() == LLViewerTexture::LOD_TEXTURE && imagep->getBoostLevel() == LLViewerTexture::BOOST_NONE)
@@ -1214,12 +1285,20 @@ F32 LLViewerTextureList::updateImagesCreateTextures(F32 max_time)
         // should
         bool redundant_load = imagep->hasGLTexture() && imagep->getDiscardLevel() <= imagep->getDesiredDiscardLevel();
 
+        bool created = true;
         if (!redundant_load)
         {
-           imagep->createTexture();
+           created = imagep->createTexture();
         }
 
-        imagep->postCreateTexture();
+        if (created)
+        {
+            imagep->postCreateTexture();
+        }
+        else
+        {
+            imagep->postCreateTextureFailed();
+        }
         imagep->mCreatePending = false;
 
         if (imagep->hasGLTexture() && imagep->getDiscardLevel() < imagep->getDesiredDiscardLevel() &&
@@ -1228,7 +1307,12 @@ F32 LLViewerTextureList::updateImagesCreateTextures(F32 max_time)
             // NOTE: this may happen if the desired discard reduces while a decode is in progress and does not
             // necessarily indicate a problem, but if log occurrences excede that of dsiplay_stats: FPS,
             // something has probably gone wrong.
-            LL_WARNS_ONCE("Texture") << "Texture will be downscaled immediately after loading." << LL_ENDL;
+            static U32 s_downscale_count = 0;
+            ++s_downscale_count;
+            if (gFpsLogCount > 0 && s_downscale_count > gFpsLogCount)
+                LL_INFOS_ONCE("Texture") << "Texture will be downscaled immediately after loading." << LL_ENDL;
+            else
+                LL_DEBUGS("Texture")     << "Texture will be downscaled immediately after loading." << LL_ENDL;
             imagep->scaleDown();
         }
 
@@ -1240,13 +1324,16 @@ F32 LLViewerTextureList::updateImagesCreateTextures(F32 max_time)
         }
     }
 
-    if (!mDownScaleQueue.empty() && gPipeline.mDownResMap.isComplete())
+    if (!mDownScaleQueue.empty())
     {
         LLGLDisable blend(GL_BLEND);
         gGL.setColorMask(true, true);
 
         // just in case we downres textures, bind downresmap and copy program
-        gPipeline.mDownResMap.bindTarget();
+        {
+        LLRTScope rts(gPipeline.mDownResMap, false, "downres");
+        if (rts)
+        {
         gCopyProgram.bind();
         gPipeline.mScreenTriangleVB->setBuffer();
 
@@ -1280,7 +1367,8 @@ F32 LLViewerTextureList::updateImagesCreateTextures(F32 max_time)
         }
 
         gCopyProgram.unbind();
-        gPipeline.mDownResMap.flush();
+        }
+        }
     }
 
     return create_timer.getElapsedTimeF32();
@@ -1563,6 +1651,10 @@ void LLViewerTextureList::decodeAllImages(F32 max_time)
         {
             main_queue->runFor(std::chrono::milliseconds(1));
             fetch_pending += main_queue->size();
+        }
+        else
+        {
+            ms_sleep(1);
         }
 
         if (fetch_pending == 0 || timer.getElapsedTimeF32() > max_time)

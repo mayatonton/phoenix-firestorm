@@ -16,6 +16,8 @@
 
 #include "llviewerprecompiledheaders.h"
 
+#include <optional>
+
 #include "llagent.h"
 #include "llfasttimer.h"
 #include "llviewershadermgr.h"
@@ -354,9 +356,10 @@ void RlvSphereEffect::writeVkPerProgramUBO(LLGLSLShader* pShader, F32 blurDirX, 
 
 void RlvSphereEffect::renderPass(LLGLSLShader* pShader, const LLShaderEffectParams* pParams) const
 {
+    std::optional<LLRTScope> dst_scope;
     if (pParams->m_pDstBuffer)
     {
-        pParams->m_pDstBuffer->bindTarget();
+        dst_scope.emplace(*pParams->m_pDstBuffer, false, "rlv_sphere");
     }
     else
     {
@@ -366,30 +369,29 @@ void RlvSphereEffect::renderPass(LLGLSLShader* pShader, const LLShaderEffectPara
         gGLViewport[3] = gViewerWindow->getWorldViewRectRaw().getHeight();
         llSetGLViewport(gGLViewport[0], gGLViewport[1], gGLViewport[2], gGLViewport[3]);
     }
-    RLV_ASSERT_DBG(pParams->m_pSrcBuffer);
 
-    S32 nDiffuseChannel = pShader->enableTexture(LLShaderMgr::DEFERRED_DIFFUSE, pParams->m_pSrcBuffer->getUsage());
-    if (nDiffuseChannel > -1)
+    if (!pParams->m_pDstBuffer || *dst_scope)
     {
-        pParams->m_pSrcBuffer->bindTexture(0, nDiffuseChannel);
-        gGL.getTexUnit(nDiffuseChannel)->setTextureFilteringOption(LLTexUnit::TFO_BILINEAR);
-    }
+        RLV_ASSERT_DBG(pParams->m_pSrcBuffer);
 
-    S32 nDepthChannel = pShader->enableTexture(LLShaderMgr::DEFERRED_DEPTH, LLPipelineFrameContext::getInstance().getActiveRT()->deferredScreen.getUsage());
-    if (nDepthChannel > -1)
-    {
-        gGL.getTexUnit(nDepthChannel)->bind(&LLPipelineFrameContext::getInstance().getActiveRT()->deferredScreen, true);
-    }
+        S32 nDiffuseChannel = pShader->enableTexture(LLShaderMgr::DEFERRED_DIFFUSE, pParams->m_pSrcBuffer->getUsage());
+        if (nDiffuseChannel > -1)
+        {
+            pParams->m_pSrcBuffer->bindTexture(0, nDiffuseChannel);
+            gGL.getTexUnit(nDiffuseChannel)->setTextureFilteringOption(LLTexUnit::TFO_BILINEAR);
+        }
 
-    gPipeline.mScreenTriangleVB->setBuffer();
-    gPipeline.mScreenTriangleVB->drawArrays(LLRender::TRIANGLES, 0, 3);
+        S32 nDepthChannel = pShader->enableTexture(LLShaderMgr::DEFERRED_DEPTH, LLPipelineFrameContext::getInstance().getActiveRT()->deferredScreen.getUsage());
+        if (nDepthChannel > -1)
+        {
+            gGL.getTexUnit(nDepthChannel)->bind(&LLPipelineFrameContext::getInstance().getActiveRT()->deferredScreen, true);
+        }
 
-    pShader->disableTexture(LLShaderMgr::DEFERRED_DIFFUSE, pParams->m_pSrcBuffer->getUsage());
-    pShader->disableTexture(LLShaderMgr::DEFERRED_DEPTH, LLPipelineFrameContext::getInstance().getActiveRT()->deferredScreen.getUsage());
+        gPipeline.mScreenTriangleVB->setBuffer();
+        gPipeline.mScreenTriangleVB->drawArrays(LLRender::TRIANGLES, 0, 3);
 
-    if (pParams->m_pDstBuffer)
-    {
-        pParams->m_pDstBuffer->flush();
+        pShader->disableTexture(LLShaderMgr::DEFERRED_DIFFUSE, pParams->m_pSrcBuffer->getUsage());
+        pShader->disableTexture(LLShaderMgr::DEFERRED_DEPTH, LLPipelineFrameContext::getInstance().getActiveRT()->deferredScreen.getUsage());
     }
 }
 

@@ -4841,6 +4841,7 @@ void LLMeshRepository::logStuckLoadingMeshes()
     U32 na = 0, nb = 0, nc = 0, nd = 0;
     std::ostringstream dsamp, csamp;
     U32 dn = 0, cn = 0;
+    std::unordered_set<LLUUID> d_ids;
     {
         LLMutexLock lock(mMeshMutex);
         for (S32 lod = 0; lod < 4; ++lod)
@@ -4866,6 +4867,7 @@ void LLMeshRepository::logStuckLoadingMeshes()
                 else
                 {
                     ++nd;
+                    d_ids.insert(kv.first);
                     if (dn < 6)
                     {
                         dsamp << (dn++ ? "," : "") << kv.first << "/l" << lod;
@@ -4876,7 +4878,7 @@ void LLMeshRepository::logStuckLoadingMeshes()
     }
     if (na + nb + nc + nd > 0)
     {
-        LL_WARNS("AssetStuck") << "VKC-MESHSTUCK a=" << na << " b=" << nb
+        LL_INFOS("AssetStuck") << "VKC-MESHSTUCK a=" << na << " b=" << nb
                                << " c=" << nc << " d=" << nd
                                << " lodq=" << (U32)mThread->mLODReqQ.size()
                                << " hdrq=" << (U32)mThread->mHeaderReqQ.size()
@@ -4884,6 +4886,27 @@ void LLMeshRepository::logStuckLoadingMeshes()
                                << " csample=[" << csamp.str() << "]"
                                << " dsample=[" << dsamp.str() << "]" << LL_ENDL;
     }
+    static std::unordered_set<LLUUID> s_prev_d;
+    U32 npersist = 0;
+    std::ostringstream psamp;
+    for (const LLUUID& id : d_ids)
+    {
+        if (s_prev_d.count(id) > 0)
+        {
+            if (npersist < 6)
+            {
+                psamp << (npersist ? "," : "") << id;
+            }
+            ++npersist;
+        }
+    }
+    if (npersist > 0)
+    {
+        LL_WARNS("AssetStuck") << "VKC-MESHSTUCK-ORPHAN persist=" << npersist
+                               << " of_d=" << nd
+                               << " sample=[" << psamp.str() << "]" << LL_ENDL;
+    }
+    s_prev_d.swap(d_ids);
 }
 
 U32 LLMeshRepository::debugLoadingState(const LLUUID& mesh_id, LLVOVolume* vobj)

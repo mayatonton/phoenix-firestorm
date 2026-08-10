@@ -2382,15 +2382,23 @@ bool LLFace::calcPixelArea(F32& cos_angle_to_view_dir, F32& radius)
 
         if (!hasRiggedExtents)
         {
-            // no rigged extents, zero out bounding box and skip update
             mRiggedExtents[0] = mRiggedExtents[1] = LLVector4a(0.f, 0.f, 0.f);
 
-            return false;
+            const LLVector4a* av_extents = (avatar && avatar->mDrawable) ? avatar->mDrawable->getSpatialExtents() : nullptr;
+            if (av_extents == nullptr || !av_extents[0].isFinite3() || !av_extents[1].isFinite3())
+            {
+                return false;
+            }
+            center.setAdd(av_extents[1], av_extents[0]);
+            center.mul(0.5f);
+            size.setSub(av_extents[1], av_extents[0]);
         }
-
-        center.setAdd(mRiggedExtents[1], mRiggedExtents[0]);
-        center.mul(0.5f);
-        size.setSub(mRiggedExtents[1], mRiggedExtents[0]);
+        else
+        {
+            center.setAdd(mRiggedExtents[1], mRiggedExtents[0]);
+            center.mul(0.5f);
+            size.setSub(mRiggedExtents[1], mRiggedExtents[0]);
+        }
     }
     else if (mDrawablep && mVObjp.notNull() && mVObjp->getPartitionType() == LLViewerRegion::PARTITION_PARTICLE && mDrawablep->getSpatialGroup())
     { // use box of spatial group for particles (over approximates size, but we don't actually have a good size per particle)

@@ -359,6 +359,7 @@ public:
      // ONLY call from LLViewerTextureList or ImageGL background thread
     bool createTexture();
     void postCreateTexture();
+    void postCreateTextureFailed();
     void scheduleCreateTexture();
 
     void destroyTexture() ;
@@ -399,6 +400,8 @@ public:
                && mLastReferencedTimer.getElapsedTimeF32() < 60.f;
     }
     std::string fetchRetryStuckInfo() const;
+    bool sweepFetchObligation();
+    S32 getFetchObligationUnmetSweeps() const { return mFetchObligationUnmetSweeps; }
 
     // returns dimensions of original image for local files (before power of two scaling)
     // and returns 0 for all asset system images
@@ -497,6 +500,7 @@ protected:
     S32 mRequestedDiscardLevel;
     F32 mRequestedDownloadPriority;
     S32 mFetchState;
+    S32 mFetchObligationUnmetSweeps;
     S32 mLastFetchState = -1; // DEBUG
     U32 mFetchPriority;
     F32 mDownloadProgress;

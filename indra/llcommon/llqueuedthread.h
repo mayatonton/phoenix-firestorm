@@ -167,6 +167,7 @@ protected:
     bool mThreaded;  // if false, run on main thread and do updates during update()
     bool mStarted;  // required when mThreaded is false to call startThread() from update()
     LLAtomicBool mIdleThread; // request queue is empty (or we are quitting) and the thread is idle
+    std::atomic<bool> mUpdateScheduled{false};
 
     //typedef std::set<QueuedRequest*, queued_request_less> request_queue_t;
     //request_queue_t mRequestQueue;

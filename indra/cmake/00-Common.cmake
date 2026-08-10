@@ -284,6 +284,16 @@ if (LINUX OR DARWIN)
     add_compile_options(-Wno-error=tsan)
     add_link_options(-fsanitize=thread)
   endif ()
+
+  option(USE_ASAN "Build with AddressSanitizer+LeakSanitizer for heap and exit-phase defect detection" OFF)
+  if (USE_ASAN)
+    add_compile_options(-fsanitize=address -fno-omit-frame-pointer -g)
+    add_link_options(-fsanitize=address)
+  endif ()
+
+  if (USE_TSAN OR USE_ASAN)
+    add_compile_definitions(LL_SANITIZE)
+  endif ()
 endif (LINUX OR DARWIN)
 
 # r41 Phase F-15.115aw (2026-06-12): F-15.115l build-time 分離 廃止 = runtime switch

@@ -98,9 +98,6 @@ layout(set = 1, binding = 1) uniform sampler2D diffuseMap;  // always in sRGB sp
 layout(set = 1, binding = 2) uniform sampler2D bumpMap;
 layout(set = 1, binding = 3) uniform sampler2D emissiveMap;
 layout(set = 1, binding = 4) uniform sampler2D specularMap; // PBR: Packed: Occlusion, Metal, Roughness
-#if defined(HAS_SUN_SHADOW) || defined(HAS_SSAO)
-layout(set = 1, binding = 5) uniform sampler2D lightMap;
-#endif
 
 layout(push_constant) uniform PBRAlphaF_FragPC {
     layout(offset = 72) float waterSign;
@@ -115,10 +112,6 @@ uniform sampler2D specularMap; // PBR: Packed: Occlusion, Metal, Roughness
 uniform float metallicFactor;
 uniform float roughnessFactor;
 uniform vec3 emissiveColor;
-
-#if defined(HAS_SUN_SHADOW) || defined(HAS_SSAO)
-uniform sampler2D lightMap;
-#endif
 
 uniform int sun_up_factor;
 uniform vec3 sun_dir;

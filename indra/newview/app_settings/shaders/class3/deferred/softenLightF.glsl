@@ -47,7 +47,6 @@ layout(set = 1, binding = 0, std140) uniform SoftenLightF_PerProgramBind
     vec4  aya_translucency_params;
     vec3  aya_translucency_tint;
     float sky_hdr_scale_soften;
-#ifndef HAS_SUN_SHADOW
 #ifndef _AYA_UM_sun_dir
 #define _AYA_UM_sun_dir 1
     vec3  sun_dir;
@@ -62,7 +61,6 @@ layout(set = 1, binding = 0, std140) uniform SoftenLightF_PerProgramBind
     vec3  _dup_SoftenLightF_moon_dir;
 #endif
     float _softenLightF_pad1;
-#endif
 #if defined(HAS_SSAO)
     mat3  ssao_effect_mat;
     float ssao_irradiance_scale;

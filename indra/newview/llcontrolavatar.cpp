@@ -563,7 +563,7 @@ void LLControlAvatar::updateAnimations()
 {
     if (!mRootVolp)
     {
-        LL_WARNS_ONCE("AnimatedObjectsNotify") << "No root vol" << LL_ENDL;
+        LL_DEBUGS("AnimatedObjectsNotify") << "No root vol" << LL_ENDL;
         return;
     }
 

@@ -1149,7 +1149,7 @@ U32 LLControlGroup::loadFromFile(const std::string& filename, bool set_default_v
     infile.open(filename.c_str());
     if(!infile.is_open())
     {
-        LL_WARNS("Settings") << "Cannot find file " << filename << " to load." << LL_ENDL;
+        LL_DEBUGS("Settings") << "Cannot find file " << filename << " to load." << LL_ENDL;
         return 0;
     }
 

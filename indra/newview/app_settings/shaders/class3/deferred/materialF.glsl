@@ -304,13 +304,13 @@ out vec4 frag_data[4];
 #endif
 #endif
 
-#if defined(AYA_BINDLESS_MAT) && (defined(HAS_NORMAL_MAP) || defined(HAS_SPECULAR_MAP))
+#if defined(AYA_BINDLESS_MAT) && (DIFFUSE_ALPHA_MODE != DIFFUSE_ALPHA_MODE_BLEND)
 #define AYA_MAT_HEAP 1
 #endif
 
 #ifdef LL_VULKAN_GLSL
 #if defined(AYA_MAT_HEAP) || (defined(AYA_BINDLESS_MAT) && (DIFFUSE_ALPHA_MODE != DIFFUSE_ALPHA_MODE_BLEND))
-struct AyaDrawData { uvec4 tex_slots; vec4 spec_color; vec4 misc; };
+struct AyaDrawData { uvec4 tex_slots; vec4 spec_color; vec4 misc; vec4 misc2; };
 layout(set = 2, binding = 0, std430) readonly buffer AyaDrawDataBlock { AyaDrawData aya_dd[]; };
 layout(location = 19) flat in int aya_draw_id;
 #endif

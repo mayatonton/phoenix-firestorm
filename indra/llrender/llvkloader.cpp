@@ -30,6 +30,7 @@
 #include "llimagegl.h"
 #include "llglslshader.h"
 #include "llrendertarget.h"
+#include "llthread.h"
 
 #include <vector>
 #include <string>
@@ -82,6 +83,10 @@ extern bool gHeroProbeMirrorRender;
 namespace LLVKLoader
 {
 
+static void pollAsyncProducerCompletion();
+static void refreshCompletedWatermark();
+static void reclaimDeferredOnAllocFailure();
+
 namespace
 {
     VkInstance       sInstance            = VK_NULL_HANDLE;
@@ -122,6 +127,9 @@ namespace
     VkImage        sDefaultFallbackImage     = VK_NULL_HANDLE;
     VkDeviceMemory sDefaultFallbackMemory    = VK_NULL_HANDLE;
     VkImageView    sDefaultFallbackImageView = VK_NULL_HANDLE;
+    VkImage        sWhiteImage     = VK_NULL_HANDLE;
+    VkDeviceMemory sWhiteMemory    = VK_NULL_HANDLE;
+    VkImageView    sWhiteImageView = VK_NULL_HANDLE;
     VkImage        sDefaultFallbackCubeArrayImage     = VK_NULL_HANDLE;
     VkImageView    sDefaultFallbackCubeArrayImageView = VK_NULL_HANDLE;
     void*          sDefaultFallbackCubeArrayAlloc     = nullptr;
@@ -304,6 +312,7 @@ namespace
     U32                      sBindlessSlotNext                       = 1;
     std::vector<U32>         sBindlessSlotFreeList;
     std::mutex               sBindlessSlotMutex;
+    std::vector<VkImageView> sBindlessSlotView;   // β: slot→現ディスクリプタ view の CPU shadow(sBindlessSlotMutex 下で書く)
     bool                     sBindlessActive                         = false;
     struct PendingSlotFree
     {
@@ -633,8 +642,8 @@ namespace
     bool sConsumerActiveThisFrame = false;
 
     VkCommandBuffer sAsyncProducerCommandBuffer = VK_NULL_HANDLE;
-    VkFence         sAsyncProducerFence         = VK_NULL_HANDLE;
     bool            sAsyncProducerInFlight      = false;
+    bool            sAsyncProducerFlipPending   = false;
     U32             sAsyncProducerBackIndex     = 0;
     bool            sAsyncRenderSceneThisFrame  = false;
     bool            sAsyncFrameEngaged          = false;
@@ -660,15 +669,18 @@ namespace
     };
     AuxWindowVk sAuxWindow;
 
-    VkFence sInFlightFences[FRAMES_IN_FLIGHT] = {
-        VK_NULL_HANDLE, VK_NULL_HANDLE, VK_NULL_HANDLE
-    };
-
-    VkFence sProducerFences[FRAMES_IN_FLIGHT] = {
-        VK_NULL_HANDLE, VK_NULL_HANDLE, VK_NULL_HANDLE
-    };
     bool sProducerFencePending[FRAMES_IN_FLIGHT] = { false, false, false };
     bool sProducerPresentActive = false;
+
+    // ── GPU 完了タイムライン(fence 群を置換する単一の完了機構)──
+    // 各 submit が単調値 v を signal。完了照会 = vkGetSemaphoreCounterValue >= v で
+    // 任意スレッドから race 無く可能(fence の host external-sync 制約が無い)。
+    bool                  sTimelineSemaphoreEnabled = false;
+    VkSemaphore           sGpuTimeline              = VK_NULL_HANDLE;
+    std::atomic<uint64_t> sTimelineNext{0};                       // 次に採番する値(enqueue 時 ++ )
+    uint64_t sFrameTimelineValue[FRAMES_IN_FLIGHT]    = { 0, 0, 0 }; // slot 直近 frame submit の値
+    uint64_t sProducerTimelineValue[FRAMES_IN_FLIGHT] = { 0, 0, 0 };
+    uint64_t sAsyncTimelineValue = 0;
 
     VkSemaphore sImageAvailableSemaphores[FRAMES_IN_FLIGHT] = {
         VK_NULL_HANDLE, VK_NULL_HANDLE, VK_NULL_HANDLE
@@ -678,6 +690,7 @@ namespace
     };
     U32  sAcquiredImageIndex         = 0;
     bool sImageAcquired              = false;
+    bool sFrameWantsPresent          = false;
     bool sVulkanPresentationEnabled  = true;
 
     bool sSwapchainClearedThisFrame  = false;
@@ -721,6 +734,7 @@ namespace
         U32           enqueue_frame;
     };
     std::vector<PendingImageFree> sPendingImageFrees;
+    std::mutex                    sPendingImageFreeMutex;
 
     struct PendingObjectFree
     {
@@ -734,25 +748,30 @@ namespace
 
     struct PendingOneShotFree
     {
-        VkFence         fence      = VK_NULL_HANDLE;
         VkCommandBuffer cmd        = VK_NULL_HANDLE;
         VkCommandPool   pool       = VK_NULL_HANDLE;
         VkBuffer        buffer     = VK_NULL_HANDLE;
         VmaAllocation   allocation = VK_NULL_HANDLE;
-        U32             staging_bytes = 0;
+        U64             staging_bytes = 0;
+        uint64_t        timeline_value = 0;   // この submit の GPU 完了 = timeline >= この値
     };
     std::vector<PendingOneShotFree> sPendingOneShotFrees;
-    std::vector<VkFence>            sSubmitFencePool;
     std::mutex                      sOneShotMutex;
-    std::vector<VkCommandBuffer>    sRetiredMainOneShotCmds;
+    std::unordered_map<VkCommandPool, std::vector<VkCommandBuffer>> sRetiredByPool;
     std::atomic<U64>                sOneShotStagingBytes{0};
+    thread_local VkCommandPool      t_cmdPool = VK_NULL_HANDLE;
+
+    VkCommandPool threadCmdPool()
+    {
+        return t_cmdPool != VK_NULL_HANDLE ? t_cmdPool : sCommandPool;
+    }
     void (*sGeoWorkerStopHook)()   = nullptr;
     void (*sBakeWorkerStopHook)()  = nullptr;
 
     U32 sLastCompletedMonotonic = 0;
     U32 sFrameSubmittedMonotonic[FRAMES_IN_FLIGHT] = { 0, 0, 0 };
 
-    enum ReapMode { REAP_CHURN = 0, REAP_CLOSE = 1, REAP_LOST = 2 };
+    enum ReapMode { REAP_CHURN = 0, REAP_CLOSE = 1, REAP_LOST = 2, REAP_ALLOC_FAIL = 3 };
     bool sReapForceAll = false;
     bool sProducersQuiesced = false;
     void (*sDeviceLostHook)() = nullptr;
@@ -892,11 +911,18 @@ namespace
         VkSemaphore     wait_semaphore   = VK_NULL_HANDLE;
         VkSemaphore     signal_semaphore = VK_NULL_HANDLE;
         std::vector<PEPresentTarget> presents;
-        bool            is_frame   = false;
-        bool            is_oneshot = false;
-        bool            wait_idle  = false;
-        U32             slot       = 0;
-        PESyncPoint*    sync       = nullptr;
+        bool            is_frame          = false;
+        bool            is_oneshot        = false;
+        bool            is_async_producer = false;
+        bool            wait_idle         = false;
+        U32             slot              = 0;
+        PESyncPoint*    sync              = nullptr;
+        uint64_t        timeline_value    = 0;   // この submit が signal する GPU タイムライン値
+#if LL_DARWIN
+        // Host-side attribution for the MoltenVK device-lost submit trace.
+        const char*     oneshot_source    = nullptr;
+        U64             oneshot_staging_bytes = 0;
+#endif
     };
 
     std::atomic<U32>        sPESlotState[FRAMES_IN_FLIGHT] = {};
@@ -915,8 +941,119 @@ namespace
     std::mutex              sSwapchainAccessMutex;
 
     std::mutex              sPEFailedMutex;
-    std::vector<VkFence>    sPEFailedOneShotFences;
+    std::vector<uint64_t>   sPEFailedOneShotValues;   // 失敗した oneshot submit の timeline 値(回収用)
+    std::mutex              sPEAbandonedMutex;
+    std::vector<uint64_t>   sPEAbandonedTimelineValues;   // 非 device-lost で submit 失敗した frame/producer/async の値(永久未 signal・waitTimeline 脱出用)
+    void                    recordAbandonedTimelineValue(uint64_t v);   // 定義は gpuTimelineValue 後
     std::atomic<bool>       sVkDeviceLost{false};
+
+#if LL_DARWIN
+    // MoltenVK does not expose device-fault or checkpoint extensions on the
+    // current Apple GPU path. Keep a small host-side submit history so a
+    // VK_ERROR_DEVICE_LOST report identifies the work that was in flight.
+    struct PEDarwinSubmitTrace
+    {
+        const char* type             = "unknown";
+        const char* oneshot_source   = "-";
+        VkResult    result           = VK_ERROR_UNKNOWN;
+        U64         command_buffer   = 0;
+        U64         fence            = 0;
+        U64         wait_semaphore   = 0;
+        U64         signal_semaphore = 0;
+        uint64_t    timeline_value   = 0;
+        U32         slot             = 0;
+        U32         present_count    = 0;
+        bool        wait_idle        = false;
+        U64         oneshot_staging_bytes = 0;
+    };
+
+    std::mutex                      sPEDarwinSubmitTraceMutex;
+    std::deque<PEDarwinSubmitTrace> sPEDarwinSubmitTrace;
+    std::atomic<bool>               sPEDarwinDeviceLostTraceDumped{false};
+
+    const char* peJobType(const PEJob& job)
+    {
+        if (job.is_frame)
+        {
+            return "frame";
+        }
+        if (job.is_async_producer)
+        {
+            return "async-producer";
+        }
+        if (job.is_oneshot)
+        {
+            return "one-shot";
+        }
+        if (job.sync != nullptr)
+        {
+            return "blocking";
+        }
+        if (!job.presents.empty())
+        {
+            return "aux-present";
+        }
+        return "producer";
+    }
+
+    void recordDarwinSubmitTrace(const PEJob& job, VkResult result)
+    {
+        PEDarwinSubmitTrace trace;
+        trace.type             = peJobType(job);
+        trace.oneshot_source   = job.oneshot_source ? job.oneshot_source : "-";
+        trace.result           = result;
+        trace.command_buffer   = (U64)(uintptr_t)job.cmd;
+        trace.fence            = (U64)(uintptr_t)job.fence;
+        trace.wait_semaphore   = (U64)(uintptr_t)job.wait_semaphore;
+        trace.signal_semaphore = (U64)(uintptr_t)job.signal_semaphore;
+        trace.timeline_value   = job.timeline_value;
+        trace.slot             = job.slot;
+        trace.present_count    = (U32)job.presents.size();
+        trace.wait_idle        = job.wait_idle;
+        trace.oneshot_staging_bytes = job.oneshot_staging_bytes;
+
+        std::lock_guard<std::mutex> lk(sPEDarwinSubmitTraceMutex);
+        constexpr size_t history_capacity = 16;
+        if (sPEDarwinSubmitTrace.size() == history_capacity)
+        {
+            sPEDarwinSubmitTrace.pop_front();
+        }
+        sPEDarwinSubmitTrace.push_back(trace);
+    }
+
+    void dumpDarwinSubmitTraceOnDeviceLost(const char* trigger)
+    {
+        if (sPEDarwinDeviceLostTraceDumped.exchange(true))
+        {
+            return;
+        }
+
+        std::deque<PEDarwinSubmitTrace> history;
+        {
+            std::lock_guard<std::mutex> lk(sPEDarwinSubmitTraceMutex);
+            history = sPEDarwinSubmitTrace;
+        }
+        LL_WARNS("Vulkan") << "VKC-DEVLOST trigger=" << trigger
+                           << " submit_history=" << history.size() << LL_ENDL;
+        U32 index = 0;
+        for (const PEDarwinSubmitTrace& trace : history)
+        {
+            LL_WARNS("Vulkan") << "VKC-DEVLOST submit[" << index++ << "]: type=" << trace.type
+                               << " oneshot_source=" << trace.oneshot_source
+                               << " staging_bytes=" << trace.oneshot_staging_bytes
+                               << " result=" << (S32)trace.result
+                               << " timeline=" << trace.timeline_value
+                               << " slot=" << trace.slot
+                               << " presents=" << trace.present_count
+                               << " wait_idle=" << (trace.wait_idle ? 1 : 0)
+                               << " cmd=0x" << std::hex << trace.command_buffer
+                               << " fence=0x" << trace.fence
+                               << " wait_sem=0x" << trace.wait_semaphore
+                               << " signal_sem=0x" << trace.signal_semaphore
+                               << std::dec << LL_ENDL;
+        }
+    }
+#endif
 
     std::atomic<U64>        sPESubmitUs{0};
     std::atomic<U64>        sPEPresentUs{0};
@@ -985,13 +1122,13 @@ namespace
 
         void failOneshotFence()
         {
-            if (!mJob.is_oneshot || mJob.fence == VK_NULL_HANDLE || mFenceDecided)
+            if (!mJob.is_oneshot || mFenceDecided)
             {
                 return;
             }
             {
                 std::lock_guard<std::mutex> lk(sPEFailedMutex);
-                sPEFailedOneShotFences.push_back(mJob.fence);
+                sPEFailedOneShotValues.push_back(mJob.timeline_value);
             }
             mFenceDecided = true;
         }
@@ -1027,33 +1164,54 @@ namespace
             rel.finishSync(VK_ERROR_DEVICE_LOST);
             return;
         }
-        VkSubmitInfo si = {};
-        si.sType = VK_STRUCTURE_TYPE_SUBMIT_INFO;
-        if (job.cmd != VK_NULL_HANDLE)
-        {
-            si.commandBufferCount = 1;
-            si.pCommandBuffers    = &job.cmd;
-        }
-        VkPipelineStageFlags wait_stage = VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT;
-        if (job.wait_semaphore != VK_NULL_HANDLE)
-        {
-            si.waitSemaphoreCount = 1;
-            si.pWaitSemaphores    = &job.wait_semaphore;
-            si.pWaitDstStageMask  = &wait_stage;
-        }
+        // signal = [present 用 binary semaphore(有れば)] + [GPU タイムライン(有れば)]。
+        // binary は値 0・timeline は job.timeline_value。順序は追加順で単調。
+        VkSemaphore signal_sems[2];
+        uint64_t    signal_vals[2];
+        U32         sig_n = 0;
         if (job.signal_semaphore != VK_NULL_HANDLE)
         {
-            si.signalSemaphoreCount = 1;
-            si.pSignalSemaphores    = &job.signal_semaphore;
+            signal_sems[sig_n] = job.signal_semaphore;
+            signal_vals[sig_n] = 0;
+            ++sig_n;
         }
+        if (sGpuTimeline != VK_NULL_HANDLE)
+        {
+            signal_sems[sig_n] = sGpuTimeline;
+            signal_vals[sig_n] = job.timeline_value;
+            ++sig_n;
+        }
+        const uint64_t wait_val = 0;
+        VkPipelineStageFlags wait_stage = VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT;
 
-        if (!job.is_frame && job.fence != VK_NULL_HANDLE && job.fence == sAsyncProducerFence)
+        VkTimelineSemaphoreSubmitInfo tsi = {};
+        tsi.sType                     = VK_STRUCTURE_TYPE_TIMELINE_SEMAPHORE_SUBMIT_INFO;
+        tsi.waitSemaphoreValueCount   = (job.wait_semaphore != VK_NULL_HANDLE) ? 1u : 0u;
+        tsi.pWaitSemaphoreValues      = &wait_val;
+        tsi.signalSemaphoreValueCount = sig_n;
+        tsi.pSignalSemaphoreValues    = signal_vals;
+
+        VkSubmitInfo si = {};
+        si.sType                = VK_STRUCTURE_TYPE_SUBMIT_INFO;
+        si.pNext                = &tsi;
+        si.commandBufferCount   = (job.cmd != VK_NULL_HANDLE) ? 1u : 0u;
+        si.pCommandBuffers      = &job.cmd;
+        si.waitSemaphoreCount   = (job.wait_semaphore != VK_NULL_HANDLE) ? 1u : 0u;
+        si.pWaitSemaphores      = &job.wait_semaphore;
+        si.pWaitDstStageMask    = &wait_stage;
+        si.signalSemaphoreCount = sig_n;
+        si.pSignalSemaphores    = signal_sems;
+
+        if (job.is_async_producer)
         {
             sProdEnqToSubUs += vkMonoUs() - sProdEnqMonoUs.load();
             ++sProdSubCount;
         }
         const auto t0 = std::chrono::steady_clock::now();
         VkResult sr = vkQueueSubmit(sGraphicsQueue, 1, &si, job.fence);
+#if LL_DARWIN
+        recordDarwinSubmitTrace(job, sr);
+#endif
         if (sr == VK_SUCCESS && job.wait_idle)
         {
             vkQueueWaitIdle(sGraphicsQueue);
@@ -1074,6 +1232,12 @@ namespace
                 rel.failOneshotFence();
             }
         }
+        else if (sr != VK_SUCCESS)
+        {
+            // frame/producer/async の submit 失敗 = この値は永久に signal されない。
+            // waitTimeline がハングしないよう abandoned として記録(device-lost 有無に依らず安全側)。
+            recordAbandonedTimelineValue(job.timeline_value);
+        }
 
         if (sr != VK_SUCCESS)
         {
@@ -1086,6 +1250,9 @@ namespace
                     dumpCheckpointsOnDeviceLost();
                     dumpDeviceFaultOnDeviceLost();
                 }
+#if LL_DARWIN
+                dumpDarwinSubmitTraceOnDeviceLost("queue-submit");
+#endif
                 sVkDeviceLost.store(true, std::memory_order_release);
             }
             LL_WARNS("Vulkan") << "PresentEngine submit failed sr=" << (S32)sr
@@ -1160,6 +1327,9 @@ namespace
                 }
                 else if (pr == VK_ERROR_DEVICE_LOST)
                 {
+#if LL_DARWIN
+                    dumpDarwinSubmitTraceOnDeviceLost("queue-present");
+#endif
                     sVkDeviceLost.store(true, std::memory_order_release);
                 }
                 else if (sPresentWaitEnabled && pr == VK_SUCCESS && this_present_id != 0)
@@ -1171,6 +1341,9 @@ namespace
                             std::chrono::steady_clock::now() - w0).count();
                     if (wr == VK_ERROR_DEVICE_LOST)
                     {
+#if LL_DARWIN
+                        dumpDarwinSubmitTraceOnDeviceLost("wait-for-present");
+#endif
                         sVkDeviceLost.store(true, std::memory_order_release);
                     }
                 }
@@ -1208,18 +1381,92 @@ namespace
         }
     }
 
-    void peEnqueue(PEJob&& job)
+    // GPU 完了タイムラインの現在値(= 完了済みの最大 submit 値)。任意スレッドから race 無く可。
+    uint64_t gpuTimelineValue()
+    {
+        uint64_t v = 0;
+        vkGetSemaphoreCounterValue(sDevice, sGpuTimeline, &v);
+        return v;
+    }
+
+    // submit 失敗(非 device-lost)で永久に signal されない値を記録。記録時に counter を越えた
+    // 既済値を prune して集合を有界化(失敗は稀・集合は小)。
+    void recordAbandonedTimelineValue(uint64_t v)
+    {
+        const uint64_t cur = gpuTimelineValue();
+        std::lock_guard<std::mutex> lk(sPEAbandonedMutex);
+        size_t w = 0;
+        for (size_t r = 0; r < sPEAbandonedTimelineValues.size(); ++r)
+        {
+            const uint64_t a = sPEAbandonedTimelineValues[r];
+            if (a > cur)
+            {
+                sPEAbandonedTimelineValues[w++] = a;
+            }
+        }
+        sPEAbandonedTimelineValues.resize(w);
+        sPEAbandonedTimelineValues.push_back(v);
+    }
+
+    bool timelineValueAbandoned(uint64_t v)
+    {
+        std::lock_guard<std::mutex> lk(sPEAbandonedMutex);
+        for (uint64_t a : sPEAbandonedTimelineValues)
+        {
+            if (a == v)
+            {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    // GPU タイムラインが値 v に到達するまで待つ(= 該当 submit の GPU 完了待ち)。
+    // 任意スレッドから race 無く可。device-lost もしくは当該 submit 失敗(永久未 signal)で脱出。v==0 は待ち不要。
+    void waitTimeline(uint64_t v)
+    {
+        if (v == 0 || sGpuTimeline == VK_NULL_HANDLE)
+        {
+            return;
+        }
+        VkSemaphoreWaitInfo wi = {};
+        wi.sType          = VK_STRUCTURE_TYPE_SEMAPHORE_WAIT_INFO;
+        wi.semaphoreCount = 1;
+        wi.pSemaphores    = &sGpuTimeline;
+        wi.pValues        = &v;
+        while (vkWaitSemaphores(sDevice, &wi, 50000000ull) == VK_TIMEOUT)
+        {
+            if (sVkDeviceLost.load(std::memory_order_acquire))
+            {
+                return;
+            }
+            if (timelineValueAbandoned(v))
+            {
+                return;
+            }
+        }
+    }
+
+    // enqueue 時に単調な timeline 値を採番し job に載せて返す。
+    // 採番と push を同一ロックで行うため 値順 == 提出順 == timeline signal 順(単調)。
+    uint64_t peEnqueue(PEJob&& job)
     {
         if (!sPERunning)
         {
+            const uint64_t v = ++sTimelineNext;
+            job.timeline_value = v;
             peExecute(job);
-            return;
+            return v;
         }
+        uint64_t v;
         {
             std::lock_guard<std::mutex> lk(sPEQueueMutex);
+            v = ++sTimelineNext;
+            job.timeline_value = v;
             sPEJobs.push_back(std::move(job));
         }
         sPEQueueCv.notify_one();
+        return v;
     }
 
     VkResult peSubmitBlocking(VkCommandBuffer cmd, VkFence fence, bool wait_idle)
@@ -1232,31 +1479,19 @@ namespace
         job.sync      = &sync;
         if (!sPERunning)
         {
+            job.timeline_value = ++sTimelineNext;
             peExecute(job);
             return sync.result;
         }
         {
             std::lock_guard<std::mutex> lk(sPEQueueMutex);
+            job.timeline_value = ++sTimelineNext;
             sPEJobs.push_back(std::move(job));
         }
         sPEQueueCv.notify_one();
         std::unique_lock<std::mutex> lk(sync.m);
         sync.cv.wait(lk, [&] { return sync.done; });
         return sync.result;
-    }
-
-    bool peWaitSlotSubmitted(U32 slot)
-    {
-        for (;;)
-        {
-            const U32 st = sPESlotState[slot].load();
-            if (st != PE_SLOT_PENDING)
-            {
-                return st == PE_SLOT_SUBMITTED;
-            }
-            std::unique_lock<std::mutex> lk(sPESlotMutex);
-            sPESlotCv.wait(lk, [slot] { return sPESlotState[slot].load() != PE_SLOT_PENDING; });
-        }
     }
 
     void peDrain()
@@ -1267,6 +1502,12 @@ namespace
         }
         std::unique_lock<std::mutex> lk(sPEQueueMutex);
         sPEQueueCv.wait(lk, [] { return sPEJobs.empty() && !sPEBusy; });
+    }
+
+    U32 peQueueDepth()
+    {
+        std::lock_guard<std::mutex> lk(sPEQueueMutex);
+        return (U32)sPEJobs.size();
     }
 
     void peStart()
@@ -2060,6 +2301,12 @@ namespace
                 enabled_features.drawIndirectFirstInstance = VK_TRUE;
                 sDrawIndirectFirstInstanceEnabled = true;
             }
+            if (vk12_query.timelineSemaphore)
+            {
+                // GPU 完了タイムライン: host 照会がスレッド安全(fence の external-sync 制約無し)。
+                vk12_features_enable.timelineSemaphore = VK_TRUE;
+                sTimelineSemaphoreEnabled = true;
+            }
         }
 
         VkPhysicalDeviceVulkan11Features vk11_features_enable = {};
@@ -2155,6 +2402,26 @@ namespace
         }
 
         volkLoadDevice(sDevice);
+
+        // GPU 完了タイムラインは volkLoadDevice の後(device 関数 load 後)かつ
+        // init 時の one-shot submit より前に作る。
+        if (sTimelineSemaphoreEnabled)
+        {
+            VkSemaphoreTypeCreateInfo tci = {};
+            tci.sType         = VK_STRUCTURE_TYPE_SEMAPHORE_TYPE_CREATE_INFO;
+            tci.semaphoreType = VK_SEMAPHORE_TYPE_TIMELINE;
+            tci.initialValue  = 0;
+            VkSemaphoreCreateInfo sci = {};
+            sci.sType = VK_STRUCTURE_TYPE_SEMAPHORE_CREATE_INFO;
+            sci.pNext = &tci;
+            if (vkCreateSemaphore(sDevice, &sci, nullptr, &sGpuTimeline) != VK_SUCCESS)
+            {
+                LL_WARNS("Vulkan") << "timeline semaphore creation failed" << LL_ENDL;
+                sGpuTimeline = VK_NULL_HANDLE;
+                return false;
+            }
+        }
+
         if (sCheckpointsEnabled && (vkCmdSetCheckpointNV == nullptr || vkGetQueueCheckpointDataNV == nullptr))
         {
             sCheckpointsEnabled = false;
@@ -2432,6 +2699,153 @@ namespace
             return false;
         }
         noteViewHandleCreated(sDefaultFallbackImageView);
+
+        return true;
+    }
+
+    bool createWhiteImage()
+    {
+        VkImageCreateInfo image_info = {};
+        image_info.sType         = VK_STRUCTURE_TYPE_IMAGE_CREATE_INFO;
+        image_info.imageType     = VK_IMAGE_TYPE_2D;
+        image_info.format        = VK_FORMAT_R8G8B8A8_UNORM;
+        image_info.extent        = { 1, 1, 1 };
+        image_info.mipLevels     = 1;
+        image_info.arrayLayers   = 1;
+        image_info.samples       = VK_SAMPLE_COUNT_1_BIT;
+        image_info.tiling        = VK_IMAGE_TILING_OPTIMAL;
+        image_info.usage         = VK_IMAGE_USAGE_TRANSFER_DST_BIT | VK_IMAGE_USAGE_SAMPLED_BIT;
+        image_info.sharingMode   = VK_SHARING_MODE_EXCLUSIVE;
+        image_info.initialLayout = VK_IMAGE_LAYOUT_UNDEFINED;
+
+        VkResult result = vkCreateImage(sDevice, &image_info, nullptr, &sWhiteImage);
+        if (result != VK_SUCCESS)
+        {
+            return false;
+        }
+
+        VkMemoryRequirements mem_req;
+        vkGetImageMemoryRequirements(sDevice, sWhiteImage, &mem_req);
+
+        S32 mem_type = findMemoryType(mem_req.memoryTypeBits, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT);
+        if (mem_type < 0)
+        {
+            return false;
+        }
+
+        VkMemoryAllocateInfo alloc_info = {};
+        alloc_info.sType           = VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO;
+        alloc_info.allocationSize  = mem_req.size;
+        alloc_info.memoryTypeIndex = (U32)mem_type;
+
+        result = vkAllocateMemory(sDevice, &alloc_info, nullptr, &sWhiteMemory);
+        if (result != VK_SUCCESS)
+        {
+            return false;
+        }
+        vkBindImageMemory(sDevice, sWhiteImage, sWhiteMemory, 0);
+
+        VkBuffer staging_buf = VK_NULL_HANDLE;
+        VkDeviceMemory staging_mem = VK_NULL_HANDLE;
+        {
+            VkBufferCreateInfo bi = {};
+            bi.sType       = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO;
+            bi.size        = 4;
+            bi.usage       = VK_BUFFER_USAGE_TRANSFER_SRC_BIT;
+            bi.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
+            if (vkCreateBuffer(sDevice, &bi, nullptr, &staging_buf) != VK_SUCCESS)
+            {
+                return false;
+            }
+            VkMemoryRequirements smr;
+            vkGetBufferMemoryRequirements(sDevice, staging_buf, &smr);
+            S32 smt = findMemoryType(smr.memoryTypeBits,
+                                     VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT |
+                                     VK_MEMORY_PROPERTY_HOST_COHERENT_BIT);
+            if (smt < 0)
+            {
+                return false;
+            }
+            VkMemoryAllocateInfo sai = {};
+            sai.sType           = VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO;
+            sai.allocationSize  = smr.size;
+            sai.memoryTypeIndex = (U32)smt;
+            if (vkAllocateMemory(sDevice, &sai, nullptr, &staging_mem) != VK_SUCCESS)
+            {
+                return false;
+            }
+            vkBindBufferMemory(sDevice, staging_buf, staging_mem, 0);
+            void* mapped = nullptr;
+            vkMapMemory(sDevice, staging_mem, 0, 4, 0, &mapped);
+            const U32 white_pixel = 0xFFFFFFFFu;
+            memcpy(mapped, &white_pixel, 4);
+            vkUnmapMemory(sDevice, staging_mem);
+        }
+
+        {
+            VkCommandBufferAllocateInfo cba = {};
+            cba.sType              = VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO;
+            cba.commandPool        = sCommandPool;
+            cba.level              = VK_COMMAND_BUFFER_LEVEL_PRIMARY;
+            cba.commandBufferCount = 1;
+            VkCommandBuffer one_cmd = VK_NULL_HANDLE;
+            vkAllocateCommandBuffers(sDevice, &cba, &one_cmd);
+
+            VkCommandBufferBeginInfo cbbi = {};
+            cbbi.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO;
+            cbbi.flags = VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT;
+            vkBeginCommandBuffer(one_cmd, &cbbi);
+
+            VkImageMemoryBarrier b1 = {};
+            b1.sType               = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER;
+            b1.oldLayout           = VK_IMAGE_LAYOUT_UNDEFINED;
+            b1.newLayout           = VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL;
+            b1.srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+            b1.dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+            b1.image               = sWhiteImage;
+            b1.subresourceRange    = { VK_IMAGE_ASPECT_COLOR_BIT, 0, 1, 0, 1 };
+            b1.srcAccessMask       = 0;
+            b1.dstAccessMask       = VK_ACCESS_TRANSFER_WRITE_BIT;
+            vkCmdPipelineBarrier(one_cmd,
+                                 VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT, VK_PIPELINE_STAGE_TRANSFER_BIT,
+                                 0, 0, nullptr, 0, nullptr, 1, &b1);
+
+            VkBufferImageCopy region = {};
+            region.bufferOffset      = 0;
+            region.imageSubresource  = { VK_IMAGE_ASPECT_COLOR_BIT, 0, 0, 1 };
+            region.imageExtent       = { 1, 1, 1 };
+            vkCmdCopyBufferToImage(one_cmd, staging_buf, sWhiteImage,
+                                   VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, 1, &region);
+
+            VkImageMemoryBarrier b2 = b1;
+            b2.oldLayout     = VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL;
+            b2.newLayout     = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
+            b2.srcAccessMask = VK_ACCESS_TRANSFER_WRITE_BIT;
+            b2.dstAccessMask = VK_ACCESS_SHADER_READ_BIT;
+            vkCmdPipelineBarrier(one_cmd,
+                                 VK_PIPELINE_STAGE_TRANSFER_BIT, VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT,
+                                 0, 0, nullptr, 0, nullptr, 1, &b2);
+
+            vkEndCommandBuffer(one_cmd);
+
+            peSubmitBlocking(one_cmd, VK_NULL_HANDLE, true);
+
+            vkFreeCommandBuffers(sDevice, sCommandPool, 1, &one_cmd);
+            vkDestroyBuffer(sDevice, staging_buf, nullptr);
+            vkFreeMemory(sDevice, staging_mem, nullptr);
+        }
+
+        VkImageViewCreateInfo vci = {};
+        vci.sType                 = VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO;
+        vci.image                 = sWhiteImage;
+        vci.viewType              = VK_IMAGE_VIEW_TYPE_2D;
+        vci.format                = VK_FORMAT_R8G8B8A8_UNORM;
+        vci.subresourceRange      = { VK_IMAGE_ASPECT_COLOR_BIT, 0, 1, 0, 1 };
+        if (vkCreateImageView(sDevice, &vci, nullptr, &sWhiteImageView) != VK_SUCCESS)
+        {
+            return false;
+        }
+        noteViewHandleCreated(sWhiteImageView);
 
         return true;
     }
@@ -2754,6 +3168,10 @@ namespace
         w.descriptorType  = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
         w.pImageInfo      = &ii;
         vkUpdateDescriptorSets(sDevice, 1, &w, 0, nullptr);
+        if (slot < sBindlessSlotView.size())
+        {
+            sBindlessSlotView[slot] = view;   // β shadow = ディスクリプタと同一(NULL→fallback 置換後)
+        }
     }
 
     bool createBufferVkImpl(U32                 size_bytes,
@@ -2841,8 +3259,12 @@ namespace
         sBindlessHeapSet   = VK_NULL_HANDLE;
         sBindlessHeapCount = 0;
         sBindlessSlotNext  = 1;
-        sBindlessSlotFreeList.clear();
-        sPendingSlotFrees.clear();
+        {
+            std::lock_guard<std::mutex> guard(sBindlessSlotMutex);
+            sBindlessSlotFreeList.clear();
+            sPendingSlotFrees.clear();
+            sBindlessSlotView.clear();
+        }
         sBindlessActive = false;
     }
 
@@ -3104,6 +3526,8 @@ namespace
         sBindlessHeapCount = count;
         sBindlessSlotNext  = 1;
         sBindlessActive    = true;
+        sBindlessSlotView.assign(count, VK_NULL_HANDLE);   // β shadow
+        LLVKContract::mdiInit(DRAWDATA_TOTAL_SLOTS);        // α shadow
         bindlessWriteSlotInternal(0, VK_NULL_HANDLE, VK_NULL_HANDLE);
         LL_INFOS("Vulkan") << "VKBindless: heap active count=" << count << LL_ENDL;
         return true;
@@ -3969,6 +4393,44 @@ namespace
         vkSetDebugUtilsObjectNameEXT(sDevice, &info);
     }
 
+    void warnAttachmentAllocFail(const char* tag, VkResult r, U32 width, U32 height, VkFormat format, U32 mips, U32 layers)
+    {
+        std::string heaps;
+        U64 total_blocks = 0, total_allocs = 0;
+        if (sAllocator != VK_NULL_HANDLE)
+        {
+            VmaBudget budgets[VK_MAX_MEMORY_HEAPS] = {};
+            vmaGetHeapBudgets(sAllocator, budgets);
+            for (U32 i = 0; i < VK_MAX_MEMORY_HEAPS; ++i)
+            {
+                total_blocks += budgets[i].statistics.blockCount;
+                total_allocs += budgets[i].statistics.allocationCount;
+                if (budgets[i].budget > 0)
+                {
+                    heaps += " h" + std::to_string(i) + "="
+                           + std::to_string((U64)(budgets[i].usage  >> 20)) + "/"
+                           + std::to_string((U64)(budgets[i].budget >> 20)) + "MB";
+                }
+            }
+        }
+        U32 pending_frees_count;
+        {
+            std::lock_guard<std::mutex> guard(sPendingImageFreeMutex);
+            pending_frees_count = (U32)sPendingImageFrees.size();
+        }
+        LL_WARNS("Vulkan") << "attachment image alloc failed tag=" << (tag ? tag : "attImg")
+                           << " res=" << width << "x" << height
+                           << " fmt=" << (S32)format
+                           << " mips=" << mips
+                           << " layers=" << layers
+                           << " result=" << (S32)r
+                           << heaps
+                           << " blocks=" << total_blocks
+                           << " allocs=" << total_allocs
+                           << " pending_frees=" << pending_frees_count
+                           << LL_ENDL;
+    }
+
     bool createAttachmentImageVkImpl(U32                width,
                                      U32                height,
                                      VkFormat           format,
@@ -3987,10 +4449,12 @@ namespace
 
         if (width == 0 || height == 0 || format == VK_FORMAT_UNDEFINED)
         {
+            warnAttachmentAllocFail(tag, VK_RESULT_MAX_ENUM, width, height, format, mip_levels, array_layers);
             return false;
         }
         if (sAllocator == VK_NULL_HANDLE || sDevice == VK_NULL_HANDLE)
         {
+            warnAttachmentAllocFail(tag, VK_ERROR_INITIALIZATION_FAILED, width, height, format, mip_levels, array_layers);
             return false;
         }
 
@@ -4018,7 +4482,13 @@ namespace
         VkResult r = vmaCreateImage(sAllocator, &ici, &aci, &image, &allocation, nullptr);
         if (r != VK_SUCCESS)
         {
-            return false;
+            reclaimDeferredOnAllocFailure();
+            r = vmaCreateImage(sAllocator, &ici, &aci, &image, &allocation, nullptr);
+            if (r != VK_SUCCESS)
+            {
+                warnAttachmentAllocFail(tag, r, width, height, format, mip_levels, array_layers);
+                return false;
+            }
         }
 
         VkImageViewCreateInfo vci = {};
@@ -4062,6 +4532,7 @@ namespace
         r = vkCreateImageView(sDevice, &vci, nullptr, &view);
         if (r != VK_SUCCESS)
         {
+            warnAttachmentAllocFail(tag, r, width, height, format, mip_levels, array_layers);
             vmaDestroyImage(sAllocator, image, allocation);
             return false;
         }
@@ -4085,59 +4556,12 @@ namespace
 
     bool createSyncObjects()
     {
-        VkFenceCreateInfo fence_info = {};
-        fence_info.sType = VK_STRUCTURE_TYPE_FENCE_CREATE_INFO;
-        fence_info.flags = VK_FENCE_CREATE_SIGNALED_BIT;
-
-        for (U32 i = 0; i < FRAMES_IN_FLIGHT; ++i)
-        {
-            VkResult result = vkCreateFence(sDevice, &fence_info, nullptr, &sInFlightFences[i]);
-            if (result != VK_SUCCESS)
-            {
-                for (U32 j = 0; j < i; ++j)
-                {
-                    vkDestroyFence(sDevice, sInFlightFences[j], nullptr);
-                    sInFlightFences[j] = VK_NULL_HANDLE;
-                }
-                return false;
-            }
-        }
-
-        VkFenceCreateInfo producer_fence_info = {};
-        producer_fence_info.sType = VK_STRUCTURE_TYPE_FENCE_CREATE_INFO;
+        // fence は全廃(GPU 完了は sGpuTimeline で判定)。ここは present 用 binary semaphore のみ。
         for (U32 i = 0; i < FRAMES_IN_FLIGHT; ++i)
         {
             sProducerFencePending[i] = false;
-            VkResult result = vkCreateFence(sDevice, &producer_fence_info, nullptr, &sProducerFences[i]);
-            if (result != VK_SUCCESS)
-            {
-                for (U32 j = 0; j < i; ++j)
-                {
-                    vkDestroyFence(sDevice, sProducerFences[j], nullptr);
-                    sProducerFences[j] = VK_NULL_HANDLE;
-                }
-                for (U32 j = 0; j < FRAMES_IN_FLIGHT; ++j)
-                {
-                    vkDestroyFence(sDevice, sInFlightFences[j], nullptr);
-                    sInFlightFences[j] = VK_NULL_HANDLE;
-                }
-                return false;
-            }
         }
-
         sAsyncProducerInFlight = false;
-        if (vkCreateFence(sDevice, &producer_fence_info, nullptr, &sAsyncProducerFence) != VK_SUCCESS)
-        {
-            for (U32 j = 0; j < FRAMES_IN_FLIGHT; ++j)
-            {
-                vkDestroyFence(sDevice, sProducerFences[j], nullptr);
-                sProducerFences[j] = VK_NULL_HANDLE;
-                vkDestroyFence(sDevice, sInFlightFences[j], nullptr);
-                sInFlightFences[j] = VK_NULL_HANDLE;
-            }
-            return false;
-        }
-
 
         VkSemaphoreCreateInfo sem_info = {};
         sem_info.sType = VK_STRUCTURE_TYPE_SEMAPHORE_CREATE_INFO;
@@ -4155,11 +4579,6 @@ namespace
                     vkDestroySemaphore(sDevice, sRenderFinishedSemaphores[j], nullptr);
                     sRenderFinishedSemaphores[j] = VK_NULL_HANDLE;
                 }
-                for (U32 j = 0; j < FRAMES_IN_FLIGHT; ++j)
-                {
-                    vkDestroyFence(sDevice, sInFlightFences[j], nullptr);
-                    sInFlightFences[j] = VK_NULL_HANDLE;
-                }
                 return false;
             }
 
@@ -4176,11 +4595,6 @@ namespace
                     vkDestroySemaphore(sDevice, sRenderFinishedSemaphores[j], nullptr);
                     sRenderFinishedSemaphores[j] = VK_NULL_HANDLE;
                 }
-                for (U32 j = 0; j < FRAMES_IN_FLIGHT; ++j)
-                {
-                    vkDestroyFence(sDevice, sInFlightFences[j], nullptr);
-                    sInFlightFences[j] = VK_NULL_HANDLE;
-                }
                 return false;
             }
         }
@@ -4190,25 +4604,15 @@ namespace
 
     void destroySyncObjects()
     {
+        if (sGpuTimeline != VK_NULL_HANDLE)
+        {
+            vkDestroySemaphore(sDevice, sGpuTimeline, nullptr);
+            sGpuTimeline = VK_NULL_HANDLE;
+        }
+        sAsyncProducerInFlight = false;
         for (U32 i = 0; i < FRAMES_IN_FLIGHT; ++i)
         {
-            if (sInFlightFences[i] != VK_NULL_HANDLE)
-            {
-                vkDestroyFence(sDevice, sInFlightFences[i], nullptr);
-                sInFlightFences[i] = VK_NULL_HANDLE;
-            }
-            if (sProducerFences[i] != VK_NULL_HANDLE)
-            {
-                vkDestroyFence(sDevice, sProducerFences[i], nullptr);
-                sProducerFences[i] = VK_NULL_HANDLE;
-            }
             sProducerFencePending[i] = false;
-            if (i == 0 && sAsyncProducerFence != VK_NULL_HANDLE)
-            {
-                vkDestroyFence(sDevice, sAsyncProducerFence, nullptr);
-                sAsyncProducerFence = VK_NULL_HANDLE;
-                sAsyncProducerInFlight = false;
-            }
             if (sImageAvailableSemaphores[i] != VK_NULL_HANDLE)
             {
                 vkDestroySemaphore(sDevice, sImageAvailableSemaphores[i], nullptr);
@@ -4233,6 +4637,13 @@ namespace
                                << (sSurface != VK_NULL_HANDLE) << LL_ENDL;
             return false;
         }
+
+#if LL_DARWIN
+        if (sSurfaceWindow != nullptr)
+        {
+            sSurfaceWindow->syncNativePresentationGeometry();
+        }
+#endif
 
         VkSurfaceCapabilitiesKHR caps = {};
         VkResult cres = vkGetPhysicalDeviceSurfaceCapabilitiesKHR(sPhysicalDevice,
@@ -4308,27 +4719,6 @@ namespace
                              : "FIFO (vsync ON)") << LL_ENDL;
 
         VkExtent2D extent;
-#if LL_DARWIN
-        // MoltenVK may report currentExtent in logical points while the
-        // CAMetalLayer drawable is in backing pixels. Always use the native
-        // window's backing-pixel size when it is available. Otherwise a
-        // Retina display presents into one quarter of the layer and leaves
-        // input coordinates out of sync with the visible UI.
-        LLCoordWindow drawable_size;
-        const bool have_drawable_extent =
-            sSurfaceWindow != nullptr && sSurfaceWindow->getSize(&drawable_size) &&
-            drawable_size.mX > 0 && drawable_size.mY > 0;
-        if (have_drawable_extent)
-        {
-            extent.width  = (U32)drawable_size.mX;
-            extent.height = (U32)drawable_size.mY;
-            LL_INFOS("Vulkan") << "macOS swapchain drawable extent="
-                               << extent.width << "x" << extent.height
-                               << " (surface extent=" << caps.currentExtent.width
-                               << "x" << caps.currentExtent.height << ")" << LL_ENDL;
-        }
-        else
-#endif
         {
             U32 w = 1280;
             U32 h = 720;
@@ -4337,6 +4727,18 @@ namespace
                 w = caps.currentExtent.width;
                 h = caps.currentExtent.height;
             }
+#if LL_DARWIN
+            else
+            {
+                LLCoordWindow drawable_size;
+                if (sSurfaceWindow != nullptr && sSurfaceWindow->getSize(&drawable_size) &&
+                    drawable_size.mX > 0 && drawable_size.mY > 0)
+                {
+                    w = (U32)drawable_size.mX;
+                    h = (U32)drawable_size.mY;
+                }
+            }
+#endif
             if (w < caps.minImageExtent.width)  w = caps.minImageExtent.width;
             if (h < caps.minImageExtent.height) h = caps.minImageExtent.height;
             if (w > caps.maxImageExtent.width)  w = caps.maxImageExtent.width;
@@ -4345,10 +4747,18 @@ namespace
             extent.height = h;
         }
 
-        if (extent.width < caps.minImageExtent.width)  extent.width = caps.minImageExtent.width;
-        if (extent.height < caps.minImageExtent.height) extent.height = caps.minImageExtent.height;
-        if (extent.width > caps.maxImageExtent.width)  extent.width = caps.maxImageExtent.width;
-        if (extent.height > caps.maxImageExtent.height) extent.height = caps.maxImageExtent.height;
+#if LL_DARWIN
+        {
+            LLCoordWindow backing_size;
+            if (sSurfaceWindow != nullptr && sSurfaceWindow->getSize(&backing_size))
+            {
+                LL_INFOS("Vulkan") << "macOS swapchain extent=" << extent.width << "x" << extent.height
+                                   << " surface currentExtent=" << caps.currentExtent.width
+                                   << "x" << caps.currentExtent.height
+                                   << " window backing=" << backing_size.mX << "x" << backing_size.mY << LL_ENDL;
+            }
+        }
+#endif
 
         U32 image_count = caps.minImageCount + FRAMES_IN_FLIGHT - 1;
         if (caps.maxImageCount > 0 && image_count > caps.maxImageCount)
@@ -4536,8 +4946,16 @@ namespace
             vkDestroySwapchainKHR(sDevice, old_swapchain, nullptr);
         }
 
-        sSwapchainRecreatePending = false;
         sLastRecreateFrame        = sMonotonicFrameCount;
+        if (ok)
+        {
+            sSwapchainRecreatePending = false;
+        }
+        else
+        {
+            sSwapchainRecreatePending = true;
+            LL_WARNS("Vulkan") << "recreateSwapchain failed; re-arming pending recreate" << LL_ENDL;
+        }
 
         std::string reasons;
         if (reason_mask & RECREATE_REASON_RESIZE)          { reasons += "resize,"; }
@@ -4556,6 +4974,15 @@ namespace
                            << " wait_idle_us=" << std::chrono::duration_cast<std::chrono::microseconds>(drain_t2 - drain_t1).count()
                            << " ok=" << (ok ? 1 : 0) << LL_ENDL;
 
+        U64 fp = (U64)reason_mask;
+        fp = fp * 1099511628211ull + old_extent.width;
+        fp = fp * 1099511628211ull + old_extent.height;
+        fp = fp * 1099511628211ull + sSwapchainExtent.width;
+        fp = fp * 1099511628211ull + sSwapchainExtent.height;
+        fp = fp * 1099511628211ull + (U64)sActivePresentMode;
+        fp = fp * 1099511628211ull + (ok ? 1u : 0u);
+        LLVKContract::noteCorrectiveAction("swapchain_recreate", fp);
+
         return ok;
     }
 
@@ -4569,9 +4996,11 @@ static void           tickDeferredImageFreeQueue();
 static void           tickDeferredObjectFreeQueue();
 void                  tickMegaFreeQueue();
 static void           tickDeferredQueryReleaseQueue();
-static bool           submitOneShotVk(VkCommandBuffer cmd, VkBuffer staging_buffer, VmaAllocation staging_allocation);
+static bool           submitOneShotVk(VkCommandBuffer cmd, VkBuffer staging_buffer, VmaAllocation staging_allocation,
+                                      const char* source, U64 staging_bytes = 0);
 static bool           submitOneShotVkFromPool(VkCommandBuffer cmd, VkCommandPool pool, VkBuffer staging_buffer,
-                                              VmaAllocation staging_allocation, U32 staging_bytes);
+                                              VmaAllocation staging_allocation, U64 staging_bytes,
+                                              const char* source, U64 diagnostic_staging_bytes);
 static void           tickOneShotFreeQueue();
 static void           shutdownSurface();
 static bool           initSharedDynamicPersistentUBOs();
@@ -4656,6 +5085,12 @@ bool initVulkan()
     if (!createDefaultFallbackImage())
     {
         LL_WARNS("Vulkan") << "initialization failed: 2D fallback image" << LL_ENDL;
+        shutdownVulkan();
+        return false;
+    }
+    if (!createWhiteImage())
+    {
+        LL_WARNS("Vulkan") << "initialization failed: white image" << LL_ENDL;
         shutdownVulkan();
         return false;
     }
@@ -4804,11 +5239,6 @@ void shutdownVulkan(bool device_lost)
             }
         }
         reapAllDeferred(device_lost ? REAP_LOST : REAP_CLOSE);
-        for (VkFence pooled_fence : sSubmitFencePool)
-        {
-            vkDestroyFence(sDevice, pooled_fence, nullptr);
-        }
-        sSubmitFencePool.clear();
 
         auxWindowShutdownVk();
         destroySwapchain();
@@ -4827,6 +5257,21 @@ void shutdownVulkan(bool device_lost)
         {
             vkFreeMemory(sDevice, sDefaultFallbackMemory, nullptr);
             sDefaultFallbackMemory = VK_NULL_HANDLE;
+        }
+        if (sWhiteImageView != VK_NULL_HANDLE)
+        {
+            vkDestroyImageView(sDevice, sWhiteImageView, nullptr);
+            sWhiteImageView = VK_NULL_HANDLE;
+        }
+        if (sWhiteImage != VK_NULL_HANDLE)
+        {
+            vkDestroyImage(sDevice, sWhiteImage, nullptr);
+            sWhiteImage = VK_NULL_HANDLE;
+        }
+        if (sWhiteMemory != VK_NULL_HANDLE)
+        {
+            vkFreeMemory(sDevice, sWhiteMemory, nullptr);
+            sWhiteMemory = VK_NULL_HANDLE;
         }
         if (sDefaultFallbackShadowImageView != VK_NULL_HANDLE)
         {
@@ -5140,18 +5585,21 @@ void shutdownVulkan(bool device_lost)
                 vmaDestroyBuffer(sAllocator, pending.buffer, pending.allocation);
             }
             sPendingBufferFrees.clear();
-            for (auto& pending : sPendingImageFrees)
             {
-                if (pending.view != VK_NULL_HANDLE && sDevice != VK_NULL_HANDLE)
+                std::lock_guard<std::mutex> guard(sPendingImageFreeMutex);
+                for (auto& pending : sPendingImageFrees)
                 {
-                    vkDestroyImageView(sDevice, pending.view, nullptr);
+                    if (pending.view != VK_NULL_HANDLE && sDevice != VK_NULL_HANDLE)
+                    {
+                        vkDestroyImageView(sDevice, pending.view, nullptr);
+                    }
+                    if (pending.image != VK_NULL_HANDLE)
+                    {
+                        vmaDestroyImage(sAllocator, pending.image, pending.allocation);
+                    }
                 }
-                if (pending.image != VK_NULL_HANDLE)
-                {
-                    vmaDestroyImage(sAllocator, pending.image, pending.allocation);
-                }
+                sPendingImageFrees.clear();
             }
-            sPendingImageFrees.clear();
             vmaDestroyAllocator(sAllocator);
             sAllocator = VK_NULL_HANDLE;
         }
@@ -5202,7 +5650,7 @@ static void beginCommandRecording()
 
 static void reapAllDeferred(ReapMode mode)
 {
-    sReapForceAll = (mode != REAP_CHURN);
+    sReapForceAll = (mode != REAP_CHURN && mode != REAP_ALLOC_FAIL);
     tickDeferredBufferFreeQueue();
     tickDeferredImageFreeQueue();
     tickDeferredObjectFreeQueue();
@@ -5218,6 +5666,68 @@ static void reapAllDeferred(ReapMode mode)
     sReapForceAll = false;
 }
 
+static void pollAsyncProducerCompletion()
+{
+    if (sAsyncProducerInFlight &&
+        gpuTimelineValue() >= sAsyncTimelineValue)
+    {
+        sAsyncProducerInFlight    = false;
+        sAsyncProducerFlipPending = true;
+    }
+}
+
+static void refreshCompletedWatermark()
+{
+    pollAsyncProducerCompletion();
+    const uint64_t cur = gpuTimelineValue();
+    for (U32 i = 0; i < FRAMES_IN_FLIGHT; ++i)
+    {
+        if (sFrameTimelineValue[i] != 0 &&
+            cur >= sFrameTimelineValue[i] &&
+            sFrameSubmittedMonotonic[i] > sLastCompletedMonotonic)
+        {
+            sLastCompletedMonotonic = sFrameSubmittedMonotonic[i];
+        }
+    }
+    if (sAsyncProducerInFlight && sAsyncProducerSubmitMonotonic > 0 &&
+        sLastCompletedMonotonic >= sAsyncProducerSubmitMonotonic)
+    {
+        sLastCompletedMonotonic = sAsyncProducerSubmitMonotonic - 1;
+    }
+}
+
+static void reclaimDeferredOnAllocFailure()
+{
+    if (!on_main_thread())
+    {
+        return;
+    }
+    refreshCompletedWatermark();
+    reapAllDeferred(REAP_ALLOC_FAIL);
+}
+
+U32 getPendingImageFreeCount()
+{
+    std::lock_guard<std::mutex> guard(sPendingImageFreeMutex);
+    return (U32)sPendingImageFrees.size();
+}
+
+U32 getVmaTotalBlockCount()
+{
+    if (sAllocator == VK_NULL_HANDLE)
+    {
+        return 0;
+    }
+    VmaBudget budgets[VK_MAX_MEMORY_HEAPS] = {};
+    vmaGetHeapBudgets(sAllocator, budgets);
+    U32 total = 0;
+    for (U32 i = 0; i < VK_MAX_MEMORY_HEAPS; ++i)
+    {
+        total += budgets[i].statistics.blockCount;
+    }
+    return total;
+}
+
 bool isUISceneSplit()
 {
     return sUISceneSplit;
@@ -5230,19 +5740,23 @@ bool isUISceneAsync()
 
 bool asyncProducerTryComplete()
 {
-    if (!sAsyncProducerInFlight || sAsyncProducerFence == VK_NULL_HANDLE)
+    if (sAsyncProducerFlipPending)
+    {
+        sAsyncProducerFlipPending = false;
+        return true;
+    }
+    if (!sAsyncProducerInFlight)
     {
         return false;
     }
     const U32 checks = sProdChecksSinceSubmit.fetch_add(1) + 1;
-    if (vkGetFenceStatus(sDevice, sAsyncProducerFence) == VK_SUCCESS)
+    if (gpuTimelineValue() >= sAsyncTimelineValue)
     {
         ++sProdCheckTotalReady;
         if (checks == 1)
         {
             ++sProdCheckFirstReady;
         }
-        vkResetFences(sDevice, 1, &sAsyncProducerFence);
         sAsyncProducerInFlight = false;
         return true;
     }
@@ -5320,6 +5834,12 @@ void recordToConsumer(bool on)
     }
 }
 
+namespace
+{
+    void vbUploadFrameReset();
+    void vbUploadSubmit();
+}
+
 bool beginFrame(bool acquire_swapchain)
 {
     if (!sInitialized)
@@ -5376,8 +5896,10 @@ bool beginFrame(bool acquire_swapchain)
                                           : (sMonotonicFrameCount - sLastRecreateFrame);
         if (frames_since_last >= RECREATE_COOLDOWN_FRAMES)
         {
-            recreateSwapchain();
-            return false;
+            if (!recreateSwapchain())
+            {
+                return false;
+            }
         }
     }
 
@@ -5388,42 +5910,23 @@ bool beginFrame(bool acquire_swapchain)
     sSkinPaletteCursor[sFrameIndex].store(0, std::memory_order_relaxed); // B.0: reset skin palette region ring
     sDrawDataScratchCursor.store(0, std::memory_order_relaxed);
 
-    bool slot_submitted;
-    {
-        VkPerfMainScope mlp_slot(0);
-        slot_submitted = peWaitSlotSubmitted(sFrameIndex);
-    }
-    if (sInFlightFences[sFrameIndex] != VK_NULL_HANDLE)
+    // slot 再利用前に、この slot の前回 frame の GPU 完了を timeline で待つ(fence 不要)。
     {
         VkPerfMainScope mlp_fence(1);
-        if (slot_submitted)
-        {
-            vkWaitForFences(sDevice, 1, &sInFlightFences[sFrameIndex],
-                                                VK_TRUE, UINT64_MAX);
-            if (sFrameSubmittedMonotonic[sFrameIndex] > sLastCompletedMonotonic)
-            {
-                sLastCompletedMonotonic = sFrameSubmittedMonotonic[sFrameIndex];
-            }
-        }
-        vkResetFences(sDevice, 1, &sInFlightFences[sFrameIndex]);
+        waitTimeline(sFrameTimelineValue[sFrameIndex]);
     }
-    if (sProducerFencePending[sFrameIndex] && sProducerFences[sFrameIndex] != VK_NULL_HANDLE)
+    refreshCompletedWatermark();
+    if (sProducerFencePending[sFrameIndex])
     {
-        vkWaitForFences(sDevice, 1, &sProducerFences[sFrameIndex], VK_TRUE, UINT64_MAX);
-        vkResetFences(sDevice, 1, &sProducerFences[sFrameIndex]);
+        waitTimeline(sProducerTimelineValue[sFrameIndex]);
         sProducerFencePending[sFrameIndex] = false;
     }
-    if (sAsyncProducerInFlight && sAsyncProducerSubmitMonotonic > 0 &&
-        sLastCompletedMonotonic >= sAsyncProducerSubmitMonotonic)
+    if (sAsyncProducerInFlight && sAsyncProducerRecordSlot == sFrameIndex)
     {
-        sLastCompletedMonotonic = sAsyncProducerSubmitMonotonic - 1;
-    }
-    if (sAsyncProducerInFlight && sAsyncProducerRecordSlot == sFrameIndex &&
-        sAsyncProducerFence != VK_NULL_HANDLE)
-    {
-        vkWaitForFences(sDevice, 1, &sAsyncProducerFence, VK_TRUE, UINT64_MAX);
+        waitTimeline(sAsyncTimelineValue);
     }
     sPESlotState[sFrameIndex].store(PE_SLOT_IDLE);
+    vbUploadFrameReset();
 
     if (sFrameIndex < FRAMES_IN_FLIGHT)
     {
@@ -5432,6 +5935,7 @@ bool beginFrame(bool acquire_swapchain)
     }
 
     sImageAcquired = false;
+    sFrameWantsPresent = acquire_swapchain && sVulkanPresentationEnabled;
     if (acquire_swapchain &&
         sVulkanPresentationEnabled &&
         sSwapchain != VK_NULL_HANDLE &&
@@ -5630,6 +6134,8 @@ bool endFrame()
                                    << " imiss=" << gVkPerf.populate_miss.load()
                                    << " | syncmat " << gVkPerf.syncmat_build.load() << "/" << gVkPerf.syncmat_call.load()
                                    << " | vbbind " << gVkPerf.vb_bind.load() << "/" << gVkPerf.vb_skip.load()
+                                   << " vbcp " << gVkPerf.vb_orphan.load()
+                                   << "/" << (gVkPerf.vb_copy_bytes.load() >> 10) << "k"
                                    << " ibbind " << gVkPerf.ib_bind.load() << "/" << gVkPerf.ib_skip.load()
                                    << " | pass scene=" << gVkPerf.draws_pass[0].load()
                                    << " shadow=" << gVkPerf.draws_pass[1].load()
@@ -5674,6 +6180,33 @@ bool endFrame()
                                    << " rec=" << gVkPerf.bkt_rec.load()
                                    << " skip=" << gVkPerf.bkt_skip.load()
                                    << " | mat=" << gVkPerf.mat_draws.load() << "/" << gVkPerf.mat_bindless_draws.load()
+                                   << [](){ std::string s;
+                                        static const char* cen_names[12] = {
+                                            "m","am","ae","s","sm","se",
+                                            "n","nm","ne","ns","nsm","nse" };
+                                        for (U32 i = 0; i < 12; ++i) {
+                                            const U64 tot = gVkPerf.mat_cen[i][0].load();
+                                            if (tot == 0) continue;
+                                            s += s.empty() ? " | matcen " : " ";
+                                            s += cen_names[i];
+                                            s += "="; s += std::to_string(tot);
+                                            s += "/"; s += std::to_string(gVkPerf.mat_cen[i][1].load());
+                                        }
+                                        return s; }()
+                                   << [](){ std::string s;
+                                        static const char* sn[8] = { "am","fbm","gm","ab","amR","fbmR","gmR","opR" };
+                                        for (U32 i = 0; i < 8; ++i) {
+                                            const U64 sp = gVkPerf.shamdi[i][0].load();
+                                            const U64 dy = gVkPerf.shamdi[i][1].load();
+                                            const U64 wk = gVkPerf.shamdi[i][2].load();
+                                            if (sp == 0 && dy == 0 && wk == 0) continue;
+                                            s += s.empty() ? " | shamdi " : " ";
+                                            s += sn[i];
+                                            s += "="; s += std::to_string(sp);
+                                            s += "/"; s += std::to_string(dy);
+                                            s += "/"; s += std::to_string(wk);
+                                        }
+                                        return s; }()
                                    << " | mdi call=" << gVkPerf.mdi_call.load()
                                    << " rec=" << gVkPerf.mdi_rec.load()
                                    << " zero=" << gVkPerf.mdi_zero.load()
@@ -5773,11 +6306,13 @@ bool endFrame()
                                             (unsigned long long)gVkPerf.lgt_nl.load(),
                                             (unsigned long long)gVkPerf.lgt_ns.load());
                                         return s; }()
-                                   << llformat(" | e3 rig=%.2f/%.2f/%.2f pal=%.2f",
+                                   << llformat(" | e3 rig=%.2f/%.2f/%.2f pal=%.2f/%.2f/%.2f",
                                         gVkPerf.e3_rig_us[0].load() / 1000.0,
                                         gVkPerf.e3_rig_us[1].load() / 1000.0,
                                         gVkPerf.e3_rig_us[2].load() / 1000.0,
-                                        gVkPerf.e3_pal_us.load() / 1000.0)
+                                        gVkPerf.e3_pal_us[0].load() / 1000.0,
+                                        gVkPerf.e3_pal_us[1].load() / 1000.0,
+                                        gVkPerf.e3_pal_us[2].load() / 1000.0)
                                    << " | tex enq=" << gVkPerf.tex_enq.load()
                                    << " pub=" << gVkPerf.tex_pub.load()
                                    << " fail=" << gVkPerf.tex_fail.load()
@@ -6000,13 +6535,14 @@ bool endFrame()
         return false;
     }
 
+    vbUploadSubmit();
+
     if (sUISceneSplit && sConsumerActiveThisFrame && isUISceneAsync())
     {
         PEJob cjob;
         cjob.is_frame = true;
         cjob.slot     = sFrameIndex;
         cjob.cmd      = sConsumerCommandBuffers[sFrameIndex];
-        cjob.fence    = sInFlightFences[sFrameIndex];
         if (sImageAcquired)
         {
             cjob.wait_semaphore   = sImageAvailableSemaphores[sFrameIndex];
@@ -6022,26 +6558,25 @@ bool endFrame()
         }
         sFrameSubmittedMonotonic[sFrameIndex] = sMonotonicFrameCount;
         sPESlotState[sFrameIndex].store(PE_SLOT_PENDING);
-        peEnqueue(std::move(cjob));
+        sFrameTimelineValue[sFrameIndex] = peEnqueue(std::move(cjob));
 
         PEJob pjob;
         pjob.is_frame = false;
         pjob.slot     = sFrameIndex;
         pjob.cmd      = sCommandBuffers[sFrameIndex];
-        pjob.fence    = sProducerFences[sFrameIndex];
         sProducerFencePending[sFrameIndex] = true;
-        peEnqueue(std::move(pjob));
+        sProducerTimelineValue[sFrameIndex] = peEnqueue(std::move(pjob));
 
         if (sAsyncRenderSceneThisFrame)
         {
             vkEndCommandBuffer(sAsyncProducerCommandBuffer);
             PEJob apjob;
-            apjob.is_frame = false;
-            apjob.cmd      = sAsyncProducerCommandBuffer;
-            apjob.fence    = sAsyncProducerFence;
+            apjob.is_frame          = false;
+            apjob.is_async_producer = true;
+            apjob.cmd               = sAsyncProducerCommandBuffer;
             sProdEnqMonoUs.store(vkMonoUs());
             sProdChecksSinceSubmit.store(0);
-            peEnqueue(std::move(apjob));
+            sAsyncTimelineValue = peEnqueue(std::move(apjob));
             sAsyncProducerInFlight        = true;
             sAsyncProducerSubmitMonotonic = sMonotonicFrameCount;
             ++sAsyncProducerSubmitCount;
@@ -6054,7 +6589,6 @@ bool endFrame()
         job.is_frame = true;
         job.slot     = sFrameIndex;
         job.cmd      = sCommandBuffers[sFrameIndex];
-        job.fence    = sInFlightFences[sFrameIndex];
         if (sImageAcquired)
         {
             job.wait_semaphore   = sImageAvailableSemaphores[sFrameIndex];
@@ -6070,7 +6604,7 @@ bool endFrame()
         }
         sFrameSubmittedMonotonic[sFrameIndex] = sMonotonicFrameCount;
         sPESlotState[sFrameIndex].store(PE_SLOT_PENDING);
-        peEnqueue(std::move(job));
+        sFrameTimelineValue[sFrameIndex] = peEnqueue(std::move(job));
     }
 
     sImageAcquired = false;
@@ -6091,37 +6625,19 @@ bool beginOffscreenFrameVk()
 
     beginCommandRecording();
 
-    const bool slot_submitted = peWaitSlotSubmitted(sFrameIndex);
-    if (sInFlightFences[sFrameIndex] != VK_NULL_HANDLE)
+    waitTimeline(sFrameTimelineValue[sFrameIndex]);
+    refreshCompletedWatermark();
+    if (sProducerFencePending[sFrameIndex])
     {
-        if (slot_submitted)
-        {
-            vkWaitForFences(sDevice, 1, &sInFlightFences[sFrameIndex],
-                                                VK_TRUE, UINT64_MAX);
-            if (sFrameSubmittedMonotonic[sFrameIndex] > sLastCompletedMonotonic)
-            {
-                sLastCompletedMonotonic = sFrameSubmittedMonotonic[sFrameIndex];
-            }
-        }
-        vkResetFences(sDevice, 1, &sInFlightFences[sFrameIndex]);
-    }
-    if (sProducerFencePending[sFrameIndex] && sProducerFences[sFrameIndex] != VK_NULL_HANDLE)
-    {
-        vkWaitForFences(sDevice, 1, &sProducerFences[sFrameIndex], VK_TRUE, UINT64_MAX);
-        vkResetFences(sDevice, 1, &sProducerFences[sFrameIndex]);
+        waitTimeline(sProducerTimelineValue[sFrameIndex]);
         sProducerFencePending[sFrameIndex] = false;
     }
-    if (sAsyncProducerInFlight && sAsyncProducerSubmitMonotonic > 0 &&
-        sLastCompletedMonotonic >= sAsyncProducerSubmitMonotonic)
+    if (sAsyncProducerInFlight && sAsyncProducerRecordSlot == sFrameIndex)
     {
-        sLastCompletedMonotonic = sAsyncProducerSubmitMonotonic - 1;
-    }
-    if (sAsyncProducerInFlight && sAsyncProducerRecordSlot == sFrameIndex &&
-        sAsyncProducerFence != VK_NULL_HANDLE)
-    {
-        vkWaitForFences(sDevice, 1, &sAsyncProducerFence, VK_TRUE, UINT64_MAX);
+        waitTimeline(sAsyncTimelineValue);
     }
     sPESlotState[sFrameIndex].store(PE_SLOT_IDLE);
+    vbUploadFrameReset();
 
     if (sFrameIndex < FRAMES_IN_FLIGHT)
     {
@@ -6165,28 +6681,10 @@ void endOffscreenFrameVk()
         return;
     }
 
-    {
-        PESyncPoint sync;
-        PEJob job;
-        job.cmd       = sCommandBuffers[sFrameIndex];
-        job.fence     = sInFlightFences[sFrameIndex];
-        job.wait_idle = true;
-        job.sync      = &sync;
-        if (!sPERunning)
-        {
-            peExecute(job);
-        }
-        else
-        {
-            {
-                std::lock_guard<std::mutex> lk(sPEQueueMutex);
-                sPEJobs.push_back(std::move(job));
-            }
-            sPEQueueCv.notify_one();
-            std::unique_lock<std::mutex> lk(sync.m);
-            sync.cv.wait(lk, [&] { return sync.done; });
-        }
-    }
+    vbUploadSubmit();
+    peSubmitBlocking(sCommandBuffers[sFrameIndex], VK_NULL_HANDLE, true);
+    sFrameTimelineValue[sFrameIndex] = gpuTimelineValue();
+    pollAsyncProducerCompletion();
     sFrameSubmittedMonotonic[sFrameIndex] = sMonotonicFrameCount;
     if (sMonotonicFrameCount > sLastCompletedMonotonic)
     {
@@ -6226,8 +6724,18 @@ uint32_t acquireOcclusionQueryVk()
     return index + 1;
 }
 
+void noteDeferredEnqueueThread()
+{
+    if (!on_main_thread())
+    {
+        LL_WARNS_ONCE("Vulkan") << "deferred resource free enqueued off main thread" << LL_ENDL;
+        llassert(false);
+    }
+}
+
 void releaseOcclusionQueryVk(uint32_t handle)
 {
+    noteDeferredEnqueueThread();
     if (handle == 0 || sOcclusionQueryPool == VK_NULL_HANDLE)
     {
         return;
@@ -6381,14 +6889,28 @@ bool isVulkanInitialized()
 
 void setVsyncEnabled(bool enabled)
 {
+    if (sVsyncEnabled.load() == enabled)
+    {
+        return;
+    }
     sVsyncEnabled.store(enabled);
     sRecreateReasonMask.fetch_or(RECREATE_REASON_VSYNC_SETTING);
     sSwapchainRecreatePending = true;
 }
 
+void seedVsyncEnabled(bool enabled)
+{
+    sVsyncEnabled.store(enabled);
+}
+
 bool isInFrame()
 {
     return sInFrame;
+}
+
+bool frameCanRecord()
+{
+    return sInFrame && (!sFrameWantsPresent || sImageAcquired);
 }
 
 bool anyViewHandleDead(const void* const* views, U32 count)
@@ -6763,7 +7285,12 @@ bool ensureScenePerDrawDescriptorSet(const ScenePerDrawBindings& b,
 
             image_infos[i].sampler     = (b.sampler_samplers[i] != VK_NULL_HANDLE) ? b.sampler_samplers[i] : b.sampler;
             image_infos[i].imageView   = b.sampler_views[i];
-            image_infos[i].imageLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
+            image_infos[i].imageLayout =
+                (sInDynamicRendering && sSavedHasDepth &&
+                 b.sampler_views[i] == sSavedDepthInfo.imageView &&
+                 sSavedDepthInfo.imageLayout == VK_IMAGE_LAYOUT_DEPTH_STENCIL_READ_ONLY_OPTIMAL)
+                    ? VK_IMAGE_LAYOUT_DEPTH_STENCIL_READ_ONLY_OPTIMAL
+                    : VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
 
             writes[write_count].sType           = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
             writes[write_count].dstSet          = target_set;
@@ -8447,6 +8974,7 @@ bool acquireDeferredUtilOverrideSlot(VkBuffer& out_buf, void*& out_mapped)
 
 void destroyBufferVk(VkBuffer buffer, void* allocation)
 {
+    noteDeferredEnqueueThread();
     if (buffer == VK_NULL_HANDLE && allocation == nullptr)
     {
         return;
@@ -8570,16 +9098,18 @@ void tickDeferredBufferFreeQueue()
     purgePerDrawDeadHandles({}, dead_bufs);
 }
 
-bool submitOneShotVk(VkCommandBuffer cmd, VkBuffer staging_buffer, VmaAllocation staging_allocation)
+bool submitOneShotVk(VkCommandBuffer cmd, VkBuffer staging_buffer, VmaAllocation staging_allocation,
+                     const char* source, U64 staging_bytes)
 {
-    return submitOneShotVkFromPool(cmd, sCommandPool, staging_buffer, staging_allocation, 0);
+    return submitOneShotVkFromPool(cmd, threadCmdPool(), staging_buffer, staging_allocation, staging_bytes,
+                                   source, staging_bytes);
 }
 
 static VkCommandBuffer beginOneShotCommandBufferVk()
 {
     VkCommandBufferAllocateInfo cbai = {};
     cbai.sType              = VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO;
-    cbai.commandPool        = sCommandPool;
+    cbai.commandPool        = threadCmdPool();
     cbai.level              = VK_COMMAND_BUFFER_LEVEL_PRIMARY;
     cbai.commandBufferCount = 1;
     VkCommandBuffer cmd = VK_NULL_HANDLE;
@@ -8591,12 +9121,31 @@ static VkCommandBuffer beginOneShotCommandBufferVk()
     cbbi.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO;
     cbbi.flags = VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT;
     vkBeginCommandBuffer(cmd, &cbbi);
+    if (vkValidationRequested())
+    {
+        setVkObjectName((U64)(uintptr_t)cmd, VK_OBJECT_TYPE_COMMAND_BUFFER,
+                        t_cmdPool != VK_NULL_HANDLE ? "oneshot-worker" : "oneshot-main");
+    }
     return cmd;
 }
 
 bool submitOneShotVkFromPool(VkCommandBuffer cmd, VkCommandPool pool, VkBuffer staging_buffer,
-                             VmaAllocation staging_allocation, U32 staging_bytes)
+                             VmaAllocation staging_allocation, U64 staging_bytes,
+                             const char* source, U64 diagnostic_staging_bytes)
 {
+#if !LL_DARWIN
+    (void)source;
+    (void)diagnostic_staging_bytes;
+#endif
+    if (t_cmdPool != VK_NULL_HANDLE)
+    {
+        U32 spins = 0;
+        while (peQueueDepth() > 32 && ++spins < 25000)
+        {
+            tickOneShotFreeQueue();
+            std::this_thread::sleep_for(std::chrono::microseconds(200));
+        }
+    }
     tickOneShotFreeQueue();
     const U64 byte_cap = 256ull << 20;
     for (U32 i = 0; i < 20; ++i)
@@ -8623,8 +9172,7 @@ bool submitOneShotVkFromPool(VkCommandBuffer cmd, VkCommandPool pool, VkBuffer s
         {
             break;
         }
-        vkWaitForFences(sDevice, 1, &wait_entry.fence, VK_TRUE, 100000000ull);
-        if (vkGetFenceStatus(sDevice, wait_entry.fence) == VK_SUCCESS)
+        if (gpuTimelineValue() >= wait_entry.timeline_value)
         {
             if (wait_entry.buffer != VK_NULL_HANDLE || wait_entry.allocation != VK_NULL_HANDLE)
             {
@@ -8632,69 +9180,42 @@ bool submitOneShotVkFromPool(VkCommandBuffer cmd, VkCommandPool pool, VkBuffer s
             }
             sOneShotStagingBytes.fetch_sub(wait_entry.staging_bytes);
             std::lock_guard<std::mutex> lk(sOneShotMutex);
-            sSubmitFencePool.push_back(wait_entry.fence);
             if (wait_entry.cmd != VK_NULL_HANDLE)
             {
-                sRetiredMainOneShotCmds.push_back(wait_entry.cmd);
+                sRetiredByPool[wait_entry.pool].push_back(wait_entry.cmd);
             }
         }
         else
         {
-            std::lock_guard<std::mutex> lk(sOneShotMutex);
-            sPendingOneShotFrees.insert(sPendingOneShotFrees.begin(), wait_entry);
+            {
+                std::lock_guard<std::mutex> lk(sOneShotMutex);
+                sPendingOneShotFrees.insert(sPendingOneShotFrees.begin(), wait_entry);
+            }
+            std::this_thread::sleep_for(std::chrono::microseconds(200)); // GPU 完了待ち(backpressure)
         }
         tickOneShotFreeQueue();
     }
 
-    VkFence fence = VK_NULL_HANDLE;
-    {
-        std::lock_guard<std::mutex> lk(sOneShotMutex);
-        if (!sSubmitFencePool.empty())
-        {
-            fence = sSubmitFencePool.back();
-            sSubmitFencePool.pop_back();
-        }
-    }
-    if (fence != VK_NULL_HANDLE)
-    {
-        vkResetFences(sDevice, 1, &fence);
-    }
-    else
-    {
-        VkFenceCreateInfo fci = {};
-        fci.sType = VK_STRUCTURE_TYPE_FENCE_CREATE_INFO;
-        if (vkCreateFence(sDevice, &fci, nullptr, &fence) != VK_SUCCESS)
-        {
-            fence = VK_NULL_HANDLE;
-        }
-    }
-
-    if (fence == VK_NULL_HANDLE)
-    {
-        VkResult sr = peSubmitBlocking(cmd, VK_NULL_HANDLE, true);
-        vkFreeCommandBuffers(sDevice, pool, 1, &cmd);
-        if (staging_buffer != VK_NULL_HANDLE || staging_allocation != VK_NULL_HANDLE)
-        {
-            vmaDestroyBuffer(sAllocator, staging_buffer, staging_allocation);
-        }
-        return sr == VK_SUCCESS;
-    }
-
+    // fence 不要: 完了は timeline 値で判定する(GPU 完了 = timeline >= oneshot_value)。
+    uint64_t oneshot_value;
     {
         PEJob job;
         job.cmd        = cmd;
-        job.fence      = fence;
         job.is_oneshot = true;
-        peEnqueue(std::move(job));
+#if LL_DARWIN
+        job.oneshot_source        = source;
+        job.oneshot_staging_bytes = diagnostic_staging_bytes;
+#endif
+        oneshot_value  = peEnqueue(std::move(job));
     }
 
     PendingOneShotFree pending;
-    pending.fence         = fence;
-    pending.cmd           = cmd;
-    pending.pool          = pool;
-    pending.buffer        = staging_buffer;
-    pending.allocation    = staging_allocation;
-    pending.staging_bytes = staging_bytes;
+    pending.cmd            = cmd;
+    pending.pool           = pool;
+    pending.buffer         = staging_buffer;
+    pending.allocation     = staging_allocation;
+    pending.staging_bytes  = staging_bytes;
+    pending.timeline_value = oneshot_value;
     sOneShotStagingBytes.fetch_add(staging_bytes);
     {
         std::lock_guard<std::mutex> lk(sOneShotMutex);
@@ -8709,13 +9230,14 @@ void tickOneShotFreeQueue()
     {
         return;
     }
-    std::vector<VkFence> failed;
+    std::vector<uint64_t> failed;
     {
         std::lock_guard<std::mutex> lk(sPEFailedMutex);
-        failed.swap(sPEFailedOneShotFences);
+        failed.swap(sPEFailedOneShotValues);
     }
     std::vector<VkCommandBuffer> free_now;
-    const VkCommandPool free_pool = sCommandPool;
+    const VkCommandPool free_pool = threadCmdPool();
+    const uint64_t cur = gpuTimelineValue();
     {
         std::lock_guard<std::mutex> lk(sOneShotMutex);
         size_t w = 0;
@@ -8724,18 +9246,17 @@ void tickOneShotFreeQueue()
         {
             PendingOneShotFree& e = sPendingOneShotFrees[r];
             const bool submit_failed = !failed.empty() &&
-                std::find(failed.begin(), failed.end(), e.fence) != failed.end();
-            if (sReapForceAll || submit_failed || vkGetFenceStatus(sDevice, e.fence) == VK_SUCCESS)
+                std::find(failed.begin(), failed.end(), e.timeline_value) != failed.end();
+            if (sReapForceAll || submit_failed || cur >= e.timeline_value)
             {
                 if (e.buffer != VK_NULL_HANDLE || e.allocation != VK_NULL_HANDLE)
                 {
                     vmaDestroyBuffer(sAllocator, e.buffer, e.allocation);
                 }
                 sOneShotStagingBytes.fetch_sub(e.staging_bytes);
-                sSubmitFencePool.push_back(e.fence);
                 if (e.cmd != VK_NULL_HANDLE)
                 {
-                    sRetiredMainOneShotCmds.push_back(e.cmd);
+                    sRetiredByPool[e.pool].push_back(e.cmd);
                 }
             }
             else
@@ -8748,12 +9269,98 @@ void tickOneShotFreeQueue()
             }
         }
         sPendingOneShotFrees.resize(w);
-        free_now.swap(sRetiredMainOneShotCmds);
+        auto own = sRetiredByPool.find(free_pool);
+        if (own != sRetiredByPool.end())
+        {
+            free_now.swap(own->second);
+        }
     }
     if (!free_now.empty() && free_pool != VK_NULL_HANDLE)
     {
         vkFreeCommandBuffers(sDevice, free_pool, (U32)free_now.size(), free_now.data());
     }
+}
+
+bool isUploadWorkerThread()
+{
+    return t_cmdPool != VK_NULL_HANDLE;
+}
+
+bool peThreaded()
+{
+    return sPERunning;
+}
+
+bool isFrameInFlightVk(U32 monotonic_frame)
+{
+    return monotonic_frame > sLastCompletedMonotonic;
+}
+
+bool registerGpuUploadWorker()
+{
+    if (sDevice == VK_NULL_HANDLE || !sPERunning)
+    {
+        return false;
+    }
+    VkCommandPoolCreateInfo pool_info = {};
+    pool_info.sType = VK_STRUCTURE_TYPE_COMMAND_POOL_CREATE_INFO;
+    pool_info.flags = VK_COMMAND_POOL_CREATE_TRANSIENT_BIT |
+                      VK_COMMAND_POOL_CREATE_RESET_COMMAND_BUFFER_BIT;
+    pool_info.queueFamilyIndex = sGraphicsQueueFamily;
+    VkCommandPool pool = VK_NULL_HANDLE;
+    if (vkCreateCommandPool(sDevice, &pool_info, nullptr, &pool) != VK_SUCCESS)
+    {
+        return false;
+    }
+    t_cmdPool = pool;
+    return true;
+}
+
+void unregisterGpuUploadWorker()
+{
+    const VkCommandPool pool = t_cmdPool;
+    if (pool == VK_NULL_HANDLE)
+    {
+        return;
+    }
+    uint64_t max_tv = 0;
+    {
+        std::lock_guard<std::mutex> lk(sOneShotMutex);
+        for (const PendingOneShotFree& e : sPendingOneShotFrees)
+        {
+            if (e.pool == pool && e.timeline_value > max_tv)
+            {
+                max_tv = e.timeline_value;
+            }
+        }
+    }
+    U32 spins = 0;
+    while (gpuTimelineValue() < max_tv && !sReapForceAll)
+    {
+        tickOneShotFreeQueue();
+        std::this_thread::sleep_for(std::chrono::microseconds(200));
+        if (++spins > 25000)
+        {
+            LL_WARNS("Vulkan") << "unregisterGpuUploadWorker: drain timeout, pool left undestroyed" << LL_ENDL;
+            t_cmdPool = VK_NULL_HANDLE;
+            return;
+        }
+    }
+    tickOneShotFreeQueue();
+    {
+        std::lock_guard<std::mutex> lk(sOneShotMutex);
+        auto it = sRetiredByPool.find(pool);
+        if (it != sRetiredByPool.end())
+        {
+            if (!it->second.empty())
+            {
+                vkFreeCommandBuffers(sDevice, pool, (U32)it->second.size(), it->second.data());
+            }
+            sRetiredByPool.erase(it);
+        }
+    }
+    vkDestroyCommandPool(sDevice, pool, nullptr);
+    t_cmdPool = VK_NULL_HANDLE;
 }
 
 void setVkGeoWorkerStopHook(void (*fn)())
@@ -8954,8 +9561,9 @@ namespace
         c->byte_size = bytes;
 
         void* mapped = nullptr;
-        const VkBufferUsageFlags usage = vertex_chunk ? VK_BUFFER_USAGE_VERTEX_BUFFER_BIT
-                                                      : VK_BUFFER_USAGE_INDEX_BUFFER_BIT;
+        const VkBufferUsageFlags usage = (vertex_chunk ? VK_BUFFER_USAGE_VERTEX_BUFFER_BIT
+                                                       : VK_BUFFER_USAGE_INDEX_BUFFER_BIT)
+                                         | VK_BUFFER_USAGE_TRANSFER_DST_BIT;
         if (!createBufferVkImpl(bytes, usage, c->buffer, c->allocation, &mapped, true)
             || mapped == nullptr)
         {
@@ -9020,6 +9628,190 @@ void megabufInit(const U32* type_sizes, U32 type_count)
     sMegaTypeSizes.assign(type_sizes, type_sizes + type_count);
 }
 
+namespace
+{
+    struct VbStagingChunk
+    {
+        VkBuffer buffer     = VK_NULL_HANDLE;
+        void*    allocation = nullptr;
+        U8*      mapped     = nullptr;
+        U32      capacity   = 0;
+        U32      cursor     = 0;
+    };
+    struct VbStagingSlot
+    {
+        std::vector<VbStagingChunk> chunks;
+        U32 frame_stamp = 0;
+    };
+    VbStagingSlot sVbStaging[FRAMES_IN_FLIGHT];
+
+    VbStagingChunk* vbStagingAlloc(U32 bytes, U32& out_offset)
+    {
+        VbStagingSlot& slot = sVbStaging[sFrameIndex];
+        if (slot.frame_stamp != sMonotonicFrameCount)
+        {
+            slot.frame_stamp = sMonotonicFrameCount;
+            for (VbStagingChunk& c : slot.chunks)
+            {
+                c.cursor = 0;
+            }
+        }
+        for (VbStagingChunk& c : slot.chunks)
+        {
+            const U32 off = (c.cursor + 15u) & ~15u;
+            if (off + bytes <= c.capacity)
+            {
+                c.cursor   = off + bytes;
+                out_offset = off;
+                return &c;
+            }
+        }
+        VbStagingChunk c;
+        c.capacity = llmax(bytes, 1u << 20);
+        void* mapped = nullptr;
+        if (!createBufferVkImpl(c.capacity, VK_BUFFER_USAGE_TRANSFER_SRC_BIT,
+                                c.buffer, c.allocation, &mapped, false)
+            || mapped == nullptr)
+        {
+            if (c.buffer != VK_NULL_HANDLE || c.allocation != nullptr)
+            {
+                destroyBufferVk(c.buffer, c.allocation);
+            }
+            LL_WARNS("Vulkan") << "vb staging chunk creation failed bytes=" << c.capacity << LL_ENDL;
+            return nullptr;
+        }
+        c.mapped   = (U8*)mapped;
+        c.cursor   = bytes;
+        out_offset = 0;
+        slot.chunks.push_back(c);
+        return &slot.chunks.back();
+    }
+
+    VkCommandBuffer sVbUploadCommandBuffers[FRAMES_IN_FLIGHT] = {};
+    uint64_t        sVbUploadTimelineValue[FRAMES_IN_FLIGHT] = {};
+    bool            sVbUploadPending[FRAMES_IN_FLIGHT]       = {};
+    bool            sVbUploadRecording                       = false;
+
+    void vbUploadFrameReset()
+    {
+        if (sFrameIndex < FRAMES_IN_FLIGHT && sVbUploadPending[sFrameIndex])
+        {
+            waitTimeline(sVbUploadTimelineValue[sFrameIndex]);
+            sVbUploadPending[sFrameIndex] = false;
+        }
+        sVbUploadRecording = false;
+    }
+
+    VkCommandBuffer vbUploadCmd()
+    {
+        if (!sInFrame || sFrameIndex >= FRAMES_IN_FLIGHT)
+        {
+            return VK_NULL_HANDLE;
+        }
+        VkCommandBuffer& cmd = sVbUploadCommandBuffers[sFrameIndex];
+        if (sVbUploadRecording)
+        {
+            return cmd;
+        }
+        if (cmd == VK_NULL_HANDLE)
+        {
+            VkCommandBufferAllocateInfo ai = {};
+            ai.sType              = VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO;
+            ai.commandPool        = sCommandPool;
+            ai.level              = VK_COMMAND_BUFFER_LEVEL_PRIMARY;
+            ai.commandBufferCount = 1;
+            if (vkAllocateCommandBuffers(sDevice, &ai, &cmd) != VK_SUCCESS)
+            {
+                cmd = VK_NULL_HANDLE;
+                return VK_NULL_HANDLE;
+            }
+        }
+        vkResetCommandBuffer(cmd, 0);
+        VkCommandBufferBeginInfo bi = {};
+        bi.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO;
+        bi.flags = VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT;
+        if (vkBeginCommandBuffer(cmd, &bi) != VK_SUCCESS)
+        {
+            return VK_NULL_HANDLE;
+        }
+        vkCmdPipelineBarrier(cmd, VK_PIPELINE_STAGE_VERTEX_INPUT_BIT, VK_PIPELINE_STAGE_TRANSFER_BIT,
+                             0, 0, nullptr, 0, nullptr, 0, nullptr);
+        sVbUploadRecording = true;
+        return cmd;
+    }
+
+    void vbUploadSubmit()
+    {
+        if (!sVbUploadRecording)
+        {
+            return;
+        }
+        sVbUploadRecording = false;
+        VkCommandBuffer cmd = sVbUploadCommandBuffers[sFrameIndex];
+        if (vkEndCommandBuffer(cmd) != VK_SUCCESS)
+        {
+            return;
+        }
+        PEJob job;
+        job.slot = sFrameIndex;
+        job.cmd  = cmd;
+        sVbUploadPending[sFrameIndex] = true;
+        sVbUploadTimelineValue[sFrameIndex] = peEnqueue(std::move(job));
+    }
+}
+
+bool vbStageCopyVk(VkBuffer dst_buffer, const VbCopyRegion* regions, U32 region_count)
+{
+    constexpr U32 kMaxRegions = 16;
+    if (dst_buffer == VK_NULL_HANDLE || region_count == 0 || region_count > kMaxRegions)
+    {
+        return false;
+    }
+    if (!on_main_thread())
+    {
+        return false;
+    }
+    VkCommandBuffer cmd = vbUploadCmd();
+    if (cmd == VK_NULL_HANDLE)
+    {
+        return false;
+    }
+    U32 total = 0;
+    for (U32 i = 0; i < region_count; ++i)
+    {
+        total = ((total + 15u) & ~15u) + regions[i].bytes;
+    }
+    U32 base = 0;
+    VbStagingChunk* chunk = vbStagingAlloc(total, base);
+    if (chunk == nullptr)
+    {
+        return false;
+    }
+    VkBufferCopy copies[kMaxRegions];
+    U32 off = base;
+    for (U32 i = 0; i < region_count; ++i)
+    {
+        off = (off + 15u) & ~15u;
+        std::memcpy(chunk->mapped + off, regions[i].src, regions[i].bytes);
+        copies[i].srcOffset = off;
+        copies[i].dstOffset = regions[i].dst_offset;
+        copies[i].size      = regions[i].bytes;
+        off += regions[i].bytes;
+    }
+    vkCmdCopyBuffer(cmd, chunk->buffer, dst_buffer, region_count, copies);
+    VkMemoryBarrier mb = {};
+    mb.sType         = VK_STRUCTURE_TYPE_MEMORY_BARRIER;
+    mb.srcAccessMask = VK_ACCESS_TRANSFER_WRITE_BIT;
+    mb.dstAccessMask = VK_ACCESS_VERTEX_ATTRIBUTE_READ_BIT | VK_ACCESS_INDEX_READ_BIT
+                       | VK_ACCESS_TRANSFER_WRITE_BIT;
+    vkCmdPipelineBarrier(cmd, VK_PIPELINE_STAGE_TRANSFER_BIT,
+                         VK_PIPELINE_STAGE_VERTEX_INPUT_BIT | VK_PIPELINE_STAGE_TRANSFER_BIT,
+                         0, 1, &mb, 0, nullptr, 0, nullptr);
+    ++gVkPerf.vb_orphan;
+    gVkPerf.vb_copy_bytes += total;
+    return true;
+}
+
 void gpuCheckpoint(const char* label)
 {
     gpuCheckpointImpl(label);
@@ -9027,6 +9819,15 @@ void gpuCheckpoint(const char* label)
 
 void megabufShutdown()
 {
+    for (VbStagingSlot& slot : sVbStaging)
+    {
+        for (VbStagingChunk& c : slot.chunks)
+        {
+            destroyBufferVk(c.buffer, c.allocation);
+        }
+        slot.chunks.clear();
+        slot.frame_stamp = 0;
+    }
     sPendingMegaFrees.clear();
     for (auto& it : sMegaChunksById)
     {
@@ -9405,6 +10206,7 @@ bool createColorAttachmentImageVk(U32          width,
     {
         if (out_sample_view == nullptr)
         {
+            warnAttachmentAllocFail("createColorAttachmentImageVk", VK_RESULT_MAX_ENUM, width, height, format, mip_levels, 1);
             return false;
         }
         *out_sample_view = out_view;
@@ -9424,8 +10226,10 @@ bool createColorAttachmentImageVk(U32          width,
         vci.subresourceRange.baseArrayLayer = 0;
         vci.subresourceRange.layerCount     = 1;
         VkImageView attach_view = VK_NULL_HANDLE;
-        if (vkCreateImageView(sDevice, &vci, nullptr, &attach_view) != VK_SUCCESS)
+        VkResult attach_r = vkCreateImageView(sDevice, &vci, nullptr, &attach_view);
+        if (attach_r != VK_SUCCESS)
         {
+            warnAttachmentAllocFail("createColorAttachmentImageVk", attach_r, width, height, format, mip_levels, 1);
             return false;
         }
         noteViewHandleCreated(attach_view);
@@ -9578,7 +10382,10 @@ void destroyImageVk(VkImage image, VkImageView view, void* allocation)
     pending.view          = view;
     pending.allocation    = reinterpret_cast<VmaAllocation>(allocation);
     pending.enqueue_frame = sInFrame ? sMonotonicFrameCount : (sMonotonicFrameCount + 1);
-    sPendingImageFrees.push_back(pending);
+    {
+        std::lock_guard<std::mutex> guard(sPendingImageFreeMutex);
+        sPendingImageFrees.push_back(pending);
+    }
     if (view != VK_NULL_HANDLE && vkValidationRequested())
     {
         std::lock_guard<std::mutex> lk(sSet1BirthMutex);
@@ -9595,42 +10402,52 @@ void tickDeferredImageFreeQueue()
         return;
     }
     std::unordered_set<U64> dead_views;
-    size_t w = 0;
-    const size_t n = sPendingImageFrees.size();
-    for (size_t r = 0; r < n; ++r)
+
+    std::vector<PendingImageFree> to_free;
     {
-        PendingImageFree& e = sPendingImageFrees[r];
-        if (reapReady(e.enqueue_frame))
+        std::lock_guard<std::mutex> guard(sPendingImageFreeMutex);
+        size_t w = 0;
+        const size_t n = sPendingImageFrees.size();
+        for (size_t r = 0; r < n; ++r)
         {
-            if (e.view != VK_NULL_HANDLE && sDevice != VK_NULL_HANDLE)
+            PendingImageFree& e = sPendingImageFrees[r];
+            if (reapReady(e.enqueue_frame))
             {
-                vkDestroyImageView(sDevice, e.view, nullptr);
-                dead_views.insert((U64)e.view);
-                {
-                    std::lock_guard<std::mutex> lk(sDeadHandleMutex);
-                    sDeadViewHandles.insert((U64)e.view);
-                }
-                if (vkValidationRequested())
-                {
-                    std::lock_guard<std::mutex> lk(sSet1BirthMutex);
-                    sViewDeathLedger[(U64)e.view].destroy_frame = sMonotonicFrameCount;
-                }
+                to_free.push_back(e);
             }
-            if (e.image != VK_NULL_HANDLE && sAllocator != VK_NULL_HANDLE)
+            else
             {
-                vmaDestroyImage(sAllocator, e.image, e.allocation);
+                if (w != r)
+                {
+                    sPendingImageFrees[w] = e;
+                }
+                ++w;
             }
         }
-        else
+        sPendingImageFrees.resize(w);
+    }
+
+    for (PendingImageFree& e : to_free)
+    {
+        if (e.view != VK_NULL_HANDLE && sDevice != VK_NULL_HANDLE)
         {
-            if (w != r)
+            vkDestroyImageView(sDevice, e.view, nullptr);
+            dead_views.insert((U64)e.view);
             {
-                sPendingImageFrees[w] = e;
+                std::lock_guard<std::mutex> lk(sDeadHandleMutex);
+                sDeadViewHandles.insert((U64)e.view);
             }
-            ++w;
+            if (vkValidationRequested())
+            {
+                std::lock_guard<std::mutex> lk(sSet1BirthMutex);
+                sViewDeathLedger[(U64)e.view].destroy_frame = sMonotonicFrameCount;
+            }
+        }
+        if (e.image != VK_NULL_HANDLE && sAllocator != VK_NULL_HANDLE)
+        {
+            vmaDestroyImage(sAllocator, e.image, e.allocation);
         }
     }
-    sPendingImageFrees.resize(w);
 
     purgePerDrawDeadHandles(dead_views, {});
 
@@ -9663,6 +10480,7 @@ void tickDeferredImageFreeQueue()
 
 void destroyPipelineVk(VkPipeline pipeline)
 {
+    noteDeferredEnqueueThread();
     if (pipeline == VK_NULL_HANDLE || sDevice == VK_NULL_HANDLE)
     {
         return;
@@ -9675,6 +10493,7 @@ void destroyPipelineVk(VkPipeline pipeline)
 
 void destroyShaderModuleVk(VkShaderModule shader_module)
 {
+    noteDeferredEnqueueThread();
     if (shader_module == VK_NULL_HANDLE || sDevice == VK_NULL_HANDLE)
     {
         return;
@@ -9687,6 +10506,7 @@ void destroyShaderModuleVk(VkShaderModule shader_module)
 
 void destroyPipelineLayoutVk(VkPipelineLayout pipeline_layout)
 {
+    noteDeferredEnqueueThread();
     if (pipeline_layout == VK_NULL_HANDLE || sDevice == VK_NULL_HANDLE)
     {
         return;
@@ -9699,6 +10519,7 @@ void destroyPipelineLayoutVk(VkPipelineLayout pipeline_layout)
 
 void destroyDescriptorSetLayoutVk(VkDescriptorSetLayout descriptor_set_layout)
 {
+    noteDeferredEnqueueThread();
     if (descriptor_set_layout == VK_NULL_HANDLE || sDevice == VK_NULL_HANDLE)
     {
         return;
@@ -9775,12 +10596,29 @@ bool createTextureImageVk(U32          width,
     return created;
 }
 
-bool uploadImageDataVk(VkImage     image,
-                       U32         width,
-                       U32         height,
-                       const void* data,
-                       U32         data_size_bytes,
-                       U32         mip_level)
+bool canGenerateMipChainBlitVk(VkFormat format)
+{
+    if (sPhysicalDevice == VK_NULL_HANDLE || format == VK_FORMAT_UNDEFINED)
+    {
+        return false;
+    }
+
+    VkFormatProperties fp = {};
+    vkGetPhysicalDeviceFormatProperties(sPhysicalDevice, format, &fp);
+    const VkFormatFeatureFlags required = VK_FORMAT_FEATURE_BLIT_SRC_BIT
+                                        | VK_FORMAT_FEATURE_BLIT_DST_BIT
+                                        | VK_FORMAT_FEATURE_SAMPLED_IMAGE_FILTER_LINEAR_BIT;
+    return (fp.optimalTilingFeatures & required) == required;
+}
+
+static bool uploadImageDataVkImpl(VkImage     image,
+                                  U32         width,
+                                  U32         height,
+                                  const void* data,
+                                  U32         data_size_bytes,
+                                  U32         mip_level,
+                                  U32         generate_mip_count,
+                                  VkFormat    generate_mip_format)
 {
     if (image == VK_NULL_HANDLE || data == nullptr || data_size_bytes == 0)
     {
@@ -9788,6 +10626,12 @@ bool uploadImageDataVk(VkImage     image,
     }
     if (sDevice == VK_NULL_HANDLE || sAllocator == VK_NULL_HANDLE ||
         sCommandPool == VK_NULL_HANDLE || sGraphicsQueue == VK_NULL_HANDLE)
+    {
+        return false;
+    }
+    const bool generate_mip_chain = generate_mip_count > 1;
+    if (generate_mip_chain
+        && (mip_level != 0 || !canGenerateMipChainBlitVk(generate_mip_format)))
     {
         return false;
     }
@@ -9868,6 +10712,7 @@ bool uploadImageDataVk(VkImage     image,
                                VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, 1, &region);
     }
 
+    if (!generate_mip_chain)
     {
         VkImageMemoryBarrier b = {};
         b.sType                           = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER;
@@ -9888,10 +10733,103 @@ bool uploadImageDataVk(VkImage     image,
                              VK_PIPELINE_STAGE_ALL_COMMANDS_BIT,
                              0, 0, nullptr, 0, nullptr, 1, &b);
     }
+    else
+    {
+        auto mip_barrier = [&](U32 level, VkImageLayout old_layout, VkImageLayout new_layout,
+                               VkAccessFlags src_access, VkAccessFlags dst_access,
+                               VkPipelineStageFlags src_stage, VkPipelineStageFlags dst_stage)
+        {
+            VkImageMemoryBarrier b = {};
+            b.sType                           = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER;
+            b.srcAccessMask                   = src_access;
+            b.dstAccessMask                   = dst_access;
+            b.oldLayout                       = old_layout;
+            b.newLayout                       = new_layout;
+            b.srcQueueFamilyIndex             = VK_QUEUE_FAMILY_IGNORED;
+            b.dstQueueFamilyIndex             = VK_QUEUE_FAMILY_IGNORED;
+            b.image                           = image;
+            b.subresourceRange.aspectMask     = VK_IMAGE_ASPECT_COLOR_BIT;
+            b.subresourceRange.baseMipLevel   = level;
+            b.subresourceRange.levelCount     = 1;
+            b.subresourceRange.baseArrayLayer = 0;
+            b.subresourceRange.layerCount     = 1;
+            vkCmdPipelineBarrier(cmd, src_stage, dst_stage, 0, 0, nullptr, 0, nullptr, 1, &b);
+        };
+
+        S32 mip_w = (S32)width;
+        S32 mip_h = (S32)height;
+        for (U32 i = 1; i < generate_mip_count; ++i)
+        {
+            const S32 dst_w = (mip_w > 1) ? (mip_w / 2) : 1;
+            const S32 dst_h = (mip_h > 1) ? (mip_h / 2) : 1;
+
+            mip_barrier(i - 1,
+                        VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL,
+                        VK_ACCESS_TRANSFER_WRITE_BIT, VK_ACCESS_TRANSFER_READ_BIT,
+                        VK_PIPELINE_STAGE_TRANSFER_BIT, VK_PIPELINE_STAGE_TRANSFER_BIT);
+            mip_barrier(i,
+                        VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
+                        0, VK_ACCESS_TRANSFER_WRITE_BIT,
+                        VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT, VK_PIPELINE_STAGE_TRANSFER_BIT);
+
+            VkImageBlit blit = {};
+            blit.srcSubresource.aspectMask     = VK_IMAGE_ASPECT_COLOR_BIT;
+            blit.srcSubresource.mipLevel       = i - 1;
+            blit.srcSubresource.baseArrayLayer = 0;
+            blit.srcSubresource.layerCount     = 1;
+            blit.srcOffsets[1]                 = { mip_w, mip_h, 1 };
+            blit.dstSubresource.aspectMask     = VK_IMAGE_ASPECT_COLOR_BIT;
+            blit.dstSubresource.mipLevel       = i;
+            blit.dstSubresource.baseArrayLayer = 0;
+            blit.dstSubresource.layerCount     = 1;
+            blit.dstOffsets[1]                 = { dst_w, dst_h, 1 };
+            vkCmdBlitImage(cmd,
+                           image, VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL,
+                           image, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
+                           1, &blit, VK_FILTER_LINEAR);
+
+            mip_barrier(i - 1,
+                        VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,
+                        VK_ACCESS_TRANSFER_READ_BIT, VK_ACCESS_SHADER_READ_BIT,
+                        VK_PIPELINE_STAGE_TRANSFER_BIT, VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT);
+            mip_w = dst_w;
+            mip_h = dst_h;
+        }
+
+        mip_barrier(generate_mip_count - 1,
+                    VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,
+                    VK_ACCESS_TRANSFER_WRITE_BIT, VK_ACCESS_SHADER_READ_BIT,
+                    VK_PIPELINE_STAGE_TRANSFER_BIT, VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT);
+    }
 
     vkEndCommandBuffer(cmd);
 
-    return submitOneShotVk(cmd, staging_buffer, staging_allocation);
+    return submitOneShotVk(cmd, staging_buffer, staging_allocation,
+                           generate_mip_chain ? "image-upload-mips-2d" : "image-upload-2d",
+                           data_size_bytes);
+}
+
+bool uploadImageDataVk(VkImage     image,
+                       U32         width,
+                       U32         height,
+                       const void* data,
+                       U32         data_size_bytes,
+                       U32         mip_level)
+{
+    return uploadImageDataVkImpl(image, width, height, data, data_size_bytes,
+                                 mip_level, 1, VK_FORMAT_UNDEFINED);
+}
+
+bool uploadImageDataMipChainVk(VkImage     image,
+                               U32         width,
+                               U32         height,
+                               const void* data,
+                               U32         data_size_bytes,
+                               U32         mip_count,
+                               VkFormat    format)
+{
+    return uploadImageDataVkImpl(image, width, height, data, data_size_bytes,
+                                 0, mip_count, format);
 }
 
 bool generateMipChainBlitVk(VkImage image, U32 base_w, U32 base_h, U32 mip_count, VkFormat format)
@@ -9905,9 +10843,7 @@ bool generateMipChainBlitVk(VkImage image, U32 base_w, U32 base_h, U32 mip_count
         return false;
     }
 
-    VkFormatProperties fp = {};
-    vkGetPhysicalDeviceFormatProperties(sPhysicalDevice, format, &fp);
-    if (!(fp.optimalTilingFeatures & VK_FORMAT_FEATURE_SAMPLED_IMAGE_FILTER_LINEAR_BIT))
+    if (!canGenerateMipChainBlitVk(format))
     {
         return false;
     }
@@ -9993,7 +10929,7 @@ bool generateMipChainBlitVk(VkImage image, U32 base_w, U32 base_h, U32 mip_count
 
     vkEndCommandBuffer(cmd);
 
-    return submitOneShotVk(cmd, VK_NULL_HANDLE, VK_NULL_HANDLE);
+    return submitOneShotVk(cmd, VK_NULL_HANDLE, VK_NULL_HANDLE, "image-mip-blit");
 }
 
 bool downscaleImageVk(VkImage      src_image,
@@ -10098,7 +11034,7 @@ bool downscaleImageVk(VkImage      src_image,
 
     vkEndCommandBuffer(cmd);
 
-    if (!submitOneShotVk(cmd, VK_NULL_HANDLE, VK_NULL_HANDLE))
+    if (!submitOneShotVk(cmd, VK_NULL_HANDLE, VK_NULL_HANDLE, "image-downscale"))
     {
         destroyImageVk(new_image, new_view, new_alloc);
         return false;
@@ -10194,7 +11130,7 @@ bool blitCubeArrayVk(VkImage       src,
 
     vkEndCommandBuffer(cmd);
 
-    return submitOneShotVk(cmd, VK_NULL_HANDLE, VK_NULL_HANDLE);
+    return submitOneShotVk(cmd, VK_NULL_HANDLE, VK_NULL_HANDLE, "cube-array-blit");
 }
 
 bool generateMipChainInFrameVk(VkImage        image,
@@ -10214,9 +11150,7 @@ bool generateMipChainInFrameVk(VkImage        image,
         return false;
     }
 
-    VkFormatProperties fp = {};
-    vkGetPhysicalDeviceFormatProperties(sPhysicalDevice, format, &fp);
-    if (!(fp.optimalTilingFeatures & VK_FORMAT_FEATURE_SAMPLED_IMAGE_FILTER_LINEAR_BIT))
+    if (!canGenerateMipChainBlitVk(format))
     {
         return false;
     }
@@ -10503,7 +11437,8 @@ bool uploadImageData3DVk(VkImage     image,
 
     vkEndCommandBuffer(cmd);
 
-    return submitOneShotVk(cmd, staging_buffer, staging_allocation);
+    return submitOneShotVk(cmd, staging_buffer, staging_allocation,
+                           "image-upload-3d", data_size_bytes);
 }
 
 bool uploadImageSubregionVk(VkImage     image,
@@ -10647,7 +11582,8 @@ bool uploadImageSubregionVk(VkImage     image,
 
     vkEndCommandBuffer(cmd);
 
-    return submitOneShotVk(cmd, staging_buffer, staging_allocation);
+    return submitOneShotVk(cmd, staging_buffer, staging_allocation,
+                           "image-subregion-upload", staging_size);
 }
 
 bool createCubeImageVk(U32          resolution,
@@ -10863,7 +11799,8 @@ bool uploadCubeImageDataVk(VkImage           image,
 
     vkEndCommandBuffer(cmd);
 
-    return submitOneShotVk(cmd, staging_buffer, staging_allocation);
+    return submitOneShotVk(cmd, staging_buffer, staging_allocation,
+                           "cube-upload", total_size);
 }
 
 bool createCubeArrayImageVk(U32          resolution,
@@ -11290,6 +12227,20 @@ bool createReadbackBufferVk(U32       bytes,
     return true;
 }
 
+static VkBufferMemoryBarrier readbackDstWawBarrier(VkBuffer buffer)
+{
+    VkBufferMemoryBarrier b = {};
+    b.sType               = VK_STRUCTURE_TYPE_BUFFER_MEMORY_BARRIER;
+    b.srcAccessMask       = VK_ACCESS_TRANSFER_WRITE_BIT;
+    b.dstAccessMask       = VK_ACCESS_TRANSFER_WRITE_BIT;
+    b.srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+    b.dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+    b.buffer              = buffer;
+    b.offset              = 0;
+    b.size                = VK_WHOLE_SIZE;
+    return b;
+}
+
 bool copyColorImageRegionToBufferVk(VkImage       src_image,
                                     VkImageLayout src_layout,
                                     S32           src_x,
@@ -11333,8 +12284,9 @@ bool copyColorImageRegionToBufferVk(VkImage       src_image,
         b.subresourceRange.levelCount     = 1;
         b.subresourceRange.baseArrayLayer = 0;
         b.subresourceRange.layerCount     = 1;
+        VkBufferMemoryBarrier bufb = readbackDstWawBarrier(dst_buffer);
         vkCmdPipelineBarrier(cmd, VK_PIPELINE_STAGE_ALL_COMMANDS_BIT, VK_PIPELINE_STAGE_TRANSFER_BIT,
-                             0, 0, nullptr, 0, nullptr, 1, &b);
+                             0, 0, nullptr, 1, &bufb, 1, &b);
     }
 
     {
@@ -11454,10 +12406,11 @@ bool readbackColorImageRegionVk(VkImage       image,
         b.subresourceRange.levelCount     = 1;
         b.subresourceRange.baseArrayLayer = 0;
         b.subresourceRange.layerCount     = 1;
+        VkBufferMemoryBarrier bufb = readbackDstWawBarrier(staging_buffer);
         vkCmdPipelineBarrier(cmd,
                              VK_PIPELINE_STAGE_ALL_COMMANDS_BIT,
                              VK_PIPELINE_STAGE_TRANSFER_BIT,
-                             0, 0, nullptr, 0, nullptr, 1, &b);
+                             0, 0, nullptr, 1, &bufb, 1, &b);
     }
 
     {
@@ -11519,7 +12472,8 @@ bool readbackDepthImageRegionVk(VkImage       image,
                                 U32           width,
                                 U32           height,
                                 VkFormat      format,
-                                F32*          out_depth)
+                                F32*          out_depth,
+                                U32           array_layer)
 {
     if (image == VK_NULL_HANDLE || out_depth == nullptr ||
         width == 0 || height == 0 || x < 0 || y < 0)
@@ -11602,12 +12556,13 @@ bool readbackDepthImageRegionVk(VkImage       image,
         b.subresourceRange.aspectMask     = barrier_aspect;
         b.subresourceRange.baseMipLevel   = 0;
         b.subresourceRange.levelCount     = 1;
-        b.subresourceRange.baseArrayLayer = 0;
+        b.subresourceRange.baseArrayLayer = array_layer;
         b.subresourceRange.layerCount     = 1;
+        VkBufferMemoryBarrier bufb = readbackDstWawBarrier(staging_buffer);
         vkCmdPipelineBarrier(cmd,
                              VK_PIPELINE_STAGE_ALL_COMMANDS_BIT,
                              VK_PIPELINE_STAGE_TRANSFER_BIT,
-                             0, 0, nullptr, 0, nullptr, 1, &b);
+                             0, 0, nullptr, 1, &bufb, 1, &b);
     }
 
     {
@@ -11617,7 +12572,7 @@ bool readbackDepthImageRegionVk(VkImage       image,
         region.bufferImageHeight               = 0;
         region.imageSubresource.aspectMask     = VK_IMAGE_ASPECT_DEPTH_BIT;
         region.imageSubresource.mipLevel       = 0;
-        region.imageSubresource.baseArrayLayer = 0;
+        region.imageSubresource.baseArrayLayer = array_layer;
         region.imageSubresource.layerCount     = 1;
         region.imageOffset                     = {x, y, 0};
         region.imageExtent                     = {width, height, 1};
@@ -11638,7 +12593,7 @@ bool readbackDepthImageRegionVk(VkImage       image,
         b.subresourceRange.aspectMask     = barrier_aspect;
         b.subresourceRange.baseMipLevel   = 0;
         b.subresourceRange.levelCount     = 1;
-        b.subresourceRange.baseArrayLayer = 0;
+        b.subresourceRange.baseArrayLayer = array_layer;
         b.subresourceRange.layerCount     = 1;
         vkCmdPipelineBarrier(cmd,
                              VK_PIPELINE_STAGE_TRANSFER_BIT,
@@ -11767,6 +12722,11 @@ bool perfLogEnabled()
     return s_enabled;
 }
 
+bool immediatePresentActive()
+{
+    return sActivePresentMode == VK_PRESENT_MODE_IMMEDIATE_KHR;
+}
+
 bool isIndirectDrawEnabled()
 {
     return sMultiDrawIndirectEnabled && sDrawIndirectFirstInstanceEnabled;
@@ -11869,14 +12829,15 @@ U32 bindlessAcquireSlot(VkImageView view, VkSampler sampler)
     return slot;
 }
 
-void bindlessUpdateSlot(U32 slot, VkImageView view, VkSampler sampler)
+// β: slot に実際に登録されている view（記録スレッドからの読取・latent race 許容 = 別 tex 判別が目的）
+VkImageView bindlessSlotView(U32 slot)
 {
-    if (!sBindlessActive || slot == 0 || slot == BINDLESS_INVALID_SLOT || slot >= sBindlessHeapCount)
-    {
-        return;
-    }
-    std::lock_guard<std::mutex> guard(sBindlessSlotMutex);
-    bindlessWriteSlotInternal(slot, view, sampler);
+    return (slot < sBindlessSlotView.size()) ? sBindlessSlotView[slot] : VK_NULL_HANDLE;
+}
+
+VkImageView bindlessFallbackView()
+{
+    return sDefaultFallbackImageView;
 }
 
 void bindlessReleaseSlotDeferred(U32 slot)
@@ -12102,7 +13063,8 @@ void transitionImageLayoutVk(VkImage              image,
                              VkPipelineStageFlags dst_stage_mask,
                              VkAccessFlags        src_access_mask,
                              VkAccessFlags        dst_access_mask,
-                             U32                  layer_count)
+                             U32                  layer_count,
+                             U32                  level_count)
 {
     if (!sInitialized || image == VK_NULL_HANDLE)
     {
@@ -12131,7 +13093,7 @@ void transitionImageLayoutVk(VkImage              image,
         oneshot_barrier.image                           = image;
         oneshot_barrier.subresourceRange.aspectMask     = aspect_mask;
         oneshot_barrier.subresourceRange.baseMipLevel   = 0;
-        oneshot_barrier.subresourceRange.levelCount     = 1;
+        oneshot_barrier.subresourceRange.levelCount     = level_count;
         oneshot_barrier.subresourceRange.baseArrayLayer = 0;
         oneshot_barrier.subresourceRange.layerCount     = layer_count;
         oneshot_barrier.srcAccessMask                   = VK_ACCESS_MEMORY_READ_BIT | VK_ACCESS_MEMORY_WRITE_BIT;
@@ -12140,7 +13102,8 @@ void transitionImageLayoutVk(VkImage              image,
                              VK_PIPELINE_STAGE_ALL_COMMANDS_BIT, VK_PIPELINE_STAGE_ALL_COMMANDS_BIT,
                              0, 0, nullptr, 0, nullptr, 1, &oneshot_barrier);
         vkEndCommandBuffer(oneshot_cmd);
-        submitOneShotVk(oneshot_cmd, VK_NULL_HANDLE, VK_NULL_HANDLE);
+        submitOneShotVk(oneshot_cmd, VK_NULL_HANDLE, VK_NULL_HANDLE,
+                         "image-layout-transition");
         return;
     }
 
@@ -12154,7 +13117,7 @@ void transitionImageLayoutVk(VkImage              image,
     barrier.image                           = image;
     barrier.subresourceRange.aspectMask     = aspect_mask;
     barrier.subresourceRange.baseMipLevel   = 0;
-    barrier.subresourceRange.levelCount     = 1;
+    barrier.subresourceRange.levelCount     = level_count;
     barrier.subresourceRange.baseArrayLayer = 0;
     barrier.subresourceRange.layerCount     = layer_count;
     barrier.srcAccessMask                   = src_access_mask;
@@ -12601,8 +13564,16 @@ bool auxWindowBeginUIFrameVk()
                 aw.fenceInFlight[i] = false;
             }
         }
+        const VkExtent2D aux_old = aw.extent;
         auxDestroySwapchain();
-        if (!auxCreateSwapchain() || !auxRecycleAcquireSemaphores())
+        const bool aux_ok = auxCreateSwapchain() && auxRecycleAcquireSemaphores();
+        U64 aux_fp = (U64)aux_old.width;
+        aux_fp = aux_fp * 1099511628211ull + aux_old.height;
+        aux_fp = aux_fp * 1099511628211ull + aw.extent.width;
+        aux_fp = aux_fp * 1099511628211ull + aw.extent.height;
+        aux_fp = aux_fp * 1099511628211ull + (aux_ok ? 1u : 0u);
+        LLVKContract::noteCorrectiveAction("aux_swapchain_recreate", aux_fp);
+        if (!aux_ok)
         {
             return false;
         }
@@ -12907,7 +13878,7 @@ bool beginShaderDrawOrSkip(LLGLSLShader* shader, U32 render_mode, VkCommandBuffe
             beginSwapchainRendering();
             if (!isInRenderPassScope())
             {
-                LLVKContract::drawSkipped(LLVKContract::C_CMD_NULL, shader->mName);
+                LLVKContract::drawSkipped(LLVKContract::C_PASS_SCOPE_FAIL, shader->mName);
                 return false;
             }
         }
@@ -12924,7 +13895,7 @@ bool beginShaderDrawOrSkip(LLGLSLShader* shader, U32 render_mode, VkCommandBuffe
             bound_rt->resumeVkDynamicRendering();
             if (!isInRenderPassScope())
             {
-                LLVKContract::drawSkipped(LLVKContract::C_CMD_NULL, shader->mName);
+                LLVKContract::drawSkipped(LLVKContract::C_PASS_SCOPE_FAIL, shader->mName);
                 return false;
             }
         }
@@ -12966,7 +13937,7 @@ U64 currentPassAttachmentSig()
     return sig;
 }
 
-bool isImageViewActivePassAttachment(VkImageView view)
+bool isImageViewCurrentAttachment(VkImageView view)
 {
     if (!sInDynamicRendering || view == VK_NULL_HANDLE)
     {
@@ -12975,6 +13946,26 @@ bool isImageViewActivePassAttachment(VkImageView view)
     if (sSavedHasDepth && sSavedDepthInfo.imageView == view)
     {
         return true;
+    }
+    for (U32 i = 0; i < sSavedColorCount && i < 4; ++i)
+    {
+        if (sSavedColorInfos[i].imageView == view)
+        {
+            return true;
+        }
+    }
+    return false;
+}
+
+bool isImageViewActivePassAttachment(VkImageView view)
+{
+    if (!sInDynamicRendering || view == VK_NULL_HANDLE)
+    {
+        return false;
+    }
+    if (sSavedHasDepth && sSavedDepthInfo.imageView == view)
+    {
+        return sSavedDepthInfo.imageLayout != VK_IMAGE_LAYOUT_DEPTH_STENCIL_READ_ONLY_OPTIMAL;
     }
     for (U32 i = 0; i < sSavedColorCount && i < 4; ++i)
     {
@@ -13312,6 +14303,11 @@ void notifyWindowResize(U32 width, U32 height)
 VkImageView getDefaultFallbackVkImageView()
 {
     return sDefaultFallbackImageView;
+}
+
+VkImageView getWhiteVkImageView()
+{
+    return sWhiteImageView;
 }
 
 VkImageView getDefaultFallbackCubeArrayVkImageView()

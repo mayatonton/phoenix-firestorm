@@ -247,6 +247,27 @@ public:
 
     // ----------------------------------
 
+    enum e_tex_pump
+    {
+        TEX_PUMP_CACHE_READ = 0,
+        TEX_PUMP_HTTP_RES,
+        TEX_PUMP_HTTP_REQ,
+        TEX_PUMP_DECODE,
+        TEX_PUMP_CACHE_WRITE,
+        TEX_PUMP_COUNT
+    };
+
+    struct TexPumpStat
+    {
+        U32 waiting;
+        U32 pulse;
+    };
+
+    TexPumpStat getTexPumpStat(e_tex_pump pump);
+    static const char* getTexPumpName(e_tex_pump pump);
+
+    // ----------------------------------
+
 protected:
     // <FS:Ansariel> OpenSim compatibility
     // Threads:  T* (but Ttf in practice)
@@ -416,6 +437,9 @@ private:
     U32 mTotalCacheReadCount;                                           // Mfq
     U32 mTotalCacheWriteCount;                                          // Mfq
     U32 mTotalResourceWaitCount;                                        // Mfq
+
+    LLAtomicU32 mTexPumpPulse[TEX_PUMP_COUNT];
+    LLAtomicU32 mTexPumpWaiting[TEX_PUMP_COUNT];
 
 public:
     // A probabilistically-correct indicator that the current

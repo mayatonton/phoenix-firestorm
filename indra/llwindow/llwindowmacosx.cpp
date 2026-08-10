@@ -514,6 +514,10 @@ void callWindowUnhide()
 
 void callWindowDidChangeScreen()
 {
+    if (gWindowImplementation && gWindowImplementation->mMetalLayer)
+    {
+        updateMetalLayerDrawableSize(gWindowImplementation->mMetalLayer, gWindowImplementation->getWindow());
+    }
     if ( gWindowImplementation && gWindowImplementation->getCallbacks() )
     {
         gWindowImplementation->getCallbacks()->handleWindowDidChangeScreen(gWindowImplementation);
@@ -2534,6 +2538,14 @@ LLWindow::LLNativeWindowHandles LLWindowMacOSX::getNativeWindowHandles()
         handles.native_window  = mMetalLayer;
     }
     return handles;
+}
+
+void LLWindowMacOSX::syncNativePresentationGeometry()
+{
+    if (mMetalLayer != nullptr && mWindow != NULL)
+    {
+        updateMetalLayerDrawableSize(mMetalLayer, mWindow);
+    }
 }
 
 // get a double value from a dictionary

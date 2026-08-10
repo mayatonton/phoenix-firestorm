@@ -38,10 +38,12 @@ namespace LLVKLoader
     void shutdownVulkan(bool device_lost = false);
     void shutdownSwapchainAndSurface();
     void setVsyncEnabled(bool enabled);
+    void seedVsyncEnabled(bool enabled);
     void vkQuiesceProducers();
 
     bool isVulkanInitialized();
     bool isInFrame();
+    bool frameCanRecord();
     void gpuCheckpoint(const char* label);
     bool anyViewHandleDead(const void* const* views, U32 count);
 
@@ -64,6 +66,9 @@ namespace LLVKLoader
     bool beginOffscreenFrameVk();
     void endOffscreenFrameVk();
     VkCommandBuffer getCurrentCommandBuffer();
+
+    U32 getPendingImageFreeCount();
+    U32 getVmaTotalBlockCount();
 
     constexpr U32 MAX_RECORD_LANES = 1;
 
@@ -149,7 +154,7 @@ namespace LLVKLoader
 
     constexpr U32 FRAMES_IN_FLIGHT = 3;
 
-    constexpr U32 DRAWDATA_SLOT_UINTS = 12;
+    constexpr U32 DRAWDATA_SLOT_UINTS = 16;
 
     U32 getCurrentFrameIndex();
     U32 getMonotonicFrameCount();
@@ -1240,6 +1245,16 @@ namespace LLVKLoader
                            U32         data_size_bytes,
                            U32         mip_level = 0);
 
+    bool canGenerateMipChainBlitVk(VkFormat format);
+
+    bool uploadImageDataMipChainVk(VkImage     image,
+                                   U32         width,
+                                   U32         height,
+                                   const void* data,
+                                   U32         data_size_bytes,
+                                   U32         mip_count,
+                                   VkFormat    format);
+
     bool generateMipChainBlitVk(VkImage image, U32 base_w, U32 base_h, U32 mip_count, VkFormat format);
 
     void setVkGeoWorkerStopHook(void (*fn)());
@@ -1361,7 +1376,8 @@ namespace LLVKLoader
                                     U32           width,
                                     U32           height,
                                     VkFormat      format,
-                                    F32*          out_depth);
+                                    F32*          out_depth,
+                                    U32           array_layer = 0);
 
     VkSampler getStandardLinearSampler();
 
@@ -1380,9 +1396,12 @@ namespace LLVKLoader
     bool skinBindlessEnabled();
 
     U32  bindlessAcquireSlot(VkImageView view, VkSampler sampler);
-    void bindlessUpdateSlot(U32 slot, VkImageView view, VkSampler sampler);
 
     void bindlessReleaseSlotDeferred(U32 slot);
+
+    // β 検証(MDI supply verifier): slot に実登録の view / NULL 置換用 fallback view
+    VkImageView bindlessSlotView(U32 slot);
+    VkImageView bindlessFallbackView();
 
     VkDescriptorSetLayout getBindlessHeapLayout();
     VkDescriptorSetLayout getSkinBaseLayout();
@@ -1398,6 +1417,20 @@ namespace LLVKLoader
 
     void setThreadAllocDomain(U32 id);
 
+    bool registerGpuUploadWorker();
+    void unregisterGpuUploadWorker();
+    bool isUploadWorkerThread();
+    bool peThreaded();
+    bool isFrameInFlightVk(U32 monotonic_frame);
+
+    struct VbCopyRegion
+    {
+        U64         dst_offset = 0;
+        const void* src        = nullptr;
+        U32         bytes      = 0;
+    };
+    bool vbStageCopyVk(VkBuffer dst_buffer, const VbCopyRegion* regions, U32 region_count);
+
     U32  drawDataWriteScratch(const U32* slots4);
 
     void commitPerDrawID(U32 id, bool publish_skin, const void* avatar, U64 skin_hash);
@@ -1410,7 +1443,8 @@ namespace LLVKLoader
                                  VkPipelineStageFlags dst_stage_mask,
                                  VkAccessFlags        src_access_mask,
                                  VkAccessFlags        dst_access_mask,
-                                 U32                  layer_count = 1);
+                                 U32                  layer_count = 1,
+                                 U32                  level_count = 1);
 
     bool         initSurface(LLWindow* window);
     bool         auxWindowInitVk(void* native_display, void* native_window);
@@ -1440,6 +1474,7 @@ namespace LLVKLoader
     bool        isInRenderPassScope();
     bool        beginShaderDrawOrSkip(LLGLSLShader* shader, U32 render_mode, VkCommandBuffer& out_cmd);
     bool        isImageViewActivePassAttachment(VkImageView view);
+    bool        isImageViewCurrentAttachment(VkImageView view);
     U64         currentPassAttachmentSig();
     void        setupViewportAndScissor(VkCommandBuffer cmd, bool screen_space_copy = false);
     void        bindGraphicsPipelineOnce(VkCommandBuffer cmd, VkPipeline pipeline);
@@ -1496,6 +1531,8 @@ namespace LLVKLoader
         std::atomic<U64> syncmat_build{0};
         std::atomic<U64> vb_bind{0};
         std::atomic<U64> vb_skip{0};
+        std::atomic<U64> vb_orphan{0};
+        std::atomic<U64> vb_copy_bytes{0};
         std::atomic<U64> ib_bind{0};
         std::atomic<U64> ib_skip{0};
         std::atomic<U64> draws_pass[5] = {};
@@ -1510,6 +1547,8 @@ namespace LLVKLoader
         std::atomic<U64> bkt_skip{0};
         std::atomic<U64> mat_draws{0};
         std::atomic<U64> mat_bindless_draws{0};
+        std::atomic<U64> mat_cen[12][2] = {};
+        std::atomic<U64> shamdi[8][3] = {};
         std::atomic<U64> mdi_call{0};
         std::atomic<U64> mdi_rec{0};
         std::atomic<U64> mdi_zero{0};
@@ -1534,7 +1573,7 @@ namespace LLVKLoader
         std::atomic<U64> skin_bl_of{0};
         std::atomic<U64> skin_base_wr{0};
         std::atomic<U64> e3_rig_us[3] = {};
-        std::atomic<U64> e3_pal_us{0};
+        std::atomic<U64> e3_pal_us[3] = {};
         std::atomic<U64> als_n[4] = {};
         std::atomic<U64> als_us[4] = {};
         std::atomic<U64> als_cause[8] = {};
@@ -1589,13 +1628,15 @@ namespace LLVKLoader
             populate_bl = 0; populate_pl = 0; populate_blhit = 0;
             populate_hit = 0; populate_miss = 0;
             syncmat_call = 0; syncmat_build = 0;
-            vb_bind = 0; vb_skip = 0; ib_bind = 0; ib_skip = 0;
+            vb_bind = 0; vb_skip = 0; vb_orphan = 0; vb_copy_bytes = 0; ib_bind = 0; ib_skip = 0;
             for (auto& v : draws_pass) v = 0;
             for (auto& v : draws_shadow_map) v = 0;
             for (auto& row : draws_shadow_site) for (auto& v : row) v = 0;
             shadow_cull = 0; shadow_rigged = 0;
             for (auto& v : shadow_rigged_map) v = 0;
             bkt_patch = 0; bkt_range = 0; bkt_rec = 0; bkt_skip = 0; mat_draws = 0; mat_bindless_draws = 0;
+            for (auto& row : mat_cen) for (auto& v : row) v = 0;
+            for (auto& row : shamdi) for (auto& v : row) v = 0;
             mdi_call = 0; mdi_rec = 0; mdi_zero = 0; mdi_dyn = 0; mdi_full = 0;
             alp_run = 0; alp_col = 0; alp_inl = 0;
             for (auto& v : alpha_us) v = 0;
@@ -1609,7 +1650,7 @@ namespace LLVKLoader
             rigged_rec = 0;
             skin_up = 0;
             for (auto& v : e3_rig_us) v = 0;
-            e3_pal_us = 0;
+            for (auto& v : e3_pal_us) v = 0;
             for (auto& v : als_n) v = 0;
             for (auto& v : als_us) v = 0;
             for (auto& v : als_cause) v = 0;
@@ -1766,6 +1807,8 @@ namespace LLVKLoader
 
     bool perfLogEnabled();
 
+    bool immediatePresentActive();
+
     const float* getCurrentModelviewMatrix();
 
     struct ScenePerDrawBindings
@@ -1812,6 +1855,7 @@ namespace LLVKLoader
     void notifyWindowResize(U32 width, U32 height);
 
     VkImageView getDefaultFallbackVkImageView();
+    VkImageView getWhiteVkImageView();
     VkImageView getDefaultFallbackCubeArrayVkImageView();
     VkImageView getDefaultFallbackCubeVkImageView();
     VkImageView getDefaultFallback3DVkImageView();

@@ -101,7 +101,7 @@ void HTTPStats::dumpStats()
         out << (*it).first << " " << (*it).second << std::endl;
     }
 
-    LL_WARNS("HTTPCore") << out.str() << LL_ENDL;
+    LL_INFOS("HTTPCore") << out.str() << LL_ENDL;
 }
 
 

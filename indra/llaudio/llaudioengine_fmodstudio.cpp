@@ -62,7 +62,7 @@ static inline bool Check_FMOD_Error(FMOD_RESULT result, const char *string)
         return false;
     }
 
-    if (result != FMOD_ERR_INVALID_HANDLE)
+    if (result != FMOD_ERR_INVALID_HANDLE && result != FMOD_ERR_CHANNEL_STOLEN)
     {
         LL_WARNS("FMOD") << string << " Error: " << FMOD_ErrorString(result) << LL_ENDL;
     }
@@ -1005,7 +1005,7 @@ void LLAudioChannelFMODSTUDIO::play()
 {
     if (!mChannelp)
     {
-        LL_WARNS() << "Playing without a channel handle, aborting" << LL_ENDL;
+        LL_INFOS() << "Playing without a channel handle, aborting" << LL_ENDL;
         return;
     }
 

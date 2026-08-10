@@ -82,12 +82,10 @@ uniform float global_light_strength;
 
 void calcHalfVectors(vec3 lv, vec3 n, vec3 v, out vec3 h, out vec3 l, out float nh, out float nl, out float nv, out float vh, out float lightDist);
 float calcLegacyDistanceAttenuation(float distance, float falloff);
-vec4 getNorm(vec2 screenpos);
 vec4 getPosition(vec2 pos_screen);
 vec2 getScreenXY(vec4 clip);
 vec2 getScreenCoord(vec4 clip);
 vec3 srgb_to_linear(vec3 c);
-float getDepth(vec2 tc);
 
 void pbrPunctual(vec3 diffuseColor, vec3 specularColor,
                     float perceptualRoughness,

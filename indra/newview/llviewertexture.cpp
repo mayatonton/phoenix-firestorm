@@ -48,6 +48,7 @@
 #include "llnotificationsutil.h"
 
 #include "llimagegl.h"
+#include "llvkloader.h"
 #include "lldrawpool.h"
 #include "lltexturefetch.h"
 #include "llviewertexturelist.h"
@@ -1194,6 +1195,7 @@ void LLViewerFetchedTexture::init(bool firstinit)
     mHasFetcher = false;
     mIsFetching = false;
     mFetchState = 0;
+    mFetchObligationUnmetSweeps = 0;
     mFetchPriority = 0;
     mDownloadProgress = 0.f;
     mFetchDeltaTime = 999999.f;
@@ -1614,6 +1616,41 @@ std::string LLViewerFetchedTexture::fetchRetryStuckInfo() const
                     (S32)mBoostLevel, (S32)mHasFetcher);
 }
 
+bool LLViewerFetchedTexture::sweepFetchObligation()
+{
+    bool unmet = true;
+    if (mNeedsCreateTexture || mIsMissingAsset
+        || (!mLoadedCallbackList.empty() && mRawImage.notNull())
+        || mInFastCacheList
+        || mGLTexturep.isNull()
+        || mIsFetching || mHasFetcher
+        || mMaxVirtualSize <= 0.f
+        || mDesiredDiscardLevel > getMaxDiscardLevel()
+        || (mFetchFailCount > 0 && !mFetchFailTimer.hasExpired())
+        || (mCreateFailCount > 0 && !mCreateFailTimer.hasExpired()))
+    {
+        unmet = false;
+    }
+    if (unmet)
+    {
+        S32 current_discard = getCurrentDiscardLevelForFetching();
+        S32 desired_discard = llmin((S32)getDesiredDiscardLevel(), getMaxDiscardLevel());
+        if (current_discard >= 0
+            && (current_discard <= mMinDiscardLevel || current_discard <= desired_discard))
+        {
+            unmet = false;
+        }
+    }
+    if (!unmet)
+    {
+        mFetchObligationUnmetSweeps = 0;
+        return false;
+    }
+    ++mFetchObligationUnmetSweeps;
+    return mFetchObligationUnmetSweeps == 3
+        || (mFetchObligationUnmetSweeps > 3 && ((mFetchObligationUnmetSweeps - 3) % 4) == 0);
+}
+
 bool LLViewerFetchedTexture::createTexture()
 {
     if (!mNeedsCreateTexture)
@@ -1633,11 +1670,13 @@ void LLViewerFetchedTexture::postCreateTexture()
     {
         return;
     }
+    mGLTexturep->publishStagedVkBacking();
     if (mHadFetchFailures)
     {
         mHadFetchFailures = false;
         ++gAssetOracleTexRecovered;
     }
+    mCreateFailCount = 0;
 #if LL_IMAGEGL_THREAD_CHECK
     mGLTexturep->checkActiveThread();
 #endif
@@ -1662,6 +1701,28 @@ void LLViewerFetchedTexture::postCreateTexture()
     destroyRawImage(); // will save raw image if needed
 
     mNeedsCreateTexture = false;
+}
+
+void LLViewerFetchedTexture::postCreateTextureFailed()
+{
+    LL_PROFILE_ZONE_SCOPED_CATEGORY_TEXTURE;
+    if (mGLTexturep.notNull())
+    {
+        mGLTexturep->discardStagedVkBacking();
+    }
+    ++mCreateFailCount;
+    mNeedsCreateTexture = false;
+    destroyRawImage();
+    if (mCreateFailCount >= ASSET_RETRY_LIMIT)
+    {
+        setIsMissingAsset();
+    }
+    else
+    {
+        mHadFetchFailures = true;
+        mCreateFailTimer.reset();
+        mCreateFailTimer.setTimerExpirySec(assetRetryDelaySec(mCreateFailCount));
+    }
 }
 
 void LLViewerFetchedTexture::scheduleCreateTexture()
@@ -1689,11 +1750,13 @@ void LLViewerFetchedTexture::scheduleCreateTexture()
             if (mainq)
             {
                 ref();
+                ++LLVKLoader::gVkPerf.tex_enq;
+                auto created = std::make_shared<bool>(true);
                 mainq->postTo(
                     mImageQueue,
                     // work to be done on LLImageGL worker thread
 #if LL_IMAGEGL_THREAD_CHECK
-                    [this, data, data_copy, size]()
+                    [this, created, data, data_copy, size]()
                     {
                         mGLTexturep->mActiveThread = LLThread::currentID();
                         //verify data is unmodified
@@ -1701,11 +1764,11 @@ void LLViewerFetchedTexture::scheduleCreateTexture()
                         llassert(mRawImage->getDataSize() == size);
                         llassert(memcmp(data, data_copy, size) == 0);
 #else
-                    [this]()
+                    [this, created]()
                     {
 #endif
                         //actually create the texture on a background thread
-                        createTexture();
+                        *created = createTexture();
 
 #if LL_IMAGEGL_THREAD_CHECK
                         //verify data is unmodified
@@ -1716,7 +1779,7 @@ void LLViewerFetchedTexture::scheduleCreateTexture()
                     },
                     // callback to be run on main thread
 #if LL_IMAGEGL_THREAD_CHECK
-                        [this, data, data_copy, size]()
+                        [this, created, data, data_copy, size]()
                     {
                         mGLTexturep->mActiveThread = LLThread::currentID();
                         llassert(data == mRawImage->getData());
@@ -1724,11 +1787,18 @@ void LLViewerFetchedTexture::scheduleCreateTexture()
                         llassert(memcmp(data, data_copy, size) == 0);
                         delete[] data_copy;
 #else
-                        [this]()
+                        [this, created]()
                         {
 #endif
                         //finalize on main thread
-                        postCreateTexture();
+                        if (*created)
+                        {
+                            postCreateTexture();
+                        }
+                        else
+                        {
+                            postCreateTextureFailed();
+                        }
                         unref();
                     });
             }
@@ -2226,7 +2296,8 @@ bool LLViewerFetchedTexture::updateFetch()
         LL_PROFILE_ZONE_NAMED_CATEGORY_TEXTURE("vftuf - create or missing");
         make_request = false;
     }
-    else if (mFetchFailCount > 0 && !mFetchFailTimer.hasExpired())
+    else if ((mFetchFailCount > 0 && !mFetchFailTimer.hasExpired()) ||
+             (mCreateFailCount > 0 && !mCreateFailTimer.hasExpired()))
     {
         LL_PROFILE_ZONE_NAMED_CATEGORY_TEXTURE("vftuf - retry backoff");
         make_request = false;
@@ -2412,6 +2483,30 @@ void LLViewerFetchedTexture::setIsMissingAsset(bool is_missing)
             mLastPacketTimer.reset();
             mFetchState = 0;
             mFetchPriority = 0;
+        }
+        if (LLVKLoader::isVulkanInitialized()
+            && mGLTexturep.notNull()
+            && !mGLTexturep->hasVkImage())
+        {
+            LLPointer<LLImageRaw> gray = new LLImageRaw(4, 4, 4);
+            U8* d = gray->getData();
+            for (S32 i = 0; i < 4 * 4; ++i)
+            {
+                *d++ = 0x7f; *d++ = 0x7f; *d++ = 0x7f; *d++ = 0xff;
+            }
+            if (!mGLTexturep->createGLTexture(0, gray))
+            {
+                LL_WARNS("Texture") << mID << ": missing-asset substitute creation failed" << LL_ENDL;
+            }
+        }
+        for (U32 i = 0; i < mNumVolumes[LLRender::SCULPT_TEX]; ++i)
+        {
+            LLVOVolume* volume = mVolumeList[LLRender::SCULPT_TEX][i];
+            if (volume)
+            {
+                volume->mSculptChanged = true;
+                gPipeline.markRebuild(volume->mDrawable);
+            }
         }
     }
     else

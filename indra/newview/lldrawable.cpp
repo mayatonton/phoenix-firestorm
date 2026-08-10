@@ -199,7 +199,7 @@ void LLDrawable::destroy()
 
     if (LLSpatialGroup* group = getSpatialGroup())
     {
-        group->stripDrawRecords(this, LLVKContract::SITE_STRIP_DESTROY);
+        group->stripDrawRecords(this);
     }
 
     std::for_each(mFaces.begin(), mFaces.end(), DeletePointer());
@@ -272,7 +272,7 @@ void LLDrawable::cleanupReferences()
 
     if (LLSpatialGroup* group = getSpatialGroup())
     {
-        group->stripDrawRecords(this, LLVKContract::SITE_STRIP_CLEANUP);
+        group->stripDrawRecords(this);
     }
 
     std::for_each(mFaces.begin(), mFaces.end(), DeletePointer());
@@ -505,7 +505,7 @@ void LLDrawable::deleteFaces(S32 offset, S32 count)
 {
     if (LLSpatialGroup* group = getSpatialGroup())
     {
-        group->stripDrawRecords(this, LLVKContract::SITE_STRIP_DELETE_FACES);
+        group->stripDrawRecords(this);
     }
 
     face_list_t::iterator face_begin = mFaces.begin() + offset;

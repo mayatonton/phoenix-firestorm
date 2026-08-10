@@ -81,6 +81,11 @@ void LLHeroProbeManager::update()
         return;
     }
 
+    if (!gPipeline.heroChainComplete())
+    {
+        return;
+    }
+
     // Part of a hacky workaround to fix #3331.
     // For some reason clearing shaders will cause mirrors to actually work.
     // There's likely some deeper state issue that needs to be resolved.
@@ -243,6 +248,11 @@ void LLHeroProbeManager::renderProbes()
         return;
     }
 
+    if (!gPipeline.heroChainComplete())
+    {
+        return;
+    }
+
     static LLCachedControl<S32> sDetail(gSavedSettings, "RenderHeroReflectionProbeDetail", -1);
     static LLCachedControl<S32> sLevel(gSavedSettings, "RenderHeroReflectionProbeLevel", 3);
     static LLCachedControl<S32> sUpdateRate(gSavedSettings, "RenderHeroProbeUpdateRate", 0);
@@ -352,17 +362,25 @@ void LLHeroProbeManager::updateProbeFace(LLReflectionMap* probe, U32 face, bool 
 
             gGaussianProgram.pushGaussianFragPC(gaussian_res_scale, 1.0f, 0.0f);
             gGL.getTexUnit(diffuseChannel)->bind(screen_rt);
-            mRenderTarget.bindTarget();
-            gPipeline.mScreenTriangleVB->setBuffer();
-            gPipeline.mScreenTriangleVB->drawArrays(LLRender::TRIANGLES, 0, 3);
-            mRenderTarget.flush();
+            {
+                LLRTScope rts(mRenderTarget, false, "hero_gaussian_h");
+                if (rts)
+                {
+                    gPipeline.mScreenTriangleVB->setBuffer();
+                    gPipeline.mScreenTriangleVB->drawArrays(LLRender::TRIANGLES, 0, 3);
+                }
+            }
 
             gGaussianProgram.pushGaussianFragPC(gaussian_res_scale, 0.0f, 1.0f);
             gGL.getTexUnit(diffuseChannel)->bind(&mRenderTarget);
-            screen_rt->bindTarget();
-            gPipeline.mScreenTriangleVB->setBuffer();
-            gPipeline.mScreenTriangleVB->drawArrays(LLRender::TRIANGLES, 0, 3);
-            screen_rt->flush();
+            {
+                LLRTScope rts(*screen_rt, false, "hero_gaussian_v");
+                if (rts)
+                {
+                    gPipeline.mScreenTriangleVB->setBuffer();
+                    gPipeline.mScreenTriangleVB->drawArrays(LLRender::TRIANGLES, 0, 3);
+                }
+            }
             gGaussianProgram.unbind();
         }
 
@@ -375,7 +393,10 @@ void LLHeroProbeManager::updateProbeFace(LLReflectionMap* probe, U32 face, bool 
         for (int i = 0; i < mMipChain.size(); ++i)
         {
             LL_PROFILE_GPU_ZONE("hero probe mip");
-            mMipChain[i].bindTarget();
+            {
+            LLRTScope rts(mMipChain[i], false, "hero_probe_mip");
+            if (rts)
+            {
             if (i == 0)
             {
                 gGL.getTexUnit(diffuseChannel)->bind(screen_rt);
@@ -398,8 +419,6 @@ void LLHeroProbeManager::updateProbeFace(LLReflectionMap* probe, U32 face, bool 
             if (mip >= 0)
             {
                 LL_PROFILE_GPU_ZONE("hero probe mip copy");
-                mTexture->bind(0);
-
                 if (LLVKLoader::isVulkanInitialized() && mTexture->hasVkImage() && mMipChain[i].hasVkImage(0))
                 {
                     LLVKLoader::endDynamicRendering();
@@ -408,10 +427,9 @@ void LLHeroProbeManager::updateProbeFace(LLReflectionMap* probe, U32 face, bool 
                         mTexture->getVkImage(), (U32)(sourceIdx * 6 + face), (U32)mip, (U32)res, (U32)res);
                     mMipChain[i].resumeVkDynamicRendering();
                 }
-
-                mTexture->unbind();
             }
-            mMipChain[i].flush();
+            }
+            }
         }
 
         gGL.popMatrix();
@@ -434,7 +452,10 @@ void LLHeroProbeManager::generateRadiance(LLReflectionMap* probe)
     // Unlike the reflectionmap manager, all probes are considered "realtime" for hero probes.
     sourceIdx += 1;
     {
-        mMipChain[0].bindTarget();
+        {
+        LLRTScope rts(mMipChain[0], false, "hero_radiance");
+        if (rts)
+        {
 
         {
             // generate radiance map (even if this is not the irradiance map, we need the mip chain for the irradiance map)
@@ -494,7 +515,8 @@ void LLHeroProbeManager::generateRadiance(LLReflectionMap* probe)
             gHeroRadianceGenProgram.unbind();
         }
 
-        mMipChain[0].flush();
+        }
+        }
     }
 }
 

@@ -27,9 +27,6 @@ enum ECause : U32
     C_FB_VIEW_AUX,
     C_FB_HEAP_DEFAULT,
     C_FLICKER,
-    C_MAP_EVICT_UNPAIRED,
-    C_MAP_EVICT_LONG,
-    C_MAP_EVICT_UNPAIRED_HIDE,
     C_GEOAB_INPUT_DRIFT,
     C_GEOAB_KERNEL_MISMATCH,
     C_GEOAB_SRC_DRIFT,
@@ -49,51 +46,25 @@ enum ECause : U32
     C_ALLOC_NONCOHERENT,
     C_MV_STALE_VALUE,
     C_DRAWDATA_ID_MISMATCH,
-    C_LIST_DROP_INFRUSTUM,
-    C_LIST_OCCL_DROP,
-    C_LIST_RESUME,
-    C_LIST_ABSENT_LONG,
-    C_UUID_ABSENT,
-    C_UUID_FB_DIFFUSE,
-    C_UUID_FB_AUX,
     C_SIG_DIET_MISMATCH,
     C_PAR_MAIN_ONLY_WRITE,
     C_PAR_WORKER_FORBIDDEN,
     C_PAR_CONCURRENT,
     C_PAR_DEAD_ACCESS,
     C_SKIN_DRAW_NO_COMMIT,
+    C_PASS_SCOPE_FAIL,
+    C_PASS_REFUSED,
+    C_MDI_STALE,
+    C_MDI_OVERWRITE,
+    C_MDI_HEAP_IDENTITY,
+    C_MDI_RUNINV,
+    C_MDI_GEOM,
     CAUSE_COUNT
-};
-
-enum ESentinelSite : U32
-{
-    SITE_NONE = 0,
-    SITE_STRIP_DESTROY,
-    SITE_STRIP_CLEANUP,
-    SITE_STRIP_DELETE_FACES,
-    SITE_CLEAR_GROUP_DTOR,
-    SITE_CLEAR_REBUILD_GENERIC,
-    SITE_CLEAR_LAST_ELEMENT,
-    SITE_CLEAR_ZOMBIE,
-    SITE_CLEAR_DESTROY_GL,
-    SITE_CLEAR_APPLY,
-    SITE_COUNT
 };
 
 bool verboseEnabled();
 
 void setResolvers(std::string (*describe)(const void*), U64 (*key)(const void*));
-void setObjIdResolver(U32 (*fn)(const void*));
-void setPassBucketResolver(U32 (*fn)());
-void watchPickCandidate(U32 localid);
-bool watchPickModeEnabled();
-void watchAddLocal(U32 localid);
-U32 watchTakeFires(U32 localid);
-void watchFbProbe(bool diffuse, const char* reason);
-void watchStageEvent(U32 localid, const char* what, U32 n = 0);
-bool watchLastStage(U32 localid, const char*& what, U32& n, U64& age);
-bool watchLastEvict(U32 localid, U32& site, U32& records, U64& age);
-const char* sentinelSiteName(U32 site);
 
 void drawScopeBegin(const void* draw_info, const char* tag);
 void drawScopeEnd();
@@ -113,12 +84,11 @@ void causeNamed(ECause c, const std::string& shader_name);
 void note(ECause c, const std::string& shader_name);
 void noteDetail(ECause c, const char* key, const std::string& detail);
 void noteFbSlot(const void* shader_key, const std::string& shader_name, U32 binding, const char* reason);
+void noteFbNoView(const void* shader_key, const std::string& shader_name, U32 binding);
 void drawSkipped(ECause fire_cause, const std::string& shader_name);
 void drawFired();
 void frameBegin();
-
-void sentinelEvict(U32 site, const void* drawable, U32 obj_local_id, U32 record_count, bool drawable_dead, bool eligible);
-void sentinelRegister(const void* drawable);
+void noteCorrectiveAction(const char* site, U64 state_fingerprint);
 
 enum EVfy : U32
 {
@@ -132,6 +102,21 @@ void stashDrawDataID(U32 id);
 void checkDrawDataIDAtFire(U32 actual);
 void markPerDrawIDCommitted();
 void checkPerDrawIDFreshnessAtFire(bool fired, bool uses_skin_set, const char* shader_name);
+
+// MDI per-draw 供給検証器（恒久・docs/vknative_mdi_supply_verifier.md）
+// α = DrawData 供給の stale/上書き（mdiAuthor/mdiReference）
+// β = heap slot 実体の取り違え（呼び手が heap 照合し causeNamed(C_MDI_HEAP_IDENTITY)）
+void mdiInit(U32 total_slots);
+void mdiAuthor(U32 id, U64 content_hash, const void* src);
+void mdiReference(U32 id, const void* src);
+
+// slot[0..12]（GPU が実読する DrawData の全フィールド）の 64bit 指紋
+inline U64 mdiHash(const U32* slots)
+{
+    U64 h = 1469598103934665603ULL;
+    for (int i = 0; i < 13; ++i) { h ^= (U64)slots[i]; h *= 1099511628211ULL; }
+    return h;
+}
 
 void parallelEpochBegin();
 void parallelEpochEnd();

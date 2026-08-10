@@ -129,14 +129,6 @@ void LLTexUnit::disable(void)
     }
 }
 
-static void vkNoteDefaultBind(LLImageGL* image, S32 unit, const char* reason)
-{
-    LLGLSLShader* sh = LLGLSLShader::sCurBoundShaderPtr;
-    LLVKContract::noteFbSlot(sh,
-                             sh != nullptr ? sh->mName : std::string("(noshader)"),
-                             (U32)llmax(unit, 0), reason);
-}
-
 void LLTexUnit::vkNotifyShaderChannelBound()
 {
     if (!LLVKLoader::isVulkanInitialized())
@@ -161,10 +153,11 @@ void LLTexUnit::bindFast(LLTexture* texture)
         LL_PROFILE_ZONE_NAMED_CATEGORY_PIPELINE("MISSING TEXTURE");
         texture->forceImmediateUpdate();
         gl_tex->forceUpdateBindStats();
-        vkNoteDefaultBind(gl_tex, mIndex, "bindfast_default");
         texture->bindDefaultImage(mIndex);
+        mCurrVkWhite = false;
         return;
     }
+    gl_tex->updateBindStats();
     const bool same_state = (mCurrImageGL == gl_tex)
                             && mCurrRenderTarget == nullptr
                             && mCurrCubeMap == nullptr
@@ -190,6 +183,7 @@ void LLTexUnit::bindFast(LLTexture* texture)
     mCurrCompareMode  = false;
     mCurrAddressMode  = gl_tex->getAddressMode();
     mCurrFilterOption = gl_tex->getFilteringOption();
+    mCurrVkWhite      = false;
     if (same_state)
     {
         LLGLSLShader* sh = LLGLSLShader::sCurBoundShaderPtr;
@@ -221,11 +215,6 @@ bool LLTexUnit::bind(LLTexture* texture, bool for_rendering, bool forceBind)
                 {
                     activate();
                     enable(gl_tex->getTarget());
-                    if(gl_tex->updateBindStats())
-                    {
-                        texture->setActive() ;
-                        texture->updateBindStatsForTester() ;
-                    }
                     mHasMipMaps = gl_tex->mHasMipMaps;
                     if (gl_tex->mTexOptionsDirty)
                     {
@@ -233,6 +222,11 @@ bool LLTexUnit::bind(LLTexture* texture, bool for_rendering, bool forceBind)
                         setTextureAddressMode(gl_tex->mAddressMode);
                         setTextureFilteringOption(gl_tex->mFilterOption);
                     }
+                }
+                if(gl_tex->updateBindStats())
+                {
+                    texture->setActive() ;
+                    texture->updateBindStatsForTester() ;
                 }
                 mCurrImageGL = gl_tex;
                 mCurrVkHeapSlot = (gl_tex->getTarget() == TT_TEXTURE)
@@ -243,13 +237,14 @@ bool LLTexUnit::bind(LLTexture* texture, bool for_rendering, bool forceBind)
                 mCurrCompareMode  = false;
                 mCurrAddressMode  = gl_tex->getAddressMode();
                 mCurrFilterOption = gl_tex->getFilteringOption();
+                mCurrVkWhite      = false;
             }
             else
             {
                 texture->forceImmediateUpdate() ;
 
                 gl_tex->forceUpdateBindStats() ;
-                vkNoteDefaultBind(gl_tex, mIndex, "bindtex_default");
+                mCurrVkWhite = false;
                 return texture->bindDefaultImage(mIndex);
             }
         }
@@ -287,9 +282,9 @@ bool LLTexUnit::bind(LLImageGL* texture, bool for_rendering, bool forceBind)
 
     if(!texture->hasVkImage())
     {
+        mCurrVkWhite = false;
         if(LLImageGL::sDefaultGLTexture && LLImageGL::sDefaultGLTexture->hasVkImage())
         {
-            vkNoteDefaultBind(texture, mIndex, "bind_default");
             return bind(LLImageGL::sDefaultGLTexture) ;
         }
         return false ;
@@ -300,7 +295,6 @@ bool LLTexUnit::bind(LLImageGL* texture, bool for_rendering, bool forceBind)
         gGL.flush();
         activate();
         enable(texture->getTarget());
-        texture->updateBindStats();
         mHasMipMaps = texture->mHasMipMaps;
         if (texture->mTexOptionsDirty)
         {
@@ -309,6 +303,7 @@ bool LLTexUnit::bind(LLImageGL* texture, bool for_rendering, bool forceBind)
             setTextureFilteringOption(texture->mFilterOption);
         }
     }
+    texture->updateBindStats();
 
     mCurrImageGL = texture;
     mCurrVkHeapSlot = (texture->getTarget() == TT_TEXTURE)
@@ -319,25 +314,7 @@ bool LLTexUnit::bind(LLImageGL* texture, bool for_rendering, bool forceBind)
     mCurrCompareMode  = false;
     mCurrAddressMode  = texture->getAddressMode();
     mCurrFilterOption = texture->getFilteringOption();
-
-    if (LLVKContract::verboseEnabled() && mIndex < 4 && texture->getTarget() != TT_TEXTURE)
-    {
-        static std::atomic<U32> s_non2d_bind{0};
-        const U32 n = ++s_non2d_bind;
-        if ((n & (n - 1)) == 0)
-        {
-            LL_WARNS("VKContract") << "VKC non2d_bind n=" << n
-                                   << " unit=" << mIndex
-                                   << " tgt=0x" << std::hex << texture->getTarget() << std::dec
-                                   << " w=" << texture->getWidth()
-                                   << " gl=" << (void*)texture
-                                   << " shader=" << (LLGLSLShader::sCurBoundShaderPtr != nullptr
-                                                         ? LLGLSLShader::sCurBoundShaderPtr->mName
-                                                         : std::string("(none)"))
-                                   << " passtag=" << LLVKLoader::gVkPerfPassTag
-                                   << LL_ENDL;
-        }
-    }
+    mCurrVkWhite      = false;
 
     vkNotifyShaderChannelBound();
     return true;
@@ -368,7 +345,6 @@ bool LLTexUnit::bind(LLCubeMap* cubeMap)
             activate();
             enable(LLTexUnit::TT_CUBE_MAP);
             mHasMipMaps = cubeMap->mImages[0]->mHasMipMaps;
-            cubeMap->mImages[0]->updateBindStats();
             if (cubeMap->mImages[0]->mTexOptionsDirty)
             {
                 cubeMap->mImages[0]->mTexOptionsDirty = false;
@@ -383,6 +359,7 @@ bool LLTexUnit::bind(LLCubeMap* cubeMap)
         }
     }
 
+    cubeMap->mImages[0]->updateBindStats();
     mCurrCubeMap      = cubeMap;
     mCurrImageGL      = nullptr;
     mCurrVkHeapSlot   = 0xFFFFFFFFu;
@@ -390,6 +367,7 @@ bool LLTexUnit::bind(LLCubeMap* cubeMap)
     mCurrCompareMode  = false;
     mCurrAddressMode  = cubeMap->mImages[0]->getAddressMode();
     mCurrFilterOption = cubeMap->mImages[0]->getFilteringOption();
+    mCurrVkWhite      = false;
     vkNotifyShaderChannelBound();
     return true;
 }
@@ -417,6 +395,7 @@ bool LLTexUnit::bind(LLRenderTarget* renderTarget, bool bindDepth, U32 depthLaye
     mCurrCubeMap      = nullptr;
     mCurrAddressMode  = TAM_WRAP;
     mCurrFilterOption = TFO_BILINEAR;
+    mCurrVkWhite      = false;
 
     renderTarget->bindForShaderRead(mCurrRTAttachment, bindDepth);
 
@@ -456,6 +435,10 @@ VkImageView LLTexUnit::getLiveVkImageView() const
     if (mCurrImageGL != nullptr && mCurrImageGL->hasVkImage())
     {
         return mCurrImageGL->getVkImageView();
+    }
+    if (mCurrVkWhite)
+    {
+        return LLVKLoader::getWhiteVkImageView();
     }
     return VK_NULL_HANDLE;
 }
@@ -520,6 +503,7 @@ bool LLTexUnit::bindManual(eTextureType type, U32 texture, bool hasMips)
     mCurrVkHeapSlot = 0xFFFFFFFFu;
     mCurrRenderTarget = nullptr;
     mCurrCubeMap = nullptr;
+    mCurrVkWhite = false;
     return true;
 }
 
@@ -537,6 +521,7 @@ void LLTexUnit::unbind(eTextureType type)
         mCurrVkHeapSlot = 0xFFFFFFFFu;
         mCurrRenderTarget = nullptr;
         mCurrCubeMap = nullptr;
+        mCurrVkWhite = (type == LLTexUnit::TT_TEXTURE);
 
         vkNotifyShaderChannelBound();
     }
@@ -552,6 +537,7 @@ void LLTexUnit::unbindFast(eTextureType type)
         mCurrVkHeapSlot = 0xFFFFFFFFu;
         mCurrRenderTarget = nullptr;
         mCurrCubeMap = nullptr;
+        mCurrVkWhite = (type == LLTexUnit::TT_TEXTURE);
 
         vkNotifyShaderChannelBound();
     }
@@ -1871,8 +1857,6 @@ LLVertexBuffer* LLRender::genBuffer(U32 attribute_mask, S32 count)
 {
     LLVertexBuffer * vb = new LLVertexBuffer(attribute_mask);
     vb->allocateBuffer(count, 0);
-
-    vb->setBuffer();
 
     vb->setPositionData(mVerticesp.get());
 

@@ -1826,11 +1826,26 @@ bool LLIMModel::newSession(const LLUUID& session_id, const std::string& name, co
     return newSession(session_id, name, type, other_participant_id, ids, voiceChannelInfo, has_offline_msg);
 }
 
+static LLUUID sLastClearedSessionID;
+
+static void logMissingSession(const LLUUID& session_id, const char* who)
+{
+    if (session_id.notNull() && session_id == sLastClearedSessionID)
+    {
+        LL_DEBUGS() << who << ": session " << session_id << " already cleared" << LL_ENDL;
+    }
+    else
+    {
+        LL_WARNS() << who << ": session " << session_id << " does not exist " << LL_ENDL;
+    }
+}
+
 bool LLIMModel::clearSession(const LLUUID& session_id)
 {
     if (mId2SessionMap.find(session_id) == mId2SessionMap.end()) return false;
     delete (mId2SessionMap[session_id]);
     mId2SessionMap.erase(session_id);
+    sLastClearedSessionID = session_id;
     return true;
 }
 
@@ -1849,7 +1864,7 @@ void LLIMModel::getMessagesSilently(const LLUUID& session_id, chat_message_list_
     LLIMSession* session = findIMSession(session_id);
     if (!session)
     {
-        LL_WARNS() << "session " << session_id << "does not exist " << LL_ENDL;
+        logMissingSession(session_id, __FUNCTION__);
         return;
     }
 
@@ -1871,7 +1886,7 @@ void LLIMModel::sendNoUnreadMessages(const LLUUID& session_id)
     LLIMSession* session = findIMSession(session_id);
     if (!session)
     {
-        LL_WARNS() << "session " << session_id << "does not exist " << LL_ENDL;
+        logMissingSession(session_id, __FUNCTION__);
         return;
     }
 
@@ -1898,7 +1913,7 @@ bool LLIMModel::addToHistory(const LLUUID& session_id,
 
     if (!session)
     {
-        LL_WARNS() << "session " << session_id << "does not exist " << LL_ENDL;
+        logMissingSession(session_id, __FUNCTION__);
         return false;
     }
 
@@ -2081,7 +2096,7 @@ const std::string LLIMModel::getName(const LLUUID& session_id) const
 
     if (!session)
     {
-        LL_WARNS() << "session " << session_id << "does not exist " << LL_ENDL;
+        logMissingSession(session_id, __FUNCTION__);
         return LLTrans::getString("no_session_message");
     }
 
@@ -2093,7 +2108,7 @@ const S32 LLIMModel::getNumUnread(const LLUUID& session_id) const
     LLIMSession* session = findIMSession(session_id);
     if (!session)
     {
-        LL_WARNS() << "session " << session_id << "does not exist " << LL_ENDL;
+        logMissingSession(session_id, __FUNCTION__);
         return -1;
     }
 
@@ -2105,7 +2120,7 @@ const LLUUID& LLIMModel::getOtherParticipantID(const LLUUID& session_id) const
     LLIMSession* session = findIMSession(session_id);
     if (!session)
     {
-        LL_WARNS() << "session " << session_id << " does not exist " << LL_ENDL;
+        logMissingSession(session_id, __FUNCTION__);
         return LLUUID::null;
     }
 
@@ -2117,7 +2132,7 @@ EInstantMessage LLIMModel::getType(const LLUUID& session_id) const
     LLIMSession* session = findIMSession(session_id);
     if (!session)
     {
-        LL_WARNS() << "session " << session_id << "does not exist " << LL_ENDL;
+        logMissingSession(session_id, __FUNCTION__);
         return IM_COUNT;
     }
 
@@ -2129,7 +2144,7 @@ LLVoiceChannel* LLIMModel::getVoiceChannel( const LLUUID& session_id) const
     LLIMSession* session = findIMSession(session_id);
     if (!session)
     {
-        LL_WARNS() << "session " << session_id << "does not exist " << LL_ENDL;
+        logMissingSession(session_id, __FUNCTION__);
         return NULL;
     }
 
@@ -2141,7 +2156,7 @@ LLIMSpeakerMgr* LLIMModel::getSpeakerManager( const LLUUID& session_id ) const
     LLIMSession* session = findIMSession(session_id);
     if (!session)
     {
-        LL_WARNS() << "session " << session_id << " does not exist " << LL_ENDL;
+        logMissingSession(session_id, __FUNCTION__);
         return NULL;
     }
 
@@ -2153,7 +2168,7 @@ const std::string& LLIMModel::getHistoryFileName(const LLUUID& session_id) const
     LLIMSession* session = findIMSession(session_id);
     if (!session)
     {
-        LL_WARNS() << "session " << session_id << " does not exist " << LL_ENDL;
+        logMissingSession(session_id, __FUNCTION__);
         return LLStringUtil::null;
     }
 

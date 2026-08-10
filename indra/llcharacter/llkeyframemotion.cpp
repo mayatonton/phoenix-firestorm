@@ -1526,8 +1526,16 @@ bool LLKeyframeMotion::deserialize(LLDataPacker& dp, const LLUUID& asset_id, boo
         }
         else
         {
-            LL_WARNS() << "invalid joint name: " << joint_name
-                       << " for animation " << asset() << LL_ENDL;
+            if (!allow_invalid_joints || (mCharacter && mCharacter->isKnownJointName(joint_name)))
+            {
+                LL_WARNS() << "invalid joint name: " << joint_name
+                           << " for animation " << asset() << LL_ENDL;
+            }
+            else
+            {
+                LL_DEBUGS() << "invalid joint name: " << joint_name
+                            << " for animation " << asset() << LL_ENDL;
+            }
             if (!allow_invalid_joints)
             {
                 return false;

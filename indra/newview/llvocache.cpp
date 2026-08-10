@@ -1572,7 +1572,7 @@ bool LLVOCache::readFromCache(U64 handle, const LLUUID& id, LLVOCacheEntry::voca
     handle_entry_map_t::iterator iter = mHandleEntryMap.find(handle) ;
     if(iter == mHandleEntryMap.end()) //no cache
     {
-        LL_WARNS() << "No handle map entry for " << handle << LL_ENDL;
+        LL_DEBUGS("VOCache") << "No handle map entry for " << handle << LL_ENDL;
         return false; // arguably no a problem, but we'll mark this as dirty anyway.
     }
 
@@ -1648,7 +1648,7 @@ void LLVOCache::readGenericExtrasFromCache(U64 handle, const LLUUID& id, LLVOCac
     handle_entry_map_t::iterator iter = mHandleEntryMap.find(handle) ;
     if(iter == mHandleEntryMap.end()) //no cache
     {
-        LL_WARNS() << "No handle map entry for " << handle << LL_ENDL;
+        LL_DEBUGS("VOCache") << "No handle map entry for " << handle << LL_ENDL;
         return;
     }
 
@@ -1842,7 +1842,7 @@ void LLVOCache::writeToCache(U64 handle, const LLUUID& id, const LLVOCacheEntry:
 
     if(!dirty_cache)
     {
-        LL_WARNS() << "Skipping write to cache for " << filename << " (handle:" << handle << "): cache not dirty" << LL_ENDL;
+        LL_DEBUGS("VOCache") << "Skipping write to cache for " << filename << " (handle:" << handle << "): cache not dirty" << LL_ENDL;
         return ; //nothing changed, no need to update.
     }
 

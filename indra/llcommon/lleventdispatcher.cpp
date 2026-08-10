@@ -630,6 +630,10 @@ LLSD LLEventDispatcher::operator()(const std::string& name, const LLSD& event) c
 
 bool LLEventDispatcher::try_call(const std::string& name, const LLSD& event) const
 {
+    if (! name.empty() && mDispatch.find(name) == mDispatch.end())
+    {
+        return false;
+    }
     try
     {
         try_call(std::string(), name, event);
@@ -654,6 +658,11 @@ LLSD LLEventDispatcher::operator()(const LLSD& event) const
 
 bool LLEventDispatcher::try_call(const LLSD& event) const
 {
+    std::string name(event[mKey]);
+    if (! name.empty() && mDispatch.find(name) == mDispatch.end())
+    {
+        return false;
+    }
     try
     {
         try_call(mKey, event[mKey], event);

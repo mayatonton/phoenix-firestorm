@@ -6423,11 +6423,15 @@ bool LLViewerWindow::rawSnapshot(LLImageRaw *raw, S32 image_width, S32 image_hei
                 {
                     if (LLVKLoader::beginFrame(false))
                     {
-                        vk_snapshot_target.bindTarget();
-                        gGL.setClearColor(0.f, 0.f, 0.f, 1.f);
-                        vk_snapshot_target.clear(GL_COLOR_BUFFER_BIT);
-                        vk_snapshot_target.flush();
-                        gPipeline.mVkSnapshotRedirectTarget = &vk_snapshot_target;
+                        {
+                            LLRTScope s(vk_snapshot_target, false, "snapshot_init");
+                            if (s)
+                            {
+                                gGL.setClearColor(0.f, 0.f, 0.f, 1.f);
+                                vk_snapshot_target.clear(GL_COLOR_BUFFER_BIT);
+                            }
+                            gPipeline.mVkSnapshotRedirectTarget = s ? &vk_snapshot_target : nullptr;
+                        }
                         display(do_rebuild, scale_factor, subfield, true);
                         if (LLRenderTarget::getCurrentBoundTarget() == &vk_snapshot_target)
                         {
@@ -6671,7 +6675,11 @@ bool LLViewerWindow::simpleSnapshot(LLImageRaw* raw, S32 image_width, S32 image_
     }
     else
     {
-        gPipeline.allocateScreenBuffer(original_width, original_height);
+        if (!gPipeline.allocateScreenBuffer(original_width, original_height))
+        {
+            LL_WARNS("Snapshot") << "snapshot restore allocateScreenBuffer failed; requesting resize" << LL_ENDL;
+            gResizeScreenTexture = true;
+        }
     }
 
     // we render the scene more than once since this helps
@@ -6700,11 +6708,15 @@ bool LLViewerWindow::simpleSnapshot(LLImageRaw* raw, S32 image_width, S32 image_
         const bool for_snapshot = true;
         if (LLVKLoader::beginFrame(false))
         {
-            vk_snapshot_target.bindTarget();
-            gGL.setClearColor(0.f, 0.f, 0.f, 1.f);
-            vk_snapshot_target.clear(GL_COLOR_BUFFER_BIT);
-            vk_snapshot_target.flush();
-            gPipeline.mVkSnapshotRedirectTarget = &vk_snapshot_target;
+            {
+                LLRTScope s(vk_snapshot_target, false, "snapshot_init");
+                if (s)
+                {
+                    gGL.setClearColor(0.f, 0.f, 0.f, 1.f);
+                    vk_snapshot_target.clear(GL_COLOR_BUFFER_BIT);
+                }
+                gPipeline.mVkSnapshotRedirectTarget = s ? &vk_snapshot_target : nullptr;
+            }
             display(do_rebuild, zoom, subfield, for_snapshot);
             if (LLRenderTarget::getCurrentBoundTarget() == &vk_snapshot_target)
             {
@@ -6763,7 +6775,11 @@ bool LLViewerWindow::simpleSnapshot(LLImageRaw* raw, S32 image_width, S32 image_
 
     gPipeline.resetDrawOrders();
     mWorldViewRectRaw = window_rect;
-    gPipeline.allocateScreenBuffer(original_width, original_height);
+    if (!gPipeline.allocateScreenBuffer(original_width, original_height))
+    {
+        LL_WARNS("Snapshot") << "snapshot restore allocateScreenBuffer failed; requesting resize" << LL_ENDL;
+        gResizeScreenTexture = true;
+    }
 
     return vk_read_ok;
 }

@@ -37,6 +37,7 @@
 #include "llunits.h"
 #include "llthreadsafequeue.h"
 #include "llrender.h"
+#include "llvktexresidency.h"
 #include "threadpool.h"
 #include "workqueue.h"
 #include <unordered_set>
@@ -90,7 +91,7 @@ protected:
 public:
     virtual void dump();    // debugging info to LL_INFOS()
 
-    bool setSize(S32 width, S32 height, S32 ncomponents, S32 discard_level = -1);
+    void setSize(S32 width, S32 height, S32 ncomponents, S32 discard_level = -1);
     void setComponents(S32 ncomponents) { mComponents = (S8)ncomponents ;}
     void setAllowCompression(bool allow) { mAllowCompression = allow; }
 
@@ -98,7 +99,7 @@ public:
     bool createGLTexture(S32 discard_level, const LLImageRaw* imageraw, bool to_create = true,
         S32 category = sMaxCategories-1, bool defer_copy = false);
     bool createGLTexture(S32 discard_level, const U8* data, bool data_hasmips = false, bool defer_copy = false);
-    void setImage(const LLImageRaw* imageraw);
+    bool setImage(const LLImageRaw* imageraw);
     bool setImage(const U8* data_in, bool data_hasmips = false);
     bool setSubImage(const LLImageRaw* imageraw, S32 x_pos, S32 y_pos, S32 width, S32 height, bool force_fast_update = false);
     bool setSubImage(const U8* datap, S32 data_width, S32 data_height, S32 x_pos, S32 y_pos, S32 width, S32 height, bool force_fast_update = false);
@@ -129,24 +130,31 @@ public:
     LLGLenum getPrimaryFormat() const { return mFormatPrimary; }
     LLGLenum getFormatType() const { return mFormatType; }
 
-    bool getHasGLTexture() const { return mVkImage != VK_NULL_HANDLE; }
+    bool getHasGLTexture() const { return mVkRes.isLive(); }
 
-    VkImageView getVkImageView() const { return mVkImageView; }
-    bool hasVkImage() const { return mVkImage != VK_NULL_HANDLE; }
-    VkImage getVkImage() const { return mVkImage; }
-    U32      getVkImageMipLevels() const { return mVkImageMipLevels; }
-    VkFormat getVkImageFormat() const { return mVkImageFormat; }
+    VkImageView getVkImageView() const { return mVkRes.view(); }
+    bool hasVkImage() const { return mVkRes.isLive(); }
+    VkImage getVkImage() const { return mVkRes.image(); }
+    U32      getVkImageMipLevels() const { return mVkRes.mips(); }
+    U32      getVkImageWidth() const { return mVkRes.width(); }
+    U32      getVkImageHeight() const { return mVkRes.height(); }
+    VkFormat getVkImageFormat() const { return mVkRes.format(); }
 
-    U32  getVkHeapSlot() const { return mVkHeapSlot; }
-    void updateVkHeapSlot();
+    U32  getVkHeapSlot() const { return mVkRes.slot(); }
     static U32 vkHeapSlotOrDefault(LLImageGL* gl);
+
+    bool commitVkBacking(const VkBacking& b);
+    void publishStagedVkBacking();
+    void discardStagedVkBacking();
+    void resampleVkSlot();
+    U32  ensureVkSlot();
 
     void setExternalVkBacking(VkImage image, VkImageView view, void* allocation, U32 w, U32 h, VkFormat format, U32 mip_levels = 1);
 
-    void syncVulkan3DImage(U32 intformat, U32 primary, U32 type, S32 w, S32 h, S32 depth, const void* data);
+    bool syncVulkan3DImage(U32 intformat, U32 primary, U32 type, S32 w, S32 h, S32 depth, const void* data);
 
-    void syncVulkanMip0Image(U32 intformat, U32 primary, U32 type, S32 w, S32 h, const void* data, bool is_compressed,
-                             S32 mip_level = 0, S32 mip_count = 1);
+    bool syncVulkanMip0Image(U32 intformat, U32 primary, U32 type, S32 w, S32 h, const void* data, bool is_compressed,
+                             S32 mip_level = 0, S32 mip_count = 1, bool gen_mips = false);
 
     static bool computeIsMask(const void* data_in, U32 w, U32 h, S8 alpha_stride, S8 alpha_offset);
     static U8* buildPickMask(S32 width, S32 height, const U8* data_in, U16& out_width, U16& out_height);
@@ -240,17 +248,7 @@ protected:
 
     bool mExternalTexture;
 
-    VkImage     mVkImage      = VK_NULL_HANDLE;
-    VkImageView mVkImageView  = VK_NULL_HANDLE;
-    void*       mVkAllocation = nullptr;
-    U32         mVkImageWidth  = 0;
-    U32         mVkImageHeight = 0;
-    U32         mVkImageMipLevels = 1;
-    VkFormat    mVkImageFormat = VK_FORMAT_UNDEFINED;
-
-    U32         mVkHeapSlot        = 0xFFFFFFFFu;
-    VkImageView mVkHeapSlotView    = VK_NULL_HANDLE;
-    VkSampler   mVkHeapSlotSampler = VK_NULL_HANDLE;
+    VkTexResidency mVkRes;
 
 public:
     static std::unordered_set<LLImageGL*> sImageList;

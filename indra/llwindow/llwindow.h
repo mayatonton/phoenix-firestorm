@@ -180,6 +180,7 @@ public:
         void* native_window  = nullptr;
     };
     virtual LLNativeWindowHandles getNativeWindowHandles() { return LLNativeWindowHandles{}; }
+    virtual void syncNativePresentationGeometry() {}
 
 // return the platform-specific window reference we use to initialize llmozlib (HWND on Windows, WindowRef on the Mac, Gtk window on Linux)
     virtual void *getMediaWindow();

@@ -405,6 +405,8 @@ public:
     bool            hasFirstFullAttachmentData() const;
     F32             getFirstDecloudTime() const {return mFirstDecloudTime;}
 
+    void            deferKill();
+
     // check and return current state relative to limits
     // default will test only the geometry (combined=false).
     // this allows us to disable shadows separately on complex avatars.
@@ -920,8 +922,30 @@ protected:
 
     LLPointer<LLAppearanceMessageContents>  mLastProcessedAppearance;
 
+private:
+    struct LLCachedAppearance
+    {
+        LLTEContents                    mTE;
+        std::vector<std::pair<S32, F32> > mParams;
+        LLVector3                       mHoverOffset;
+        bool                            mHoverOffsetWasSet = false;
+        S32                             mAppearanceVersion = -1;
+        S32                             mParamAppearanceVersion = -1;
+        S32                             mCOFVersion = -1;
+        F32                             mReceivedTime = 0.f;
+    };
+    static std::map<LLUUID, LLCachedAppearance> sCachedAppearances;
+    static LLFrameTimer                 sAppearanceCacheTimer;
+    bool                                mAppliedCachedAppearance = false;
+    bool                                mKillDeferred = false;
+    LLFrameTimer                        mKillDeferredTimer;
+    void                                applyCachedAppearanceIfCloud();
+    static bool                         cacheSnapshotFromContents(const LLUUID& id, S32 appearance_version, const LLAppearanceMessageContents& contents);
+
 public:
     void            parseAppearanceMessage(LLMessageSystem* mesgsys, LLAppearanceMessageContents& msg);
+    void            parseAppearanceContentsInto(LLMessageSystem* mesgsys, LLAppearanceMessageContents& contents);
+    static bool     cacheAppearanceFromMessage(const LLUUID& uuid, LLMessageSystem* mesgsys);
     void            processAvatarAppearance(LLMessageSystem* mesgsys);
     void            applyParsedAppearanceMessage(LLAppearanceMessageContents& contents, bool slam_params);
     void            hideHair();

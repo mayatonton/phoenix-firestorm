@@ -43,6 +43,7 @@ in vec2 vary_texcoord0;
 layout(push_constant) uniform PbrShadowAlphaMaskF_PC
 {
     layout(offset = 64) float minimum_alpha;
+    layout(offset = 68) float object_alpha;
 };
 layout(set = 1, binding = 1) uniform sampler2D diffuseMap;
 #else
@@ -53,6 +54,9 @@ uniform float minimum_alpha;
 void main()
 {
     float alpha = texture(diffuseMap,vary_texcoord0.xy).a * vertex_color.a;
+#ifdef LL_VULKAN_GLSL
+    alpha *= object_alpha;
+#endif
 
     if (alpha < minimum_alpha)
     {
