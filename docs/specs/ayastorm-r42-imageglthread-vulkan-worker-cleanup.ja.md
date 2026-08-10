@@ -2,11 +2,11 @@
 
 ## 状態
 
-**実装前・文書化済み。**
+**実装・macOS arm64 開発 app の手動起動確認済み（2026-08-10）。**
 
 対象は `feature/ayastorm-r42-macos-arm64-moltenvk-validation` に取り込んだ
 最新 `feature/ayastorm-r42-phase2` である。本書は arm64 開発 app の build を阻害した
-`LLImageGLThread` の未使用 private field を、Vulkan worker 化の履歴に照らして判断した記録である。
+`LLImageGLThread` の未使用 private field を、Vulkan worker 化の履歴に照らして判断・修正・検証した記録である。
 
 ## 観測した build failure
 
@@ -79,5 +79,19 @@ Vulkan worker の registration、queue、submit、texture upload、または shu
 - Linux / Windows: 各プラットフォーム担当者が build と Vulkan run を別途確認する。macOS の起動結果を
   他プラットフォームの runtime 検証とは扱わない。
 
-コード修正は上記 macOS の手動起動確認が成立するまで commit しない。文書 commit とコード commit を
-分離する。
+### 実施結果（2026-08-10）
+
+上記の範囲で `mWindow` / `mContext`、不要になった constructor 引数、および `initClass()` の
+`LLWindow*` 引数を削除した。Vulkan worker の registration、queue、submit、texture upload、shutdown
+順序には変更を入れていない。
+
+次の構成で `ayastorm-bin` の arm64 開発 app をビルドした。
+
+- `CMAKE_OSX_ARCHITECTURES=arm64`
+- `LL_DULLAHAN_AUDIO_CALLBACK=TRUE`（t-noami の `dullahan_aya_audio` が `ENABLED`）
+- `PACKAGE=OFF`
+
+生成された `AYAstorm.app` は Mach-O arm64、code signature 検証成功、`libvulkan`、`libMoltenVK`、
+`MoltenVK_icd.json` の bundle 内配置を確認した。ユーザーによる手動起動は成立した。
+
+文書 commit とコード commit は分離する。
