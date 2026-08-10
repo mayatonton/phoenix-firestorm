@@ -2844,6 +2844,8 @@ bool LLAppViewer::cleanup()
 
     LLSplashScreen::hide();
 
+    LLImageGL::cleanupClass();
+
     LLVKLoader::shutdownVulkan();
 
     LL_INFOS() << "Goodbye!" << LL_ENDL;

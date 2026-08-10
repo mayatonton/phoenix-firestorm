@@ -1245,6 +1245,14 @@ namespace LLVKLoader
                            U32         data_size_bytes,
                            U32         mip_level = 0);
 
+    bool uploadImageDataMipChainVk(VkImage     image,
+                                   U32         width,
+                                   U32         height,
+                                   const void* data,
+                                   U32         data_size_bytes,
+                                   U32         mip_count,
+                                   VkFormat    format);
+
     bool generateMipChainBlitVk(VkImage image, U32 base_w, U32 base_h, U32 mip_count, VkFormat format);
 
     void setVkGeoWorkerStopHook(void (*fn)());
@@ -1408,6 +1416,11 @@ namespace LLVKLoader
 
     void setThreadAllocDomain(U32 id);
 
+    bool registerGpuUploadWorker();
+    void unregisterGpuUploadWorker();
+    bool isUploadWorkerThread();
+    bool peThreaded();
+
     U32  drawDataWriteScratch(const U32* slots4);
 
     void commitPerDrawID(U32 id, bool publish_skin, const void* avatar, U64 skin_hash);
@@ -1420,7 +1433,8 @@ namespace LLVKLoader
                                  VkPipelineStageFlags dst_stage_mask,
                                  VkAccessFlags        src_access_mask,
                                  VkAccessFlags        dst_access_mask,
-                                 U32                  layer_count = 1);
+                                 U32                  layer_count = 1,
+                                 U32                  level_count = 1);
 
     bool         initSurface(LLWindow* window);
     bool         auxWindowInitVk(void* native_display, void* native_window);

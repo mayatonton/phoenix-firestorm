@@ -361,16 +361,12 @@ void LLImageGL::initClass(LLWindow* window, S32 num_catagories, bool skip_analyz
     LL_PROFILE_ZONE_SCOPED_CATEGORY_TEXTURE;
     sSkipAnalyzeAlpha = skip_analyze_alpha;
 
-    if (LLVKLoader::isVulkanInitialized())
-    {
-        LLImageGLThread::sEnabledTextures = false;
-        LLImageGLThread::sEnabledMedia = false;
-    }
-    else if (thread_texture_loads || thread_media_updates)
+    const bool tex_on = thread_texture_loads && LLVKLoader::peThreaded();
+    LLImageGLThread::sEnabledTextures = tex_on;
+    LLImageGLThread::sEnabledMedia    = false;
+    if (tex_on)
     {
         LLImageGLThread::createInstance(window);
-        LLImageGLThread::sEnabledTextures = gGLManager.mGLVersion > 3.95f ? thread_texture_loads : false;
-        LLImageGLThread::sEnabledMedia = gGLManager.mGLVersion > 3.95f ? thread_media_updates : false;
     }
 }
 
@@ -875,11 +871,7 @@ bool LLImageGL::setImage(const U8* data_in, bool data_hasmips /* = false */)
                         S32 dim = llmax(w, h);
                         while (dim > 1) { dim >>= 1; ++vk_mip_count; }
                     }
-                    vk_ok &= syncVulkanMip0Image((U32)mFormatInternal, (U32)mFormatPrimary, (U32)mFormatType, w, h, data_in, false, 0, vk_mip_count);
-                    if (vk_ok && mVkRes.image() != VK_NULL_HANDLE && mVkRes.mips() > 1)
-                    {
-                        LLVKLoader::generateMipChainBlitVk(mVkRes.image(), (U32)w, (U32)h, mVkRes.mips(), mVkRes.format());
-                    }
+                    vk_ok &= syncVulkanMip0Image((U32)mFormatInternal, (U32)mFormatPrimary, (U32)mFormatType, w, h, data_in, false, 0, vk_mip_count, true);
 
                     updatePickMask(w, h, data_in);
                 }
@@ -1055,7 +1047,7 @@ namespace
 
 bool LLImageGL::syncVulkanMip0Image(U32 intformat, U32 primary, U32 type,
                                     S32 w, S32 h, const void* data, bool is_compressed,
-                                    S32 mip_level, S32 mip_count)
+                                    S32 mip_level, S32 mip_count, bool gen_mips)
 {
     if (!LLVKLoader::shouldUseVulkanRender())
     {
@@ -1093,7 +1085,7 @@ bool LLImageGL::syncVulkanMip0Image(U32 intformat, U32 primary, U32 type,
     {
         const U32 want_mips = (mip_count > 0) ? (U32)mip_count : 1u;
 
-        const bool can_reuse = mVkRes.isLive()
+        const bool can_reuse = mVkRes.hasBacking()
                                && (mVkRes.width()  == (U32)w)
                                && (mVkRes.height() == (U32)h)
                                && (mVkRes.format() == vk_format)
@@ -1126,7 +1118,7 @@ bool LLImageGL::syncVulkanMip0Image(U32 intformat, U32 primary, U32 type,
     }
     else
     {
-        if (!mVkRes.isLive()
+        if (!mVkRes.hasBacking()
             || mVkRes.format() != vk_format
             || (U32)mip_level >= mVkRes.mips())
         {
@@ -1137,10 +1129,23 @@ bool LLImageGL::syncVulkanMip0Image(U32 intformat, U32 primary, U32 type,
 
     if (data == nullptr)
     {
-        if (created_new && !commitVkBacking(nb))
+        if (created_new)
         {
-            LLVKLoader::destroyImageVk(nb.image, nb.view, nb.alloc);
-            return false;
+            LLVKLoader::transitionImageLayoutVk(nb.image,
+                                                VK_IMAGE_ASPECT_COLOR_BIT,
+                                                VK_IMAGE_LAYOUT_UNDEFINED,
+                                                VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,
+                                                VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT,
+                                                VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT,
+                                                0,
+                                                VK_ACCESS_SHADER_READ_BIT,
+                                                1,
+                                                nb.mips);
+            if (!commitVkBacking(nb))
+            {
+                LLVKLoader::destroyImageVk(nb.image, nb.view, nb.alloc);
+                return false;
+            }
         }
         return true;
     }
@@ -1216,8 +1221,12 @@ bool LLImageGL::syncVulkanMip0Image(U32 intformat, U32 primary, U32 type,
     bool ok = true;
     if (upload_size > 0)
     {
-        const bool upload_ok = LLVKLoader::uploadImageDataVk(
-            target_image, (U32)w, (U32)h, upload_data, upload_size, (U32)mip_level);
+        const U32  total_mips = (mip_level == 0 && mip_count > 0) ? (U32)mip_count : 1u;
+        const bool upload_ok = (gen_mips && mip_level == 0 && total_mips > 1)
+            ? LLVKLoader::uploadImageDataMipChainVk(
+                  target_image, (U32)w, (U32)h, upload_data, upload_size, total_mips, vk_format)
+            : LLVKLoader::uploadImageDataVk(
+                  target_image, (U32)w, (U32)h, upload_data, upload_size, (U32)mip_level);
 
         if (!upload_ok)
         {
@@ -1399,7 +1408,69 @@ bool VkTexResidency::commit(const VkBacking& next, VkSampler sampler, bool want_
     {
         return false;
     }
+    if (LLVKLoader::isUploadWorkerThread())
+    {
+        const VkBacking prev = mCur;
+        mCur = next;
+        if (mStagedValid)
+        {
+            if (prev.valid() && prev.owned)
+            {
+                LLVKLoader::destroyImageVk(prev.image, prev.view, prev.alloc);
+            }
+        }
+        else
+        {
+            mStagedPrev  = prev;
+            mStagedValid = true;
+        }
+        return true;
+    }
     return publish(next.view, sampler, &next, want_slot);
+}
+
+bool VkTexResidency::publishStaged(VkSampler sampler, bool want_slot)
+{
+    if (!mStagedValid)
+    {
+        return false;
+    }
+    mStagedValid = false;
+    const VkBacking prev = mStagedPrev;
+    mStagedPrev = VkBacking{};
+    U32 s_new = LLVKLoader::BINDLESS_INVALID_SLOT;
+    if (want_slot)
+    {
+        s_new = LLVKLoader::bindlessAcquireSlot(mCur.view, sampler);
+    }
+    const U32 s_old = mSlot.load(std::memory_order_relaxed);
+    mSlot.store(s_new, std::memory_order_relaxed);
+    mView.store(mCur.view, std::memory_order_release);
+    if (prev.valid() && prev.owned)
+    {
+        LLVKLoader::destroyImageVk(prev.image, prev.view, prev.alloc);
+    }
+    if (s_old != LLVKLoader::BINDLESS_INVALID_SLOT)
+    {
+        LLVKLoader::bindlessReleaseSlotDeferred(s_old);
+    }
+    return true;
+}
+
+void VkTexResidency::discardStaged()
+{
+    if (!mStagedValid)
+    {
+        return;
+    }
+    mStagedValid = false;
+    const VkBacking staged = mCur;
+    mCur = mStagedPrev;
+    mStagedPrev = VkBacking{};
+    if (staged.valid() && staged.owned && staged.image != mCur.image)
+    {
+        LLVKLoader::destroyImageVk(staged.image, staged.view, staged.alloc);
+    }
 }
 
 void VkTexResidency::resample(VkSampler s)
@@ -1442,6 +1513,15 @@ void VkTexResidency::retire()
     mView.store(VK_NULL_HANDLE, std::memory_order_release);
     const VkBacking prev = mCur;
     mCur = VkBacking{};
+    if (mStagedValid)
+    {
+        mStagedValid = false;
+        if (mStagedPrev.valid() && mStagedPrev.owned && mStagedPrev.image != prev.image)
+        {
+            LLVKLoader::destroyImageVk(mStagedPrev.image, mStagedPrev.view, mStagedPrev.alloc);
+        }
+        mStagedPrev = VkBacking{};
+    }
     if (prev.valid() && prev.owned)
     {
         LLVKLoader::destroyImageVk(prev.image, prev.view, prev.alloc);
@@ -1485,6 +1565,23 @@ bool LLImageGL::commitVkBacking(const VkBacking& b)
         ? LLVKLoader::getSamplerForState((U32)mAddressMode, (U32)mFilterOption, mHasMipMaps, false)
         : VK_NULL_HANDLE;
     return mVkRes.commit(b, smp, want_slot);
+}
+
+void LLImageGL::publishStagedVkBacking()
+{
+    const bool want_slot = LLVKLoader::isBindlessActiveVk() && (mTarget == GL_TEXTURE_2D);
+    const VkSampler smp = want_slot
+        ? LLVKLoader::getSamplerForState((U32)mAddressMode, (U32)mFilterOption, mHasMipMaps, false)
+        : VK_NULL_HANDLE;
+    if (mVkRes.publishStaged(smp, want_slot))
+    {
+        ++LLVKLoader::gVkPerf.tex_pub;
+    }
+}
+
+void LLImageGL::discardStagedVkBacking()
+{
+    mVkRes.discardStaged();
 }
 
 void LLImageGL::resampleVkSlot()
@@ -1645,30 +1742,20 @@ bool LLImageGL::setSubImageFromFrameBuffer(S32 fb_x, S32 fb_y, S32 x_pos, S32 y_
             bool      created_now = false;
 
             const bool need_new = (src_format != VK_FORMAT_UNDEFINED)
-                && (!mVkRes.isLive()
+                && (!mVkRes.hasBacking()
                     || mVkRes.width()  != (U32)mWidth
                     || mVkRes.height() != (U32)mHeight
                     || mVkRes.format() != src_format);
 
             if (need_new)
             {
-                U32 want_mips = 1;
-                if (mHasMipMaps)
-                {
-                    const U32 dim = llmax((U32)mWidth, (U32)mHeight);
-                    while ((dim >> want_mips) > 0)
-                    {
-                        ++want_mips;
-                    }
-                }
-
                 if (LLVKLoader::createTextureImageVk((U32)mWidth, (U32)mHeight, src_format,
                                                      nb.image, nb.view, nb.alloc,
-                                                     want_mips))
+                                                     1))
                 {
                     nb.width  = (U32)mWidth;
                     nb.height = (U32)mHeight;
-                    nb.mips   = want_mips;
+                    nb.mips   = 1;
                     nb.format = src_format;
                     nb.owned  = true;
                     copy_target = nb.image;
@@ -2594,18 +2681,6 @@ LLImageGLThread::LLImageGLThread(LLWindow* window)
     LL_PROFILE_ZONE_SCOPED_CATEGORY_TEXTURE;
     mFinished = false;
 
-    mContext = mWindow->createSharedContext();
-
-    // <FS:ND> If context creating is not supported (SDL1), mark texture thread disabled and exit
-    if( !mContext )
-    {
-        sEnabledTextures = false;
-        sEnabledMedia = false;
-        mFinished = true;
-        return;
-    }
-    // </FS:ND>
-
     LL::ThreadPool::start();
 }
 
@@ -2614,11 +2689,12 @@ void LLImageGLThread::run()
     LL_PROFILE_ZONE_SCOPED_CATEGORY_TEXTURE;
     // We must perform setup on this thread before actually servicing our
     // WorkQueue, likewise cleanup afterwards.
-    mWindow->makeContextCurrent(mContext);
-    gGL.init(false);
-    LL_PROFILER_GPU_CONTEXT_NS("LLImageGL Context", 17);
+    if (!LLVKLoader::registerGpuUploadWorker())
+    {
+        LL_WARNS("Vulkan") << "LLImageGLThread: worker command pool unavailable, textures fall back to main-thread creates" << LL_ENDL;
+        sEnabledTextures = false;
+    }
     LL::ThreadPool::run();
-    gGL.shutdown();
-    mWindow->destroySharedContext(mContext);
+    LLVKLoader::unregisterGpuUploadWorker();
 }
 

@@ -1670,6 +1670,7 @@ void LLViewerFetchedTexture::postCreateTexture()
     {
         return;
     }
+    mGLTexturep->publishStagedVkBacking();
     if (mHadFetchFailures)
     {
         mHadFetchFailures = false;
@@ -1705,6 +1706,10 @@ void LLViewerFetchedTexture::postCreateTexture()
 void LLViewerFetchedTexture::postCreateTextureFailed()
 {
     LL_PROFILE_ZONE_SCOPED_CATEGORY_TEXTURE;
+    if (mGLTexturep.notNull())
+    {
+        mGLTexturep->discardStagedVkBacking();
+    }
     ++mCreateFailCount;
     mNeedsCreateTexture = false;
     destroyRawImage();
@@ -1745,6 +1750,7 @@ void LLViewerFetchedTexture::scheduleCreateTexture()
             if (mainq)
             {
                 ref();
+                ++LLVKLoader::gVkPerf.tex_enq;
                 auto created = std::make_shared<bool>(true);
                 mainq->postTo(
                     mImageQueue,

@@ -24,6 +24,7 @@ class VkTexResidency
 {
 public:
     bool        isLive() const { return mView.load(std::memory_order_acquire) != VK_NULL_HANDLE; }
+    bool        hasBacking() const { return mCur.valid(); }
     VkImageView view()   const { return mView.load(std::memory_order_acquire); }
     U32         slot()   const { return mSlot.load(std::memory_order_relaxed); }
     VkImage     image()  const { return mCur.image; }
@@ -36,6 +37,8 @@ public:
     void resample(VkSampler s);
     void retire();
     U32  ensureSlot(VkSampler sampler);
+    bool publishStaged(VkSampler sampler, bool want_slot);
+    void discardStaged();
 
 private:
     bool publish(VkImageView view, VkSampler sampler, const VkBacking* next, bool want_slot);
@@ -43,7 +46,8 @@ private:
     std::atomic<U32>         mSlot{0xFFFFFFFFu};
     std::atomic<VkImageView> mView{VK_NULL_HANDLE};
     VkBacking                mCur;
-    VkSampler                mSampler = VK_NULL_HANDLE;
+    VkBacking                mStagedPrev;
+    bool                     mStagedValid = false;
 };
 
 #endif

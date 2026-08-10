@@ -757,8 +757,14 @@ namespace
     };
     std::vector<PendingOneShotFree> sPendingOneShotFrees;
     std::mutex                      sOneShotMutex;
-    std::vector<VkCommandBuffer>    sRetiredMainOneShotCmds;
+    std::unordered_map<VkCommandPool, std::vector<VkCommandBuffer>> sRetiredByPool;
     std::atomic<U64>                sOneShotStagingBytes{0};
+    thread_local VkCommandPool      t_cmdPool = VK_NULL_HANDLE;
+
+    VkCommandPool threadCmdPool()
+    {
+        return t_cmdPool != VK_NULL_HANDLE ? t_cmdPool : sCommandPool;
+    }
     void (*sGeoWorkerStopHook)()   = nullptr;
     void (*sBakeWorkerStopHook)()  = nullptr;
 
@@ -1371,6 +1377,12 @@ namespace
         }
         std::unique_lock<std::mutex> lk(sPEQueueMutex);
         sPEQueueCv.wait(lk, [] { return sPEJobs.empty() && !sPEBusy; });
+    }
+
+    U32 peQueueDepth()
+    {
+        std::lock_guard<std::mutex> lk(sPEQueueMutex);
+        return (U32)sPEJobs.size();
     }
 
     void peStart()
@@ -8948,14 +8960,14 @@ void tickDeferredBufferFreeQueue()
 
 bool submitOneShotVk(VkCommandBuffer cmd, VkBuffer staging_buffer, VmaAllocation staging_allocation)
 {
-    return submitOneShotVkFromPool(cmd, sCommandPool, staging_buffer, staging_allocation, 0);
+    return submitOneShotVkFromPool(cmd, threadCmdPool(), staging_buffer, staging_allocation, 0);
 }
 
 static VkCommandBuffer beginOneShotCommandBufferVk()
 {
     VkCommandBufferAllocateInfo cbai = {};
     cbai.sType              = VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO;
-    cbai.commandPool        = sCommandPool;
+    cbai.commandPool        = threadCmdPool();
     cbai.level              = VK_COMMAND_BUFFER_LEVEL_PRIMARY;
     cbai.commandBufferCount = 1;
     VkCommandBuffer cmd = VK_NULL_HANDLE;
@@ -8967,12 +8979,26 @@ static VkCommandBuffer beginOneShotCommandBufferVk()
     cbbi.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO;
     cbbi.flags = VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT;
     vkBeginCommandBuffer(cmd, &cbbi);
+    if (vkValidationRequested())
+    {
+        setVkObjectName((U64)(uintptr_t)cmd, VK_OBJECT_TYPE_COMMAND_BUFFER,
+                        t_cmdPool != VK_NULL_HANDLE ? "oneshot-worker" : "oneshot-main");
+    }
     return cmd;
 }
 
 bool submitOneShotVkFromPool(VkCommandBuffer cmd, VkCommandPool pool, VkBuffer staging_buffer,
                              VmaAllocation staging_allocation, U32 staging_bytes)
 {
+    if (t_cmdPool != VK_NULL_HANDLE)
+    {
+        U32 spins = 0;
+        while (peQueueDepth() > 32 && ++spins < 25000)
+        {
+            tickOneShotFreeQueue();
+            std::this_thread::sleep_for(std::chrono::microseconds(200));
+        }
+    }
     tickOneShotFreeQueue();
     const U64 byte_cap = 256ull << 20;
     for (U32 i = 0; i < 20; ++i)
@@ -9009,7 +9035,7 @@ bool submitOneShotVkFromPool(VkCommandBuffer cmd, VkCommandPool pool, VkBuffer s
             std::lock_guard<std::mutex> lk(sOneShotMutex);
             if (wait_entry.cmd != VK_NULL_HANDLE)
             {
-                sRetiredMainOneShotCmds.push_back(wait_entry.cmd);
+                sRetiredByPool[wait_entry.pool].push_back(wait_entry.cmd);
             }
         }
         else
@@ -9059,7 +9085,7 @@ void tickOneShotFreeQueue()
         failed.swap(sPEFailedOneShotValues);
     }
     std::vector<VkCommandBuffer> free_now;
-    const VkCommandPool free_pool = sCommandPool;
+    const VkCommandPool free_pool = threadCmdPool();
     const uint64_t cur = gpuTimelineValue();
     {
         std::lock_guard<std::mutex> lk(sOneShotMutex);
@@ -9079,7 +9105,7 @@ void tickOneShotFreeQueue()
                 sOneShotStagingBytes.fetch_sub(e.staging_bytes);
                 if (e.cmd != VK_NULL_HANDLE)
                 {
-                    sRetiredMainOneShotCmds.push_back(e.cmd);
+                    sRetiredByPool[e.pool].push_back(e.cmd);
                 }
             }
             else
@@ -9092,12 +9118,93 @@ void tickOneShotFreeQueue()
             }
         }
         sPendingOneShotFrees.resize(w);
-        free_now.swap(sRetiredMainOneShotCmds);
+        auto own = sRetiredByPool.find(free_pool);
+        if (own != sRetiredByPool.end())
+        {
+            free_now.swap(own->second);
+        }
     }
     if (!free_now.empty() && free_pool != VK_NULL_HANDLE)
     {
         vkFreeCommandBuffers(sDevice, free_pool, (U32)free_now.size(), free_now.data());
     }
+}
+
+bool isUploadWorkerThread()
+{
+    return t_cmdPool != VK_NULL_HANDLE;
+}
+
+bool peThreaded()
+{
+    return sPERunning;
+}
+
+bool registerGpuUploadWorker()
+{
+    if (sDevice == VK_NULL_HANDLE || !sPERunning)
+    {
+        return false;
+    }
+    VkCommandPoolCreateInfo pool_info = {};
+    pool_info.sType = VK_STRUCTURE_TYPE_COMMAND_POOL_CREATE_INFO;
+    pool_info.flags = VK_COMMAND_POOL_CREATE_TRANSIENT_BIT |
+                      VK_COMMAND_POOL_CREATE_RESET_COMMAND_BUFFER_BIT;
+    pool_info.queueFamilyIndex = sGraphicsQueueFamily;
+    VkCommandPool pool = VK_NULL_HANDLE;
+    if (vkCreateCommandPool(sDevice, &pool_info, nullptr, &pool) != VK_SUCCESS)
+    {
+        return false;
+    }
+    t_cmdPool = pool;
+    return true;
+}
+
+void unregisterGpuUploadWorker()
+{
+    const VkCommandPool pool = t_cmdPool;
+    if (pool == VK_NULL_HANDLE)
+    {
+        return;
+    }
+    uint64_t max_tv = 0;
+    {
+        std::lock_guard<std::mutex> lk(sOneShotMutex);
+        for (const PendingOneShotFree& e : sPendingOneShotFrees)
+        {
+            if (e.pool == pool && e.timeline_value > max_tv)
+            {
+                max_tv = e.timeline_value;
+            }
+        }
+    }
+    U32 spins = 0;
+    while (gpuTimelineValue() < max_tv && !sReapForceAll)
+    {
+        tickOneShotFreeQueue();
+        std::this_thread::sleep_for(std::chrono::microseconds(200));
+        if (++spins > 25000)
+        {
+            LL_WARNS("Vulkan") << "unregisterGpuUploadWorker: drain timeout, pool left undestroyed" << LL_ENDL;
+            t_cmdPool = VK_NULL_HANDLE;
+            return;
+        }
+    }
+    tickOneShotFreeQueue();
+    {
+        std::lock_guard<std::mutex> lk(sOneShotMutex);
+        auto it = sRetiredByPool.find(pool);
+        if (it != sRetiredByPool.end())
+        {
+            if (!it->second.empty())
+            {
+                vkFreeCommandBuffers(sDevice, pool, (U32)it->second.size(), it->second.data());
+            }
+            sRetiredByPool.erase(it);
+        }
+    }
+    vkDestroyCommandPool(sDevice, pool, nullptr);
+    t_cmdPool = VK_NULL_HANDLE;
 }
 
 void setVkGeoWorkerStopHook(void (*fn)())
@@ -10251,6 +10358,178 @@ bool uploadImageDataVk(VkImage     image,
                              VK_PIPELINE_STAGE_TRANSFER_BIT,
                              VK_PIPELINE_STAGE_ALL_COMMANDS_BIT,
                              0, 0, nullptr, 0, nullptr, 1, &b);
+    }
+
+    vkEndCommandBuffer(cmd);
+
+    return submitOneShotVk(cmd, staging_buffer, staging_allocation);
+}
+
+bool uploadImageDataMipChainVk(VkImage     image,
+                               U32         width,
+                               U32         height,
+                               const void* data,
+                               U32         data_size_bytes,
+                               U32         mip_count,
+                               VkFormat    format)
+{
+    if (image == VK_NULL_HANDLE || data == nullptr || data_size_bytes == 0 || mip_count == 0)
+    {
+        return false;
+    }
+    if (sDevice == VK_NULL_HANDLE || sAllocator == VK_NULL_HANDLE ||
+        sCommandPool == VK_NULL_HANDLE || sGraphicsQueue == VK_NULL_HANDLE)
+    {
+        return false;
+    }
+
+    bool blit_ok = false;
+    if (mip_count > 1)
+    {
+        VkFormatProperties fp = {};
+        vkGetPhysicalDeviceFormatProperties(sPhysicalDevice, format, &fp);
+        blit_ok = (fp.optimalTilingFeatures & VK_FORMAT_FEATURE_SAMPLED_IMAGE_FILTER_LINEAR_BIT) != 0;
+    }
+
+    VkBuffer      staging_buffer     = VK_NULL_HANDLE;
+    VmaAllocation staging_allocation = VK_NULL_HANDLE;
+    void*         staging_mapped     = nullptr;
+    {
+        VkBufferCreateInfo bci = {};
+        bci.sType       = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO;
+        bci.size        = data_size_bytes;
+        bci.usage       = VK_BUFFER_USAGE_TRANSFER_SRC_BIT;
+        bci.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
+
+        VmaAllocationCreateInfo aci = {};
+        aci.usage         = VMA_MEMORY_USAGE_AUTO;
+        aci.flags         = VMA_ALLOCATION_CREATE_HOST_ACCESS_SEQUENTIAL_WRITE_BIT
+                          | VMA_ALLOCATION_CREATE_MAPPED_BIT;
+        aci.requiredFlags = VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT
+                          | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT;
+
+        VmaAllocationInfo info = {};
+        VkResult r = vmaCreateBuffer(sAllocator, &bci, &aci, &staging_buffer,
+                                     &staging_allocation, &info);
+        if (r != VK_SUCCESS || staging_buffer == VK_NULL_HANDLE || info.pMappedData == nullptr)
+        {
+            if (staging_buffer != VK_NULL_HANDLE)
+            {
+                vmaDestroyBuffer(sAllocator, staging_buffer, staging_allocation);
+            }
+            return false;
+        }
+        staging_mapped = info.pMappedData;
+    }
+
+    memcpy(staging_mapped, data, data_size_bytes);
+
+    VkCommandBuffer cmd = beginOneShotCommandBufferVk();
+    if (cmd == VK_NULL_HANDLE)
+    {
+        vmaDestroyBuffer(sAllocator, staging_buffer, staging_allocation);
+        return false;
+    }
+
+    auto mip_barrier = [&](U32 level, VkImageLayout oldL, VkImageLayout newL,
+                           VkAccessFlags srcA, VkAccessFlags dstA,
+                           VkPipelineStageFlags srcS, VkPipelineStageFlags dstS)
+    {
+        VkImageMemoryBarrier b = {};
+        b.sType                           = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER;
+        b.image                           = image;
+        b.oldLayout                       = oldL;
+        b.newLayout                       = newL;
+        b.srcAccessMask                   = srcA;
+        b.dstAccessMask                   = dstA;
+        b.srcQueueFamilyIndex             = VK_QUEUE_FAMILY_IGNORED;
+        b.dstQueueFamilyIndex             = VK_QUEUE_FAMILY_IGNORED;
+        b.subresourceRange.aspectMask     = VK_IMAGE_ASPECT_COLOR_BIT;
+        b.subresourceRange.baseMipLevel   = level;
+        b.subresourceRange.levelCount     = 1;
+        b.subresourceRange.baseArrayLayer = 0;
+        b.subresourceRange.layerCount     = 1;
+        vkCmdPipelineBarrier(cmd, srcS, dstS, 0, 0, nullptr, 0, nullptr, 1, &b);
+    };
+
+    mip_barrier(0, VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
+                0, VK_ACCESS_TRANSFER_WRITE_BIT,
+                VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT, VK_PIPELINE_STAGE_TRANSFER_BIT);
+
+    {
+        VkBufferImageCopy region = {};
+        region.imageSubresource.aspectMask     = VK_IMAGE_ASPECT_COLOR_BIT;
+        region.imageSubresource.mipLevel       = 0;
+        region.imageSubresource.baseArrayLayer = 0;
+        region.imageSubresource.layerCount     = 1;
+        region.imageOffset                     = {0, 0, 0};
+        region.imageExtent                     = {width, height, 1};
+        vkCmdCopyBufferToImage(cmd, staging_buffer, image,
+                               VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, 1, &region);
+    }
+
+    if (blit_ok)
+    {
+        S32 mw = (S32)width;
+        S32 mh = (S32)height;
+        for (U32 i = 1; i < mip_count; ++i)
+        {
+            const S32 dw = (mw > 1) ? (mw / 2) : 1;
+            const S32 dh = (mh > 1) ? (mh / 2) : 1;
+
+            mip_barrier(i - 1,
+                        VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL,
+                        VK_ACCESS_TRANSFER_WRITE_BIT, VK_ACCESS_TRANSFER_READ_BIT,
+                        VK_PIPELINE_STAGE_TRANSFER_BIT, VK_PIPELINE_STAGE_TRANSFER_BIT);
+            mip_barrier(i,
+                        VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
+                        0, VK_ACCESS_TRANSFER_WRITE_BIT,
+                        VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT, VK_PIPELINE_STAGE_TRANSFER_BIT);
+
+            VkImageBlit blit = {};
+            blit.srcSubresource.aspectMask     = VK_IMAGE_ASPECT_COLOR_BIT;
+            blit.srcSubresource.mipLevel       = i - 1;
+            blit.srcSubresource.baseArrayLayer = 0;
+            blit.srcSubresource.layerCount     = 1;
+            blit.srcOffsets[0]                 = { 0, 0, 0 };
+            blit.srcOffsets[1]                 = { mw, mh, 1 };
+            blit.dstSubresource.aspectMask     = VK_IMAGE_ASPECT_COLOR_BIT;
+            blit.dstSubresource.mipLevel       = i;
+            blit.dstSubresource.baseArrayLayer = 0;
+            blit.dstSubresource.layerCount     = 1;
+            blit.dstOffsets[0]                 = { 0, 0, 0 };
+            blit.dstOffsets[1]                 = { dw, dh, 1 };
+            vkCmdBlitImage(cmd,
+                           image, VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL,
+                           image, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
+                           1, &blit, VK_FILTER_LINEAR);
+
+            mw = dw;
+            mh = dh;
+        }
+
+        for (U32 i = 0; i < mip_count; ++i)
+        {
+            const bool is_last = (i == mip_count - 1);
+            mip_barrier(i,
+                        is_last ? VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL : VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL,
+                        VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,
+                        is_last ? VK_ACCESS_TRANSFER_WRITE_BIT : VK_ACCESS_TRANSFER_READ_BIT,
+                        VK_ACCESS_SHADER_READ_BIT,
+                        VK_PIPELINE_STAGE_TRANSFER_BIT, VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT);
+        }
+    }
+    else
+    {
+        mip_barrier(0, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,
+                    VK_ACCESS_TRANSFER_WRITE_BIT, VK_ACCESS_SHADER_READ_BIT,
+                    VK_PIPELINE_STAGE_TRANSFER_BIT, VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT);
+        for (U32 i = 1; i < mip_count; ++i)
+        {
+            mip_barrier(i, VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,
+                        0, VK_ACCESS_SHADER_READ_BIT,
+                        VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT, VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT);
+        }
     }
 
     vkEndCommandBuffer(cmd);
@@ -12500,7 +12779,8 @@ void transitionImageLayoutVk(VkImage              image,
                              VkPipelineStageFlags dst_stage_mask,
                              VkAccessFlags        src_access_mask,
                              VkAccessFlags        dst_access_mask,
-                             U32                  layer_count)
+                             U32                  layer_count,
+                             U32                  level_count)
 {
     if (!sInitialized || image == VK_NULL_HANDLE)
     {
@@ -12529,7 +12809,7 @@ void transitionImageLayoutVk(VkImage              image,
         oneshot_barrier.image                           = image;
         oneshot_barrier.subresourceRange.aspectMask     = aspect_mask;
         oneshot_barrier.subresourceRange.baseMipLevel   = 0;
-        oneshot_barrier.subresourceRange.levelCount     = 1;
+        oneshot_barrier.subresourceRange.levelCount     = level_count;
         oneshot_barrier.subresourceRange.baseArrayLayer = 0;
         oneshot_barrier.subresourceRange.layerCount     = layer_count;
         oneshot_barrier.srcAccessMask                   = VK_ACCESS_MEMORY_READ_BIT | VK_ACCESS_MEMORY_WRITE_BIT;
@@ -12552,7 +12832,7 @@ void transitionImageLayoutVk(VkImage              image,
     barrier.image                           = image;
     barrier.subresourceRange.aspectMask     = aspect_mask;
     barrier.subresourceRange.baseMipLevel   = 0;
-    barrier.subresourceRange.levelCount     = 1;
+    barrier.subresourceRange.levelCount     = level_count;
     barrier.subresourceRange.baseArrayLayer = 0;
     barrier.subresourceRange.layerCount     = layer_count;
     barrier.srcAccessMask                   = src_access_mask;
