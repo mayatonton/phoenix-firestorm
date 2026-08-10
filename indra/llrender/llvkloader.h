@@ -1245,6 +1245,8 @@ namespace LLVKLoader
                            U32         data_size_bytes,
                            U32         mip_level = 0);
 
+    bool canGenerateMipChainBlitVk(VkFormat format);
+
     bool uploadImageDataMipChainVk(VkImage     image,
                                    U32         width,
                                    U32         height,
@@ -1394,7 +1396,6 @@ namespace LLVKLoader
     bool skinBindlessEnabled();
 
     U32  bindlessAcquireSlot(VkImageView view, VkSampler sampler);
-    void bindlessUpdateSlot(U32 slot, VkImageView view, VkSampler sampler);
 
     void bindlessReleaseSlotDeferred(U32 slot);
 

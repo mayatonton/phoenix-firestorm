@@ -1083,7 +1083,15 @@ bool LLImageGL::syncVulkanMip0Image(U32 intformat, U32 primary, U32 type,
 
     if (mip_level == 0)
     {
-        const U32 want_mips = (mip_count > 0) ? (U32)mip_count : 1u;
+        U32 want_mips = (mip_count > 0) ? (U32)mip_count : 1u;
+        if (gen_mips && want_mips > 1
+            && !LLVKLoader::canGenerateMipChainBlitVk(vk_format))
+        {
+            // A view restricted to one level is safe to sample; leaving an
+            // unsupported mip chain allocated would leave its lower levels
+            // uninitialized and make the first texture sample undefined.
+            want_mips = 1;
+        }
 
         const bool can_reuse = mVkRes.hasBacking()
                                && (mVkRes.width()  == (U32)w)
@@ -2697,4 +2705,3 @@ void LLImageGLThread::run()
     LL::ThreadPool::run();
     LLVKLoader::unregisterGpuUploadWorker();
 }
-

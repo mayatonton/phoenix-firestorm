@@ -752,7 +752,7 @@ namespace
         VkCommandPool   pool       = VK_NULL_HANDLE;
         VkBuffer        buffer     = VK_NULL_HANDLE;
         VmaAllocation   allocation = VK_NULL_HANDLE;
-        U32             staging_bytes = 0;
+        U64             staging_bytes = 0;
         uint64_t        timeline_value = 0;   // この submit の GPU 完了 = timeline >= この値
     };
     std::vector<PendingOneShotFree> sPendingOneShotFrees;
@@ -918,6 +918,11 @@ namespace
         U32             slot              = 0;
         PESyncPoint*    sync              = nullptr;
         uint64_t        timeline_value    = 0;   // この submit が signal する GPU タイムライン値
+#if LL_DARWIN
+        // Host-side attribution for the MoltenVK device-lost submit trace.
+        const char*     oneshot_source    = nullptr;
+        U64             oneshot_staging_bytes = 0;
+#endif
     };
 
     std::atomic<U32>        sPESlotState[FRAMES_IN_FLIGHT] = {};
@@ -941,6 +946,114 @@ namespace
     std::vector<uint64_t>   sPEAbandonedTimelineValues;   // 非 device-lost で submit 失敗した frame/producer/async の値(永久未 signal・waitTimeline 脱出用)
     void                    recordAbandonedTimelineValue(uint64_t v);   // 定義は gpuTimelineValue 後
     std::atomic<bool>       sVkDeviceLost{false};
+
+#if LL_DARWIN
+    // MoltenVK does not expose device-fault or checkpoint extensions on the
+    // current Apple GPU path. Keep a small host-side submit history so a
+    // VK_ERROR_DEVICE_LOST report identifies the work that was in flight.
+    struct PEDarwinSubmitTrace
+    {
+        const char* type             = "unknown";
+        const char* oneshot_source   = "-";
+        VkResult    result           = VK_ERROR_UNKNOWN;
+        U64         command_buffer   = 0;
+        U64         fence            = 0;
+        U64         wait_semaphore   = 0;
+        U64         signal_semaphore = 0;
+        uint64_t    timeline_value   = 0;
+        U32         slot             = 0;
+        U32         present_count    = 0;
+        bool        wait_idle        = false;
+        U64         oneshot_staging_bytes = 0;
+    };
+
+    std::mutex                      sPEDarwinSubmitTraceMutex;
+    std::deque<PEDarwinSubmitTrace> sPEDarwinSubmitTrace;
+    std::atomic<bool>               sPEDarwinDeviceLostTraceDumped{false};
+
+    const char* peJobType(const PEJob& job)
+    {
+        if (job.is_frame)
+        {
+            return "frame";
+        }
+        if (job.is_async_producer)
+        {
+            return "async-producer";
+        }
+        if (job.is_oneshot)
+        {
+            return "one-shot";
+        }
+        if (job.sync != nullptr)
+        {
+            return "blocking";
+        }
+        if (!job.presents.empty())
+        {
+            return "aux-present";
+        }
+        return "producer";
+    }
+
+    void recordDarwinSubmitTrace(const PEJob& job, VkResult result)
+    {
+        PEDarwinSubmitTrace trace;
+        trace.type             = peJobType(job);
+        trace.oneshot_source   = job.oneshot_source ? job.oneshot_source : "-";
+        trace.result           = result;
+        trace.command_buffer   = (U64)(uintptr_t)job.cmd;
+        trace.fence            = (U64)(uintptr_t)job.fence;
+        trace.wait_semaphore   = (U64)(uintptr_t)job.wait_semaphore;
+        trace.signal_semaphore = (U64)(uintptr_t)job.signal_semaphore;
+        trace.timeline_value   = job.timeline_value;
+        trace.slot             = job.slot;
+        trace.present_count    = (U32)job.presents.size();
+        trace.wait_idle        = job.wait_idle;
+        trace.oneshot_staging_bytes = job.oneshot_staging_bytes;
+
+        std::lock_guard<std::mutex> lk(sPEDarwinSubmitTraceMutex);
+        constexpr size_t history_capacity = 16;
+        if (sPEDarwinSubmitTrace.size() == history_capacity)
+        {
+            sPEDarwinSubmitTrace.pop_front();
+        }
+        sPEDarwinSubmitTrace.push_back(trace);
+    }
+
+    void dumpDarwinSubmitTraceOnDeviceLost(const char* trigger)
+    {
+        if (sPEDarwinDeviceLostTraceDumped.exchange(true))
+        {
+            return;
+        }
+
+        std::deque<PEDarwinSubmitTrace> history;
+        {
+            std::lock_guard<std::mutex> lk(sPEDarwinSubmitTraceMutex);
+            history = sPEDarwinSubmitTrace;
+        }
+        LL_WARNS("Vulkan") << "VKC-DEVLOST trigger=" << trigger
+                           << " submit_history=" << history.size() << LL_ENDL;
+        U32 index = 0;
+        for (const PEDarwinSubmitTrace& trace : history)
+        {
+            LL_WARNS("Vulkan") << "VKC-DEVLOST submit[" << index++ << "]: type=" << trace.type
+                               << " oneshot_source=" << trace.oneshot_source
+                               << " staging_bytes=" << trace.oneshot_staging_bytes
+                               << " result=" << (S32)trace.result
+                               << " timeline=" << trace.timeline_value
+                               << " slot=" << trace.slot
+                               << " presents=" << trace.present_count
+                               << " wait_idle=" << (trace.wait_idle ? 1 : 0)
+                               << " cmd=0x" << std::hex << trace.command_buffer
+                               << " fence=0x" << trace.fence
+                               << " wait_sem=0x" << trace.wait_semaphore
+                               << " signal_sem=0x" << trace.signal_semaphore
+                               << std::dec << LL_ENDL;
+        }
+    }
+#endif
 
     std::atomic<U64>        sPESubmitUs{0};
     std::atomic<U64>        sPEPresentUs{0};
@@ -1096,6 +1209,9 @@ namespace
         }
         const auto t0 = std::chrono::steady_clock::now();
         VkResult sr = vkQueueSubmit(sGraphicsQueue, 1, &si, job.fence);
+#if LL_DARWIN
+        recordDarwinSubmitTrace(job, sr);
+#endif
         if (sr == VK_SUCCESS && job.wait_idle)
         {
             vkQueueWaitIdle(sGraphicsQueue);
@@ -1134,6 +1250,9 @@ namespace
                     dumpCheckpointsOnDeviceLost();
                     dumpDeviceFaultOnDeviceLost();
                 }
+#if LL_DARWIN
+                dumpDarwinSubmitTraceOnDeviceLost("queue-submit");
+#endif
                 sVkDeviceLost.store(true, std::memory_order_release);
             }
             LL_WARNS("Vulkan") << "PresentEngine submit failed sr=" << (S32)sr
@@ -1208,6 +1327,9 @@ namespace
                 }
                 else if (pr == VK_ERROR_DEVICE_LOST)
                 {
+#if LL_DARWIN
+                    dumpDarwinSubmitTraceOnDeviceLost("queue-present");
+#endif
                     sVkDeviceLost.store(true, std::memory_order_release);
                 }
                 else if (sPresentWaitEnabled && pr == VK_SUCCESS && this_present_id != 0)
@@ -1219,6 +1341,9 @@ namespace
                             std::chrono::steady_clock::now() - w0).count();
                     if (wr == VK_ERROR_DEVICE_LOST)
                     {
+#if LL_DARWIN
+                        dumpDarwinSubmitTraceOnDeviceLost("wait-for-present");
+#endif
                         sVkDeviceLost.store(true, std::memory_order_release);
                     }
                 }
@@ -4871,9 +4996,11 @@ static void           tickDeferredImageFreeQueue();
 static void           tickDeferredObjectFreeQueue();
 void                  tickMegaFreeQueue();
 static void           tickDeferredQueryReleaseQueue();
-static bool           submitOneShotVk(VkCommandBuffer cmd, VkBuffer staging_buffer, VmaAllocation staging_allocation);
+static bool           submitOneShotVk(VkCommandBuffer cmd, VkBuffer staging_buffer, VmaAllocation staging_allocation,
+                                      const char* source, U64 staging_bytes = 0);
 static bool           submitOneShotVkFromPool(VkCommandBuffer cmd, VkCommandPool pool, VkBuffer staging_buffer,
-                                              VmaAllocation staging_allocation, U32 staging_bytes);
+                                              VmaAllocation staging_allocation, U64 staging_bytes,
+                                              const char* source, U64 diagnostic_staging_bytes);
 static void           tickOneShotFreeQueue();
 static void           shutdownSurface();
 static bool           initSharedDynamicPersistentUBOs();
@@ -8971,9 +9098,11 @@ void tickDeferredBufferFreeQueue()
     purgePerDrawDeadHandles({}, dead_bufs);
 }
 
-bool submitOneShotVk(VkCommandBuffer cmd, VkBuffer staging_buffer, VmaAllocation staging_allocation)
+bool submitOneShotVk(VkCommandBuffer cmd, VkBuffer staging_buffer, VmaAllocation staging_allocation,
+                     const char* source, U64 staging_bytes)
 {
-    return submitOneShotVkFromPool(cmd, threadCmdPool(), staging_buffer, staging_allocation, 0);
+    return submitOneShotVkFromPool(cmd, threadCmdPool(), staging_buffer, staging_allocation, staging_bytes,
+                                   source, staging_bytes);
 }
 
 static VkCommandBuffer beginOneShotCommandBufferVk()
@@ -9001,8 +9130,13 @@ static VkCommandBuffer beginOneShotCommandBufferVk()
 }
 
 bool submitOneShotVkFromPool(VkCommandBuffer cmd, VkCommandPool pool, VkBuffer staging_buffer,
-                             VmaAllocation staging_allocation, U32 staging_bytes)
+                             VmaAllocation staging_allocation, U64 staging_bytes,
+                             const char* source, U64 diagnostic_staging_bytes)
 {
+#if !LL_DARWIN
+    (void)source;
+    (void)diagnostic_staging_bytes;
+#endif
     if (t_cmdPool != VK_NULL_HANDLE)
     {
         U32 spins = 0;
@@ -9068,6 +9202,10 @@ bool submitOneShotVkFromPool(VkCommandBuffer cmd, VkCommandPool pool, VkBuffer s
         PEJob job;
         job.cmd        = cmd;
         job.is_oneshot = true;
+#if LL_DARWIN
+        job.oneshot_source        = source;
+        job.oneshot_staging_bytes = diagnostic_staging_bytes;
+#endif
         oneshot_value  = peEnqueue(std::move(job));
     }
 
@@ -10458,12 +10596,29 @@ bool createTextureImageVk(U32          width,
     return created;
 }
 
-bool uploadImageDataVk(VkImage     image,
-                       U32         width,
-                       U32         height,
-                       const void* data,
-                       U32         data_size_bytes,
-                       U32         mip_level)
+bool canGenerateMipChainBlitVk(VkFormat format)
+{
+    if (sPhysicalDevice == VK_NULL_HANDLE || format == VK_FORMAT_UNDEFINED)
+    {
+        return false;
+    }
+
+    VkFormatProperties fp = {};
+    vkGetPhysicalDeviceFormatProperties(sPhysicalDevice, format, &fp);
+    const VkFormatFeatureFlags required = VK_FORMAT_FEATURE_BLIT_SRC_BIT
+                                        | VK_FORMAT_FEATURE_BLIT_DST_BIT
+                                        | VK_FORMAT_FEATURE_SAMPLED_IMAGE_FILTER_LINEAR_BIT;
+    return (fp.optimalTilingFeatures & required) == required;
+}
+
+static bool uploadImageDataVkImpl(VkImage     image,
+                                  U32         width,
+                                  U32         height,
+                                  const void* data,
+                                  U32         data_size_bytes,
+                                  U32         mip_level,
+                                  U32         generate_mip_count,
+                                  VkFormat    generate_mip_format)
 {
     if (image == VK_NULL_HANDLE || data == nullptr || data_size_bytes == 0)
     {
@@ -10471,6 +10626,12 @@ bool uploadImageDataVk(VkImage     image,
     }
     if (sDevice == VK_NULL_HANDLE || sAllocator == VK_NULL_HANDLE ||
         sCommandPool == VK_NULL_HANDLE || sGraphicsQueue == VK_NULL_HANDLE)
+    {
+        return false;
+    }
+    const bool generate_mip_chain = generate_mip_count > 1;
+    if (generate_mip_chain
+        && (mip_level != 0 || !canGenerateMipChainBlitVk(generate_mip_format)))
     {
         return false;
     }
@@ -10551,6 +10712,7 @@ bool uploadImageDataVk(VkImage     image,
                                VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, 1, &region);
     }
 
+    if (!generate_mip_chain)
     {
         VkImageMemoryBarrier b = {};
         b.sType                           = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER;
@@ -10571,123 +10733,35 @@ bool uploadImageDataVk(VkImage     image,
                              VK_PIPELINE_STAGE_ALL_COMMANDS_BIT,
                              0, 0, nullptr, 0, nullptr, 1, &b);
     }
-
-    vkEndCommandBuffer(cmd);
-
-    return submitOneShotVk(cmd, staging_buffer, staging_allocation);
-}
-
-bool uploadImageDataMipChainVk(VkImage     image,
-                               U32         width,
-                               U32         height,
-                               const void* data,
-                               U32         data_size_bytes,
-                               U32         mip_count,
-                               VkFormat    format)
-{
-    if (image == VK_NULL_HANDLE || data == nullptr || data_size_bytes == 0 || mip_count == 0)
+    else
     {
-        return false;
-    }
-    if (sDevice == VK_NULL_HANDLE || sAllocator == VK_NULL_HANDLE ||
-        sCommandPool == VK_NULL_HANDLE || sGraphicsQueue == VK_NULL_HANDLE)
-    {
-        return false;
-    }
-
-    bool blit_ok = false;
-    if (mip_count > 1)
-    {
-        VkFormatProperties fp = {};
-        vkGetPhysicalDeviceFormatProperties(sPhysicalDevice, format, &fp);
-        blit_ok = (fp.optimalTilingFeatures & VK_FORMAT_FEATURE_SAMPLED_IMAGE_FILTER_LINEAR_BIT) != 0;
-    }
-
-    VkBuffer      staging_buffer     = VK_NULL_HANDLE;
-    VmaAllocation staging_allocation = VK_NULL_HANDLE;
-    void*         staging_mapped     = nullptr;
-    {
-        VkBufferCreateInfo bci = {};
-        bci.sType       = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO;
-        bci.size        = data_size_bytes;
-        bci.usage       = VK_BUFFER_USAGE_TRANSFER_SRC_BIT;
-        bci.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
-
-        VmaAllocationCreateInfo aci = {};
-        aci.usage         = VMA_MEMORY_USAGE_AUTO;
-        aci.flags         = VMA_ALLOCATION_CREATE_HOST_ACCESS_SEQUENTIAL_WRITE_BIT
-                          | VMA_ALLOCATION_CREATE_MAPPED_BIT;
-        aci.requiredFlags = VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT
-                          | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT;
-
-        VmaAllocationInfo info = {};
-        VkResult r = vmaCreateBuffer(sAllocator, &bci, &aci, &staging_buffer,
-                                     &staging_allocation, &info);
-        if (r != VK_SUCCESS || staging_buffer == VK_NULL_HANDLE || info.pMappedData == nullptr)
+        auto mip_barrier = [&](U32 level, VkImageLayout old_layout, VkImageLayout new_layout,
+                               VkAccessFlags src_access, VkAccessFlags dst_access,
+                               VkPipelineStageFlags src_stage, VkPipelineStageFlags dst_stage)
         {
-            if (staging_buffer != VK_NULL_HANDLE)
-            {
-                vmaDestroyBuffer(sAllocator, staging_buffer, staging_allocation);
-            }
-            return false;
-        }
-        staging_mapped = info.pMappedData;
-    }
+            VkImageMemoryBarrier b = {};
+            b.sType                           = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER;
+            b.srcAccessMask                   = src_access;
+            b.dstAccessMask                   = dst_access;
+            b.oldLayout                       = old_layout;
+            b.newLayout                       = new_layout;
+            b.srcQueueFamilyIndex             = VK_QUEUE_FAMILY_IGNORED;
+            b.dstQueueFamilyIndex             = VK_QUEUE_FAMILY_IGNORED;
+            b.image                           = image;
+            b.subresourceRange.aspectMask     = VK_IMAGE_ASPECT_COLOR_BIT;
+            b.subresourceRange.baseMipLevel   = level;
+            b.subresourceRange.levelCount     = 1;
+            b.subresourceRange.baseArrayLayer = 0;
+            b.subresourceRange.layerCount     = 1;
+            vkCmdPipelineBarrier(cmd, src_stage, dst_stage, 0, 0, nullptr, 0, nullptr, 1, &b);
+        };
 
-    memcpy(staging_mapped, data, data_size_bytes);
-
-    VkCommandBuffer cmd = beginOneShotCommandBufferVk();
-    if (cmd == VK_NULL_HANDLE)
-    {
-        vmaDestroyBuffer(sAllocator, staging_buffer, staging_allocation);
-        return false;
-    }
-
-    auto mip_barrier = [&](U32 level, VkImageLayout oldL, VkImageLayout newL,
-                           VkAccessFlags srcA, VkAccessFlags dstA,
-                           VkPipelineStageFlags srcS, VkPipelineStageFlags dstS)
-    {
-        VkImageMemoryBarrier b = {};
-        b.sType                           = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER;
-        b.image                           = image;
-        b.oldLayout                       = oldL;
-        b.newLayout                       = newL;
-        b.srcAccessMask                   = srcA;
-        b.dstAccessMask                   = dstA;
-        b.srcQueueFamilyIndex             = VK_QUEUE_FAMILY_IGNORED;
-        b.dstQueueFamilyIndex             = VK_QUEUE_FAMILY_IGNORED;
-        b.subresourceRange.aspectMask     = VK_IMAGE_ASPECT_COLOR_BIT;
-        b.subresourceRange.baseMipLevel   = level;
-        b.subresourceRange.levelCount     = 1;
-        b.subresourceRange.baseArrayLayer = 0;
-        b.subresourceRange.layerCount     = 1;
-        vkCmdPipelineBarrier(cmd, srcS, dstS, 0, 0, nullptr, 0, nullptr, 1, &b);
-    };
-
-    mip_barrier(0, VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
-                0, VK_ACCESS_TRANSFER_WRITE_BIT,
-                VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT, VK_PIPELINE_STAGE_TRANSFER_BIT);
-
-    {
-        VkBufferImageCopy region = {};
-        region.imageSubresource.aspectMask     = VK_IMAGE_ASPECT_COLOR_BIT;
-        region.imageSubresource.mipLevel       = 0;
-        region.imageSubresource.baseArrayLayer = 0;
-        region.imageSubresource.layerCount     = 1;
-        region.imageOffset                     = {0, 0, 0};
-        region.imageExtent                     = {width, height, 1};
-        vkCmdCopyBufferToImage(cmd, staging_buffer, image,
-                               VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, 1, &region);
-    }
-
-    if (blit_ok)
-    {
-        S32 mw = (S32)width;
-        S32 mh = (S32)height;
-        for (U32 i = 1; i < mip_count; ++i)
+        S32 mip_w = (S32)width;
+        S32 mip_h = (S32)height;
+        for (U32 i = 1; i < generate_mip_count; ++i)
         {
-            const S32 dw = (mw > 1) ? (mw / 2) : 1;
-            const S32 dh = (mh > 1) ? (mh / 2) : 1;
+            const S32 dst_w = (mip_w > 1) ? (mip_w / 2) : 1;
+            const S32 dst_h = (mip_h > 1) ? (mip_h / 2) : 1;
 
             mip_barrier(i - 1,
                         VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL,
@@ -10703,50 +10777,59 @@ bool uploadImageDataMipChainVk(VkImage     image,
             blit.srcSubresource.mipLevel       = i - 1;
             blit.srcSubresource.baseArrayLayer = 0;
             blit.srcSubresource.layerCount     = 1;
-            blit.srcOffsets[0]                 = { 0, 0, 0 };
-            blit.srcOffsets[1]                 = { mw, mh, 1 };
+            blit.srcOffsets[1]                 = { mip_w, mip_h, 1 };
             blit.dstSubresource.aspectMask     = VK_IMAGE_ASPECT_COLOR_BIT;
             blit.dstSubresource.mipLevel       = i;
             blit.dstSubresource.baseArrayLayer = 0;
             blit.dstSubresource.layerCount     = 1;
-            blit.dstOffsets[0]                 = { 0, 0, 0 };
-            blit.dstOffsets[1]                 = { dw, dh, 1 };
+            blit.dstOffsets[1]                 = { dst_w, dst_h, 1 };
             vkCmdBlitImage(cmd,
                            image, VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL,
                            image, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
                            1, &blit, VK_FILTER_LINEAR);
 
-            mw = dw;
-            mh = dh;
+            mip_barrier(i - 1,
+                        VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,
+                        VK_ACCESS_TRANSFER_READ_BIT, VK_ACCESS_SHADER_READ_BIT,
+                        VK_PIPELINE_STAGE_TRANSFER_BIT, VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT);
+            mip_w = dst_w;
+            mip_h = dst_h;
         }
 
-        for (U32 i = 0; i < mip_count; ++i)
-        {
-            const bool is_last = (i == mip_count - 1);
-            mip_barrier(i,
-                        is_last ? VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL : VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL,
-                        VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,
-                        is_last ? VK_ACCESS_TRANSFER_WRITE_BIT : VK_ACCESS_TRANSFER_READ_BIT,
-                        VK_ACCESS_SHADER_READ_BIT,
-                        VK_PIPELINE_STAGE_TRANSFER_BIT, VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT);
-        }
-    }
-    else
-    {
-        mip_barrier(0, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,
+        mip_barrier(generate_mip_count - 1,
+                    VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,
                     VK_ACCESS_TRANSFER_WRITE_BIT, VK_ACCESS_SHADER_READ_BIT,
                     VK_PIPELINE_STAGE_TRANSFER_BIT, VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT);
-        for (U32 i = 1; i < mip_count; ++i)
-        {
-            mip_barrier(i, VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,
-                        0, VK_ACCESS_SHADER_READ_BIT,
-                        VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT, VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT);
-        }
     }
 
     vkEndCommandBuffer(cmd);
 
-    return submitOneShotVk(cmd, staging_buffer, staging_allocation);
+    return submitOneShotVk(cmd, staging_buffer, staging_allocation,
+                           generate_mip_chain ? "image-upload-mips-2d" : "image-upload-2d",
+                           data_size_bytes);
+}
+
+bool uploadImageDataVk(VkImage     image,
+                       U32         width,
+                       U32         height,
+                       const void* data,
+                       U32         data_size_bytes,
+                       U32         mip_level)
+{
+    return uploadImageDataVkImpl(image, width, height, data, data_size_bytes,
+                                 mip_level, 1, VK_FORMAT_UNDEFINED);
+}
+
+bool uploadImageDataMipChainVk(VkImage     image,
+                               U32         width,
+                               U32         height,
+                               const void* data,
+                               U32         data_size_bytes,
+                               U32         mip_count,
+                               VkFormat    format)
+{
+    return uploadImageDataVkImpl(image, width, height, data, data_size_bytes,
+                                 0, mip_count, format);
 }
 
 bool generateMipChainBlitVk(VkImage image, U32 base_w, U32 base_h, U32 mip_count, VkFormat format)
@@ -10760,9 +10843,7 @@ bool generateMipChainBlitVk(VkImage image, U32 base_w, U32 base_h, U32 mip_count
         return false;
     }
 
-    VkFormatProperties fp = {};
-    vkGetPhysicalDeviceFormatProperties(sPhysicalDevice, format, &fp);
-    if (!(fp.optimalTilingFeatures & VK_FORMAT_FEATURE_SAMPLED_IMAGE_FILTER_LINEAR_BIT))
+    if (!canGenerateMipChainBlitVk(format))
     {
         return false;
     }
@@ -10848,7 +10929,7 @@ bool generateMipChainBlitVk(VkImage image, U32 base_w, U32 base_h, U32 mip_count
 
     vkEndCommandBuffer(cmd);
 
-    return submitOneShotVk(cmd, VK_NULL_HANDLE, VK_NULL_HANDLE);
+    return submitOneShotVk(cmd, VK_NULL_HANDLE, VK_NULL_HANDLE, "image-mip-blit");
 }
 
 bool downscaleImageVk(VkImage      src_image,
@@ -10953,7 +11034,7 @@ bool downscaleImageVk(VkImage      src_image,
 
     vkEndCommandBuffer(cmd);
 
-    if (!submitOneShotVk(cmd, VK_NULL_HANDLE, VK_NULL_HANDLE))
+    if (!submitOneShotVk(cmd, VK_NULL_HANDLE, VK_NULL_HANDLE, "image-downscale"))
     {
         destroyImageVk(new_image, new_view, new_alloc);
         return false;
@@ -11049,7 +11130,7 @@ bool blitCubeArrayVk(VkImage       src,
 
     vkEndCommandBuffer(cmd);
 
-    return submitOneShotVk(cmd, VK_NULL_HANDLE, VK_NULL_HANDLE);
+    return submitOneShotVk(cmd, VK_NULL_HANDLE, VK_NULL_HANDLE, "cube-array-blit");
 }
 
 bool generateMipChainInFrameVk(VkImage        image,
@@ -11069,9 +11150,7 @@ bool generateMipChainInFrameVk(VkImage        image,
         return false;
     }
 
-    VkFormatProperties fp = {};
-    vkGetPhysicalDeviceFormatProperties(sPhysicalDevice, format, &fp);
-    if (!(fp.optimalTilingFeatures & VK_FORMAT_FEATURE_SAMPLED_IMAGE_FILTER_LINEAR_BIT))
+    if (!canGenerateMipChainBlitVk(format))
     {
         return false;
     }
@@ -11358,7 +11437,8 @@ bool uploadImageData3DVk(VkImage     image,
 
     vkEndCommandBuffer(cmd);
 
-    return submitOneShotVk(cmd, staging_buffer, staging_allocation);
+    return submitOneShotVk(cmd, staging_buffer, staging_allocation,
+                           "image-upload-3d", data_size_bytes);
 }
 
 bool uploadImageSubregionVk(VkImage     image,
@@ -11502,7 +11582,8 @@ bool uploadImageSubregionVk(VkImage     image,
 
     vkEndCommandBuffer(cmd);
 
-    return submitOneShotVk(cmd, staging_buffer, staging_allocation);
+    return submitOneShotVk(cmd, staging_buffer, staging_allocation,
+                           "image-subregion-upload", staging_size);
 }
 
 bool createCubeImageVk(U32          resolution,
@@ -11718,7 +11799,8 @@ bool uploadCubeImageDataVk(VkImage           image,
 
     vkEndCommandBuffer(cmd);
 
-    return submitOneShotVk(cmd, staging_buffer, staging_allocation);
+    return submitOneShotVk(cmd, staging_buffer, staging_allocation,
+                           "cube-upload", total_size);
 }
 
 bool createCubeArrayImageVk(U32          resolution,
@@ -12747,16 +12829,6 @@ U32 bindlessAcquireSlot(VkImageView view, VkSampler sampler)
     return slot;
 }
 
-void bindlessUpdateSlot(U32 slot, VkImageView view, VkSampler sampler)
-{
-    if (!sBindlessActive || slot == 0 || slot == BINDLESS_INVALID_SLOT || slot >= sBindlessHeapCount)
-    {
-        return;
-    }
-    std::lock_guard<std::mutex> guard(sBindlessSlotMutex);
-    bindlessWriteSlotInternal(slot, view, sampler);
-}
-
 // β: slot に実際に登録されている view（記録スレッドからの読取・latent race 許容 = 別 tex 判別が目的）
 VkImageView bindlessSlotView(U32 slot)
 {
@@ -13030,7 +13102,8 @@ void transitionImageLayoutVk(VkImage              image,
                              VK_PIPELINE_STAGE_ALL_COMMANDS_BIT, VK_PIPELINE_STAGE_ALL_COMMANDS_BIT,
                              0, 0, nullptr, 0, nullptr, 1, &oneshot_barrier);
         vkEndCommandBuffer(oneshot_cmd);
-        submitOneShotVk(oneshot_cmd, VK_NULL_HANDLE, VK_NULL_HANDLE);
+        submitOneShotVk(oneshot_cmd, VK_NULL_HANDLE, VK_NULL_HANDLE,
+                         "image-layout-transition");
         return;
     }
 
