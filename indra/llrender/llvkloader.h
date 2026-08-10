@@ -1420,6 +1420,15 @@ namespace LLVKLoader
     void unregisterGpuUploadWorker();
     bool isUploadWorkerThread();
     bool peThreaded();
+    bool isFrameInFlightVk(U32 monotonic_frame);
+
+    struct VbCopyRegion
+    {
+        U64         dst_offset = 0;
+        const void* src        = nullptr;
+        U32         bytes      = 0;
+    };
+    bool vbStageCopyVk(VkBuffer dst_buffer, const VbCopyRegion* regions, U32 region_count);
 
     U32  drawDataWriteScratch(const U32* slots4);
 
@@ -1521,6 +1530,8 @@ namespace LLVKLoader
         std::atomic<U64> syncmat_build{0};
         std::atomic<U64> vb_bind{0};
         std::atomic<U64> vb_skip{0};
+        std::atomic<U64> vb_orphan{0};
+        std::atomic<U64> vb_copy_bytes{0};
         std::atomic<U64> ib_bind{0};
         std::atomic<U64> ib_skip{0};
         std::atomic<U64> draws_pass[5] = {};
@@ -1616,7 +1627,7 @@ namespace LLVKLoader
             populate_bl = 0; populate_pl = 0; populate_blhit = 0;
             populate_hit = 0; populate_miss = 0;
             syncmat_call = 0; syncmat_build = 0;
-            vb_bind = 0; vb_skip = 0; ib_bind = 0; ib_skip = 0;
+            vb_bind = 0; vb_skip = 0; vb_orphan = 0; vb_copy_bytes = 0; ib_bind = 0; ib_skip = 0;
             for (auto& v : draws_pass) v = 0;
             for (auto& v : draws_shadow_map) v = 0;
             for (auto& row : draws_shadow_site) for (auto& v : row) v = 0;

@@ -1858,8 +1858,6 @@ LLVertexBuffer* LLRender::genBuffer(U32 attribute_mask, S32 count)
     LLVertexBuffer * vb = new LLVertexBuffer(attribute_mask);
     vb->allocateBuffer(count, 0);
 
-    vb->setBuffer();
-
     vb->setPositionData(mVerticesp.get());
 
     if (attribute_mask & LLVertexBuffer::MAP_TEXCOORD0)

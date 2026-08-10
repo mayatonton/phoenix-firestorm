@@ -1623,6 +1623,7 @@ namespace
                 s_dyn.push_back(p);
                 continue;
             }
+            vb->markVkConsumed();
 
             U32 draw_id;
             if (refreshed)

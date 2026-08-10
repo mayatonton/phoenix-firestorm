@@ -1117,6 +1117,25 @@ void LLVertexBuffer::zeroIndexData()
 //  end -- last byte to copy (NOT last byte + 1)
 //  data -- data to be flushed
 //  dst -- mMappedData or mMappedIndexData
+static void vbHostWriteOracle(U32 verts, U32 mask, U32 last_draw)
+{
+    if (!LLVKContract::verboseEnabled())
+    {
+        return;
+    }
+    static std::atomic<U64> s_vb_hostwrite{0};
+    const U64 n = ++s_vb_hostwrite;
+    if ((n & (n - 1)) == 0)
+    {
+        LL_WARNS("VKContract") << "VKC vb_inflight_hostwrite n=" << n
+                               << " verts=" << verts
+                               << " mask=0x" << std::hex << mask << std::dec
+                               << " last_draw=" << last_draw
+                               << " inpass=" << (LLVKLoader::isInRenderPassScope() ? 1 : 0)
+                               << LL_ENDL;
+    }
+}
+
 void LLVertexBuffer::flush_vbo(GLenum target, U32 start, U32 end, void* data, U8* dst)
 {
     if (end == 0)
@@ -1126,6 +1145,9 @@ void LLVertexBuffer::flush_vbo(GLenum target, U32 start, U32 end, void* data, U8
     if (target == GL_ARRAY_BUFFER && mVkVertexSlice.mapped != nullptr)
     {
         const U8* src = (const U8*)data;
+        LLVKLoader::VbCopyRegion regions[TYPE_MAX];
+        U8*                      outs[TYPE_MAX];
+        U32 n = 0;
         for (U32 i = 0; i < TYPE_TEXTURE_INDEX; ++i)
         {
             if (!(mTypeMask & (1u << i)))
@@ -1144,12 +1166,44 @@ void LLVertexBuffer::flush_vbo(GLenum target, U32 start, U32 end, void* data, U8
                     + mVkVertexSlice.region_offsets[i]
                     + (size_t)mVkVertexSlice.first * sTypeSize[i]
                     + (s - block_start);
-            std::memcpy(out, src + (s - start), e - s + 1);
+            regions[n].dst_offset = (U64)(out - mVkVertexSlice.mapped);
+            regions[n].src        = src + (s - start);
+            regions[n].bytes      = e - s + 1;
+            outs[n]               = out;
+            ++n;
+        }
+        if (n == 0)
+        {
+            return;
+        }
+        if (!mVkEverConsumed
+            || !LLVKLoader::vbStageCopyVk(mVkVertexSlice.buffer, regions, n))
+        {
+            if (mVkEverConsumed)
+            {
+                vbHostWriteOracle(mNumVerts, mTypeMask, mVkLastDrawFrame);
+            }
+            for (U32 i = 0; i < n; ++i)
+            {
+                std::memcpy(outs[i], regions[i].src, regions[i].bytes);
+            }
         }
     }
     else if (target == GL_ELEMENT_ARRAY_BUFFER && mVkIndexSlice.mapped != nullptr)
     {
-        std::memcpy(mVkIndexSlice.mapped + mVkIndexSlice.offset + start, data, end - start + 1);
+        LLVKLoader::VbCopyRegion region;
+        region.dst_offset = (U64)mVkIndexSlice.offset + start;
+        region.src        = data;
+        region.bytes      = end - start + 1;
+        if (!mVkEverConsumed
+            || !LLVKLoader::vbStageCopyVk(mVkIndexSlice.buffer, &region, 1))
+        {
+            if (mVkEverConsumed)
+            {
+                vbHostWriteOracle(mNumVerts, mTypeMask, mVkLastDrawFrame);
+            }
+            std::memcpy(mVkIndexSlice.mapped + mVkIndexSlice.offset + start, data, end - start + 1);
+        }
     }
 }
 
@@ -1407,6 +1461,8 @@ void LLVertexBuffer::setBuffer()
         VkCommandBuffer cmd = LLVKLoader::getCurrentCommandBuffer();
         if (cmd != VK_NULL_HANDLE)
         {
+            mVkLastDrawFrame = LLVKLoader::getMonotonicFrameCount();
+            mVkEverConsumed  = true;
             const U32* region = mVkVertexSlice.region_offsets;
             for (U32 type = 0; type < TYPE_MAX; ++type)
             {

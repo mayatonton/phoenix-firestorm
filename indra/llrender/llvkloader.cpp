@@ -5707,6 +5707,12 @@ void recordToConsumer(bool on)
     }
 }
 
+namespace
+{
+    void vbUploadFrameReset();
+    void vbUploadSubmit();
+}
+
 bool beginFrame(bool acquire_swapchain)
 {
     if (!sInitialized)
@@ -5793,6 +5799,7 @@ bool beginFrame(bool acquire_swapchain)
         waitTimeline(sAsyncTimelineValue);
     }
     sPESlotState[sFrameIndex].store(PE_SLOT_IDLE);
+    vbUploadFrameReset();
 
     if (sFrameIndex < FRAMES_IN_FLIGHT)
     {
@@ -6000,6 +6007,8 @@ bool endFrame()
                                    << " imiss=" << gVkPerf.populate_miss.load()
                                    << " | syncmat " << gVkPerf.syncmat_build.load() << "/" << gVkPerf.syncmat_call.load()
                                    << " | vbbind " << gVkPerf.vb_bind.load() << "/" << gVkPerf.vb_skip.load()
+                                   << " vbcp " << gVkPerf.vb_orphan.load()
+                                   << "/" << (gVkPerf.vb_copy_bytes.load() >> 10) << "k"
                                    << " ibbind " << gVkPerf.ib_bind.load() << "/" << gVkPerf.ib_skip.load()
                                    << " | pass scene=" << gVkPerf.draws_pass[0].load()
                                    << " shadow=" << gVkPerf.draws_pass[1].load()
@@ -6399,6 +6408,8 @@ bool endFrame()
         return false;
     }
 
+    vbUploadSubmit();
+
     if (sUISceneSplit && sConsumerActiveThisFrame && isUISceneAsync())
     {
         PEJob cjob;
@@ -6499,6 +6510,7 @@ bool beginOffscreenFrameVk()
         waitTimeline(sAsyncTimelineValue);
     }
     sPESlotState[sFrameIndex].store(PE_SLOT_IDLE);
+    vbUploadFrameReset();
 
     if (sFrameIndex < FRAMES_IN_FLIGHT)
     {
@@ -6542,6 +6554,7 @@ void endOffscreenFrameVk()
         return;
     }
 
+    vbUploadSubmit();
     peSubmitBlocking(sCommandBuffers[sFrameIndex], VK_NULL_HANDLE, true);
     sFrameTimelineValue[sFrameIndex] = gpuTimelineValue();
     pollAsyncProducerCompletion();
@@ -9140,6 +9153,11 @@ bool peThreaded()
     return sPERunning;
 }
 
+bool isFrameInFlightVk(U32 monotonic_frame)
+{
+    return monotonic_frame > sLastCompletedMonotonic;
+}
+
 bool registerGpuUploadWorker()
 {
     if (sDevice == VK_NULL_HANDLE || !sPERunning)
@@ -9405,8 +9423,9 @@ namespace
         c->byte_size = bytes;
 
         void* mapped = nullptr;
-        const VkBufferUsageFlags usage = vertex_chunk ? VK_BUFFER_USAGE_VERTEX_BUFFER_BIT
-                                                      : VK_BUFFER_USAGE_INDEX_BUFFER_BIT;
+        const VkBufferUsageFlags usage = (vertex_chunk ? VK_BUFFER_USAGE_VERTEX_BUFFER_BIT
+                                                       : VK_BUFFER_USAGE_INDEX_BUFFER_BIT)
+                                         | VK_BUFFER_USAGE_TRANSFER_DST_BIT;
         if (!createBufferVkImpl(bytes, usage, c->buffer, c->allocation, &mapped, true)
             || mapped == nullptr)
         {
@@ -9471,6 +9490,190 @@ void megabufInit(const U32* type_sizes, U32 type_count)
     sMegaTypeSizes.assign(type_sizes, type_sizes + type_count);
 }
 
+namespace
+{
+    struct VbStagingChunk
+    {
+        VkBuffer buffer     = VK_NULL_HANDLE;
+        void*    allocation = nullptr;
+        U8*      mapped     = nullptr;
+        U32      capacity   = 0;
+        U32      cursor     = 0;
+    };
+    struct VbStagingSlot
+    {
+        std::vector<VbStagingChunk> chunks;
+        U32 frame_stamp = 0;
+    };
+    VbStagingSlot sVbStaging[FRAMES_IN_FLIGHT];
+
+    VbStagingChunk* vbStagingAlloc(U32 bytes, U32& out_offset)
+    {
+        VbStagingSlot& slot = sVbStaging[sFrameIndex];
+        if (slot.frame_stamp != sMonotonicFrameCount)
+        {
+            slot.frame_stamp = sMonotonicFrameCount;
+            for (VbStagingChunk& c : slot.chunks)
+            {
+                c.cursor = 0;
+            }
+        }
+        for (VbStagingChunk& c : slot.chunks)
+        {
+            const U32 off = (c.cursor + 15u) & ~15u;
+            if (off + bytes <= c.capacity)
+            {
+                c.cursor   = off + bytes;
+                out_offset = off;
+                return &c;
+            }
+        }
+        VbStagingChunk c;
+        c.capacity = llmax(bytes, 1u << 20);
+        void* mapped = nullptr;
+        if (!createBufferVkImpl(c.capacity, VK_BUFFER_USAGE_TRANSFER_SRC_BIT,
+                                c.buffer, c.allocation, &mapped, false)
+            || mapped == nullptr)
+        {
+            if (c.buffer != VK_NULL_HANDLE || c.allocation != nullptr)
+            {
+                destroyBufferVk(c.buffer, c.allocation);
+            }
+            LL_WARNS("Vulkan") << "vb staging chunk creation failed bytes=" << c.capacity << LL_ENDL;
+            return nullptr;
+        }
+        c.mapped   = (U8*)mapped;
+        c.cursor   = bytes;
+        out_offset = 0;
+        slot.chunks.push_back(c);
+        return &slot.chunks.back();
+    }
+
+    VkCommandBuffer sVbUploadCommandBuffers[FRAMES_IN_FLIGHT] = {};
+    uint64_t        sVbUploadTimelineValue[FRAMES_IN_FLIGHT] = {};
+    bool            sVbUploadPending[FRAMES_IN_FLIGHT]       = {};
+    bool            sVbUploadRecording                       = false;
+
+    void vbUploadFrameReset()
+    {
+        if (sFrameIndex < FRAMES_IN_FLIGHT && sVbUploadPending[sFrameIndex])
+        {
+            waitTimeline(sVbUploadTimelineValue[sFrameIndex]);
+            sVbUploadPending[sFrameIndex] = false;
+        }
+        sVbUploadRecording = false;
+    }
+
+    VkCommandBuffer vbUploadCmd()
+    {
+        if (!sInFrame || sFrameIndex >= FRAMES_IN_FLIGHT)
+        {
+            return VK_NULL_HANDLE;
+        }
+        VkCommandBuffer& cmd = sVbUploadCommandBuffers[sFrameIndex];
+        if (sVbUploadRecording)
+        {
+            return cmd;
+        }
+        if (cmd == VK_NULL_HANDLE)
+        {
+            VkCommandBufferAllocateInfo ai = {};
+            ai.sType              = VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO;
+            ai.commandPool        = sCommandPool;
+            ai.level              = VK_COMMAND_BUFFER_LEVEL_PRIMARY;
+            ai.commandBufferCount = 1;
+            if (vkAllocateCommandBuffers(sDevice, &ai, &cmd) != VK_SUCCESS)
+            {
+                cmd = VK_NULL_HANDLE;
+                return VK_NULL_HANDLE;
+            }
+        }
+        vkResetCommandBuffer(cmd, 0);
+        VkCommandBufferBeginInfo bi = {};
+        bi.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO;
+        bi.flags = VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT;
+        if (vkBeginCommandBuffer(cmd, &bi) != VK_SUCCESS)
+        {
+            return VK_NULL_HANDLE;
+        }
+        vkCmdPipelineBarrier(cmd, VK_PIPELINE_STAGE_VERTEX_INPUT_BIT, VK_PIPELINE_STAGE_TRANSFER_BIT,
+                             0, 0, nullptr, 0, nullptr, 0, nullptr);
+        sVbUploadRecording = true;
+        return cmd;
+    }
+
+    void vbUploadSubmit()
+    {
+        if (!sVbUploadRecording)
+        {
+            return;
+        }
+        sVbUploadRecording = false;
+        VkCommandBuffer cmd = sVbUploadCommandBuffers[sFrameIndex];
+        if (vkEndCommandBuffer(cmd) != VK_SUCCESS)
+        {
+            return;
+        }
+        PEJob job;
+        job.slot = sFrameIndex;
+        job.cmd  = cmd;
+        sVbUploadPending[sFrameIndex] = true;
+        sVbUploadTimelineValue[sFrameIndex] = peEnqueue(std::move(job));
+    }
+}
+
+bool vbStageCopyVk(VkBuffer dst_buffer, const VbCopyRegion* regions, U32 region_count)
+{
+    constexpr U32 kMaxRegions = 16;
+    if (dst_buffer == VK_NULL_HANDLE || region_count == 0 || region_count > kMaxRegions)
+    {
+        return false;
+    }
+    if (!on_main_thread())
+    {
+        return false;
+    }
+    VkCommandBuffer cmd = vbUploadCmd();
+    if (cmd == VK_NULL_HANDLE)
+    {
+        return false;
+    }
+    U32 total = 0;
+    for (U32 i = 0; i < region_count; ++i)
+    {
+        total = ((total + 15u) & ~15u) + regions[i].bytes;
+    }
+    U32 base = 0;
+    VbStagingChunk* chunk = vbStagingAlloc(total, base);
+    if (chunk == nullptr)
+    {
+        return false;
+    }
+    VkBufferCopy copies[kMaxRegions];
+    U32 off = base;
+    for (U32 i = 0; i < region_count; ++i)
+    {
+        off = (off + 15u) & ~15u;
+        std::memcpy(chunk->mapped + off, regions[i].src, regions[i].bytes);
+        copies[i].srcOffset = off;
+        copies[i].dstOffset = regions[i].dst_offset;
+        copies[i].size      = regions[i].bytes;
+        off += regions[i].bytes;
+    }
+    vkCmdCopyBuffer(cmd, chunk->buffer, dst_buffer, region_count, copies);
+    VkMemoryBarrier mb = {};
+    mb.sType         = VK_STRUCTURE_TYPE_MEMORY_BARRIER;
+    mb.srcAccessMask = VK_ACCESS_TRANSFER_WRITE_BIT;
+    mb.dstAccessMask = VK_ACCESS_VERTEX_ATTRIBUTE_READ_BIT | VK_ACCESS_INDEX_READ_BIT
+                       | VK_ACCESS_TRANSFER_WRITE_BIT;
+    vkCmdPipelineBarrier(cmd, VK_PIPELINE_STAGE_TRANSFER_BIT,
+                         VK_PIPELINE_STAGE_VERTEX_INPUT_BIT | VK_PIPELINE_STAGE_TRANSFER_BIT,
+                         0, 1, &mb, 0, nullptr, 0, nullptr);
+    ++gVkPerf.vb_orphan;
+    gVkPerf.vb_copy_bytes += total;
+    return true;
+}
+
 void gpuCheckpoint(const char* label)
 {
     gpuCheckpointImpl(label);
@@ -9478,6 +9681,15 @@ void gpuCheckpoint(const char* label)
 
 void megabufShutdown()
 {
+    for (VbStagingSlot& slot : sVbStaging)
+    {
+        for (VbStagingChunk& c : slot.chunks)
+        {
+            destroyBufferVk(c.buffer, c.allocation);
+        }
+        slot.chunks.clear();
+        slot.frame_stamp = 0;
+    }
     sPendingMegaFrees.clear();
     for (auto& it : sMegaChunksById)
     {

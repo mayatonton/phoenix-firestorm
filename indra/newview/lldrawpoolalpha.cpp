@@ -950,6 +950,7 @@ void writeAlphaPerProgramUBO(bool reset_minimum_alpha)
 void appendAlphaRunCmd(AlphaRun& run, LLDrawInfo& params, U32 id)
 {
     LLVertexBuffer* vb = params.mVertexBuffer.get();
+    vb->markVkConsumed();
     const LLVKLoader::MegaSliceV& vs = vb->getVkVertexSlice();
     const LLVKLoader::MegaSliceI& is = vb->getVkIndexSlice();
     AlphaRunSpan* span = run.mSpans.empty() ? nullptr : &run.mSpans.back();

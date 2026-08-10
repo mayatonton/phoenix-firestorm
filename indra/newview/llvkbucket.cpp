@@ -399,6 +399,10 @@ void rebuildTemplateIfDirty(Bucket& bucket)
         {
             LLDrawInfo* info = ptr.get();
             LLVertexBuffer* vb = info->mVertexBuffer.get();
+            if (vb != nullptr)
+            {
+                vb->markVkConsumed();
+            }
             bool is_static = vb != nullptr
                 && info->mCount > 0
                 && region_matrix != nullptr

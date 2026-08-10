@@ -290,6 +290,8 @@ protected:
 
     LLVKLoader::MegaSliceV mVkVertexSlice;
     LLVKLoader::MegaSliceI mVkIndexSlice;
+    U32 mVkLastDrawFrame = 0;
+    bool mVkEverConsumed = false;
 
 private:
     // DEPRECATED
@@ -322,6 +324,8 @@ public:
 
     const LLVKLoader::MegaSliceV& getVkVertexSlice() const { return mVkVertexSlice; }
     const LLVKLoader::MegaSliceI& getVkIndexSlice() const { return mVkIndexSlice; }
+
+    void markVkConsumed() { mVkEverConsumed = true; }
 
     std::vector<MappedRegion>& vkMappedVertexRegions() { return mMappedVertexRegions; }
     std::vector<MappedRegion>& vkMappedIndexRegions() { return mMappedIndexRegions; }
