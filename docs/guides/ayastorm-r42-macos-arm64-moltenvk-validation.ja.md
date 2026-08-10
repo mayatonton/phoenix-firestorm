@@ -515,6 +515,15 @@ submit 発生元は `image-upload-mips-2d` として診断に残す。asset 側�
 修正を次の 3 コミットに分離して実装した。この branch はローカル検証用であり、既存 PR には
 まだ含めていない。
 
+> **追記 2026-08-10**: 上記 3 修正は rebase を経て PR #138 として本流
+> `feature/ayastorm-r42-phase2` に merge 済(`b17d9d2e17e`)。ただし本流は 8/10 に
+> texture upload 機構を独立改修済(`08e05fb9f5a` = publish-on-main)だったため、
+> fold と bindless slot 世代分離は本流実装へ収斂(mip chain upload の公開名は
+> `uploadImageDataMipChainVk`・実体 = `uploadImageDataVkImpl`)、staging 会計と
+> blit format feature 全条件判定はそのまま取り込み。Linux 判定走行 = 警報増分 0・
+> `stg_mb` 会計実働を確認済。§12 末尾の受入 4 条件(macOS cache-cold 3 走行・
+> Windows 検証)は引き続き OPEN。
+
 | コミット | 内容 |
 | --- | --- |
 | `5ced502490` | auto-generated mip の base level upload、全 mip の layout 遷移、blit、shader-read 遷移を単一 one-shot command buffer / submit に統合。format feature は `BLIT_SRC`、`BLIT_DST`、linear filter の全条件を確認し、非対応 format は 1 mip に制限する。 |

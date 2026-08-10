@@ -1389,7 +1389,14 @@ void LLRenderPass::pushUntexturedBatches(U32 type)
     });
 }
 
-static bool pushIndirectSpans(LLVKBucket::Bucket& bucket, VkBuffer ring_buf, VkDeviceSize ring_offset)
+struct MdiFireSpan
+{
+    const LLVKBucket::TplChunkSpan* mTpl;
+    U32                             mFirst;
+    U32                             mCount;
+};
+
+static bool pushIndirectSpans(const std::vector<MdiFireSpan>& spans, VkBuffer ring_buf, VkDeviceSize ring_offset)
 {
     LLGLSLShader* shader = LLGLSLShader::sCurBoundShaderPtr;
     LLVKContract::DrawScope vkc_scope(nullptr, "mdi");
@@ -1398,9 +1405,9 @@ static bool pushIndirectSpans(LLVKBucket::Bucket& bucket, VkBuffer ring_buf, VkD
     {
         return false;
     }
-    for (const LLVKBucket::TplChunkSpan& span : bucket.mTplChunkSpans)
+    for (const MdiFireSpan& span : spans)
     {
-        span.mRep->mVertexBuffer->setBuffer();
+        span.mTpl->mRep->mVertexBuffer->setBuffer();
         vkCmdDrawIndexedIndirect(cmd, ring_buf,
                                  ring_offset + (VkDeviceSize)span.mFirst * sizeof(VkDrawIndexedIndirectCommand),
                                  span.mCount,
@@ -1453,25 +1460,28 @@ void LLRenderPass::pushIndirectBucket(LLVKBucket::Bucket& bucket, const std::vec
             applyModelMatrix(&bucket.mRegion->mRenderMatrix);
             gGL.syncMatrices();
             VkDrawIndexedIndirectCommand* cmds = (VkDrawIndexedIndirectCommand*)ring_mapped;
-            std::memcpy(cmds, bucket.mTplCommands.data(),
-                        n * sizeof(VkDrawIndexedIndirectCommand));
             U64 zeroed = 0;
-            for (size_t c = 0; c < n; ++c)
+            U32 w = 0;
+            static thread_local std::vector<MdiFireSpan> s_fire_spans;
+            s_fire_spans.clear();
+            for (const LLVKBucket::TplChunkSpan& tpl_span : bucket.mTplChunkSpans)
             {
-                const bool gvis = id_visible(bucket.mTplGroupIds[c]);
-                bool vis = gvis;
-                if (vis && cull_radius > 0.f)
+                const U32 span_w0 = w;
+                for (U32 c = tpl_span.mFirst; c < tpl_span.mFirst + tpl_span.mCount; ++c)
                 {
-                    const F32 r = bucket.mTplRadius[c];
-                    vis = !(r >= 0.f && r < cull_radius);
-                }
-                if (!vis)
-                {
-                    cmds[c].instanceCount = 0;
-                    ++zeroed;
-                }
-                else
-                {
+                    const bool gvis = id_visible(bucket.mTplGroupIds[c]);
+                    bool vis = gvis;
+                    if (vis && cull_radius > 0.f)
+                    {
+                        const F32 r = bucket.mTplRadius[c];
+                        vis = !(r >= 0.f && r < cull_radius);
+                    }
+                    if (!vis)
+                    {
+                        ++zeroed;
+                        continue;
+                    }
+                    cmds[w] = bucket.mTplCommands[c];
                     LLDrawInfo* rec = bucket.mTplRecords[c];
                     if (rec != nullptr)
                     {
@@ -1482,15 +1492,20 @@ void LLRenderPass::pushIndirectBucket(LLVKBucket::Bucket& bucket, const std::vec
                         if (rec->mVkDrawDataSlot != 0xFFFFFFFFu)
                         {
                             mdiAuthorAndCheck(rec, slots, rec->mVkDrawDataSlot, bt);
-                            mdiSetFirstInstance(cmds[c].firstInstance, rec->mVkDrawDataSlot, (const void*)rec);
+                            mdiSetFirstInstance(cmds[w].firstInstance, rec->mVkDrawDataSlot, (const void*)rec);
                         }
                     }
+                    ++w;
+                }
+                if (w > span_w0)
+                {
+                    s_fire_spans.push_back({ &tpl_span, span_w0, w - span_w0 });
                 }
             }
             LLVKLoader::gVkPerf.mdi_zero += zeroed;
-            if (pushIndirectSpans(bucket, ring_buf, ring_offset))
+            if (w > 0 && pushIndirectSpans(s_fire_spans, ring_buf, ring_offset))
             {
-                LLVKLoader::gVkPerf.mdi_rec += (U64)n - zeroed;
+                LLVKLoader::gVkPerf.mdi_rec += w;
             }
         }
         else
