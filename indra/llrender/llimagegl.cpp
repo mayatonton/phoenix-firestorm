@@ -356,7 +356,7 @@ bool is_little_endian()
     return (*c == 0x78) ;
 }
 
-void LLImageGL::initClass(LLWindow* window, S32 num_catagories, bool skip_analyze_alpha /* = false */, bool thread_texture_loads /* = false */, bool thread_media_updates /* = false */)
+void LLImageGL::initClass(S32 num_catagories, bool skip_analyze_alpha /* = false */, bool thread_texture_loads /* = false */, bool thread_media_updates /* = false */)
 {
     LL_PROFILE_ZONE_SCOPED_CATEGORY_TEXTURE;
     sSkipAnalyzeAlpha = skip_analyze_alpha;
@@ -366,7 +366,7 @@ void LLImageGL::initClass(LLWindow* window, S32 num_catagories, bool skip_analyz
     LLImageGLThread::sEnabledMedia    = false;
     if (tex_on)
     {
-        LLImageGLThread::createInstance(window);
+        LLImageGLThread::createInstance();
     }
 }
 
@@ -2681,10 +2681,9 @@ void LLImageGL::checkActiveThread()
 
 
 
-LLImageGLThread::LLImageGLThread(LLWindow* window)
+LLImageGLThread::LLImageGLThread()
     // We want exactly one thread.
     : LL::ThreadPool("LLImageGL", 1)
-    , mWindow(window)
 {
     LL_PROFILE_ZONE_SCOPED_CATEGORY_TEXTURE;
     mFinished = false;
