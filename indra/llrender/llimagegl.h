@@ -44,8 +44,6 @@
 
 #define LL_IMAGEGL_THREAD_CHECK 0 //set to 1 to enable thread debugging for ImageGL
 
-class LLWindow;
-
 #define BYTES_TO_MEGA_BYTES(x) ((x) >> 20)
 #define MEGA_BYTES_TO_BYTES(x) ((x) << 20)
 
@@ -270,7 +268,7 @@ public:
 #endif
 
 public:
-    static void initClass(LLWindow* window, S32 num_catagories, bool skip_analyze_alpha = false, bool thread_texture_loads = false, bool thread_media_updates = false);
+    static void initClass(S32 num_catagories, bool skip_analyze_alpha = false, bool thread_texture_loads = false, bool thread_media_updates = false);
     static void cleanupClass() ;
 
 private:
@@ -306,7 +304,7 @@ public:
     // follows gSavedSettings "RenderGLMultiThreadedMedia"
     static bool sEnabledMedia;
 
-    LLImageGLThread(LLWindow* window);
+    LLImageGLThread();
 
     // post a function to be executed on the LLImageGL background thread
     template <typename CALLABLE>
@@ -318,8 +316,6 @@ public:
     void run() override;
 
 private:
-    LLWindow* mWindow;
-    void* mContext = nullptr;
     LLAtomicBool mFinished;
 };
 

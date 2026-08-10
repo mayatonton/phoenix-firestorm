@@ -13,6 +13,8 @@ multiview 経路、描画品質、および P0 の性能・安定性計器を再
 通常の開発 app の configure / build は
 [macOS ビルド手順](../build/building_ayastorm_macos.md)を、bundle runtime の成立条件は
 [MoltenVK 実行時ブートストラップ仕様](../specs/ayastorm-r42-macos-moltenvk-runtime-bootstrap.md)を参照する。
+`LLImageGLThread` の旧 OpenGL shared context state による arm64 build failure の判断と修正範囲は、
+[LLImageGLThread の旧 OpenGL state 整理](../specs/ayastorm-r42-imageglthread-vulkan-worker-cleanup.ja.md)を参照する。
 
 ## 1. ビルド成果物の確認
 
