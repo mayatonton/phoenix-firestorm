@@ -905,6 +905,16 @@ set(viewer_SOURCE_FILES
     piemenu.cpp
     pieseparator.cpp
     pieslice.cpp
+    llpipelinealloc.cpp
+    llpipelinecapture.cpp
+    llpipelinecull.cpp
+    llpipelinedebug.cpp
+    llpipelinelighting.cpp
+    llpipelinepools.cpp
+    llpipelinepost.cpp
+    llpipelinerender.cpp
+    llpipelineshadow.cpp
+    llpipelineupdate.cpp
     pipeline.cpp
     qtoolalign.cpp
     quickprefs.cpp
@@ -1545,6 +1555,7 @@ set(viewer_HEADER_FILES
     llphysicsmotion.h
     llphysicsshapebuilderutil.h
     llpipelineframecontext.h
+    llpipelineinternal.h
     llpipelinelistener.h
     llplacesinventorybridge.h
     llplacesinventorypanel.h
@@ -1776,6 +1787,7 @@ set(viewer_HEADER_FILES
     piemenu.h
     pieseparator.h
     pieslice.h
+    llrecordpasscontext.h
     pipeline.h
     rlvactions.h
     rlvcommon.h

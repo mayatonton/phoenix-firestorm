@@ -214,3 +214,6 @@ LLPipelineListener::LLPipelineListener():
         &enable_all_info_displays_wrapper);
 }
 
+
+#include "llerror.h"
+#include "llpipelineinternal.h"

@@ -80,3 +80,6 @@ LLPipelineFrameContext::ScopedCameraID::~ScopedCameraID()
 {
     LLPipelineFrameContext::getInstance().setCurCameraID(mPrev);
 }
+
+#include "llerror.h"
+#include "llpipelineinternal.h"
