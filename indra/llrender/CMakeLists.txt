@@ -33,8 +33,18 @@ set(llrender_SOURCE_FILES
     lltexturemanagerbridge.cpp
     lluiimage.cpp
     llvertexbuffer.cpp
+    llvkbuffers.cpp
     llvkcontract.cpp
+    llvkdevice.cpp
+    llvkdiag.cpp
+    llvkheap.cpp
+    llvkimages.cpp
     llvkloader.cpp
+    llvkperdraw.cpp
+    llvkpresent.cpp
+    llvkrecord.cpp
+    llvksampler.cpp
+    llvkswapchain.cpp
     llvkuboreg.cpp
     volk.c
     )
@@ -69,6 +79,7 @@ set(llrender_HEADER_FILES
     llvertexbuffer.h
     llvkcontract.h
     llvkloader.h
+    llvkloaderinternal.h
     llvkuboreg.h
     volk.h
     )
