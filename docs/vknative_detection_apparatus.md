@@ -10,6 +10,7 @@
    - `VKC-SUM 10s skips=… cause{…}` — 10 秒毎の失敗全集計。**ここに出ない失敗種は存在しない**(出ないのに症状がある = 装置のギャップ → 装置を伸ばす。fix 仮説に行かない)。
    - `VKC skip cause=… obj=… tex=… av=…` — draw 不発火とその原因・対象(L1)。
    - `VKC geoab_* attr=… maxdiff=… verdict=… obj=…` — worker 幾何出力と旧経路の byte 照合(L3)。**verdict=src** = カーネル無罪・入力データが worker 読取り後に変わった / **verdict=kernel** = カーネルの数式バグ / `geoab_input_drift fields=0x…` = stage↔apply 間で入力パラメータが変化。
+   - `VKC skin_palette_nonfinite / skin_palette_discont av=… self=… mesh=… joint=…` — avatar skinning palette の破綻名指し(S1)。**env 変数と無関係に常時稼働**(発火時のみ WARNING・レート制限)。
 4. **fix を書いたら**: 同じ診断起動で該当 cause が 0 になること + 全層沈黙が機械検収。視覚確認はその後の最終 gate。
 
 実例(2026-07-18): 「カメラ移動で透明の穴」— 前任は視覚と推理で 6 連打・全外し。装置導入後、起動 2 回で `geoab_source_drift attr=pos maxdiff=4.8`(= worker が変異中の volume を読む)まで機械確定した。
@@ -34,6 +35,7 @@
 | L1 | 発火契約(LLVKContract v1.2) | draw が発火しない / fallback で描いた / fire-skip 振動 | **既設・実証済** |
 | L3 | 内容オラクル(移行 A/B 照合) | **経路移行後のカーネルが同一入力で違う内容を書く / 入力が非同期窓で drift** | 本設計・移行ごと(第 1 号 = T2 fill カーネル) |
 | L4 | 束縛 checksum(誤 texture/UBO 内容) | 誤 lighting・誤色(描かれるが状態が違う) | 未設計・必要になった時点で起工 |
+| S1 | skinning 連続性(`LLVOAvatar::vkcSkinPaletteOracle`・palette build 内) | avatar メッシュの一瞬の破裂/NaN。①palette non-finite ②frame 間の重心相対 radial deform > 8m(剛体運動 = TP 移動/回転では数学的に 0 = 誤発火しない)。**常時稼働**・発火時のみ WARNING(16 回 + pow2 レート制限)+ cause 計上。既知盲点 = 小振幅 collapse(~1.5m)は速いアニメと不可分で閾値外(発現時に log とセットで再設計)。設置 2026-08-11(AYA の自 avatar 一瞬破綻の観測を受けた網・発現待ち改修方針) |
 
 L1/L3 で「描かない(L1)/違う内容を描く(L3)」を覆う。本プロジェクトで実際に湧いた不体裁の多くはこのどれかに落ちる(髪消失=L1・ちらつき=L1・E2 白=L1 fallback 計上・誤 lighting=L4 予備)。
 

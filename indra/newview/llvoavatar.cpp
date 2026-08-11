@@ -35,6 +35,7 @@
 
 #include "llassetretry.h"
 #include "llaudioengine.h"
+#include "llvkcontract.h"
 #include "noise.h"
 #include "sound_ids.h"
 #include "raytrace.h"
@@ -10985,9 +10986,95 @@ const LLVOAvatar::MatrixPaletteCache& LLVOAvatar::updateSkinInfoMatrixPalette(co
             mp[idx + 10] = m[10];
             mp[idx + 11] = m[14];
         }
+
+        vkcSkinPaletteOracle(entry, skin, count);
     }
 
     return entry;
+}
+
+void LLVOAvatar::vkcSkinPaletteOracle(const MatrixPaletteCache& entry, const LLMeshSkinInfo* skin, U32 count)
+{
+    static std::atomic<U32> s_fires[2] = {};
+    const F32* mp = entry.mGLMp.empty() ? nullptr : &(entry.mGLMp[0]);
+    if (mp == nullptr || count == 0)
+    {
+        return;
+    }
+    const U32 total = count * 12;
+    U32 bad_idx = total;
+    for (U32 i = 0; i < total; ++i)
+    {
+        if (!llfinite(mp[i]))
+        {
+            bad_idx = i;
+            break;
+        }
+    }
+    if (bad_idx < total)
+    {
+        LLVKContract::cause(LLVKContract::C_SKIN_PALETTE_NONFINITE);
+        U32 n = ++s_fires[0];
+        if (n <= 16 || (n & (n - 1)) == 0)
+        {
+            LL_WARNS("VKContract") << "VKC skin_palette_nonfinite av=" << getID()
+                                   << " self=" << (isSelf() ? 1 : 0)
+                                   << " mesh=" << skin->mMeshID
+                                   << " joint=" << (bad_idx / 12)
+                                   << " joints=" << count
+                                   << " frame=" << gFrameCount
+                                   << " n=" << n << LL_ENDL;
+        }
+        return;
+    }
+    if (entry.mLastFrame < 0 || entry.mLastFrame + 1 != (S32)entry.mFrame
+        || entry.mLastGLMp.size() != entry.mGLMp.size() || count < 2)
+    {
+        return;
+    }
+    const F32* lp = &(entry.mLastGLMp[0]);
+    LLVector3 c_now(0.f, 0.f, 0.f);
+    LLVector3 c_prev(0.f, 0.f, 0.f);
+    for (U32 i = 0; i < count; ++i)
+    {
+        const U32 idx = i * 12;
+        c_now  += LLVector3(mp[idx + 3], mp[idx + 7], mp[idx + 11]);
+        c_prev += LLVector3(lp[idx + 3], lp[idx + 7], lp[idx + 11]);
+    }
+    const F32 inv = 1.f / (F32)count;
+    c_now *= inv;
+    c_prev *= inv;
+    F32 worst = 0.f;
+    U32 worst_i = 0;
+    for (U32 i = 0; i < count; ++i)
+    {
+        const U32 idx = i * 12;
+        const F32 r_now  = (LLVector3(mp[idx + 3], mp[idx + 7], mp[idx + 11]) - c_now).magVec();
+        const F32 r_prev = (LLVector3(lp[idx + 3], lp[idx + 7], lp[idx + 11]) - c_prev).magVec();
+        const F32 d = fabsf(r_now - r_prev);
+        if (d > worst)
+        {
+            worst = d;
+            worst_i = i;
+        }
+    }
+    constexpr F32 SKIN_ORACLE_DEFORM_LIMIT = 8.f;
+    if (worst > SKIN_ORACLE_DEFORM_LIMIT)
+    {
+        LLVKContract::cause(LLVKContract::C_SKIN_PALETTE_DISCONT);
+        U32 n = ++s_fires[1];
+        if (n <= 16 || (n & (n - 1)) == 0)
+        {
+            LL_WARNS("VKContract") << "VKC skin_palette_discont av=" << getID()
+                                   << " self=" << (isSelf() ? 1 : 0)
+                                   << " mesh=" << skin->mMeshID
+                                   << " joint=" << worst_i
+                                   << " deform=" << worst
+                                   << " joints=" << count
+                                   << " frame=" << gFrameCount
+                                   << " n=" << n << LL_ENDL;
+        }
+    }
 }
 
 void LLVOAvatar::getAnimLabels( std::vector<std::string>* labels )

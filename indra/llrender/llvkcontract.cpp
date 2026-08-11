@@ -77,7 +77,9 @@ const char* CAUSE_NAMES[CAUSE_COUNT] =
     "record_phase_acquire",
     "record_phase_tpldirty",
     "vbstage_offmain",
-    "publish_in_record"
+    "publish_in_record",
+    "skin_palette_nonfinite",
+    "skin_palette_discont"
 };
 
 std::string (*sDescribe)(const void*) = nullptr;

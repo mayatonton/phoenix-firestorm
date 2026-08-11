@@ -888,6 +888,7 @@ public:
     // Will do a map lookup for the entry associated with the given MeshSkinInfo
     // Will update said entry if it hasn't been updated yet this frame
     const MatrixPaletteCache& updateSkinInfoMatrixPalette(const LLMeshSkinInfo* skinInfo);
+    void vkcSkinPaletteOracle(const MatrixPaletteCache& entry, const LLMeshSkinInfo* skin, U32 count);
 
     // Map of LLMeshSkinInfo::mHash to MatrixPaletteCache
     typedef std::unordered_map<U64, MatrixPaletteCache> matrix_palette_cache_t;
