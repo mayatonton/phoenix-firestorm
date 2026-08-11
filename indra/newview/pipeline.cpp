@@ -354,7 +354,6 @@ std::vector<std::pair<F32, F32>> LLPipeline::sParcelOwnerTagAltRanges;
 bool    LLPipeline::sBakeSunlight = false;
 bool    LLPipeline::sNoAlpha = false;
 bool    LLPipeline::sUseFarClip = true;
-bool    LLPipeline::sDistortionRender = false;
 bool    LLPipeline::sImpostorRenderAlphaDepthPass = false;
 // <AYAstorm r30 P2>
 bool    LLPipeline::sT2xJitterEnabled = false;
@@ -371,9 +370,7 @@ bool    LLPipeline::sRenderDeferredLights = true;
 bool    LLPipeline::sRenderAttachedParticles = true;
 S32     LLPipeline::sReflectionProbeLevel = (S32)LLReflectionMap::ProbeLevel::NONE; // <FS:Beq/> [FIRE-35070] Address progressive FPS loss.
 S32     LLPipeline::sVisibleLightCount = 0;
-F32     LLPipeline::sDistortionWaterClipPlaneMargin = 1.0125f;
 LLVector3 LLPipeline::sLastFocusPoint={};// <FS:Beq/> FIRE-16728 focus point lock & free focus DoF 
-bool    LLPipeline::sDoFEnabled = false;
 
 F32 LLPipeline::sVolumeSAFrame = 0.f; // ZK LBG
 
@@ -643,7 +640,6 @@ void render_hud_elements()
 
 
 
-U32 LLPipeline::sCurRenderPoolType = 0 ;
 
 
 

@@ -828,7 +828,6 @@ public:
     static bool             sUseFarClip;
     static bool             sDynamicLOD;
     static bool             sPickAvatar;
-    static bool             sDistortionRender;
     static bool             sImpostorRenderAlphaDepthPass;
     // <AYAstorm r30 P2> True while SMAA T2x projection jitter is active
     // (Cinematic mode only, mainline 3D scene only). Sub-RT passes
@@ -849,7 +848,6 @@ public:
     static S32              sReflectionProbeLevel;
     // </FS:Beq>
     static S32              sVisibleLightCount;
-    static F32              sDistortionWaterClipPlaneMargin;
     static F32              sVolumeSAFrame;
     static F32              sLastSkyHdrScale;
 
@@ -866,7 +864,6 @@ public:
     static bool             sRenderTextures;
 // [/SL:KB]
     static LLVector3        sLastFocusPoint;// <FS:Beq/> FIRE-16728 focus point lock & free focus DoF 
-    static bool             sDoFEnabled;// <FS:Beq/> FIRE-32023 focus point render 
     static LLTrace::EventStatHandle<S64> sStatBatchSize;
 
     static constexpr U32 kSunShadowCount   = 4;
@@ -1278,7 +1275,6 @@ public:
     static LLRender::eTexIndex sRenderHighlightTextureChannel;
 
     //debug use
-    static U32              sCurRenderPoolType ;
 
     //cached settings
     static bool WindLightUseAtmosShaders;
