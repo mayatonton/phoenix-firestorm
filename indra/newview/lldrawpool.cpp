@@ -1752,7 +1752,7 @@ namespace
             LLDrawInfo* p = *i;
             LLCullResult::increment_iterator(i, end);
 
-            const bool refreshed = (p->mVkSkinFrame == gFrameCount);
+            const bool refreshed = (p->mVkSkinFrame == LLVKLoader::getMonotonicFrameCount());
             if (!refreshed
                 && !LLRenderPass::uploadMatrixPalette(p->mAvatar, p->mSkinInfo,
                                                       lastAvatar, lastMeshId, skipLastSkin))
@@ -1802,7 +1802,7 @@ namespace
                 {
                     return false;
                 }
-                p->mVkSkinFrame = gFrameCount;
+                p->mVkSkinFrame = LLVKLoader::getMonotonicFrameCount();
             }
 
             RiggedMdiRec rec;
