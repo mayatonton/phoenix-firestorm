@@ -127,13 +127,12 @@ typedef enum
 
     void renderAvatars(LLVOAvatar *single_avatar, S32 pass = -1); // renders only one avatar if single_avatar is not null.
 
-    static bool sSkipOpaque;
-    static bool sSkipTransparent;
-    static S32  sShadowPass;
-    static S32 sDiffuseChannel;
+    static thread_local bool sSkipOpaque;
+    static thread_local bool sSkipTransparent;
+    static thread_local S32 sDiffuseChannel;
     static F32 sMinimumAlpha;
 
-    static LLGLSLShader* sVertexProgram;
+    static thread_local LLGLSLShader* sVertexProgram;
 };
 
 extern S32 AVATAR_OFFSET_POS;
@@ -143,5 +142,4 @@ extern S32 AVATAR_OFFSET_TEX1;
 extern S32 AVATAR_VERTEX_BYTES;
 const S32 AVATAR_BUFFER_ELEMENTS = 8192; // Needs to be enough to store all avatar vertices.
 
-extern bool gAvatarEmbossBumpMap;
 #endif // LL_LLDRAWPOOLAVATAR_H

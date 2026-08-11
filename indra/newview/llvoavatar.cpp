@@ -5712,16 +5712,6 @@ void LLVOAvatar::updateVisibility()
     mVisibilityPreference = visible ? getPixelArea() : 0;
 }
 
-// private
-bool LLVOAvatar::shouldAlphaMask()
-{
-    const bool should_alpha_mask = !LLDrawPoolAlpha::sShowDebugAlpha // Don't alpha mask if "Highlight Transparent" checked
-                            && !LLDrawPoolAvatar::sSkipTransparent;
-
-    return should_alpha_mask;
-
-}
-
 U32 LLVOAvatar::renderSkinned()
 {
     LL_PROFILE_ZONE_SCOPED_CATEGORY_AVATAR;

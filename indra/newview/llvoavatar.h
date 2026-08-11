@@ -585,7 +585,6 @@ private:
     F32         mAttachmentSurfaceArea; //estimated surface area of attachments
     U32         mAttachmentVisibleTriangleCount;
     F32         mAttachmentEstTriangleCount;
-    bool        shouldAlphaMask();
 
     bool        mNeedsSkin; // avatar has been animated and verts have not been updated
     F32         mLastSkinTime; //value of gFrameTimeSeconds at last skin update
