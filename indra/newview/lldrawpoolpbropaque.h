@@ -37,16 +37,16 @@ public:
     U32 mRenderType = 0;
 
     S32 getNumDeferredPasses() override;
-    void renderDeferred(S32 pass) override;
+    void renderDeferred(const LLRecordPassContext& ctx, S32 pass) override;
 
     S32 getNumPostDeferredPasses() override;
-    void renderPostDeferred(S32 pass) override;
+    void renderPostDeferred(const LLRecordPassContext& ctx, S32 pass) override;
 
     // <AYAstorm r30 P2>
     S32 getNumMotionBlurPasses() override;
-    void beginMotionBlurPass(S32 pass) override;
-    void endMotionBlurPass(S32 pass) override;
-    void renderMotionBlur(S32 pass) override;
+    void beginMotionBlurPass(const LLRecordPassContext& ctx, S32 pass) override;
+    void endMotionBlurPass(const LLRecordPassContext& ctx, S32 pass) override;
+    void renderMotionBlur(const LLRecordPassContext& ctx, S32 pass) override;
     // </AYAstorm r30 P2>
 
 };

@@ -106,22 +106,6 @@ LLDrawPoolTerrain::~LLDrawPoolTerrain()
     llassert( gPipeline.findPool( getType(), getTexture() ) == NULL );
 }
 
-U32 LLDrawPoolTerrain::getVertexDataMask()
-{
-    if (LLPipelineFrameContext::getInstance().isShadowPass())
-    {
-        return LLVertexBuffer::MAP_VERTEX;
-    }
-    else if (LLGLSLShader::sCurBoundShaderPtr)
-    {
-        return VERTEX_DATA_MASK & ~(LLVertexBuffer::MAP_TEXCOORD2 | LLVertexBuffer::MAP_TEXCOORD3);
-    }
-    else
-    {
-        return VERTEX_DATA_MASK;
-    }
-}
-
 void LLDrawPoolTerrain::prerender()
 {
     static LLCachedControl<S32> render_terrain_pbr_detail(gSavedSettings, "RenderTerrainPBRDetail");
@@ -136,20 +120,20 @@ void LLDrawPoolTerrain::boostTerrainDetailTextures()
     compp->boost();
 }
 
-void LLDrawPoolTerrain::beginDeferredPass(S32 pass)
+void LLDrawPoolTerrain::beginDeferredPass(const LLRecordPassContext& ctx, S32 pass)
 {
     LL_PROFILE_ZONE_SCOPED_CATEGORY_DRAWPOOL; //LL_RECORD_BLOCK_TIME(FTM_RENDER_TERRAIN);
-    LLFacePool::beginRenderPass(pass);
+    LLFacePool::beginRenderPass(ctx, pass);
 }
 
-void LLDrawPoolTerrain::endDeferredPass(S32 pass)
+void LLDrawPoolTerrain::endDeferredPass(const LLRecordPassContext& ctx, S32 pass)
 {
     LL_PROFILE_ZONE_SCOPED_CATEGORY_DRAWPOOL; //LL_RECORD_BLOCK_TIME(FTM_RENDER_TERRAIN);
-    LLFacePool::endRenderPass(pass);
+    LLFacePool::endRenderPass(ctx, pass);
     sShader->unbind();
 }
 
-void LLDrawPoolTerrain::renderDeferred(S32 pass)
+void LLDrawPoolTerrain::renderDeferred(const LLRecordPassContext& ctx, S32 pass)
 {
     LL_PROFILE_ZONE_SCOPED_CATEGORY_DRAWPOOL; //LL_RECORD_BLOCK_TIME(FTM_RENDER_TERRAIN);
     if (mDrawFace.empty())
@@ -173,22 +157,22 @@ void LLDrawPoolTerrain::renderDeferred(S32 pass)
 
 }
 
-void LLDrawPoolTerrain::beginShadowPass(S32 pass)
+void LLDrawPoolTerrain::beginShadowPass(const LLRecordPassContext& ctx, S32 pass)
 {
     LL_PROFILE_ZONE_SCOPED_CATEGORY_DRAWPOOL; //LL_RECORD_BLOCK_TIME(FTM_SHADOW_TERRAIN);
-    LLFacePool::beginRenderPass(pass);
+    LLFacePool::beginRenderPass(ctx, pass);
     gGL.getTexUnit(0)->unbind(LLTexUnit::TT_TEXTURE);
     gDeferredShadowProgram.bind();
 }
 
-void LLDrawPoolTerrain::endShadowPass(S32 pass)
+void LLDrawPoolTerrain::endShadowPass(const LLRecordPassContext& ctx, S32 pass)
 {
     LL_PROFILE_ZONE_SCOPED_CATEGORY_DRAWPOOL; //LL_RECORD_BLOCK_TIME(FTM_SHADOW_TERRAIN);
-    LLFacePool::endRenderPass(pass);
+    LLFacePool::endRenderPass(ctx, pass);
     gDeferredShadowProgram.unbind();
 }
 
-void LLDrawPoolTerrain::renderShadow(S32 pass)
+void LLDrawPoolTerrain::renderShadow(const LLRecordPassContext& ctx, S32 pass)
 {
     LL_PROFILE_ZONE_SCOPED_CATEGORY_DRAWPOOL; //LL_RECORD_BLOCK_TIME(FTM_SHADOW_TERRAIN);
     if (mDrawFace.empty())
@@ -208,19 +192,19 @@ S32 LLDrawPoolTerrain::getNumMotionBlurPasses()
     return 1;
 }
 
-void LLDrawPoolTerrain::beginMotionBlurPass(S32 pass)
+void LLDrawPoolTerrain::beginMotionBlurPass(const LLRecordPassContext& ctx, S32 pass)
 {
     LL_PROFILE_ZONE_SCOPED;
     gVelocityProgram.bind();
 }
 
-void LLDrawPoolTerrain::endMotionBlurPass(S32 pass)
+void LLDrawPoolTerrain::endMotionBlurPass(const LLRecordPassContext& ctx, S32 pass)
 {
     LL_PROFILE_ZONE_SCOPED;
     gVelocityProgram.unbind();
 }
 
-void LLDrawPoolTerrain::renderMotionBlur(S32 pass)
+void LLDrawPoolTerrain::renderMotionBlur(const LLRecordPassContext& ctx, S32 pass)
 {
     LL_PROFILE_ZONE_SCOPED_CATEGORY_DRAWPOOL;
     LLGLEnable cull(GL_CULL_FACE);

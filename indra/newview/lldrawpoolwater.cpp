@@ -111,7 +111,7 @@ S32 LLDrawPoolWater::getNumPostDeferredPasses()
     return 0;
 }
 
-void LLDrawPoolWater::beginPostDeferredPass(S32 pass)
+void LLDrawPoolWater::beginPostDeferredPass(const LLRecordPassContext& ctx, S32 pass)
 {
     LL_PROFILE_GPU_ZONE("water beginPostDeferredPass")
     gGL.setColorMask(true, true);
@@ -122,8 +122,8 @@ void LLDrawPoolWater::beginPostDeferredPass(S32 pass)
         // reflections and refractions
         LLGLDepthTest depth(GL_TRUE, GL_TRUE, GL_ALWAYS);
 
-        LLRenderTarget& src = LLPipelineFrameContext::getInstance().getActiveRT()->screen;
-        LLRenderTarget& depth_src = LLPipelineFrameContext::getInstance().getActiveRT()->deferredScreen;
+        LLRenderTarget& src = ctx.activeRT->screen;
+        LLRenderTarget& depth_src = ctx.activeRT->deferredScreen;
 
         LLRTScope s(gPipeline.mWaterDis, false, "water_depthcopy");
         if (s)
@@ -142,7 +142,7 @@ void LLDrawPoolWater::beginPostDeferredPass(S32 pass)
     }
 
     if (!gCubeSnapshot &&
-        LLPipelineFrameContext::getInstance().getActiveRT() == &gPipeline.mMainRT)
+        ctx.activeRT == &gPipeline.mMainRT)
     {
         mForwardScope.emplace(gPipeline.mForwardColor, false, "water_fwd");
         if (*mForwardScope)
@@ -154,7 +154,7 @@ void LLDrawPoolWater::beginPostDeferredPass(S32 pass)
     }
 }
 
-void LLDrawPoolWater::renderPostDeferred(S32 pass)
+void LLDrawPoolWater::renderPostDeferred(const LLRecordPassContext& ctx, S32 pass)
 {
     LL_PROFILE_ZONE_SCOPED_CATEGORY_DRAWPOOL;
     LLGLDisable blend(GL_BLEND);
@@ -356,11 +356,11 @@ void LLDrawPoolWater::renderPostDeferred(S32 pass)
     gGL.setColorMask(true, false);
 }
 
-void LLDrawPoolWater::endPostDeferredPass(S32 pass)
+void LLDrawPoolWater::endPostDeferredPass(const LLRecordPassContext& ctx, S32 pass)
 {
     mForwardScope.reset();
 
-    LLDrawPool::endPostDeferredPass(pass);
+    LLDrawPool::endPostDeferredPass(ctx, pass);
 }
 
 void LLDrawPoolWater::pushWaterPlanes(int pass)

@@ -45,7 +45,7 @@ static LLTrace::BlockTimerStatHandle FTM_RENDER_GRASS_DEFERRED("Deferred Grass")
 
 
 
-void LLDrawPoolGlow::renderPostDeferred(S32 pass)
+void LLDrawPoolGlow::renderPostDeferred(const LLRecordPassContext& ctx, S32 pass)
 {
     LL_PROFILE_ZONE_SCOPED_CATEGORY_DRAWPOOL;
 
@@ -64,12 +64,12 @@ void LLDrawPoolGlow::renderPostDeferred(S32 pass)
 
     //first pass -- static objects
     shader->bind();
-    pushBatches(LLRenderPass::PASS_GLOW, true, true);
+    pushBatches(ctx, LLRenderPass::PASS_GLOW, true, true);
 
     // second pass -- rigged objects
     shader = shader->mRiggedVariant;
     shader->bind();
-    pushRiggedBatches(LLRenderPass::PASS_GLOW_RIGGED, true, true);
+    pushRiggedBatches(ctx, LLRenderPass::PASS_GLOW_RIGGED, true, true);
 
     gGL.setColorMask(true, false);
     gGL.setSceneBlendType(LLRender::BT_ALPHA);
@@ -99,7 +99,7 @@ S32 LLDrawPoolSimple::getNumDeferredPasses()
     return 1;
 }
 
-void LLDrawPoolSimple::renderDeferred(S32 pass)
+void LLDrawPoolSimple::renderDeferred(const LLRecordPassContext& ctx, S32 pass)
 {
     LL_PROFILE_ZONE_SCOPED_CATEGORY_DRAWPOOL; //LL_RECORD_BLOCK_TIME(FTM_RENDER_SIMPLE_DEFERRED);
     LLGLDisable blend(GL_BLEND);
@@ -107,17 +107,17 @@ void LLDrawPoolSimple::renderDeferred(S32 pass)
 
     //render static
     gDeferredDiffuseProgram.bind();
-    pushBatches(LLRenderPass::PASS_SIMPLE, true, true);
+    pushBatches(ctx, LLRenderPass::PASS_SIMPLE, true, true);
 
     //render rigged
     gDeferredDiffuseProgram.bind(true);
-    pushRiggedBatches(LLRenderPass::PASS_SIMPLE_RIGGED, true, true);
+    pushRiggedBatches(ctx, LLRenderPass::PASS_SIMPLE_RIGGED, true, true);
 }
 
 static LLTrace::BlockTimerStatHandle FTM_RENDER_ALPHA_MASK_DEFERRED("Deferred Alpha Mask");
 
 
-void LLDrawPoolAlphaMask::renderDeferred(S32 pass)
+void LLDrawPoolAlphaMask::renderDeferred(const LLRecordPassContext& ctx, S32 pass)
 {
     LL_PROFILE_ZONE_SCOPED_CATEGORY_DRAWPOOL; //LL_RECORD_BLOCK_TIME(FTM_RENDER_ALPHA_MASK_DEFERRED);
 
@@ -126,11 +126,11 @@ void LLDrawPoolAlphaMask::renderDeferred(S32 pass)
 
     //render static
     shader->bind();
-    pushMaskBatches(LLRenderPass::PASS_ALPHA_MASK, true, true);
+    pushMaskBatches(ctx, LLRenderPass::PASS_ALPHA_MASK, true, true);
 
     //render rigged
     shader->bind(true);
-    pushRiggedMaskBatches(LLRenderPass::PASS_ALPHA_MASK_RIGGED, true, true);
+    pushRiggedMaskBatches(ctx, LLRenderPass::PASS_ALPHA_MASK_RIGGED, true, true);
 }
 
 // grass drawpool
@@ -140,7 +140,7 @@ LLDrawPoolGrass::LLDrawPoolGrass() :
 
 }
 
-void LLDrawPoolGrass::renderDeferred(S32 pass)
+void LLDrawPoolGrass::renderDeferred(const LLRecordPassContext& ctx, S32 pass)
 {
     LL_PROFILE_ZONE_SCOPED_CATEGORY_DRAWPOOL;
 
@@ -150,7 +150,7 @@ void LLDrawPoolGrass::renderDeferred(S32 pass)
         gDeferredNonIndexedDiffuseAlphaMaskProgram.setMinimumAlpha(0.5f);
 
         //render grass
-        LLRenderPass::pushBatches(LLRenderPass::PASS_GRASS, getVertexDataMask());
+        LLRenderPass::pushBatches(ctx, LLRenderPass::PASS_GRASS, getVertexDataMask());
     }
 }
 
@@ -161,13 +161,13 @@ LLDrawPoolFullbright::LLDrawPoolFullbright() :
 {
 }
 
-void LLDrawPoolFullbright::renderPostDeferred(S32 pass)
+void LLDrawPoolFullbright::renderPostDeferred(const LLRecordPassContext& ctx, S32 pass)
 {
     LL_PROFILE_ZONE_SCOPED_CATEGORY_DRAWPOOL; //LL_RECORD_BLOCK_TIME(FTM_RENDER_FULLBRIGHT);
 
 
     LLGLSLShader* shader = nullptr;
-    if (LLPipelineFrameContext::getInstance().isHUDPass())
+    if (ctx.hudPass)
     {
         shader = &gHUDFullbrightProgram;
     }
@@ -180,27 +180,27 @@ void LLDrawPoolFullbright::renderPostDeferred(S32 pass)
 
     // render static
     shader->bind();
-    pushBatches(LLRenderPass::PASS_FULLBRIGHT, true, true);
+    pushBatches(ctx, LLRenderPass::PASS_FULLBRIGHT, true, true);
 
-    if (!LLPipelineFrameContext::getInstance().isHUDPass())
+    if (!ctx.hudPass)
     {
         // render rigged
         shader->bind(true);
-        pushRiggedBatches(LLRenderPass::PASS_FULLBRIGHT_RIGGED, true, true);
+        pushRiggedBatches(ctx, LLRenderPass::PASS_FULLBRIGHT_RIGGED, true, true);
     }
 }
 
-void LLDrawPoolFullbrightAlphaMask::renderPostDeferred(S32 pass)
+void LLDrawPoolFullbrightAlphaMask::renderPostDeferred(const LLRecordPassContext& ctx, S32 pass)
 {
     LL_PROFILE_ZONE_SCOPED_CATEGORY_DRAWPOOL; //LL_RECORD_BLOCK_TIME(FTM_RENDER_FULLBRIGHT);
 
 
     // render unrigged unlit GLTF
-    LL::GLTFSceneManager::instance().render(true, false, true);
-    LL::GLTFSceneManager::instance().render(true, true, true);
+    LL::GLTFSceneManager::instance().render(ctx, true, false, true);
+    LL::GLTFSceneManager::instance().render(ctx, true, true, true);
 
     LLGLSLShader* shader = nullptr;
-    if (LLPipelineFrameContext::getInstance().isHUDPass())
+    if (ctx.hudPass)
     {
         shader = &gHUDFullbrightAlphaMaskProgram;
     }
@@ -213,13 +213,13 @@ void LLDrawPoolFullbrightAlphaMask::renderPostDeferred(S32 pass)
 
     // render static
     shader->bind();
-    pushMaskBatches(LLRenderPass::PASS_FULLBRIGHT_ALPHA_MASK, true, true);
+    pushMaskBatches(ctx, LLRenderPass::PASS_FULLBRIGHT_ALPHA_MASK, true, true);
 
-    if (!LLPipelineFrameContext::getInstance().isHUDPass())
+    if (!ctx.hudPass)
     {
         // render rigged
         shader->bind(true);
-        pushRiggedMaskBatches(LLRenderPass::PASS_FULLBRIGHT_ALPHA_MASK_RIGGED, true, true);
+        pushRiggedMaskBatches(ctx, LLRenderPass::PASS_FULLBRIGHT_ALPHA_MASK_RIGGED, true, true);
     }
 }
 
@@ -233,26 +233,26 @@ S32 LLDrawPoolSimple::getNumMotionBlurPasses()
     return 1;
 }
 
-void LLDrawPoolSimple::beginMotionBlurPass(S32 pass)
+void LLDrawPoolSimple::beginMotionBlurPass(const LLRecordPassContext& ctx, S32 pass)
 {
     LL_PROFILE_ZONE_SCOPED;
     gVelocityProgram.bind();
 }
 
-void LLDrawPoolSimple::endMotionBlurPass(S32 pass)
+void LLDrawPoolSimple::endMotionBlurPass(const LLRecordPassContext& ctx, S32 pass)
 {
     LL_PROFILE_ZONE_SCOPED;
     gVelocityProgram.unbind();
 }
 
-void LLDrawPoolSimple::renderMotionBlur(S32 pass)
+void LLDrawPoolSimple::renderMotionBlur(const LLRecordPassContext& ctx, S32 pass)
 {
     LL_PROFILE_ZONE_SCOPED;
     LLGLEnable cull(GL_CULL_FACE);
-    pushVelocityBatches(LLRenderPass::PASS_SIMPLE);
+    pushVelocityBatches(ctx, LLRenderPass::PASS_SIMPLE);
 
     gVelocityProgram.bind(true);
-    pushRiggedVelocityBatches(LLRenderPass::PASS_SIMPLE_RIGGED);
+    pushRiggedVelocityBatches(ctx, LLRenderPass::PASS_SIMPLE_RIGGED);
 }
 
 S32 LLDrawPoolGrass::getNumMotionBlurPasses()
@@ -260,23 +260,23 @@ S32 LLDrawPoolGrass::getNumMotionBlurPasses()
     return 1;
 }
 
-void LLDrawPoolGrass::beginMotionBlurPass(S32 pass)
+void LLDrawPoolGrass::beginMotionBlurPass(const LLRecordPassContext& ctx, S32 pass)
 {
     LL_PROFILE_ZONE_SCOPED;
     gVelocityProgram.bind();
 }
 
-void LLDrawPoolGrass::endMotionBlurPass(S32 pass)
+void LLDrawPoolGrass::endMotionBlurPass(const LLRecordPassContext& ctx, S32 pass)
 {
     LL_PROFILE_ZONE_SCOPED;
     gVelocityProgram.unbind();
 }
 
-void LLDrawPoolGrass::renderMotionBlur(S32 pass)
+void LLDrawPoolGrass::renderMotionBlur(const LLRecordPassContext& ctx, S32 pass)
 {
     LL_PROFILE_ZONE_SCOPED;
     LLGLEnable cull(GL_CULL_FACE);
-    pushVelocityBatches(LLRenderPass::PASS_GRASS);
+    pushVelocityBatches(ctx, LLRenderPass::PASS_GRASS);
 }
 
 S32 LLDrawPoolAlphaMask::getNumMotionBlurPasses()
@@ -284,26 +284,26 @@ S32 LLDrawPoolAlphaMask::getNumMotionBlurPasses()
     return 1;
 }
 
-void LLDrawPoolAlphaMask::beginMotionBlurPass(S32 pass)
+void LLDrawPoolAlphaMask::beginMotionBlurPass(const LLRecordPassContext& ctx, S32 pass)
 {
     LL_PROFILE_ZONE_SCOPED;
     gVelocityAlphaProgram.bind();
 }
 
-void LLDrawPoolAlphaMask::endMotionBlurPass(S32 pass)
+void LLDrawPoolAlphaMask::endMotionBlurPass(const LLRecordPassContext& ctx, S32 pass)
 {
     LL_PROFILE_ZONE_SCOPED;
     gVelocityAlphaProgram.unbind();
 }
 
-void LLDrawPoolAlphaMask::renderMotionBlur(S32 pass)
+void LLDrawPoolAlphaMask::renderMotionBlur(const LLRecordPassContext& ctx, S32 pass)
 {
     LL_PROFILE_ZONE_SCOPED;
     LLGLEnable cull(GL_CULL_FACE);
-    pushVelocityBatchesTextured(LLRenderPass::PASS_ALPHA_MASK);
+    pushVelocityBatchesTextured(ctx, LLRenderPass::PASS_ALPHA_MASK);
 
     gVelocityAlphaProgram.bind(true);
-    pushRiggedVelocityBatchesTextured(LLRenderPass::PASS_ALPHA_MASK_RIGGED);
+    pushRiggedVelocityBatchesTextured(ctx, LLRenderPass::PASS_ALPHA_MASK_RIGGED);
 }
 
 S32 LLDrawPoolFullbrightAlphaMask::getNumMotionBlurPasses()
@@ -311,26 +311,26 @@ S32 LLDrawPoolFullbrightAlphaMask::getNumMotionBlurPasses()
     return 1;
 }
 
-void LLDrawPoolFullbrightAlphaMask::beginMotionBlurPass(S32 pass)
+void LLDrawPoolFullbrightAlphaMask::beginMotionBlurPass(const LLRecordPassContext& ctx, S32 pass)
 {
     LL_PROFILE_ZONE_SCOPED;
     gVelocityAlphaProgram.bind();
 }
 
-void LLDrawPoolFullbrightAlphaMask::endMotionBlurPass(S32 pass)
+void LLDrawPoolFullbrightAlphaMask::endMotionBlurPass(const LLRecordPassContext& ctx, S32 pass)
 {
     LL_PROFILE_ZONE_SCOPED;
     gVelocityAlphaProgram.unbind();
 }
 
-void LLDrawPoolFullbrightAlphaMask::renderMotionBlur(S32 pass)
+void LLDrawPoolFullbrightAlphaMask::renderMotionBlur(const LLRecordPassContext& ctx, S32 pass)
 {
     LL_PROFILE_ZONE_SCOPED;
     LLGLEnable cull(GL_CULL_FACE);
-    pushVelocityBatchesTextured(LLRenderPass::PASS_FULLBRIGHT_ALPHA_MASK);
+    pushVelocityBatchesTextured(ctx, LLRenderPass::PASS_FULLBRIGHT_ALPHA_MASK);
 
     gVelocityAlphaProgram.bind(true);
-    pushRiggedVelocityBatchesTextured(LLRenderPass::PASS_FULLBRIGHT_ALPHA_MASK_RIGGED);
+    pushRiggedVelocityBatchesTextured(ctx, LLRenderPass::PASS_FULLBRIGHT_ALPHA_MASK_RIGGED);
 }
 
 S32 LLDrawPoolFullbright::getNumMotionBlurPasses()
@@ -338,26 +338,26 @@ S32 LLDrawPoolFullbright::getNumMotionBlurPasses()
     return 1;
 }
 
-void LLDrawPoolFullbright::beginMotionBlurPass(S32 pass)
+void LLDrawPoolFullbright::beginMotionBlurPass(const LLRecordPassContext& ctx, S32 pass)
 {
     LL_PROFILE_ZONE_SCOPED;
     gVelocityProgram.bind();
 }
 
-void LLDrawPoolFullbright::endMotionBlurPass(S32 pass)
+void LLDrawPoolFullbright::endMotionBlurPass(const LLRecordPassContext& ctx, S32 pass)
 {
     LL_PROFILE_ZONE_SCOPED;
     gVelocityProgram.unbind();
 }
 
-void LLDrawPoolFullbright::renderMotionBlur(S32 pass)
+void LLDrawPoolFullbright::renderMotionBlur(const LLRecordPassContext& ctx, S32 pass)
 {
     LL_PROFILE_ZONE_SCOPED;
     LLGLEnable cull(GL_CULL_FACE);
-    pushVelocityBatches(LLRenderPass::PASS_FULLBRIGHT);
+    pushVelocityBatches(ctx, LLRenderPass::PASS_FULLBRIGHT);
 
     gVelocityProgram.bind(true);
-    pushRiggedVelocityBatches(LLRenderPass::PASS_FULLBRIGHT_RIGGED);
+    pushRiggedVelocityBatches(ctx, LLRenderPass::PASS_FULLBRIGHT_RIGGED);
 }
 // </AYAstorm r30 P2>
 

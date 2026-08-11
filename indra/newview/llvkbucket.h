@@ -19,6 +19,7 @@
 #include "llpointer.h"
 #include "llspatialpartition.h"
 #include "llvkloader.h"
+#include "llrecordpasscontext.h"
 #include "pipeline.h"
 
 #include <vector>
@@ -80,14 +81,14 @@ namespace LLVKBucket
     void rebuildTemplateIfDirty(Bucket& bucket);
 
     const std::vector<Bucket*>& bucketsForPass(U32 pass);
-    const std::vector<U64>* currentVisBits();
+    const std::vector<U64>* currentVisBits(const LLRecordPassContext& ctx);
     void perfRangeEmit(U64 records);
     void perfRangeSkip();
 
     template <typename FN>
-    inline void forEachVisible(U32 pass, FN&& fn)
+    inline void forEachVisible(const LLRecordPassContext& ctx, U32 pass, FN&& fn)
     {
-        const std::vector<U64>* bits = currentVisBits();
+        const std::vector<U64>* bits = currentVisBits(ctx);
         if (bits == nullptr)
         {
             return;
@@ -116,11 +117,11 @@ namespace LLVKBucket
     }
 
     template <typename FN>
-    inline void forEachSource(U32 pass, FN&& fn)
+    inline void forEachSource(const LLRecordPassContext& ctx, U32 pass, FN&& fn)
     {
         if (emitActive(pass))
         {
-            forEachVisible(pass, fn);
+            forEachVisible(ctx, pass, fn);
             return;
         }
         auto* begin = gPipeline.beginRenderMap(pass);

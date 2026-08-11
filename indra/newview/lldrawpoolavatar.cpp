@@ -68,7 +68,6 @@ thread_local LLGLSLShader* LLDrawPoolAvatar::sVertexProgram = NULL;
 thread_local bool LLDrawPoolAvatar::sSkipOpaque = false;
 thread_local bool LLDrawPoolAvatar::sSkipTransparent = false;
 thread_local S32 LLDrawPoolAvatar::sDiffuseChannel = 0;
-F32 LLDrawPoolAvatar::sMinimumAlpha = 0.2f;
 
 F32 CLOTHING_GRAVITY_EFFECT = 0.7f;
 F32 CLOTHING_ACCEL_FORCE_FACTOR = 0.2f;
@@ -157,13 +156,13 @@ LLMatrix4& LLDrawPoolAvatar::getModelView()
 
 
 
-void LLDrawPoolAvatar::beginDeferredPass(S32 pass)
+void LLDrawPoolAvatar::beginDeferredPass(const LLRecordPassContext& ctx, S32 pass)
 {
     LL_PROFILE_ZONE_SCOPED_CATEGORY_AVATAR;
 
     sSkipTransparent = true;
 
-    if (LLPipelineFrameContext::getInstance().isImpostorPass())
+    if (ctx.impostorPass)
     { //impostor pass does not have impostor rendering
         ++pass;
     }
@@ -171,24 +170,24 @@ void LLDrawPoolAvatar::beginDeferredPass(S32 pass)
     switch (pass)
     {
     case 0:
-        beginDeferredImpostor();
+        beginDeferredImpostor(ctx);
         break;
     case 1:
-        beginDeferredRigid();
+        beginDeferredRigid(ctx);
         break;
     case 2:
-        beginDeferredSkinned();
+        beginDeferredSkinned(ctx);
         break;
     }
 }
 
-void LLDrawPoolAvatar::endDeferredPass(S32 pass)
+void LLDrawPoolAvatar::endDeferredPass(const LLRecordPassContext& ctx, S32 pass)
 {
     LL_PROFILE_ZONE_SCOPED_CATEGORY_AVATAR;
 
     sSkipTransparent = false;
 
-    if (LLPipelineFrameContext::getInstance().isImpostorPass())
+    if (ctx.impostorPass)
     {
         ++pass;
     }
@@ -207,11 +206,11 @@ void LLDrawPoolAvatar::endDeferredPass(S32 pass)
     }
 }
 
-void LLDrawPoolAvatar::renderDeferred(S32 pass)
+void LLDrawPoolAvatar::renderDeferred(const LLRecordPassContext& ctx, S32 pass)
 {
     LL_PROFILE_ZONE_SCOPED_CATEGORY_AVATAR;
 
-    render(pass);
+    render(ctx, pass);
 }
 
 S32 LLDrawPoolAvatar::getNumPostDeferredPasses()
@@ -219,7 +218,7 @@ S32 LLDrawPoolAvatar::getNumPostDeferredPasses()
     return 1;
 }
 
-void LLDrawPoolAvatar::beginPostDeferredPass(S32 pass)
+void LLDrawPoolAvatar::beginPostDeferredPass(const LLRecordPassContext& ctx, S32 pass)
 {
     LL_PROFILE_ZONE_SCOPED_CATEGORY_AVATAR;
 
@@ -228,12 +227,12 @@ void LLDrawPoolAvatar::beginPostDeferredPass(S32 pass)
 
     gPipeline.bindDeferredShader(*sVertexProgram);
 
-    sVertexProgram->setMinimumAlpha(LLDrawPoolAvatar::sMinimumAlpha);
+    sVertexProgram->setMinimumAlpha(ctx.avatarMinimumAlpha);
 
     sDiffuseChannel = sVertexProgram->enableTexture(LLViewerShaderMgr::DIFFUSE_MAP);
 }
 
-void LLDrawPoolAvatar::endPostDeferredPass(S32 pass)
+void LLDrawPoolAvatar::endPostDeferredPass(const LLRecordPassContext& ctx, S32 pass)
 {
     LL_PROFILE_ZONE_SCOPED_CATEGORY_AVATAR;
     // if we're in software-blending, remember to set the fence _after_ we draw so we wait till this rendering is done
@@ -243,17 +242,17 @@ void LLDrawPoolAvatar::endPostDeferredPass(S32 pass)
     sDiffuseChannel = 0;
 }
 
-void LLDrawPoolAvatar::renderPostDeferred(S32 pass)
+void LLDrawPoolAvatar::renderPostDeferred(const LLRecordPassContext& ctx, S32 pass)
 {
     LL_PROFILE_ZONE_SCOPED_CATEGORY_AVATAR;
 
-    if (LLPipelineFrameContext::getInstance().isImpostorPass())
+    if (ctx.impostorPass)
     { //HACK for impostors so actual pass ends up being proper pass
-        render(0);
+        render(ctx, 0);
     }
     else
     {
-        render(2);
+        render(ctx, 2);
     }
 }
 
@@ -264,7 +263,7 @@ S32 LLDrawPoolAvatar::getNumShadowPasses()
     return NUM_SHADOW_PASSES;
 }
 
-void LLDrawPoolAvatar::beginShadowPass(S32 pass)
+void LLDrawPoolAvatar::beginShadowPass(const LLRecordPassContext& ctx, S32 pass)
 {
     LL_PROFILE_ZONE_SCOPED_CATEGORY_AVATAR;
 
@@ -317,7 +316,7 @@ void LLDrawPoolAvatar::beginShadowPass(S32 pass)
     }
 }
 
-void LLDrawPoolAvatar::endShadowPass(S32 pass)
+void LLDrawPoolAvatar::endShadowPass(const LLRecordPassContext& ctx, S32 pass)
 {
     LL_PROFILE_ZONE_SCOPED_CATEGORY_AVATAR;
 
@@ -328,7 +327,7 @@ void LLDrawPoolAvatar::endShadowPass(S32 pass)
     sVertexProgram = NULL;
 }
 
-void LLDrawPoolAvatar::renderShadow(S32 pass)
+void LLDrawPoolAvatar::renderShadow(const LLRecordPassContext& ctx, S32 pass)
 {
     LL_PROFILE_ZONE_SCOPED_CATEGORY_AVATAR;
 
@@ -359,7 +358,7 @@ void LLDrawPoolAvatar::renderShadow(S32 pass)
     }
 
     LLVOAvatar::AvatarOverallAppearance oa = avatarp->getOverallAppearance();
-    bool impostor = !LLPipelineFrameContext::getInstance().isImpostorPass() && avatarp->isImpostor();
+    bool impostor = !ctx.impostorPass && avatarp->isImpostor();
     // no shadows if the shadows are causing this avatar to breach the limit.
     if (avatarp->isTooSlow() || impostor || (oa == LLVOAvatar::AOA_INVISIBLE))
     {
@@ -371,19 +370,19 @@ void LLDrawPoolAvatar::renderShadow(S32 pass)
     if (pass == SHADOW_PASS_AVATAR_OPAQUE)
     {
         LLDrawPoolAvatar::sSkipTransparent = true;
-        avatarp->renderSkinned();
+        avatarp->renderSkinned(ctx);
         LLDrawPoolAvatar::sSkipTransparent = false;
     }
     else if (pass == SHADOW_PASS_AVATAR_ALPHA_BLEND)
     {
         LLDrawPoolAvatar::sSkipOpaque = true;
-        avatarp->renderSkinned();
+        avatarp->renderSkinned(ctx);
         LLDrawPoolAvatar::sSkipOpaque = false;
     }
     else if (pass == SHADOW_PASS_AVATAR_ALPHA_MASK)
     {
         LLDrawPoolAvatar::sSkipOpaque = true;
-        avatarp->renderSkinned();
+        avatarp->renderSkinned(ctx);
         LLDrawPoolAvatar::sSkipOpaque = false;
     }
 }
@@ -400,25 +399,25 @@ S32 LLDrawPoolAvatar::getNumDeferredPasses()
 }
 
 
-void LLDrawPoolAvatar::render(S32 pass)
+void LLDrawPoolAvatar::render(const LLRecordPassContext& ctx, S32 pass)
 {
     LL_PROFILE_ZONE_SCOPED_CATEGORY_AVATAR;
-    if (LLPipelineFrameContext::getInstance().isImpostorPass())
+    if (ctx.impostorPass)
     {
-        renderAvatars(NULL, ++pass);
+        renderAvatars(ctx, NULL, ++pass);
         return;
     }
 
-    renderAvatars(NULL, pass); // render all avatars
+    renderAvatars(ctx, NULL, pass); // render all avatars
 }
 
-void LLDrawPoolAvatar::beginRenderPass(S32 pass)
+void LLDrawPoolAvatar::beginRenderPass(const LLRecordPassContext& ctx, S32 pass)
 {
     LL_PROFILE_ZONE_SCOPED_CATEGORY_AVATAR;
     //reset vertex buffer mappings
     LLVertexBuffer::unbind();
 
-    if (LLPipelineFrameContext::getInstance().isImpostorPass())
+    if (ctx.impostorPass)
     { //impostor render does not have impostors or rigid rendering
         ++pass;
     }
@@ -426,13 +425,13 @@ void LLDrawPoolAvatar::beginRenderPass(S32 pass)
     switch (pass)
     {
     case 0:
-        beginImpostor();
+        beginImpostor(ctx);
         break;
     case 1:
-        beginRigid();
+        beginRigid(ctx);
         break;
     case 2:
-        beginSkinned();
+        beginSkinned(ctx);
         break;
     }
 
@@ -442,11 +441,11 @@ void LLDrawPoolAvatar::beginRenderPass(S32 pass)
     }
 }
 
-void LLDrawPoolAvatar::endRenderPass(S32 pass)
+void LLDrawPoolAvatar::endRenderPass(const LLRecordPassContext& ctx, S32 pass)
 {
     LL_PROFILE_ZONE_SCOPED_CATEGORY_AVATAR;
 
-    if (LLPipelineFrameContext::getInstance().isImpostorPass())
+    if (ctx.impostorPass)
     {
         ++pass;
     }
@@ -465,11 +464,11 @@ void LLDrawPoolAvatar::endRenderPass(S32 pass)
     }
 }
 
-void LLDrawPoolAvatar::beginImpostor()
+void LLDrawPoolAvatar::beginImpostor(const LLRecordPassContext& ctx)
 {
     LL_PROFILE_ZONE_SCOPED_CATEGORY_AVATAR;
 
-    if (!LLPipelineFrameContext::getInstance().isReflectionPass())
+    if (!ctx.reflectionPass)
     {
         LLVOAvatar::sNumVisibleAvatars = 0;
     }
@@ -489,7 +488,7 @@ void LLDrawPoolAvatar::endImpostor()
     gPipeline.enableLightsDynamic();
 }
 
-void LLDrawPoolAvatar::beginRigid()
+void LLDrawPoolAvatar::beginRigid(const LLRecordPassContext& ctx)
 {
     LL_PROFILE_ZONE_SCOPED_CATEGORY_AVATAR;
 
@@ -500,7 +499,7 @@ void LLDrawPoolAvatar::beginRigid()
         if (sVertexProgram != NULL)
         {   //eyeballs render with the specular shader
             sVertexProgram->bind();
-            sVertexProgram->setMinimumAlpha(LLDrawPoolAvatar::sMinimumAlpha);
+            sVertexProgram->setMinimumAlpha(ctx.avatarMinimumAlpha);
         }
     }
     else
@@ -519,11 +518,11 @@ void LLDrawPoolAvatar::endRigid()
     }
 }
 
-void LLDrawPoolAvatar::beginDeferredImpostor()
+void LLDrawPoolAvatar::beginDeferredImpostor(const LLRecordPassContext& ctx)
 {
     LL_PROFILE_ZONE_SCOPED_CATEGORY_AVATAR;
 
-    if (!LLPipelineFrameContext::getInstance().isReflectionPass())
+    if (!ctx.reflectionPass)
     {
         LLVOAvatar::sNumVisibleAvatars = 0;
     }
@@ -548,14 +547,14 @@ void LLDrawPoolAvatar::endDeferredImpostor()
    sDiffuseChannel = 0;
 }
 
-void LLDrawPoolAvatar::beginDeferredRigid()
+void LLDrawPoolAvatar::beginDeferredRigid(const LLRecordPassContext& ctx)
 {
     LL_PROFILE_ZONE_SCOPED_CATEGORY_AVATAR;
 
     sVertexProgram = &gDeferredNonIndexedDiffuseAlphaMaskNoColorProgram;
     sDiffuseChannel = sVertexProgram->enableTexture(LLViewerShaderMgr::DIFFUSE_MAP);
     sVertexProgram->bind();
-    sVertexProgram->setMinimumAlpha(LLDrawPoolAvatar::sMinimumAlpha);
+    sVertexProgram->setMinimumAlpha(ctx.avatarMinimumAlpha);
 }
 
 void LLDrawPoolAvatar::endDeferredRigid()
@@ -568,7 +567,7 @@ void LLDrawPoolAvatar::endDeferredRigid()
 }
 
 
-void LLDrawPoolAvatar::beginSkinned()
+void LLDrawPoolAvatar::beginSkinned(const LLRecordPassContext& ctx)
 {
     LL_PROFILE_ZONE_SCOPED_CATEGORY_AVATAR;
 
@@ -578,7 +577,7 @@ void LLDrawPoolAvatar::beginSkinned()
 
 
     sVertexProgram->bind();
-    sVertexProgram->setMinimumAlpha(LLDrawPoolAvatar::sMinimumAlpha);
+    sVertexProgram->setMinimumAlpha(ctx.avatarMinimumAlpha);
 }
 
 void LLDrawPoolAvatar::endSkinned()
@@ -605,14 +604,14 @@ void LLDrawPoolAvatar::endSkinned()
     gGL.getTexUnit(0)->activate();
 }
 
-void LLDrawPoolAvatar::beginDeferredSkinned()
+void LLDrawPoolAvatar::beginDeferredSkinned(const LLRecordPassContext& ctx)
 {
     LL_PROFILE_ZONE_SCOPED_CATEGORY_AVATAR;
 
     sVertexProgram = &gDeferredAvatarProgram;
 
     sVertexProgram->bind();
-    sVertexProgram->setMinimumAlpha(LLDrawPoolAvatar::sMinimumAlpha);
+    sVertexProgram->setMinimumAlpha(ctx.avatarMinimumAlpha);
     sDiffuseChannel = sVertexProgram->enableTexture(LLViewerShaderMgr::DIFFUSE_MAP);
     gGL.getTexUnit(0)->activate();
 }
@@ -630,7 +629,7 @@ void LLDrawPoolAvatar::endDeferredSkinned()
     gGL.getTexUnit(0)->activate();
 }
 
-void LLDrawPoolAvatar::renderAvatars(LLVOAvatar* single_avatar, S32 pass)
+void LLDrawPoolAvatar::renderAvatars(const LLRecordPassContext& ctx, LLVOAvatar* single_avatar, S32 pass)
 {
     LL_PROFILE_ZONE_SCOPED_CATEGORY_AVATAR; //LL_RECORD_BLOCK_TIME(FTM_RENDER_CHARACTERS);
 
@@ -640,9 +639,9 @@ void LLDrawPoolAvatar::renderAvatars(LLVOAvatar* single_avatar, S32 pass)
         for (S32 i = 1; i < getNumPasses(); i++)
         { //skip impostor pass
             prerender();
-            beginRenderPass(i);
-            renderAvatars(single_avatar, i);
-            endRenderPass(i);
+            beginRenderPass(ctx, i);
+            renderAvatars(ctx, single_avatar, i);
+            endRenderPass(ctx, i);
         }
 
         return;
@@ -795,7 +794,7 @@ void LLDrawPoolAvatar::renderAvatars(LLVOAvatar* single_avatar, S32 pass)
         return;
     }
 
-    bool impostor = !LLPipelineFrameContext::getInstance().isImpostorPass() && avatarp->isImpostor() && !single_avatar;
+    bool impostor = !ctx.impostorPass && avatarp->isImpostor() && !single_avatar;
 
 // <FS:Beq> rendertime Tracy annotations
 {
@@ -810,7 +809,7 @@ void LLDrawPoolAvatar::renderAvatars(LLVOAvatar* single_avatar, S32 pass)
     }
 }// <FS:Beq/> rendertime Tracy annotations
 
-    if (pass == 0 && !impostor && LLPipelineFrameContext::getInstance().isUnderWaterRendering())
+    if (pass == 0 && !impostor && ctx.underWater)
     { //don't draw foot shadows under water
         return;
     }
@@ -825,7 +824,7 @@ void LLDrawPoolAvatar::renderAvatars(LLVOAvatar* single_avatar, S32 pass)
     if (pass == 0)
     {
         LL_PROFILE_ZONE_NAMED_CATEGORY_AVATAR("pass 0"); // <FS:Beq/> Tracy markup
-        if (!LLPipelineFrameContext::getInstance().isReflectionPass())
+        if (!ctx.reflectionPass)
         {
             LLVOAvatar::sNumVisibleAvatars++;
         }
@@ -834,7 +833,7 @@ void LLDrawPoolAvatar::renderAvatars(LLVOAvatar* single_avatar, S32 pass)
         if (impostor || (LLVOAvatar::AOA_NORMAL != avatarp->getOverallAppearance() && !avatarp->needsImpostorUpdate()))
         {
             LL_PROFILE_ZONE_NAMED_CATEGORY_AVATAR("render impostor"); // <FS:Beq/> Tracy markup
-            if (LLPipelineFrameContext::getInstance().isRenderingDeferred() && !LLPipelineFrameContext::getInstance().isReflectionPass() && avatarp->mImpostor.isComplete())
+            if (LLPipelineFrameContext::getInstance().isRenderingDeferred() && !ctx.reflectionPass && avatarp->mImpostor.isComplete())
             {
                 // <FS:Ansariel> FIRE-9179: Crash fix
                 //if (normal_channel > -1)
@@ -869,7 +868,7 @@ void LLDrawPoolAvatar::renderAvatars(LLVOAvatar* single_avatar, S32 pass)
             }
         }
         // render rigid meshes (eyeballs) first
-        avatarp->renderRigid();
+        avatarp->renderRigid(ctx);
         return;
     }
 
@@ -919,7 +918,7 @@ void LLDrawPoolAvatar::renderAvatars(LLVOAvatar* single_avatar, S32 pass)
                 sVertexProgram->vkPushFragPC(LLVkUboReg::PC_OFF_SSS_SKIN_FLAG, sizeof(F32), &sssFlag);
             }
         }
-        avatarp->renderSkinned();
+        avatarp->renderSkinned(ctx);
     }
 }
 
@@ -973,7 +972,7 @@ S32 LLDrawPoolAvatar::getNumMotionBlurPasses()
     return 1;
 }
 
-void LLDrawPoolAvatar::beginMotionBlurPass(S32 pass)
+void LLDrawPoolAvatar::beginMotionBlurPass(const LLRecordPassContext& ctx, S32 pass)
 {
     LL_PROFILE_ZONE_SCOPED_CATEGORY_AVATAR;
 
@@ -987,7 +986,7 @@ void LLDrawPoolAvatar::beginMotionBlurPass(S32 pass)
     gGL.diffuseColor4f(1, 1, 1, 1);
 }
 
-void LLDrawPoolAvatar::endMotionBlurPass(S32 pass)
+void LLDrawPoolAvatar::endMotionBlurPass(const LLRecordPassContext& ctx, S32 pass)
 {
     LL_PROFILE_ZONE_SCOPED_CATEGORY_AVATAR;
 
@@ -998,7 +997,7 @@ void LLDrawPoolAvatar::endMotionBlurPass(S32 pass)
     sVertexProgram = NULL;
 }
 
-void LLDrawPoolAvatar::renderMotionBlur(S32 pass)
+void LLDrawPoolAvatar::renderMotionBlur(const LLRecordPassContext& ctx, S32 pass)
 {
     LL_PROFILE_ZONE_SCOPED_CATEGORY_AVATAR;
     LLGLEnable cull(GL_CULL_FACE);
@@ -1021,7 +1020,7 @@ void LLDrawPoolAvatar::renderMotionBlur(S32 pass)
     }
 
     LLVOAvatar::AvatarOverallAppearance oa = avatarp->getOverallAppearance();
-    bool impostor = !LLPipelineFrameContext::getInstance().isImpostorPass() && avatarp->isImpostor();
+    bool impostor = !ctx.impostorPass && avatarp->isImpostor();
     if (avatarp->isTooSlow() || impostor || (oa == LLVOAvatar::AOA_INVISIBLE))
     {
         return;
@@ -1062,7 +1061,7 @@ void LLDrawPoolAvatar::renderMotionBlur(S32 pass)
     }
     // </AYAstorm r30 P2>
 
-    avatarp->renderSkinned();
+    avatarp->renderSkinned(ctx);
 }
 // </AYAstorm r30 P2>
 

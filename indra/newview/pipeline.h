@@ -38,6 +38,7 @@
 #include "llgl.h"
 #include "lldrawable.h"
 #include "llrendertarget.h"
+#include "llrecordpasscontext.h"
 #include "llreflectionmapmanager.h"
 #include "llheroprobemanager.h"
 
@@ -96,6 +97,21 @@ extern LLTrace::BlockTimerStatHandle FTM_CLIENT_COPY;
 extern LLTrace::BlockTimerStatHandle FTM_RENDER_UI_HUD;
 extern LLTrace::BlockTimerStatHandle FTM_RENDER_UI_3D;
 extern LLTrace::BlockTimerStatHandle FTM_RENDER_UI_2D;
+
+class LLRenderTargetPack
+{
+public:
+    U32                     width = 0;
+    U32                     height = 0;
+
+    //screen texture
+    LLRenderTarget          screen;
+    LLRenderTarget          deferredScreen;
+    LLRenderTarget          deferredLight;
+
+    //sun shadow map (single 4-layer layered depth RT)
+    LLRenderTarget          sunShadowLayered;
+};
 
 class LLPipeline
 {
@@ -309,14 +325,15 @@ public:
 
     void forAllVisibleDrawables(void (*func)(LLDrawable*));
 
-    void renderObjects(U32 type, bool texture = true, bool batch_texture = false, bool rigged = false);
-    void renderGLTFObjects(U32 type, bool texture = true, bool rigged = false, bool scene_manager = true);
+    static LLRecordPassContext buildRecordPassContext();
+    void renderObjects(const LLRecordPassContext& ctx, U32 type, bool texture = true, bool batch_texture = false, bool rigged = false);
+    void renderGLTFObjects(const LLRecordPassContext& ctx, U32 type, bool texture = true, bool rigged = false, bool scene_manager = true);
 
-    void renderAlphaObjects(bool rigged = false, S32 gltf_mode = 0);
-    void renderAlphaObjectsMultiview(bool rigged);
+    void renderAlphaObjects(const LLRecordPassContext& ctx, bool rigged = false, S32 gltf_mode = 0);
+    void renderAlphaObjectsMultiview(const LLRecordPassContext& ctx, bool rigged);
     void renderFocusPoint(); // <FS:Beq/> FIRE-32023 Add focus point rendering
-    void renderMaskedObjects(U32 type, bool texture = true, bool batch_texture = false, bool rigged = false);
-    void renderFullbrightMaskedObjects(U32 type, bool texture = true, bool batch_texture = false, bool rigged = false);
+    void renderMaskedObjects(const LLRecordPassContext& ctx, U32 type, bool texture = true, bool batch_texture = false, bool rigged = false);
+    void renderFullbrightMaskedObjects(const LLRecordPassContext& ctx, U32 type, bool texture = true, bool batch_texture = false, bool rigged = false);
 
     void grabReferences(LLCullResult& result);
     void clearReferences();
@@ -857,20 +874,7 @@ public:
     static constexpr U32 kTotalShadowCount = kSunShadowCount + kSpotShadowCount;
     static constexpr U32 kShadowCameraCount = 2 * kSunShadowCount;
 
-    class RenderTargetPack
-    {
-    public:
-        U32                     width = 0;
-        U32                     height = 0;
-
-        //screen texture
-        LLRenderTarget          screen;
-        LLRenderTarget          deferredScreen;
-        LLRenderTarget          deferredLight;
-
-        //sun shadow map (single 4-layer layered depth RT)
-        LLRenderTarget          sunShadowLayered;
-    };
+    using RenderTargetPack = LLRenderTargetPack;
 
     // main full resoltuion render target
     RenderTargetPack mMainRT;

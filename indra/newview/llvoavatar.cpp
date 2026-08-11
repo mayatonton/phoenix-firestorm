@@ -5713,7 +5713,7 @@ void LLVOAvatar::updateVisibility()
     mVisibilityPreference = visible ? getPixelArea() : 0;
 }
 
-U32 LLVOAvatar::renderSkinned()
+U32 LLVOAvatar::renderSkinned(const LLRecordPassContext& ctx)
 {
     LL_PROFILE_ZONE_SCOPED_CATEGORY_AVATAR;
 
@@ -5773,7 +5773,7 @@ U32 LLVOAvatar::renderSkinned()
                 }
             }
 
-            if (!isSelf() || gAgent.needsRenderHead() || LLPipelineFrameContext::getInstance().isShadowPass())
+            if (!isSelf() || gAgent.needsRenderHead() || ctx.shadowPass)
             {
                 if(eyelash_mesh)
                 {
@@ -5850,11 +5850,11 @@ U32 LLVOAvatar::renderSkinned()
                 LLViewerJoint* hair_mesh = getViewerJoint(MESH_ID_HAIR);
                 if (hair_mesh)
                 {
-                    num_indices += hair_mesh->render(mAdjustedPixelArea, first_pass, mIsDummy);
+                    num_indices += hair_mesh->render(LLJointRenderFlags{ ctx.shadowPass, ctx.reflectionPass }, mAdjustedPixelArea, first_pass, mIsDummy);
                 }
                 first_pass = false;
             }
-            if (!isSelf() || gAgent.needsRenderHead() || LLPipelineFrameContext::getInstance().isShadowPass())
+            if (!isSelf() || gAgent.needsRenderHead() || ctx.shadowPass)
             {
 
                 if (isTextureVisible(TEX_HEAD_BAKED) || (getOverallAppearance() == AOA_JELLYDOLL && !isControlAvatar()) || isUIAvatar())
@@ -5862,7 +5862,7 @@ U32 LLVOAvatar::renderSkinned()
                     LLViewerJoint* head_mesh = getViewerJoint(MESH_ID_HEAD);
                     if (head_mesh)
                     {
-                        num_indices += head_mesh->render(mAdjustedPixelArea, first_pass, mIsDummy);
+                        num_indices += head_mesh->render(LLJointRenderFlags{ ctx.shadowPass, ctx.reflectionPass }, mAdjustedPixelArea, first_pass, mIsDummy);
                     }
                     first_pass = false;
                 }
@@ -5872,7 +5872,7 @@ U32 LLVOAvatar::renderSkinned()
                 LLViewerJoint* upper_mesh = getViewerJoint(MESH_ID_UPPER_BODY);
                 if (upper_mesh)
                 {
-                    num_indices += upper_mesh->render(mAdjustedPixelArea, first_pass, mIsDummy);
+                    num_indices += upper_mesh->render(LLJointRenderFlags{ ctx.shadowPass, ctx.reflectionPass }, mAdjustedPixelArea, first_pass, mIsDummy);
                 }
                 first_pass = false;
             }
@@ -5882,22 +5882,22 @@ U32 LLVOAvatar::renderSkinned()
                 LLViewerJoint* lower_mesh = getViewerJoint(MESH_ID_LOWER_BODY);
                 if (lower_mesh)
                 {
-                    num_indices += lower_mesh->render(mAdjustedPixelArea, first_pass, mIsDummy);
+                    num_indices += lower_mesh->render(LLJointRenderFlags{ ctx.shadowPass, ctx.reflectionPass }, mAdjustedPixelArea, first_pass, mIsDummy);
                 }
                 first_pass = false;
             }
         }
 
-        if (!LLDrawPoolAvatar::sSkipTransparent || LLPipelineFrameContext::getInstance().isImpostorPass())
+        if (!LLDrawPoolAvatar::sSkipTransparent || ctx.impostorPass)
         {
             LLGLState blend(GL_BLEND, !mIsDummy);
-            num_indices += renderTransparent(first_pass);
+            num_indices += renderTransparent(ctx, first_pass);
         }
 
     return num_indices;
 }
 
-U32 LLVOAvatar::renderTransparent(bool first_pass)
+U32 LLVOAvatar::renderTransparent(const LLRecordPassContext& ctx, bool first_pass)
 {
     LL_PROFILE_ZONE_SCOPED_CATEGORY_AVATAR; // <FS:Beq/> Tracy accounting for render tracking
     U32 num_indices = 0;
@@ -5907,15 +5907,15 @@ U32 LLVOAvatar::renderTransparent(bool first_pass)
         LLViewerJoint* skirt_mesh = getViewerJoint(MESH_ID_SKIRT);
         if (skirt_mesh)
         {
-            num_indices += skirt_mesh->render(mAdjustedPixelArea, false);
+            num_indices += skirt_mesh->render(LLJointRenderFlags{ ctx.shadowPass, ctx.reflectionPass }, mAdjustedPixelArea, false);
         }
         first_pass = false;
         gGL.flush();
     }
 
-    if (!isSelf() || gAgent.needsRenderHead() || LLPipelineFrameContext::getInstance().isShadowPass())
+    if (!isSelf() || gAgent.needsRenderHead() || ctx.shadowPass)
     {
-        if (LLPipelineFrameContext::getInstance().isImpostorPass())
+        if (ctx.impostorPass)
         {
             gGL.flush();
         }
@@ -5925,7 +5925,7 @@ U32 LLVOAvatar::renderTransparent(bool first_pass)
             LLViewerJoint* eyelash_mesh = getViewerJoint(MESH_ID_EYELASH);
             if (eyelash_mesh)
             {
-                num_indices += eyelash_mesh->render(mAdjustedPixelArea, first_pass, mIsDummy);
+                num_indices += eyelash_mesh->render(LLJointRenderFlags{ ctx.shadowPass, ctx.reflectionPass }, mAdjustedPixelArea, first_pass, mIsDummy);
             }
             first_pass = false;
         }
@@ -5934,11 +5934,11 @@ U32 LLVOAvatar::renderTransparent(bool first_pass)
             LLViewerJoint* hair_mesh = getViewerJoint(MESH_ID_HAIR);
             if (hair_mesh)
             {
-                num_indices += hair_mesh->render(mAdjustedPixelArea, first_pass, mIsDummy);
+                num_indices += hair_mesh->render(LLJointRenderFlags{ ctx.shadowPass, ctx.reflectionPass }, mAdjustedPixelArea, first_pass, mIsDummy);
             }
             first_pass = false;
         }
-        if (LLPipelineFrameContext::getInstance().isImpostorPass())
+        if (ctx.impostorPass)
         {
             gGL.flush();
         }
@@ -5947,7 +5947,7 @@ U32 LLVOAvatar::renderTransparent(bool first_pass)
     return num_indices;
 }
 
-U32 LLVOAvatar::renderRigid()
+U32 LLVOAvatar::renderRigid(const LLRecordPassContext& ctx)
 {
     LL_PROFILE_ZONE_SCOPED_CATEGORY_AVATAR; // <FS:Beq/> Tracy accounting for render tracking
     U32 num_indices = 0;
@@ -5968,11 +5968,11 @@ U32 LLVOAvatar::renderRigid()
         LLViewerJoint* eyeball_right = getViewerJoint(MESH_ID_EYEBALL_RIGHT);
         if (eyeball_left)
         {
-            num_indices += eyeball_left->render(mAdjustedPixelArea, true, mIsDummy);
+            num_indices += eyeball_left->render(LLJointRenderFlags{ ctx.shadowPass, ctx.reflectionPass }, mAdjustedPixelArea, true, mIsDummy);
         }
         if(eyeball_right)
         {
-            num_indices += eyeball_right->render(mAdjustedPixelArea, true, mIsDummy);
+            num_indices += eyeball_right->render(LLJointRenderFlags{ ctx.shadowPass, ctx.reflectionPass }, mAdjustedPixelArea, true, mIsDummy);
         }
     }
 

@@ -506,9 +506,9 @@ const std::vector<Bucket*>& bucketsForPass(U32 pass)
     return byPass()[pass];
 }
 
-const std::vector<U64>* currentVisBits()
+const std::vector<U64>* currentVisBits(const LLRecordPassContext& ctx)
 {
-    LLCullResult* cull = LLPipelineFrameContext::getInstance().getCullResult();
+    LLCullResult* cull = ctx.cullResult;
     return cull != nullptr ? &cull->bucketVisBits() : nullptr;
 }
 

@@ -54,7 +54,7 @@ public:
     // Traverses the entire joint hierarchy, setting up
     // transforms and calling the drawShape().
     // Derived classes may add text/graphic output.
-    virtual U32 render( F32 pixelArea, bool first_pass = true, bool is_dummy = false ); // Returns triangle count
+    virtual U32 render( const LLJointRenderFlags& flags, F32 pixelArea, bool first_pass = true, bool is_dummy = false ); // Returns triangle count
 
     // Draws the shape attached to a joint.
     // Called by render().

@@ -98,7 +98,7 @@ S32 LLDrawPoolAlpha::getNumPostDeferredPasses()
 }
 
 // set some common parameters on the given shader to prepare for alpha rendering
-static void prepare_alpha_shader(LLGLSLShader* shader, bool deferredEnvironment, F32 water_sign)
+static void prepare_alpha_shader(const LLRecordPassContext& ctx, LLGLSLShader* shader, bool deferredEnvironment, F32 water_sign)
 {
     // Does this deferred shader need environment uniforms set such as sun_dir, etc. ?
     // NOTE: We don't actually need a gbuffer since we are doing forward rendering (for transparency) post deferred rendering
@@ -113,7 +113,7 @@ static void prepare_alpha_shader(LLGLSLShader* shader, bool deferredEnvironment,
 
 
     F32 water_sign_pc = water_sign;
-    if (LLPipelineFrameContext::getInstance().isHUDPass())
+    if (ctx.hudPass)
     { // for HUD attachments, only the pre-water pass is executed and we never want to clip anything
         water_sign_pc = 0.f;
     }
@@ -124,7 +124,7 @@ static void prepare_alpha_shader(LLGLSLShader* shader, bool deferredEnvironment,
         shader->vkPushFragPC(LLVkUboReg::PC_OFF_PREVIEW_NEUTRAL_ATMOS, sizeof(F32), &aya_preview_neutral_atmos);
     }
 
-    if (LLPipelineFrameContext::getInstance().isImpostorPass())
+    if (ctx.impostorPass)
     {
         shader->setMinimumAlpha(MINIMUM_IMPOSTOR_ALPHA);
     }
@@ -136,13 +136,13 @@ static void prepare_alpha_shader(LLGLSLShader* shader, bool deferredEnvironment,
     //also prepare rigged variant
     if (shader->mRiggedVariant && shader->mRiggedVariant != shader)
     {
-        prepare_alpha_shader(shader->mRiggedVariant, deferredEnvironment, water_sign);
+        prepare_alpha_shader(ctx, shader->mRiggedVariant, deferredEnvironment, water_sign);
     }
 }
 
 extern bool gCubeSnapshot;
 
-void LLDrawPoolAlpha::renderPostDeferred(S32 pass)
+void LLDrawPoolAlpha::renderPostDeferred(const LLRecordPassContext& ctx, S32 pass)
 {
     LL_PROFILE_ZONE_SCOPED_CATEGORY_DRAWPOOL;
 
@@ -160,7 +160,7 @@ void LLDrawPoolAlpha::renderPostDeferred(S32 pass)
         water_sign = -1.f;
     }
 
-    if (LLPipelineFrameContext::getInstance().isUnderWaterRendering())
+    if (ctx.underWater)
     {
         water_sign *= -1.f;
     }
@@ -169,36 +169,36 @@ void LLDrawPoolAlpha::renderPostDeferred(S32 pass)
     llassert(LLPipelineFrameContext::getInstance().isRenderingDeferred());
 
     emissive_shader = &gDeferredEmissiveProgram;
-    prepare_alpha_shader(emissive_shader, false, water_sign);
+    prepare_alpha_shader(ctx, emissive_shader, false, water_sign);
 
     pbr_emissive_shader = &gPBRGlowProgram;
-    prepare_alpha_shader(pbr_emissive_shader, false, water_sign);
+    prepare_alpha_shader(ctx, pbr_emissive_shader, false, water_sign);
 
 
     fullbright_shader   =
-        (LLPipelineFrameContext::getInstance().isImpostorPass()) ? &gDeferredFullbrightAlphaMaskProgram :
-        (LLPipelineFrameContext::getInstance().isHUDPass()) ? &gHUDFullbrightAlphaMaskAlphaProgram :
+        (ctx.impostorPass) ? &gDeferredFullbrightAlphaMaskProgram :
+        (ctx.hudPass) ? &gHUDFullbrightAlphaMaskAlphaProgram :
         &gDeferredFullbrightAlphaMaskAlphaProgram;
-    prepare_alpha_shader(fullbright_shader, true, water_sign);
+    prepare_alpha_shader(ctx, fullbright_shader, true, water_sign);
 
     simple_shader   =
-        (LLPipelineFrameContext::getInstance().isImpostorPass()) ? &gDeferredAlphaImpostorProgram :
-        (LLPipelineFrameContext::getInstance().isHUDPass()) ? &gHUDAlphaProgram :
+        (ctx.impostorPass) ? &gDeferredAlphaImpostorProgram :
+        (ctx.hudPass) ? &gHUDAlphaProgram :
         &gDeferredAlphaProgram;
 
-    prepare_alpha_shader(simple_shader, true, water_sign); //prime simple shader (loads shadow relevant uniforms)
+    prepare_alpha_shader(ctx, simple_shader, true, water_sign); //prime simple shader (loads shadow relevant uniforms)
 
     LLGLSLShader* materialShader = gDeferredMaterialProgram;
     for (int i = 0; i < LLMaterial::SHADER_COUNT; ++i)
     {
-        prepare_alpha_shader(&materialShader[i], true, water_sign);
+        prepare_alpha_shader(ctx, &materialShader[i], true, water_sign);
     }
 
     pbr_shader =
-        (LLPipelineFrameContext::getInstance().isHUDPass()) ? &gHUDPBRAlphaProgram :
+        (ctx.hudPass) ? &gHUDPBRAlphaProgram :
         &gDeferredPBRAlphaProgram;
 
-    prepare_alpha_shader(pbr_shader, true, water_sign);
+    prepare_alpha_shader(ctx, pbr_shader, true, water_sign);
 
     // explicitly unbind here so render loop doesn't make assumptions about the last shader
     // already being setup for rendering
@@ -211,10 +211,10 @@ void LLDrawPoolAlpha::renderPostDeferred(S32 pass)
 
     std::optional<LLRTScope> plate;
     const bool use_alpha_rt =
-        !LLPipelineFrameContext::getInstance().isImpostorPass() && !LLPipelineFrameContext::getInstance().isHUDPass() &&
+        !ctx.impostorPass && !ctx.hudPass &&
         !gCubeSnapshot &&
         getType() == LLDrawPool::POOL_ALPHA_POST_WATER &&
-        LLPipelineFrameContext::getInstance().getActiveRT() == &gPipeline.mMainRT;
+        ctx.activeRT == &gPipeline.mMainRT;
 
     // <AYAstorm r30 P5 plate-clear unconditional 2026-05-23>
     // Clear mAYAAlphaColor every frame regardless of use_alpha_rt. When
@@ -223,9 +223,9 @@ void LLDrawPoolAlpha::renderPostDeferred(S32 pass)
     // next frame's composite. The pre-tonemap composite step (renderFinalize)
     // reads mAYAAlphaColor unconditionally, so it must start clean every
     // frame.
-    if (!LLPipelineFrameContext::getInstance().isImpostorPass() && !LLPipelineFrameContext::getInstance().isHUDPass() &&
+    if (!ctx.impostorPass && !ctx.hudPass &&
         !gCubeSnapshot && getType() == LLDrawPool::POOL_ALPHA_POST_WATER &&
-        LLPipelineFrameContext::getInstance().getActiveRT() == &gPipeline.mMainRT)
+        ctx.activeRT == &gPipeline.mMainRT)
     {
         LL_PROFILE_GPU_ZONE("aya alpha color clear");
         LLRTScope s(gPipeline.mAYAAlphaColor, false, "alpha_plate_clear");
@@ -262,19 +262,19 @@ void LLDrawPoolAlpha::renderPostDeferred(S32 pass)
     // POST_WATER 全 path で swap を default 化。PRE_WATER は water fog
     // 計算 (write_depth が always true) のため rigged-first を維持。HUD は
     // forwardRender 1 回のみで対象外。
-    if (!LLPipelineFrameContext::getInstance().isHUDPass() &&
+    if (!ctx.hudPass &&
         getType() == LLDrawPool::POOL_ALPHA_POST_WATER)
     {
-        forwardRenderMerged();
+        forwardRenderMerged(ctx);
     }
     else
     {
         // PRE_WATER / HUD の元順 — water fog 整合性のため touch しない。
-        if (!LLPipelineFrameContext::getInstance().isHUDPass())
+        if (!ctx.hudPass)
         {
-            forwardRender(true);
+            forwardRender(ctx, true);
         }
-        forwardRender();
+        forwardRender(ctx);
     }
     // </AYAstorm r30 P5 二重アルファブロック対策>
 
@@ -296,7 +296,7 @@ void LLDrawPoolAlpha::renderPostDeferred(S32 pass)
     // </AYAstorm r30 P3 step 5>
 
     // final pass, render to depth for depth of field effects
-    if (!LLPipelineFrameContext::getInstance().isImpostorPass() && (LLPipeline::RenderDepthOfField || volumetric_wants_alpha_depth) && !gCubeSnapshot && !LLPipelineFrameContext::getInstance().isHUDPass() && getType() == LLDrawPool::POOL_ALPHA_POST_WATER)
+    if (!ctx.impostorPass && (LLPipeline::RenderDepthOfField || volumetric_wants_alpha_depth) && !gCubeSnapshot && !ctx.hudPass && getType() == LLDrawPool::POOL_ALPHA_POST_WATER)
     {
         //update depth buffer sampler
         simple_shader = fullbright_shader = &gDeferredFullbrightAlphaMaskProgram;
@@ -319,7 +319,7 @@ void LLDrawPoolAlpha::renderPostDeferred(S32 pass)
 
         // If the face is more than 90% transparent, then don't update the Depth buffer for Dof
         // We don't want the nearly invisible objects to cause of DoF effects
-        renderAlpha(getVertexDataMask() | LLVertexBuffer::MAP_TEXTURE_INDEX | LLVertexBuffer::MAP_TANGENT | LLVertexBuffer::MAP_TEXCOORD1 | LLVertexBuffer::MAP_TEXCOORD2,
+        renderAlpha(ctx, getVertexDataMask() | LLVertexBuffer::MAP_TEXTURE_INDEX | LLVertexBuffer::MAP_TANGENT | LLVertexBuffer::MAP_TEXCOORD1 | LLVertexBuffer::MAP_TEXCOORD2,
             true); // <--- discard mostly transparent faces
 
         gGL.setColorMask(true, false);
@@ -340,10 +340,10 @@ void LLDrawPoolAlpha::renderPostDeferred(S32 pass)
     // grille z here would tell cofF "this pixel is subject" and prevent bg
     // blur behind grilles — exactly the regression C-(a) avoids. Skip the
     // re-injection when mAYAAlphaColor is alive.
-    if (!LLPipelineFrameContext::getInstance().isImpostorPass() && LLPipeline::RenderDepthOfField &&
-        !gCubeSnapshot && !LLPipelineFrameContext::getInstance().isHUDPass() &&
+    if (!ctx.impostorPass && LLPipeline::RenderDepthOfField &&
+        !gCubeSnapshot && !ctx.hudPass &&
         getType() == LLDrawPool::POOL_ALPHA_POST_WATER &&
-        LLPipelineFrameContext::getInstance().getActiveRT() == &gPipeline.mMainRT &&
+        ctx.activeRT == &gPipeline.mMainRT &&
         !gPipeline.mAYAAlphaColor.isComplete())
     {
         LL_PROFILE_GPU_ZONE("aya alpha depth re-inject");
@@ -355,7 +355,7 @@ void LLDrawPoolAlpha::renderPostDeferred(S32 pass)
         simple_shader->setMinimumAlpha(0.5f);
 
         gGL.setColorMask(false, false);
-        renderAlpha(getVertexDataMask() | LLVertexBuffer::MAP_TEXTURE_INDEX | LLVertexBuffer::MAP_TANGENT | LLVertexBuffer::MAP_TEXCOORD1 | LLVertexBuffer::MAP_TEXCOORD2,
+        renderAlpha(ctx, getVertexDataMask() | LLVertexBuffer::MAP_TEXTURE_INDEX | LLVertexBuffer::MAP_TANGENT | LLVertexBuffer::MAP_TEXCOORD1 | LLVertexBuffer::MAP_TEXCOORD2,
             true); // discard mostly transparent faces
         gGL.setColorMask(true, false);
         }
@@ -363,7 +363,7 @@ void LLDrawPoolAlpha::renderPostDeferred(S32 pass)
     // </AYAstorm r30 P5 transparent-DoF L2-β>
 }
 
-void LLDrawPoolAlpha::forwardRender(bool rigged)
+void LLDrawPoolAlpha::forwardRender(const LLRecordPassContext& ctx, bool rigged)
 {
     gPipeline.enableLightsDynamic();
 
@@ -404,15 +404,15 @@ void LLDrawPoolAlpha::forwardRender(bool rigged)
 
     if (rigged && mType == LLDrawPool::POOL_ALPHA_POST_WATER)
     { // draw GLTF scene to depth buffer before rigged alpha
-        LL::GLTFSceneManager::instance().render(false, false);
-        LL::GLTFSceneManager::instance().render(false, true);
-        LL::GLTFSceneManager::instance().render(false, false, true);
-        LL::GLTFSceneManager::instance().render(false, true, true);
+        LL::GLTFSceneManager::instance().render(ctx, false, false);
+        LL::GLTFSceneManager::instance().render(ctx, false, true);
+        LL::GLTFSceneManager::instance().render(ctx, false, false, true);
+        LL::GLTFSceneManager::instance().render(ctx, false, true, true);
     }
 
     // If the face is more than 90% transparent, then don't update the Depth buffer for Dof
     // We don't want the nearly invisible objects to cause of DoF effects
-    renderAlpha(getVertexDataMask() | LLVertexBuffer::MAP_TEXTURE_INDEX | LLVertexBuffer::MAP_TANGENT | LLVertexBuffer::MAP_TEXCOORD1 | LLVertexBuffer::MAP_TEXCOORD2, false, rigged);
+    renderAlpha(ctx, getVertexDataMask() | LLVertexBuffer::MAP_TEXTURE_INDEX | LLVertexBuffer::MAP_TANGENT | LLVertexBuffer::MAP_TEXCOORD1 | LLVertexBuffer::MAP_TEXCOORD2, false, rigged);
 
     gGL.setColorMask(true, false);
 
@@ -421,11 +421,11 @@ void LLDrawPoolAlpha::forwardRender(bool rigged)
         // NOTE -- hacky call here protected by !rigged instead of alongside "forwardRender"
         // so renderDebugAlpha is executed while gls_pipeline_alpha and depth GL state
         // variables above are still in scope
-        renderDebugAlpha();
+        renderDebugAlpha(ctx);
     }
 }
 
-void LLDrawPoolAlpha::forwardRenderMerged()
+void LLDrawPoolAlpha::forwardRenderMerged(const LLRecordPassContext& ctx)
 {
     gPipeline.enableLightsDynamic();
 
@@ -457,23 +457,23 @@ void LLDrawPoolAlpha::forwardRenderMerged()
     if (mType == LLDrawPool::POOL_ALPHA_POST_WATER)
     {
         LLGLDepthTest gltf_depth(GL_TRUE, GL_TRUE);
-        LL::GLTFSceneManager::instance().render(false, false);
-        LL::GLTFSceneManager::instance().render(false, true);
-        LL::GLTFSceneManager::instance().render(false, false, true);
-        LL::GLTFSceneManager::instance().render(false, true, true);
+        LL::GLTFSceneManager::instance().render(ctx, false, false);
+        LL::GLTFSceneManager::instance().render(ctx, false, true);
+        LL::GLTFSceneManager::instance().render(ctx, false, false, true);
+        LL::GLTFSceneManager::instance().render(ctx, false, true, true);
     }
 
-    renderAlpha(getVertexDataMask() | LLVertexBuffer::MAP_TEXTURE_INDEX | LLVertexBuffer::MAP_TANGENT | LLVertexBuffer::MAP_TEXCOORD1 | LLVertexBuffer::MAP_TEXCOORD2, false, false, true);
+    renderAlpha(ctx, getVertexDataMask() | LLVertexBuffer::MAP_TEXTURE_INDEX | LLVertexBuffer::MAP_TANGENT | LLVertexBuffer::MAP_TEXCOORD1 | LLVertexBuffer::MAP_TEXCOORD2, false, false, true);
 
     gGL.setColorMask(true, false);
 
     if (getType() == LLDrawPoolAlpha::POOL_ALPHA_POST_WATER)
     {
-        renderDebugAlpha();
+        renderDebugAlpha(ctx);
     }
 }
 
-void LLDrawPoolAlpha::renderDebugAlpha()
+void LLDrawPoolAlpha::renderDebugAlpha(const LLRecordPassContext& ctx)
 {
     if (sShowDebugAlpha && !gCubeSnapshot)
     {
@@ -484,40 +484,40 @@ void LLDrawPoolAlpha::renderDebugAlpha()
 
         renderAlphaHighlight();
 
-        pushUntexturedBatches(LLRenderPass::PASS_ALPHA_MASK);
-        pushUntexturedBatches(LLRenderPass::PASS_ALPHA_INVISIBLE);
+        pushUntexturedBatches(ctx, LLRenderPass::PASS_ALPHA_MASK);
+        pushUntexturedBatches(ctx, LLRenderPass::PASS_ALPHA_INVISIBLE);
 
         // Material alpha mask
         gGL.diffuseColor4f(0, 0, 1, 1);
-        pushUntexturedBatches(LLRenderPass::PASS_MATERIAL_ALPHA_MASK);
-        pushUntexturedBatches(LLRenderPass::PASS_NORMMAP_MASK);
-        pushUntexturedBatches(LLRenderPass::PASS_SPECMAP_MASK);
-        pushUntexturedBatches(LLRenderPass::PASS_NORMSPEC_MASK);
-        pushUntexturedBatches(LLRenderPass::PASS_FULLBRIGHT_ALPHA_MASK);
-        pushUntexturedBatches(LLRenderPass::PASS_GLTF_PBR_ALPHA_MASK);
+        pushUntexturedBatches(ctx, LLRenderPass::PASS_MATERIAL_ALPHA_MASK);
+        pushUntexturedBatches(ctx, LLRenderPass::PASS_NORMMAP_MASK);
+        pushUntexturedBatches(ctx, LLRenderPass::PASS_SPECMAP_MASK);
+        pushUntexturedBatches(ctx, LLRenderPass::PASS_NORMSPEC_MASK);
+        pushUntexturedBatches(ctx, LLRenderPass::PASS_FULLBRIGHT_ALPHA_MASK);
+        pushUntexturedBatches(ctx, LLRenderPass::PASS_GLTF_PBR_ALPHA_MASK);
 
         gGL.diffuseColor4f(0, 1, 0, 1);
-        pushUntexturedBatches(LLRenderPass::PASS_INVISIBLE);
+        pushUntexturedBatches(ctx, LLRenderPass::PASS_INVISIBLE);
         // <FS:Beq> FIRE-32132 et al. Allow rigged mesh transparency highlights to be toggled
         if (sShowDebugAlphaRigged)
         {
         // </FS:Beq>
         gHighlightProgram.mRiggedVariant->bind();
         gGL.diffuseColor4f(0, 1, 0, 1);// <FS:Beq/> FIRE-32132 et al. (can plain PASS_ALPHA_MASK_RIGGED exist?) paint it green if so.
-        pushRiggedBatches(LLRenderPass::PASS_ALPHA_MASK_RIGGED, false);
-        pushRiggedBatches(LLRenderPass::PASS_ALPHA_INVISIBLE_RIGGED, false);
+        pushRiggedBatches(ctx, LLRenderPass::PASS_ALPHA_MASK_RIGGED, false);
+        pushRiggedBatches(ctx, LLRenderPass::PASS_ALPHA_INVISIBLE_RIGGED, false);
 
         // Material alpha mask
         gGL.diffuseColor4f(0, 1, 1, 1);// <FS:Beq/> FIRE-32132 et al. Allow rigged mesh transparency highlights to be toggled
-        pushRiggedBatches(LLRenderPass::PASS_MATERIAL_ALPHA_MASK_RIGGED, false);
-        pushRiggedBatches(LLRenderPass::PASS_NORMMAP_MASK_RIGGED, false);
-        pushRiggedBatches(LLRenderPass::PASS_SPECMAP_MASK_RIGGED, false);
-        pushRiggedBatches(LLRenderPass::PASS_NORMSPEC_MASK_RIGGED, false);
-        pushRiggedBatches(LLRenderPass::PASS_FULLBRIGHT_ALPHA_MASK_RIGGED, false);
-        pushRiggedBatches(LLRenderPass::PASS_GLTF_PBR_ALPHA_MASK_RIGGED, false);
+        pushRiggedBatches(ctx, LLRenderPass::PASS_MATERIAL_ALPHA_MASK_RIGGED, false);
+        pushRiggedBatches(ctx, LLRenderPass::PASS_NORMMAP_MASK_RIGGED, false);
+        pushRiggedBatches(ctx, LLRenderPass::PASS_SPECMAP_MASK_RIGGED, false);
+        pushRiggedBatches(ctx, LLRenderPass::PASS_NORMSPEC_MASK_RIGGED, false);
+        pushRiggedBatches(ctx, LLRenderPass::PASS_FULLBRIGHT_ALPHA_MASK_RIGGED, false);
+        pushRiggedBatches(ctx, LLRenderPass::PASS_GLTF_PBR_ALPHA_MASK_RIGGED, false);
 
         gGL.diffuseColor4f(0, 1, 0, 1);
-        pushRiggedBatches(LLRenderPass::PASS_INVISIBLE_RIGGED, false);
+        pushRiggedBatches(ctx, LLRenderPass::PASS_INVISIBLE_RIGGED, false);
         // <FS:Beq> FIRE-32132 et al. Allow rigged mesh transparency highlights to be toggled
         }
         // </FS:Beq>
@@ -599,7 +599,7 @@ inline bool IsEmissive(LLDrawInfo& params)
     return params.mVertexBuffer->hasDataType(LLVertexBuffer::TYPE_EMISSIVE);
 }
 
-bool LLDrawPoolAlpha::TexSetup(LLDrawInfo* draw, bool use_material)
+bool LLDrawPoolAlpha::TexSetup(const LLRecordPassContext& ctx, LLDrawInfo* draw, bool use_material)
 {
     bool tex_setup = false;
 
@@ -616,7 +616,7 @@ bool LLDrawPoolAlpha::TexSetup(LLDrawInfo* draw, bool use_material)
     }
     else
     {
-        if (!LLPipelineFrameContext::getInstance().isHUDPass() && use_material && current_shader)
+        if (!ctx.hudPass && use_material && current_shader)
         {
             if (draw->mNormalMap)
             {
@@ -703,7 +703,7 @@ void LLDrawPoolAlpha::drawEmissive(LLDrawInfo* draw)
 }
 
 
-void LLDrawPoolAlpha::renderPbrEmissives(std::vector<LLDrawInfo*>& emissives)
+void LLDrawPoolAlpha::renderPbrEmissives(const LLRecordPassContext& ctx, std::vector<LLDrawInfo*>& emissives)
 {
     const bool ep = LLVKLoader::perfLogEnabled();
     U64 t0 = ep ? (U64)LLTimer::getTotalTime() : 0;
@@ -719,7 +719,7 @@ void LLDrawPoolAlpha::renderPbrEmissives(std::vector<LLDrawInfo*>& emissives)
         llassert(draw->mGLTFMaterial);
         LLGLDisable cull_face(draw->mGLTFMaterial->mDoubleSided ? GL_CULL_FACE : 0);
         U64 t1 = ep ? (U64)LLTimer::getTotalTime() : 0;
-        draw->mGLTFMaterial->bind(draw->mTexture);
+        draw->mGLTFMaterial->bind(ctx, draw->mTexture);
         U64 t2 = ep ? (U64)LLTimer::getTotalTime() : 0;
         LLVKContract::DrawScope vkc_scope(draw, "alphaPbrEmi");
         LLRenderPass::applyModelMatrix(*draw);
@@ -737,7 +737,7 @@ void LLDrawPoolAlpha::renderPbrEmissives(std::vector<LLDrawInfo*>& emissives)
     }
 }
 
-void LLDrawPoolAlpha::renderRiggedEmissives(std::vector<LLDrawInfo*>& emissives)
+void LLDrawPoolAlpha::renderRiggedEmissives(const LLRecordPassContext& ctx, std::vector<LLDrawInfo*>& emissives)
 {
     LLGLDepthTest depth(GL_TRUE, GL_FALSE); //disable depth writes since "emissive" is additive so sorting doesn't matter
     const bool ep = LLVKLoader::perfLogEnabled();
@@ -767,7 +767,7 @@ void LLDrawPoolAlpha::renderRiggedEmissives(std::vector<LLDrawInfo*>& emissives)
         if (skinned)
         {
             U64 t2 = ep ? (U64)LLTimer::getTotalTime() : 0;
-            bool tex_setup = TexSetup(draw, false);
+            bool tex_setup = TexSetup(ctx, draw, false);
             if (ep)
             {
                 LLVKLoader::gVkPerf.emi_us[4] += (U64)LLTimer::getTotalTime() - t2;
@@ -786,7 +786,7 @@ void LLDrawPoolAlpha::renderRiggedEmissives(std::vector<LLDrawInfo*>& emissives)
     }
 }
 
-void LLDrawPoolAlpha::renderRiggedPbrEmissives(std::vector<LLDrawInfo*>& emissives)
+void LLDrawPoolAlpha::renderRiggedPbrEmissives(const LLRecordPassContext& ctx, std::vector<LLDrawInfo*>& emissives)
 {
     LLGLDepthTest depth(GL_TRUE, GL_FALSE); //disable depth writes since "emissive" is additive so sorting doesn't matter
     const bool ep = LLVKLoader::perfLogEnabled();
@@ -817,7 +817,7 @@ void LLDrawPoolAlpha::renderRiggedPbrEmissives(std::vector<LLDrawInfo*>& emissiv
 
         LLGLDisable cull_face(draw->mGLTFMaterial->mDoubleSided ? GL_CULL_FACE : 0);
         U64 t2 = ep ? (U64)LLTimer::getTotalTime() : 0;
-        draw->mGLTFMaterial->bind(draw->mTexture);
+        draw->mGLTFMaterial->bind(ctx, draw->mTexture);
         U64 t3 = ep ? (U64)LLTimer::getTotalTime() : 0;
         LLVKContract::DrawScope vkc_scope(draw, "alphaPbrEmi");
         U64 t4 = ep ? (U64)LLTimer::getTotalTime() : 0;
@@ -1040,7 +1040,7 @@ void flushAlphaRun(AlphaRun& run)
 
 }
 
-void LLDrawPoolAlpha::renderEmissives(std::vector<LLDrawInfo*>& emissives)
+void LLDrawPoolAlpha::renderEmissives(const LLRecordPassContext& ctx, std::vector<LLDrawInfo*>& emissives)
 {
     const bool ep = LLVKLoader::perfLogEnabled();
     U64 t0 = ep ? (U64)LLTimer::getTotalTime() : 0;
@@ -1060,7 +1060,7 @@ void LLDrawPoolAlpha::renderEmissives(std::vector<LLDrawInfo*>& emissives)
         for (LLDrawInfo* draw : emissives)
         {
             U64 t1 = ep ? (U64)LLTimer::getTotalTime() : 0;
-            bool tex_setup = TexSetup(draw, false);
+            bool tex_setup = TexSetup(ctx, draw, false);
             if (ep)
             {
                 LLVKLoader::gVkPerf.emi_us[4] += (U64)LLTimer::getTotalTime() - t1;
@@ -1095,7 +1095,7 @@ void LLDrawPoolAlpha::renderEmissives(std::vector<LLDrawInfo*>& emissives)
         }
 
         U64 t1 = ep ? (U64)LLTimer::getTotalTime() : 0;
-        bool tex_setup = TexSetup(draw, false);
+        bool tex_setup = TexSetup(ctx, draw, false);
         if (ep)
         {
             LLVKLoader::gVkPerf.emi_us[4] += (U64)LLTimer::getTotalTime() - t1;
@@ -1135,7 +1135,7 @@ void LLDrawPoolAlpha::renderEmissives(std::vector<LLDrawInfo*>& emissives)
     flushAlphaRun(run);
 }
 
-void LLDrawPoolAlpha::renderAlpha(U32 mask, bool depth_only, bool rigged, bool unified)
+void LLDrawPoolAlpha::renderAlpha(const LLRecordPassContext& ctx, U32 mask, bool depth_only, bool rigged, bool unified)
 {
     LL_PROFILE_ZONE_SCOPED_CATEGORY_DRAWPOOL;
     bool initialized_lighting = false;
@@ -1192,7 +1192,7 @@ void LLDrawPoolAlpha::renderAlpha(U32 mask, bool depth_only, bool rigged, bool u
     F32 water_height = env.getWaterHeight();
 
     bool above_water = getType() == LLDrawPool::POOL_ALPHA_POST_WATER;
-    if (LLPipelineFrameContext::getInstance().isUnderWaterRendering())
+    if (ctx.underWater)
     {
         above_water = !above_water;
     }
@@ -1234,7 +1234,7 @@ void LLDrawPoolAlpha::renderAlpha(U32 mask, bool depth_only, bool rigged, bool u
             LLSpatialBridge* bridge = group->getSpatialPartition()->asBridge();
             const LLVector4a* ext = bridge ? bridge->getSpatialExtents() : group->getExtents();
 
-            if (!LLPipelineFrameContext::getInstance().isHUDPass())
+            if (!ctx.hudPass)
             {
                 if (above_water)
                 { // reject any spatial groups that have no part above water
@@ -1316,7 +1316,7 @@ void LLDrawPoolAlpha::renderAlpha(U32 mask, bool depth_only, bool rigged, bool u
                         gPipeline.bindDeferredShaderFast(*target_shader);
                     }
 
-                    params.mGLTFMaterial->bind(params.mTexture);
+                    params.mGLTFMaterial->bind(ctx, params.mTexture);
 
                     if (LLVKLoader::isVulkanInitialized()
                         && target_shader == &gHUDPBRAlphaProgram
@@ -1398,7 +1398,7 @@ void LLDrawPoolAlpha::renderAlpha(U32 mask, bool depth_only, bool rigged, bool u
                 }
                 else
                 {
-                    mat = LLPipelineFrameContext::getInstance().isHUDPass() ? nullptr : params.mMaterial;
+                    mat = ctx.hudPass ? nullptr : params.mMaterial;
 
                     if (params.mFullbright)
                     {
@@ -1419,7 +1419,7 @@ void LLDrawPoolAlpha::renderAlpha(U32 mask, bool depth_only, bool rigged, bool u
                         light_enabled = true;
                     }
 
-                    if (LLPipelineFrameContext::getInstance().isHUDPass())
+                    if (ctx.hudPass)
                     {
                         target_shader = fullbright_shader;
                     }
@@ -1514,7 +1514,7 @@ void LLDrawPoolAlpha::renderAlpha(U32 mask, bool depth_only, bool rigged, bool u
 
                 { U64 t2 = alp_now(); alp_us[2] += t2 - alp_t; alp_t = t2; }
 
-                bool tex_setup = TexSetup(&params, (mat != nullptr));
+                bool tex_setup = TexSetup(ctx, &params, (mat != nullptr));
 
                 { U64 t2 = alp_now(); alp_us[3] += t2 - alp_t; alp_t = t2; }
 
@@ -1522,7 +1522,7 @@ void LLDrawPoolAlpha::renderAlpha(U32 mask, bool depth_only, bool rigged, bool u
                     gGL.blendFunc((LLRender::eBlendFactor) params.mBlendFuncSrc, (LLRender::eBlendFactor) params.mBlendFuncDst, mAlphaSFactor, mAlphaDFactor);
 
                     bool reset_minimum_alpha = false;
-                    if (!LLPipelineFrameContext::getInstance().isImpostorPass() &&
+                    if (!ctx.impostorPass &&
                         params.mBlendFuncDst != LLRender::BF_SOURCE_ALPHA &&
                         params.mBlendFuncSrc != LLRender::BF_SOURCE_ALPHA)
                     { // this draw call has a custom blend function that may require rendering of "invisible" fragments
@@ -1704,28 +1704,28 @@ void LLDrawPoolAlpha::renderAlpha(U32 mask, bool depth_only, bool rigged, bool u
         if (!emissives.empty())
         {
             light_enabled = true;
-            renderEmissives(emissives);
+            renderEmissives(ctx, emissives);
             rebind = true;
         }
 
         if (!pbr_emissives.empty())
         {
             light_enabled = true;
-            renderPbrEmissives(pbr_emissives);
+            renderPbrEmissives(ctx, pbr_emissives);
             rebind = true;
         }
 
         if (!rigged_emissives.empty())
         {
             light_enabled = true;
-            renderRiggedEmissives(rigged_emissives);
+            renderRiggedEmissives(ctx, rigged_emissives);
             rebind = true;
         }
 
         if (!pbr_rigged_emissives.empty())
         {
             light_enabled = true;
-            renderRiggedPbrEmissives(pbr_rigged_emissives);
+            renderRiggedPbrEmissives(ctx, pbr_rigged_emissives);
             rebind = true;
         }
 
@@ -1797,26 +1797,26 @@ S32 LLDrawPoolAlpha::getNumMotionBlurPasses()
     return 1;
 }
 
-void LLDrawPoolAlpha::beginMotionBlurPass(S32 pass)
+void LLDrawPoolAlpha::beginMotionBlurPass(const LLRecordPassContext& ctx, S32 pass)
 {
     LL_PROFILE_ZONE_SCOPED;
     gVelocityAlphaProgram.bind();
 }
 
-void LLDrawPoolAlpha::endMotionBlurPass(S32 pass)
+void LLDrawPoolAlpha::endMotionBlurPass(const LLRecordPassContext& ctx, S32 pass)
 {
     LL_PROFILE_ZONE_SCOPED;
     gVelocityAlphaProgram.unbind();
 }
 
-void LLDrawPoolAlpha::renderMotionBlur(S32 pass)
+void LLDrawPoolAlpha::renderMotionBlur(const LLRecordPassContext& ctx, S32 pass)
 {
     LL_PROFILE_ZONE_SCOPED;
     LLGLEnable cull(GL_CULL_FACE);
-    pushVelocityBatchesTextured(LLRenderPass::PASS_ALPHA);
+    pushVelocityBatchesTextured(ctx, LLRenderPass::PASS_ALPHA);
 
     gVelocityAlphaProgram.bind(true);
-    pushRiggedVelocityBatchesTextured(LLRenderPass::PASS_ALPHA_RIGGED);
+    pushRiggedVelocityBatchesTextured(ctx, LLRenderPass::PASS_ALPHA_RIGGED);
 }
 // </AYAstorm r30 P2>
 

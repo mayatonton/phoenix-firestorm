@@ -1597,7 +1597,7 @@ bool    LLPreviewAnimation::render()
             LLDrawPoolAvatar *avatarPoolp = (LLDrawPoolAvatar *)face->getPool();
             avatarp->dirtyMesh();
             gPipeline.enableLightsPreview();
-            avatarPoolp->renderAvatars(avatarp);  // renders only one avatar
+            avatarPoolp->renderAvatars(LLPipeline::buildRecordPassContext(), avatarp);  // renders only one avatar
         }
     }
 

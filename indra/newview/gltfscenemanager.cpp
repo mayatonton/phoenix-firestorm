@@ -351,14 +351,14 @@ GLTFSceneManager::~GLTFSceneManager()
     mObjects.clear();
 }
 
-void GLTFSceneManager::renderOpaque()
+void GLTFSceneManager::renderOpaque(const LLRecordPassContext& ctx)
 {
-    render(true);
+    render(ctx, true);
 }
 
-void GLTFSceneManager::renderAlpha()
+void GLTFSceneManager::renderAlpha(const LLRecordPassContext& ctx)
 {
-    render(false);
+    render(ctx, false);
 }
 
 void GLTFSceneManager::addGLTFObject(LLViewerObject* obj, LLUUID gltf_id)
@@ -575,7 +575,7 @@ void GLTFSceneManager::update()
     }
 }
 
-void GLTFSceneManager::render(bool opaque, bool rigged, bool unlit)
+void GLTFSceneManager::render(const LLRecordPassContext& ctx, bool opaque, bool rigged, bool unlit)
 {
     U8 variant = 0;
     if (rigged)
@@ -591,10 +591,10 @@ void GLTFSceneManager::render(bool opaque, bool rigged, bool unlit)
         variant |= LLGLSLShader::GLTFVariant::UNLIT;
     }
 
-    render(variant);
+    render(ctx, variant);
 }
 
-void GLTFSceneManager::render(U8 variant)
+void GLTFSceneManager::render(const LLRecordPassContext& ctx, U8 variant)
 {
     LL_PROFILE_ZONE_SCOPED_CATEGORY_GLTF;
     // just render the whole scene by traversing the whole scenegraph
@@ -605,7 +605,7 @@ void GLTFSceneManager::render(U8 variant)
     // HACK -- implicitly render multi-uv variant
     if (!(variant & LLGLSLShader::GLTFVariant::MULTI_UV))
     {
-        render((U8) (variant | LLGLSLShader::GLTFVariant::MULTI_UV));
+        render(ctx, (U8) (variant | LLGLSLShader::GLTFVariant::MULTI_UV));
     }
 
     bool rigged = variant & LLGLSLShader::GLTFVariant::RIGGED;
@@ -629,7 +629,7 @@ void GLTFSceneManager::render(U8 variant)
         gGL.loadMatrix(gGLModelView);
         gGL.multMatrix(mat.getF32ptr());
 
-        render(*asset, variant);
+        render(ctx, *asset, variant);
 
         gGL.popMatrix();
     }
@@ -702,7 +702,7 @@ static void writeGLTFMRPerDrawRingUBO(LLGLSLShader* sh, S32 material_id, S32 nod
     }
 }
 
-void GLTFSceneManager::render(Asset& asset, U8 variant)
+void GLTFSceneManager::render(const LLRecordPassContext& ctx, Asset& asset, U8 variant)
 {
     LL_PROFILE_ZONE_SCOPED_CATEGORY_GLTF;
 
@@ -772,11 +772,11 @@ void GLTFSceneManager::render(Asset& asset, U8 variant)
             if (mat_idx != INVALID_INDEX)
             {
                 Material& material = asset.mMaterials[mat_idx];
-                bind(asset, material);
+                bind(ctx, asset, material);
             }
             else
             {
-                LLFetchedGLTFMaterial::sDefault.bind();
+                LLFetchedGLTFMaterial::sDefault.bind(ctx);
                 LLGLSLShader* sh = LLGLSLShader::sCurBoundShaderPtr;
                 if (LLVKLoader::isVulkanInitialized() && sh &&
                     sh->mVkPerProgramUBO != VK_NULL_HANDLE &&
@@ -890,14 +890,14 @@ void GLTFSceneManager::bindTexture(Asset& asset, TextureType texture_type, Textu
 }
 
 
-void GLTFSceneManager::bind(Asset& asset, Material& material)
+void GLTFSceneManager::bind(const LLRecordPassContext& ctx, Asset& asset, Material& material)
 {
     LL_PROFILE_ZONE_SCOPED_CATEGORY_GLTF;
     LLGLSLShader* shader = LLGLSLShader::sCurBoundShaderPtr;
 
     bindTexture(asset, TextureType::BASE_COLOR, material.mPbrMetallicRoughness.mBaseColorTexture, LLViewerFetchedTexture::sWhiteImagep);
 
-    if (!LLPipelineFrameContext::getInstance().isShadowPass())
+    if (!ctx.shadowPass)
     {
         bindTexture(asset, TextureType::NORMAL, material.mNormalTexture, LLViewerFetchedTexture::sFlatNormalImagep);
         bindTexture(asset, TextureType::METALLIC_ROUGHNESS, material.mPbrMetallicRoughness.mMetallicRoughnessTexture, LLViewerFetchedTexture::sWhiteImagep);

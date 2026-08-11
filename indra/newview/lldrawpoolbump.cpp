@@ -264,7 +264,7 @@ void LLDrawPoolBump::unbindCubeMap(LLGLSLShader* shader, S32 shader_level, S32& 
     }
 }
 
-void LLDrawPoolBump::beginFullbrightShiny()
+void LLDrawPoolBump::beginFullbrightShiny(const LLRecordPassContext& ctx)
 {
     LL_PROFILE_ZONE_SCOPED_CATEGORY_DRAWPOOL; //LL_RECORD_BLOCK_TIME(FTM_RENDER_SHINY);
 
@@ -272,7 +272,7 @@ void LLDrawPoolBump::beginFullbrightShiny()
 
     // Second pass: environment map
     shader = &gDeferredFullbrightShinyProgram;
-    if (LLPipelineFrameContext::getInstance().isHUDPass())
+    if (ctx.hudPass)
     {
         shader = &gHUDFullbrightShinyProgram;
     }
@@ -326,7 +326,7 @@ void LLDrawPoolBump::beginFullbrightShiny()
     shiny = true;
 }
 
-void LLDrawPoolBump::renderFullbrightShiny()
+void LLDrawPoolBump::renderFullbrightShiny(const LLRecordPassContext& ctx)
 {
     LL_PROFILE_ZONE_SCOPED_CATEGORY_DRAWPOOL; //LL_RECORD_BLOCK_TIME(FTM_RENDER_SHINY);
 
@@ -337,22 +337,22 @@ void LLDrawPoolBump::renderFullbrightShiny()
         {
             if (mRigged)
             {
-                LLRenderPass::pushRiggedBatches(LLRenderPass::PASS_FULLBRIGHT_SHINY_RIGGED, true, true);
+                LLRenderPass::pushRiggedBatches(ctx, LLRenderPass::PASS_FULLBRIGHT_SHINY_RIGGED, true, true);
             }
             else
             {
-                LLRenderPass::pushBatches(LLRenderPass::PASS_FULLBRIGHT_SHINY, true, true);
+                LLRenderPass::pushBatches(ctx, LLRenderPass::PASS_FULLBRIGHT_SHINY, true, true);
             }
         }
         else
         {
             if (mRigged)
             {
-                LLRenderPass::pushRiggedBatches(LLRenderPass::PASS_FULLBRIGHT_SHINY_RIGGED);
+                LLRenderPass::pushRiggedBatches(ctx, LLRenderPass::PASS_FULLBRIGHT_SHINY_RIGGED);
             }
             else
             {
-                LLRenderPass::pushBatches(LLRenderPass::PASS_FULLBRIGHT_SHINY);
+                LLRenderPass::pushBatches(ctx, LLRenderPass::PASS_FULLBRIGHT_SHINY);
             }
         }
     }
@@ -466,7 +466,7 @@ void LLDrawPoolBump::beginBump()
     gGL.setSceneBlendType(LLRender::BT_MULT_X2);
 }
 
-void LLDrawPoolBump::renderBump(U32 pass)
+void LLDrawPoolBump::renderBump(const LLRecordPassContext& ctx, U32 pass)
 {
     LL_PROFILE_ZONE_SCOPED_CATEGORY_DRAWPOOL; //LL_RECORD_BLOCK_TIME(FTM_RENDER_BUMP);
     LLGLDepthTest gls_depth(GL_TRUE, GL_FALSE, GL_LEQUAL);
@@ -475,7 +475,7 @@ void LLDrawPoolBump::renderBump(U32 pass)
     /// Get rid of z-fighting with non-bump pass.
     LLGLEnable polyOffset(GL_POLYGON_OFFSET_FILL);
     gGL.setPolygonOffset(-1.0f, -1.0f);
-    pushBumpBatches(pass);
+    pushBumpBatches(ctx, pass);
 }
 
 void LLDrawPoolBump::endBump(U32 pass)
@@ -490,7 +490,7 @@ S32 LLDrawPoolBump::getNumDeferredPasses()
     return 1;
 }
 
-void LLDrawPoolBump::renderDeferred(S32 pass)
+void LLDrawPoolBump::renderDeferred(const LLRecordPassContext& ctx, S32 pass)
 {
     LL_PROFILE_ZONE_SCOPED_CATEGORY_DRAWPOOL; //LL_RECORD_BLOCK_TIME(FTM_RENDER_BUMP);
 
@@ -510,7 +510,7 @@ void LLDrawPoolBump::renderDeferred(S32 pass)
         U64 lastMeshId = 0;
         bool skipLastSkin = false;
 
-        LLVKBucket::forEachSource(type, [&](LLDrawInfo& params)
+        LLVKBucket::forEachSource(ctx, type, [&](LLDrawInfo& params)
         {
             LLGLSLShader::sCurBoundShaderPtr->setMinimumAlpha(params.mAlphaMaskCutoff);
             LLDrawPoolBump::bindBumpMap(params, bump_channel);
@@ -538,24 +538,24 @@ void LLDrawPoolBump::renderDeferred(S32 pass)
 }
 
 
-void LLDrawPoolBump::renderPostDeferred(S32 pass)
+void LLDrawPoolBump::renderPostDeferred(const LLRecordPassContext& ctx, S32 pass)
 {
     LL_PROFILE_ZONE_SCOPED_CATEGORY_DRAWPOOL;
 
-    S32 num_passes = LLPipelineFrameContext::getInstance().isHUDPass() ? 1 : 2; // skip rigged pass when rendering HUDs
+    S32 num_passes = ctx.hudPass ? 1 : 2; // skip rigged pass when rendering HUDs
 
     for (int i = 0; i < num_passes; ++i)
     { // two passes -- static and rigged
         mRigged = (i == 1);
 
         // render shiny
-        beginFullbrightShiny();
-        renderFullbrightShiny();
+        beginFullbrightShiny(ctx);
+        renderFullbrightShiny(ctx);
         endFullbrightShiny();
 
         //render bump
         beginBump();
-        renderBump(LLRenderPass::PASS_POST_BUMP);
+        renderBump(ctx, LLRenderPass::PASS_POST_BUMP);
         endBump();
     }
 }
@@ -926,7 +926,7 @@ void LLBumpImageList::onSourceUpdated(LLViewerTexture* src, EBumpEffect bump_cod
 
 }
 
-void LLDrawPoolBump::pushBumpBatches(U32 type)
+void LLDrawPoolBump::pushBumpBatches(const LLRecordPassContext& ctx, U32 type)
 {
     const LLVOAvatar* lastAvatar = nullptr;
     U64 lastMeshId = 0;
@@ -1037,26 +1037,26 @@ S32 LLDrawPoolBump::getNumMotionBlurPasses()
     return 1;
 }
 
-void LLDrawPoolBump::beginMotionBlurPass(S32 pass)
+void LLDrawPoolBump::beginMotionBlurPass(const LLRecordPassContext& ctx, S32 pass)
 {
     LL_PROFILE_ZONE_SCOPED;
     gVelocityProgram.bind();
 }
 
-void LLDrawPoolBump::endMotionBlurPass(S32 pass)
+void LLDrawPoolBump::endMotionBlurPass(const LLRecordPassContext& ctx, S32 pass)
 {
     LL_PROFILE_ZONE_SCOPED;
     gVelocityProgram.unbind();
 }
 
-void LLDrawPoolBump::renderMotionBlur(S32 pass)
+void LLDrawPoolBump::renderMotionBlur(const LLRecordPassContext& ctx, S32 pass)
 {
     LL_PROFILE_ZONE_SCOPED;
     LLGLEnable cull(GL_CULL_FACE);
-    pushVelocityBatches(LLRenderPass::PASS_BUMP);
+    pushVelocityBatches(ctx, LLRenderPass::PASS_BUMP);
 
     gVelocityProgram.bind(true);
-    pushRiggedVelocityBatches(LLRenderPass::PASS_BUMP_RIGGED);
+    pushRiggedVelocityBatches(ctx, LLRenderPass::PASS_BUMP_RIGGED);
 }
 // </AYAstorm r30 P2>
 

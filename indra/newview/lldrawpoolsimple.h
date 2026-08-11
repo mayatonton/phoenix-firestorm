@@ -46,13 +46,13 @@ public:
     LLDrawPoolSimple();
 
     S32 getNumDeferredPasses() override;
-    void renderDeferred(S32 pass) override;
+    void renderDeferred(const LLRecordPassContext& ctx, S32 pass) override;
 
     // <AYAstorm r30 P2>
     S32 getNumMotionBlurPasses() override;
-    void beginMotionBlurPass(S32 pass) override;
-    void endMotionBlurPass(S32 pass) override;
-    void renderMotionBlur(S32 pass) override;
+    void beginMotionBlurPass(const LLRecordPassContext& ctx, S32 pass) override;
+    void endMotionBlurPass(const LLRecordPassContext& ctx, S32 pass) override;
+    void renderMotionBlur(const LLRecordPassContext& ctx, S32 pass) override;
     // </AYAstorm r30 P2>
 
 };
@@ -72,13 +72,13 @@ public:
     LLDrawPoolGrass();
 
     S32 getNumDeferredPasses() override { return 1; }
-    void renderDeferred(S32 pass) override;
+    void renderDeferred(const LLRecordPassContext& ctx, S32 pass) override;
 
     // <AYAstorm r30 P2>
     S32 getNumMotionBlurPasses() override;
-    void beginMotionBlurPass(S32 pass) override;
-    void endMotionBlurPass(S32 pass) override;
-    void renderMotionBlur(S32 pass) override;
+    void beginMotionBlurPass(const LLRecordPassContext& ctx, S32 pass) override;
+    void endMotionBlurPass(const LLRecordPassContext& ctx, S32 pass) override;
+    void renderMotionBlur(const LLRecordPassContext& ctx, S32 pass) override;
     // </AYAstorm r30 P2>
 };
 
@@ -97,13 +97,13 @@ public:
     LLDrawPoolAlphaMask();
 
     S32 getNumDeferredPasses() override { return 1; }
-    void renderDeferred(S32 pass) override;
+    void renderDeferred(const LLRecordPassContext& ctx, S32 pass) override;
 
     // <AYAstorm r30 P2>
     S32 getNumMotionBlurPasses() override;
-    void beginMotionBlurPass(S32 pass) override;
-    void endMotionBlurPass(S32 pass) override;
-    void renderMotionBlur(S32 pass) override;
+    void beginMotionBlurPass(const LLRecordPassContext& ctx, S32 pass) override;
+    void endMotionBlurPass(const LLRecordPassContext& ctx, S32 pass) override;
+    void renderMotionBlur(const LLRecordPassContext& ctx, S32 pass) override;
     // </AYAstorm r30 P2>
 };
 
@@ -121,13 +121,13 @@ public:
     LLDrawPoolFullbrightAlphaMask();
 
     S32 getNumPostDeferredPasses() override { return 1; }
-    void renderPostDeferred(S32 pass) override;
+    void renderPostDeferred(const LLRecordPassContext& ctx, S32 pass) override;
 
     // <AYAstorm r30 P2>
     S32 getNumMotionBlurPasses() override;
-    void beginMotionBlurPass(S32 pass) override;
-    void endMotionBlurPass(S32 pass) override;
-    void renderMotionBlur(S32 pass) override;
+    void beginMotionBlurPass(const LLRecordPassContext& ctx, S32 pass) override;
+    void endMotionBlurPass(const LLRecordPassContext& ctx, S32 pass) override;
+    void renderMotionBlur(const LLRecordPassContext& ctx, S32 pass) override;
     // </AYAstorm r30 P2>
 };
 
@@ -146,13 +146,13 @@ public:
     LLDrawPoolFullbright();
 
     S32 getNumPostDeferredPasses() override { return 1; }
-    void renderPostDeferred(S32 pass) override;
+    void renderPostDeferred(const LLRecordPassContext& ctx, S32 pass) override;
 
     // <AYAstorm r30 P2>
     S32 getNumMotionBlurPasses() override;
-    void beginMotionBlurPass(S32 pass) override;
-    void endMotionBlurPass(S32 pass) override;
-    void renderMotionBlur(S32 pass) override;
+    void beginMotionBlurPass(const LLRecordPassContext& ctx, S32 pass) override;
+    void endMotionBlurPass(const LLRecordPassContext& ctx, S32 pass) override;
+    void renderMotionBlur(const LLRecordPassContext& ctx, S32 pass) override;
     // </AYAstorm r30 P2>
 };
 
@@ -171,7 +171,7 @@ public:
     U32 getVertexDataMask() override { return VERTEX_DATA_MASK; }
 
     S32 getNumPostDeferredPasses() override { return 1; }
-    void renderPostDeferred(S32 pass) override;
+    void renderPostDeferred(const LLRecordPassContext& ctx, S32 pass) override;
 };
 
 #endif // LL_LLDRAWPOOLSIMPLE_H

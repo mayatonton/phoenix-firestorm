@@ -50,13 +50,13 @@ public:
     LLDrawPoolSky();
 
     /*virtual*/ S32 getNumPostDeferredPasses() { return getNumPasses(); }
-    /*virtual*/ void beginPostDeferredPass(S32 pass) { beginRenderPass(pass); }
-    /*virtual*/ void endPostDeferredPass(S32 pass) { endRenderPass(pass); }
-    /*virtual*/ void renderPostDeferred(S32 pass) { render(pass); }
+    /*virtual*/ void beginPostDeferredPass(const LLRecordPassContext& ctx, S32 pass) { beginRenderPass(ctx, pass); }
+    /*virtual*/ void endPostDeferredPass(const LLRecordPassContext& ctx, S32 pass) { endRenderPass(ctx, pass); }
+    /*virtual*/ void renderPostDeferred(const LLRecordPassContext& ctx, S32 pass) { render(ctx, pass); }
 
     /*virtual*/ void prerender();
-    /*virtual*/ void render(S32 pass = 0);
-    /*virtual*/ void endRenderPass(S32 pass);
+    /*virtual*/ void render(const LLRecordPassContext& ctx, S32 pass = 0);
+    /*virtual*/ void endRenderPass(const LLRecordPassContext& ctx, S32 pass);
     void setSkyTex(LLSkyTex* const st) { mSkyTex = st; }
 
     void renderSkyFace(U8 index);

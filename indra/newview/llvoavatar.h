@@ -564,10 +564,10 @@ public:
 
     std::set<LLUUID> mJellyAnims;
 
-    U32         renderRigid();
-    U32         renderSkinned();
+    U32         renderRigid(const LLRecordPassContext& ctx);
+    U32         renderSkinned(const LLRecordPassContext& ctx);
     F32         getLastSkinTime() { return mLastSkinTime; }
-    U32         renderTransparent(bool first_pass);
+    U32         renderTransparent(const LLRecordPassContext& ctx, bool first_pass);
     void        renderCollisionVolumes();
     void        renderBones(const std::string &selected_joint = std::string());
     virtual void renderJoints();

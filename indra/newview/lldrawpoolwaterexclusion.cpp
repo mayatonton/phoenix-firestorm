@@ -40,7 +40,7 @@ LLDrawPoolWaterExclusion::LLDrawPoolWaterExclusion() : LLRenderPass(LLDrawPool::
 }
 
 
-void LLDrawPoolWaterExclusion::render(S32 pass)
+void LLDrawPoolWaterExclusion::render(const LLRecordPassContext& ctx, S32 pass)
 {                                             // render invisiprims
     LL_PROFILE_ZONE_SCOPED_CATEGORY_DRAWPOOL; // LL_RECORD_BLOCK_TIME(FTM_RENDER_INVISIBLE);
 
@@ -74,7 +74,7 @@ void LLDrawPoolWaterExclusion::render(S32 pass)
         LLVKLoader::writeCurrentDrawColorUBO(draw_color);
     }
 
-    pushBatches(LLRenderPass::PASS_INVISIBLE, false, false);
+    pushBatches(ctx, LLRenderPass::PASS_INVISIBLE, false, false);
 
 
     if (gPipeline.shadersLoaded())

@@ -64,9 +64,9 @@ public:
     /*virtual*/ ~LLDrawPoolWater();
 
     S32 getNumPostDeferredPasses() override;
-    void beginPostDeferredPass(S32 pass) override;
-    void renderPostDeferred(S32 pass) override;
-    void endPostDeferredPass(S32 pass) override;
+    void beginPostDeferredPass(const LLRecordPassContext& ctx, S32 pass) override;
+    void renderPostDeferred(const LLRecordPassContext& ctx, S32 pass) override;
+    void endPostDeferredPass(const LLRecordPassContext& ctx, S32 pass) override;
 
     void prerender() override;
 

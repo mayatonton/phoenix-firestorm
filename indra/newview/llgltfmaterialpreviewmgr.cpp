@@ -527,7 +527,7 @@ bool LLGLTFPreviewTexture::render()
 
         for (PreviewSpherePart& part : preview_sphere)
         {
-            LLRenderPass::pushGLTFBatch(*part->mDrawInfo);
+            LLRenderPass::pushGLTFBatch(LLPipeline::buildRecordPassContext(), *part->mDrawInfo);
         }
 
         gPipeline.unbindDeferredShader(shader);

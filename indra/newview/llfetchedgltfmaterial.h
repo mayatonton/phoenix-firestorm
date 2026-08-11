@@ -28,6 +28,7 @@
 
 #include "llgltfmaterial.h"
 #include "llpointer.h"
+#include "llrecordpasscontext.h"
 #include "llviewertexture.h"
 
 class LLGLSLShader;
@@ -52,7 +53,7 @@ public:
 
     // bind this material for rendering
     //   media_tex - optional media texture that may override the base color texture
-    void bind(LLViewerTexture* media_tex = nullptr);
+    void bind(const LLRecordPassContext& ctx, LLViewerTexture* media_tex = nullptr);
 
     bool isFetching() const { return mFetching; }
     bool isLoaded() const { return !mFetching && mFetchSuccess; }

@@ -55,24 +55,24 @@ public:
     /*virtual*/ ~LLDrawPoolAlpha();
 
     /*virtual*/ S32 getNumPostDeferredPasses();
-    /*virtual*/ void renderPostDeferred(S32 pass);
+    /*virtual*/ void renderPostDeferred(const LLRecordPassContext& ctx, S32 pass);
     /*virtual*/ S32  getNumPasses() { return 1; }
 
     // <AYAstorm r30 P2> motion blur / velocity pass (BD lineage)
     /*virtual*/ S32 getNumMotionBlurPasses() override;
-    /*virtual*/ void beginMotionBlurPass(S32 pass) override;
-    /*virtual*/ void endMotionBlurPass(S32 pass) override;
-    /*virtual*/ void renderMotionBlur(S32 pass) override;
+    /*virtual*/ void beginMotionBlurPass(const LLRecordPassContext& ctx, S32 pass) override;
+    /*virtual*/ void endMotionBlurPass(const LLRecordPassContext& ctx, S32 pass) override;
+    /*virtual*/ void renderMotionBlur(const LLRecordPassContext& ctx, S32 pass) override;
     // </AYAstorm r30 P2>
 
-    void forwardRender(bool write_depth = false);
-    void forwardRenderMerged();
+    void forwardRender(const LLRecordPassContext& ctx, bool write_depth = false);
+    void forwardRenderMerged(const LLRecordPassContext& ctx);
     /*virtual*/ void prerender();
 
-    void renderDebugAlpha();
+    void renderDebugAlpha(const LLRecordPassContext& ctx);
 
     void renderGroupAlpha(LLSpatialGroup* group, U32 type, U32 mask, bool texture = true);
-    void renderAlpha(U32 mask, bool depth_only = false, bool rigged = false, bool unified = false);
+    void renderAlpha(const LLRecordPassContext& ctx, U32 mask, bool depth_only = false, bool rigged = false, bool unified = false);
     void renderAlphaHighlight();
 
     static bool sShowDebugAlpha;
@@ -89,11 +89,11 @@ private:
     LLGLSLShader* pbr_shader = nullptr;
 
     void drawEmissive(LLDrawInfo* draw);
-    void renderEmissives(std::vector<LLDrawInfo*>& emissives);
-    void renderRiggedEmissives(std::vector<LLDrawInfo*>& emissives);
-    void renderPbrEmissives(std::vector<LLDrawInfo*>& emissives);
-    void renderRiggedPbrEmissives(std::vector<LLDrawInfo*>& emissives);
-    bool TexSetup(LLDrawInfo* draw, bool use_material);
+    void renderEmissives(const LLRecordPassContext& ctx, std::vector<LLDrawInfo*>& emissives);
+    void renderRiggedEmissives(const LLRecordPassContext& ctx, std::vector<LLDrawInfo*>& emissives);
+    void renderPbrEmissives(const LLRecordPassContext& ctx, std::vector<LLDrawInfo*>& emissives);
+    void renderRiggedPbrEmissives(const LLRecordPassContext& ctx, std::vector<LLDrawInfo*>& emissives);
+    bool TexSetup(const LLRecordPassContext& ctx, LLDrawInfo* draw, bool use_material);
     void RestoreTexSetup(bool tex_setup);
 
     // our 'normal' alpha blend function for this pass

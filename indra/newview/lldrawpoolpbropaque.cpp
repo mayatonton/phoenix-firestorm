@@ -53,22 +53,22 @@ S32 LLDrawPoolGLTFPBR::getNumDeferredPasses()
     return 1;
 }
 
-void LLDrawPoolGLTFPBR::renderDeferred(S32 pass)
+void LLDrawPoolGLTFPBR::renderDeferred(const LLRecordPassContext& ctx, S32 pass)
 {
-    llassert(!LLPipelineFrameContext::getInstance().isHUDPass());
+    llassert(!ctx.hudPass);
 
     if (mRenderType == LLPipeline::RENDER_TYPE_PASS_GLTF_PBR_ALPHA_MASK)
     {
-        LL::GLTFSceneManager::instance().renderOpaque();
+        LL::GLTFSceneManager::instance().renderOpaque(ctx);
     }
 
     gDeferredPBROpaqueProgram.bind();
-    pushGLTFBatches(mRenderType);
+    pushGLTFBatches(ctx, mRenderType);
 
-    LL::GLTFSceneManager::instance().render(true, true);
+    LL::GLTFSceneManager::instance().render(ctx, true, true);
 
     gDeferredPBROpaqueProgram.bind(true);
-    pushRiggedGLTFBatches(mRenderType + 1);
+    pushRiggedGLTFBatches(ctx, mRenderType + 1);
 }
 
 S32 LLDrawPoolGLTFPBR::getNumPostDeferredPasses()
@@ -76,21 +76,21 @@ S32 LLDrawPoolGLTFPBR::getNumPostDeferredPasses()
     return 1;
 }
 
-void LLDrawPoolGLTFPBR::renderPostDeferred(S32 pass)
+void LLDrawPoolGLTFPBR::renderPostDeferred(const LLRecordPassContext& ctx, S32 pass)
 {
-    if (LLPipelineFrameContext::getInstance().isHUDPass())
+    if (ctx.hudPass)
     {
         gHUDPBROpaqueProgram.bind();
-        pushGLTFBatches(mRenderType);
+        pushGLTFBatches(ctx, mRenderType);
     }
     else if (mRenderType == LLPipeline::RENDER_TYPE_PASS_GLTF_PBR) // HACK -- don't render glow except for the non-alpha masked implementation
     {
         gGL.setColorMask(false, true);
         gPBRGlowProgram.bind();
-        pushGLTFBatches(LLRenderPass::PASS_GLTF_GLOW);
+        pushGLTFBatches(ctx, LLRenderPass::PASS_GLTF_GLOW);
 
         gPBRGlowProgram.bind(true);
-        pushRiggedGLTFBatches(LLRenderPass::PASS_GLTF_GLOW_RIGGED);
+        pushRiggedGLTFBatches(ctx, LLRenderPass::PASS_GLTF_GLOW_RIGGED);
 
         gGL.setColorMask(true, false);
     }
@@ -105,7 +105,7 @@ S32 LLDrawPoolGLTFPBR::getNumMotionBlurPasses()
     return 1;
 }
 
-void LLDrawPoolGLTFPBR::beginMotionBlurPass(S32 pass)
+void LLDrawPoolGLTFPBR::beginMotionBlurPass(const LLRecordPassContext& ctx, S32 pass)
 {
     LL_PROFILE_ZONE_SCOPED;
     LLGLSLShader& shader = (mRenderType == LLPipeline::RENDER_TYPE_PASS_GLTF_PBR_ALPHA_MASK)
@@ -113,7 +113,7 @@ void LLDrawPoolGLTFPBR::beginMotionBlurPass(S32 pass)
     shader.bind();
 }
 
-void LLDrawPoolGLTFPBR::endMotionBlurPass(S32 pass)
+void LLDrawPoolGLTFPBR::endMotionBlurPass(const LLRecordPassContext& ctx, S32 pass)
 {
     LL_PROFILE_ZONE_SCOPED;
     if (mRenderType == LLPipeline::RENDER_TYPE_PASS_GLTF_PBR_ALPHA_MASK)
@@ -122,7 +122,7 @@ void LLDrawPoolGLTFPBR::endMotionBlurPass(S32 pass)
         gVelocityProgram.unbind();
 }
 
-void LLDrawPoolGLTFPBR::renderMotionBlur(S32 pass)
+void LLDrawPoolGLTFPBR::renderMotionBlur(const LLRecordPassContext& ctx, S32 pass)
 {
     LL_PROFILE_ZONE_SCOPED;
     LLGLEnable cull(GL_CULL_FACE);
@@ -130,16 +130,16 @@ void LLDrawPoolGLTFPBR::renderMotionBlur(S32 pass)
     bool alpha_mask = (mRenderType == LLPipeline::RENDER_TYPE_PASS_GLTF_PBR_ALPHA_MASK);
 
     if (alpha_mask)
-        pushVelocityBatchesTextured(mRenderType);
+        pushVelocityBatchesTextured(ctx, mRenderType);
     else
-        pushVelocityBatches(mRenderType);
+        pushVelocityBatches(ctx, mRenderType);
 
     LLGLSLShader& shader = alpha_mask ? gVelocityAlphaProgram : gVelocityProgram;
     shader.bind(true);
     if (alpha_mask)
-        pushRiggedVelocityBatchesTextured(mRenderType + 1);
+        pushRiggedVelocityBatchesTextured(ctx, mRenderType + 1);
     else
-        pushRiggedVelocityBatches(mRenderType + 1);
+        pushRiggedVelocityBatches(ctx, mRenderType + 1);
 }
 // </AYAstorm r30 P2>
 

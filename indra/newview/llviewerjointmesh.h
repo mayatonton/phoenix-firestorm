@@ -58,7 +58,7 @@ public:
 
     // necessary because MS's compiler warns on function inheritance via dominance in the diamond inheritance here.
     // warns even though LLViewerJoint holds the only non virtual implementation.
-    U32 render(F32 pixelArea, bool first_pass = true, bool is_dummy = false) override { return LLViewerJoint::render(pixelArea, first_pass, is_dummy); }
+    U32 render(const LLJointRenderFlags& flags, F32 pixelArea, bool first_pass = true, bool is_dummy = false) override { return LLViewerJoint::render(flags, pixelArea, first_pass, is_dummy); }
 
     void updateFaceSizes(U32 &num_vertices, U32& num_indices, F32 pixel_area) override;
     void updateFaceData(LLFace *face, F32 pixel_area, bool damp_wind = false, bool terse_update = false) override;

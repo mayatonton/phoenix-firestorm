@@ -28,6 +28,7 @@
 
 #include "llsingleton.h"
 #include "llviewerobject.h"
+#include "llrecordpasscontext.h"
 #include "gltf/common.h"
 
 class LLVOVolume;
@@ -49,19 +50,19 @@ namespace LL
         void uploadSelection(); // decompose selected asset and upload to simulator
 
         void update();
-        void render(bool opaque, bool rigged = false, bool unlit = false);
+        void render(const LLRecordPassContext& ctx, bool opaque, bool rigged = false, bool unlit = false);
 
         // render the given variant of all assets
         // variant - bitmask according to LLGLSLShader::GLTFVariant flags
-        void render(U8 variant);
+        void render(const LLRecordPassContext& ctx, U8 variant);
 
-        void render(LL::GLTF::Asset& asset, U8 variant);
+        void render(const LLRecordPassContext& ctx, LL::GLTF::Asset& asset, U8 variant);
 
         // bind the given material for rendering
-        void bind(LL::GLTF::Asset& asset, LL::GLTF::Material& material);
+        void bind(const LLRecordPassContext& ctx, LL::GLTF::Asset& asset, LL::GLTF::Material& material);
         void bindTexture(LL::GLTF::Asset& asset, LL::GLTF::TextureType texture_type, LL::GLTF::TextureInfo& info, LLViewerTexture* fallback);
-        void renderOpaque();
-        void renderAlpha();
+        void renderOpaque(const LLRecordPassContext& ctx);
+        void renderAlpha(const LLRecordPassContext& ctx);
 
         LLDrawable* lineSegmentIntersect(const LLVector4a& start, const LLVector4a& end,
             bool pick_transparent,

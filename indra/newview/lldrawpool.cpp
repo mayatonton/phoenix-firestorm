@@ -252,7 +252,7 @@ LLViewerTexture *LLDrawPool::getDebugTexture()
     return NULL;
 }
 
-void LLDrawPool::beginRenderPass( S32 pass )
+void LLDrawPool::beginRenderPass(const LLRecordPassContext& ctx, S32 pass)
 {
 }
 
@@ -261,12 +261,12 @@ S32  LLDrawPool::getNumPasses()
     return 1;
 }
 
-void LLDrawPool::beginDeferredPass(S32 pass)
+void LLDrawPool::beginDeferredPass(const LLRecordPassContext& ctx, S32 pass)
 {
 
 }
 
-void LLDrawPool::endDeferredPass(S32 pass)
+void LLDrawPool::endDeferredPass(const LLRecordPassContext& ctx, S32 pass)
 {
 
 }
@@ -276,17 +276,17 @@ S32 LLDrawPool::getNumDeferredPasses()
     return 0;
 }
 
-void LLDrawPool::renderDeferred(S32 pass)
+void LLDrawPool::renderDeferred(const LLRecordPassContext& ctx, S32 pass)
 {
 
 }
 
-void LLDrawPool::beginPostDeferredPass(S32 pass)
+void LLDrawPool::beginPostDeferredPass(const LLRecordPassContext& ctx, S32 pass)
 {
 
 }
 
-void LLDrawPool::endPostDeferredPass(S32 pass)
+void LLDrawPool::endPostDeferredPass(const LLRecordPassContext& ctx, S32 pass)
 {
 
 }
@@ -296,22 +296,22 @@ S32 LLDrawPool::getNumPostDeferredPasses()
     return 0;
 }
 
-void LLDrawPool::renderPostDeferred(S32 pass)
+void LLDrawPool::renderPostDeferred(const LLRecordPassContext& ctx, S32 pass)
 {
 
 }
 
-void LLDrawPool::endRenderPass( S32 pass )
+void LLDrawPool::endRenderPass(const LLRecordPassContext& ctx, S32 pass)
 {
     gGL.getTexUnit(0)->activate();
 }
 
-void LLDrawPool::beginShadowPass(S32 pass)
+void LLDrawPool::beginShadowPass(const LLRecordPassContext& ctx, S32 pass)
 {
 
 }
 
-void LLDrawPool::endShadowPass(S32 pass)
+void LLDrawPool::endShadowPass(const LLRecordPassContext& ctx, S32 pass)
 {
 
 }
@@ -321,18 +321,18 @@ S32 LLDrawPool::getNumShadowPasses()
     return 0;
 }
 
-void LLDrawPool::renderShadow(S32 pass)
+void LLDrawPool::renderShadow(const LLRecordPassContext& ctx, S32 pass)
 {
 
 }
 
 // <AYAstorm r30 P2> Velocity-buffer pass defaults (BD lineage).
-void LLDrawPool::beginMotionBlurPass(S32 pass)
+void LLDrawPool::beginMotionBlurPass(const LLRecordPassContext& ctx, S32 pass)
 {
 
 }
 
-void LLDrawPool::endMotionBlurPass(S32 pass)
+void LLDrawPool::endMotionBlurPass(const LLRecordPassContext& ctx, S32 pass)
 {
 
 }
@@ -342,7 +342,7 @@ S32 LLDrawPool::getNumMotionBlurPasses()
     return 0;
 }
 
-void LLDrawPool::renderMotionBlur(S32 pass)
+void LLDrawPool::renderMotionBlur(const LLRecordPassContext& ctx, S32 pass)
 {
 
 }
@@ -1399,14 +1399,14 @@ static U32 shamdiRiggedCellForPass(U32 pass)
     }
 }
 
-void LLRenderPass::freezeAuthorShadowSources()
+void LLRenderPass::freezeAuthorShadowSources(LLCullResult* cull)
 {
     if (!LLVKLoader::isVulkanInitialized() || !LLVKLoader::isIndirectDrawEnabled() || gSnapshot)
     {
         return;
     }
     const U32 frame = LLVKLoader::getMonotonicFrameCount();
-    const std::vector<U64>* bits = LLVKBucket::currentVisBits();
+    const std::vector<U64>* bits = cull != nullptr ? &cull->bucketVisBits() : nullptr;
     for (U32 pass = 0; pass < LLRenderPass::NUM_RENDER_TYPES; ++pass)
     {
         const std::vector<LLVKBucket::Bucket*>& buckets = LLVKBucket::bucketsForPass(pass);
@@ -1446,7 +1446,7 @@ void LLRenderPass::freezeAuthorShadowSources()
     }
 }
 
-void LLRenderPass::pushBatches(U32 type, bool texture, bool batch_textures)
+void LLRenderPass::pushBatches(const LLRecordPassContext& ctx, U32 type, bool texture, bool batch_textures)
 {
     LL_PROFILE_ZONE_SCOPED_CATEGORY_DRAWPOOL;
     if (texture)
@@ -1462,7 +1462,7 @@ void LLRenderPass::pushBatches(U32 type, bool texture, bool batch_textures)
             && LLGLSLShader::sCurBoundShaderPtr->mVkUsesHeapSet
             && !gSnapshot)
         {
-            const std::vector<U64>* bits = LLVKBucket::currentVisBits();
+            const std::vector<U64>* bits = LLVKBucket::currentVisBits(ctx);
             if (bits != nullptr)
             {
                 const U32 shcell = shamdiCellForPass(type);
@@ -1470,7 +1470,7 @@ void LLRenderPass::pushBatches(U32 type, bool texture, bool batch_textures)
                 U64 dyn_n = 0;
                 for (LLVKBucket::Bucket* bucket : LLVKBucket::bucketsForPass(type))
                 {
-                    pushIndirectBucket(*bucket, *bits, true, true, &rec_n, &dyn_n);
+                    pushIndirectBucket(ctx, *bucket, *bits, true, true, &rec_n, &dyn_n);
                 }
                 if (shcell < 4)
                 {
@@ -1480,18 +1480,18 @@ void LLRenderPass::pushBatches(U32 type, bool texture, bool batch_textures)
                 return;
             }
         }
-        LLVKBucket::forEachSource(type, [&](LLDrawInfo& params)
+        LLVKBucket::forEachSource(ctx, type, [&](LLDrawInfo& params)
         {
             pushBatch(params, texture, batch_textures);
         });
     }
     else
     {
-        pushUntexturedBatches(type);
+        pushUntexturedBatches(ctx, type);
     }
 }
 
-void LLRenderPass::pushUntexturedBatches(U32 type)
+void LLRenderPass::pushUntexturedBatches(const LLRecordPassContext& ctx, U32 type)
 {
     LL_PROFILE_ZONE_SCOPED_CATEGORY_DRAWPOOL;
     if (LLVKBucket::emitActive(type)
@@ -1499,17 +1499,17 @@ void LLRenderPass::pushUntexturedBatches(U32 type)
         && LLGLSLShader::sCurBoundShaderPtr != nullptr
         && !gSnapshot)
     {
-        const std::vector<U64>* bits = LLVKBucket::currentVisBits();
+        const std::vector<U64>* bits = LLVKBucket::currentVisBits(ctx);
         if (bits != nullptr)
         {
             for (LLVKBucket::Bucket* bucket : LLVKBucket::bucketsForPass(type))
             {
-                pushIndirectBucket(*bucket, *bits, false);
+                pushIndirectBucket(ctx, *bucket, *bits, false);
             }
             return;
         }
     }
-    LLVKBucket::forEachSource(type, [&](LLDrawInfo& params)
+    LLVKBucket::forEachSource(ctx, type, [&](LLDrawInfo& params)
     {
         pushUntexturedBatch(params);
     });
@@ -1545,7 +1545,7 @@ static bool pushIndirectSpans(const std::vector<MdiFireSpan>& spans, VkBuffer ri
     return true;
 }
 
-void LLRenderPass::pushIndirectBucket(LLVKBucket::Bucket& bucket, const std::vector<U64>& vis_bits, bool textured, bool emit_dyn, U64* out_rec, U64* out_dyn)
+void LLRenderPass::pushIndirectBucket(const LLRecordPassContext& ctx, LLVKBucket::Bucket& bucket, const std::vector<U64>& vis_bits, bool textured, bool emit_dyn, U64* out_rec, U64* out_dyn)
 {
     LLVKBucket::rebuildTemplateIfDirty(bucket);
     if (bucket.mTplCommands.empty() && bucket.mTplDyn.empty())
@@ -1687,10 +1687,10 @@ void LLRenderPass::pushIndirectBucket(LLVKBucket::Bucket& bucket, const std::vec
 
 namespace
 {
-    bool riggedMdiEligible(U32 type)
+    bool riggedMdiEligible(const LLRecordPassContext& ctx, U32 type)
     {
         (void)type;
-        return LLPipelineFrameContext::getInstance().isShadowPass()
+        return ctx.shadowPass
             && LLVKLoader::isIndirectDrawEnabled()
             && LLVKLoader::skinBindlessEnabled()
             && LLGLSLShader::sCurBoundShaderPtr != nullptr
@@ -1908,13 +1908,13 @@ namespace
     }
 }
 
-void LLRenderPass::pushRiggedBatches(U32 type, bool texture, bool batch_textures)
+void LLRenderPass::pushRiggedBatches(const LLRecordPassContext& ctx, U32 type, bool texture, bool batch_textures)
 {
     LL_PROFILE_ZONE_SCOPED_CATEGORY_DRAWPOOL;
     const bool e3on = LLVKLoader::perfLogEnabled();
     const U64  e3t0 = e3on ? (U64)LLTimer::getTotalTime() : 0;
 
-    if (riggedMdiEligible(type)
+    if (riggedMdiEligible(ctx, type)
         && pushRiggedBatchesIndirect(this, type, texture, batch_textures, 7))
     {
         if (e3on)
@@ -1924,7 +1924,7 @@ void LLRenderPass::pushRiggedBatches(U32 type, bool texture, bool batch_textures
         return;
     }
 
-    const bool opWalk = LLPipelineFrameContext::getInstance().isShadowPass()
+    const bool opWalk = ctx.shadowPass
         && LLGLSLShader::sCurBoundShaderPtr != nullptr
         && LLGLSLShader::sCurBoundShaderPtr->mVkPerDrawSupplySlotComplete;
 
@@ -1953,7 +1953,7 @@ void LLRenderPass::pushRiggedBatches(U32 type, bool texture, bool batch_textures
     }
     else
     {
-        pushUntexturedRiggedBatches(type);
+        pushUntexturedRiggedBatches(ctx, type);
     }
     if (e3on)
     {
@@ -1961,10 +1961,10 @@ void LLRenderPass::pushRiggedBatches(U32 type, bool texture, bool batch_textures
     }
 }
 
-void LLRenderPass::pushUntexturedRiggedBatches(U32 type)
+void LLRenderPass::pushUntexturedRiggedBatches(const LLRecordPassContext& ctx, U32 type)
 {
     LL_PROFILE_ZONE_SCOPED_CATEGORY_DRAWPOOL;
-    const bool opWalk = LLPipelineFrameContext::getInstance().isShadowPass()
+    const bool opWalk = ctx.shadowPass
         && LLGLSLShader::sCurBoundShaderPtr != nullptr
         && LLGLSLShader::sCurBoundShaderPtr->mVkPerDrawSupplySlotComplete;
     const LLVOAvatar* lastAvatar = nullptr;
@@ -1989,7 +1989,7 @@ void LLRenderPass::pushUntexturedRiggedBatches(U32 type)
     }
 }
 
-void LLRenderPass::pushMaskBatches(U32 type, bool texture, bool batch_textures)
+void LLRenderPass::pushMaskBatches(const LLRecordPassContext& ctx, U32 type, bool texture, bool batch_textures)
 {
     LL_PROFILE_ZONE_SCOPED_CATEGORY_DRAWPOOL;
     if ((LLVKBucket::isCameraMdiPass(type)
@@ -2002,7 +2002,7 @@ void LLRenderPass::pushMaskBatches(U32 type, bool texture, bool batch_textures)
         && LLGLSLShader::sCurBoundShaderPtr->mVkUsesHeapSet
         && !gSnapshot)
     {
-        const std::vector<U64>* bits = LLVKBucket::currentVisBits();
+        const std::vector<U64>* bits = LLVKBucket::currentVisBits(ctx);
         if (bits != nullptr)
         {
             const U32 shcell = shamdiCellForPass(type);
@@ -2010,7 +2010,7 @@ void LLRenderPass::pushMaskBatches(U32 type, bool texture, bool batch_textures)
             U64 dyn_n = 0;
             for (LLVKBucket::Bucket* bucket : LLVKBucket::bucketsForPass(type))
             {
-                pushIndirectBucket(*bucket, *bits, true, true, &rec_n, &dyn_n);
+                pushIndirectBucket(ctx, *bucket, *bits, true, true, &rec_n, &dyn_n);
             }
             if (shcell < 4)
             {
@@ -2021,8 +2021,8 @@ void LLRenderPass::pushMaskBatches(U32 type, bool texture, bool batch_textures)
         }
     }
     const bool maskObjAlphaPC = !LLGLSLShader::sCurBoundShaderPtr->mVkShadowCutoffFromSlot
-        && LLPipelineFrameContext::getInstance().isShadowPass();
-    LLVKBucket::forEachSource(type, [&](LLDrawInfo& params)
+        && ctx.shadowPass;
+    LLVKBucket::forEachSource(ctx, type, [&](LLDrawInfo& params)
     {
         if (!LLGLSLShader::sCurBoundShaderPtr->mVkShadowCutoffFromSlot)
         {
@@ -2036,13 +2036,13 @@ void LLRenderPass::pushMaskBatches(U32 type, bool texture, bool batch_textures)
     });
 }
 
-void LLRenderPass::pushRiggedMaskBatches(U32 type, bool texture, bool batch_textures)
+void LLRenderPass::pushRiggedMaskBatches(const LLRecordPassContext& ctx, U32 type, bool texture, bool batch_textures)
 {
     LL_PROFILE_ZONE_SCOPED_CATEGORY_DRAWPOOL;
     const bool e3on = LLVKLoader::perfLogEnabled();
     const U64  e3t0 = e3on ? (U64)LLTimer::getTotalTime() : 0;
 
-    if (riggedMdiEligible(type)
+    if (riggedMdiEligible(ctx, type)
         && LLGLSLShader::sCurBoundShaderPtr->mVkUsesHeapSet
         && LLGLSLShader::sCurBoundShaderPtr->mVkShadowCutoffFromSlot
         && pushRiggedBatchesIndirect(this, type, texture, batch_textures,
@@ -2075,7 +2075,7 @@ void LLRenderPass::pushRiggedMaskBatches(U32 type, bool texture, bool batch_text
         if (!LLGLSLShader::sCurBoundShaderPtr->mVkShadowCutoffFromSlot)
         {
             LLGLSLShader::sCurBoundShaderPtr->setMinimumAlpha(pparams->mAlphaMaskCutoff);
-            if (LLPipelineFrameContext::getInstance().isShadowPass())
+            if (ctx.shadowPass)
             {
                 LLGLSLShader::sCurBoundShaderPtr->setObjectAlpha(pparams->mObjectAlpha);
             }
@@ -2372,13 +2372,13 @@ void teardown_texture_matrix(LLDrawInfo& params)
 // (pipeline.cpp), so any pixel we don't write reads back as (0,0), which
 // motionBlurF.glsl's `if (speed < 2.0) return diffuseRect` branch treats as
 // "no blur" — exactly the requested outcome.
-void LLRenderPass::pushVelocityBatches(U32 type)
+void LLRenderPass::pushVelocityBatches(const LLRecordPassContext& ctx, U32 type)
 {
     static const LLMatrix4 identity;
     static LLCachedControl<bool> self_blur(gSavedSettings, "RenderMotionBlurSelfAvatar", true);
     static LLCachedControl<bool> others_blur(gSavedSettings, "RenderMotionBlurOtherAvatars", true);
 
-    LLVKBucket::forEachSource(type, [&](LLDrawInfo& params)
+    LLVKBucket::forEachSource(ctx, type, [&](LLDrawInfo& params)
     {
         if (!params.mVertexBuffer.notNull())
         {
@@ -2422,7 +2422,7 @@ void LLRenderPass::pushVelocityBatches(U32 type)
     });
 }
 
-void LLRenderPass::pushRiggedVelocityBatches(U32 type)
+void LLRenderPass::pushRiggedVelocityBatches(const LLRecordPassContext& ctx, U32 type)
 {
     const LLVOAvatar* lastAvatar = nullptr;
     U64 lastMeshId = 0;
@@ -2463,13 +2463,13 @@ void LLRenderPass::pushRiggedVelocityBatches(U32 type)
     }
 }
 
-void LLRenderPass::pushVelocityBatchesTextured(U32 type)
+void LLRenderPass::pushVelocityBatchesTextured(const LLRecordPassContext& ctx, U32 type)
 {
     static const LLMatrix4 identity;
     static LLCachedControl<bool> self_blur(gSavedSettings, "RenderMotionBlurSelfAvatar", true);
     static LLCachedControl<bool> others_blur(gSavedSettings, "RenderMotionBlurOtherAvatars", true);
 
-    LLVKBucket::forEachSource(type, [&](LLDrawInfo& params)
+    LLVKBucket::forEachSource(ctx, type, [&](LLDrawInfo& params)
     {
         if (!params.mVertexBuffer.notNull())
         {
@@ -2517,7 +2517,7 @@ void LLRenderPass::pushVelocityBatchesTextured(U32 type)
     });
 }
 
-void LLRenderPass::pushRiggedVelocityBatchesTextured(U32 type)
+void LLRenderPass::pushRiggedVelocityBatchesTextured(const LLRecordPassContext& ctx, U32 type)
 {
     const LLVOAvatar* lastAvatar = nullptr;
     U64 lastMeshId = 0;
@@ -2596,22 +2596,22 @@ bool LLRenderPass::uploadLastMatrixPalette(LLVOAvatar* avatar, const LLMeshSkinI
 }
 // </AYAstorm r30 P2>
 
-void LLRenderPass::pushGLTFBatches(U32 type, bool textured)
+void LLRenderPass::pushGLTFBatches(const LLRecordPassContext& ctx, U32 type, bool textured)
 {
     if (textured)
     {
-        pushGLTFBatches(type);
+        pushGLTFBatches(ctx, type);
     }
     else
     {
-        pushUntexturedGLTFBatches(type);
+        pushUntexturedGLTFBatches(ctx, type);
     }
 }
 
-void LLRenderPass::pushGLTFBatches(U32 type)
+void LLRenderPass::pushGLTFBatches(const LLRecordPassContext& ctx, U32 type)
 {
     LL_PROFILE_ZONE_SCOPED_CATEGORY_DRAWPOOL;
-    const bool gltfObjAlphaPC = LLPipelineFrameContext::getInstance().isShadowPass()
+    const bool gltfObjAlphaPC = ctx.shadowPass
         && LLGLSLShader::sCurBoundShaderPtr != nullptr;
     auto* begin = gPipeline.beginRenderMap(type);
     auto* end = gPipeline.endRenderMap(type);
@@ -2625,11 +2625,11 @@ void LLRenderPass::pushGLTFBatches(U32 type)
         {
             LLGLSLShader::sCurBoundShaderPtr->setObjectAlpha(params.mGLTFMaterial->mBaseColor.mV[3]);
         }
-        pushGLTFBatch(params);
+        pushGLTFBatch(ctx, params);
     }
 }
 
-void LLRenderPass::pushUntexturedGLTFBatches(U32 type)
+void LLRenderPass::pushUntexturedGLTFBatches(const LLRecordPassContext& ctx, U32 type)
 {
     LL_PROFILE_ZONE_SCOPED_CATEGORY_DRAWPOOL;
     auto* begin = gPipeline.beginRenderMap(type);
@@ -2644,7 +2644,7 @@ void LLRenderPass::pushUntexturedGLTFBatches(U32 type)
     }
 }
 
-void LLRenderPass::pushGLTFBatch(LLDrawInfo& params)
+void LLRenderPass::pushGLTFBatch(const LLRecordPassContext& ctx, LLDrawInfo& params)
 {
     if (vkShadowCullBatch(params))
     {
@@ -2654,7 +2654,7 @@ void LLRenderPass::pushGLTFBatch(LLDrawInfo& params)
 
     if (mat.notNull())
     {
-        mat->bind(params.mTexture);
+        mat->bind(ctx, params.mTexture);
     }
 
     LLGLDisable cull_face(mat.notNull() && mat->mDoubleSided ? GL_CULL_FACE : 0);
@@ -2697,22 +2697,22 @@ void LLRenderPass::pushUntexturedGLTFBatch(LLDrawInfo& params)
     LLRenderPass::drawInfoBindless(params, BindlessEstablish::Bare);
 }
 
-void LLRenderPass::pushRiggedGLTFBatches(U32 type, bool textured)
+void LLRenderPass::pushRiggedGLTFBatches(const LLRecordPassContext& ctx, U32 type, bool textured)
 {
     if (textured)
     {
-        pushRiggedGLTFBatches(type);
+        pushRiggedGLTFBatches(ctx, type);
     }
     else
     {
-        pushUntexturedRiggedGLTFBatches(type);
+        pushUntexturedRiggedGLTFBatches(ctx, type);
     }
 }
 
-void LLRenderPass::pushRiggedGLTFBatches(U32 type)
+void LLRenderPass::pushRiggedGLTFBatches(const LLRecordPassContext& ctx, U32 type)
 {
     LL_PROFILE_ZONE_SCOPED_CATEGORY_DRAWPOOL;
-    const bool gltfObjAlphaPC = LLPipelineFrameContext::getInstance().isShadowPass()
+    const bool gltfObjAlphaPC = ctx.shadowPass
         && LLGLSLShader::sCurBoundShaderPtr != nullptr;
     const LLVOAvatar* lastAvatar = nullptr;
     U64 lastMeshId = 0;
@@ -2730,11 +2730,11 @@ void LLRenderPass::pushRiggedGLTFBatches(U32 type)
         {
             LLGLSLShader::sCurBoundShaderPtr->setObjectAlpha(params.mGLTFMaterial->mBaseColor.mV[3]);
         }
-        pushRiggedGLTFBatch(params, lastAvatar, lastMeshId, skipLastSkin);
+        pushRiggedGLTFBatch(ctx, params, lastAvatar, lastMeshId, skipLastSkin);
     }
 }
 
-void LLRenderPass::pushUntexturedRiggedGLTFBatches(U32 type)
+void LLRenderPass::pushUntexturedRiggedGLTFBatches(const LLRecordPassContext& ctx, U32 type)
 {
     LL_PROFILE_ZONE_SCOPED_CATEGORY_DRAWPOOL;
     const LLVOAvatar* lastAvatar = nullptr;
@@ -2754,11 +2754,11 @@ void LLRenderPass::pushUntexturedRiggedGLTFBatches(U32 type)
 }
 
 
-void LLRenderPass::pushRiggedGLTFBatch(LLDrawInfo& params, const LLVOAvatar*& lastAvatar, U64& lastMeshId, bool& skipLastSkin)
+void LLRenderPass::pushRiggedGLTFBatch(const LLRecordPassContext& ctx, LLDrawInfo& params, const LLVOAvatar*& lastAvatar, U64& lastMeshId, bool& skipLastSkin)
 {
     if (uploadMatrixPalette(params.mAvatar, params.mSkinInfo, lastAvatar, lastMeshId, skipLastSkin))
     {
-        pushGLTFBatch(params);
+        pushGLTFBatch(ctx, params);
     }
 }
 

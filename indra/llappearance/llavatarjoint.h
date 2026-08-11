@@ -38,6 +38,12 @@ class LLAvatarJointMesh;
 
 extern const F32 DEFAULT_AVATAR_JOINT_LOD;
 
+struct LLJointRenderFlags
+{
+    bool shadow = false;
+    bool reflection = false;
+};
+
 //-----------------------------------------------------------------------------
 // class LLViewerJoint
 //-----------------------------------------------------------------------------
@@ -96,7 +102,7 @@ public:
     void setMeshesToChildren();
 
     // LLViewerJoint interface
-    virtual U32 render( F32 pixelArea, bool first_pass = true, bool is_dummy = false ) = 0;
+    virtual U32 render( const LLJointRenderFlags& flags, F32 pixelArea, bool first_pass = true, bool is_dummy = false ) = 0;
     virtual void updateFaceSizes(U32 &num_vertices, U32& num_indices, F32 pixel_area);
     virtual void updateFaceData(LLFace *face, F32 pixel_area, bool damp_wind = false, bool terse_update = false);
     virtual bool updateLOD(F32 pixel_area, bool activate);
@@ -128,7 +134,7 @@ public:
     virtual ~LLAvatarJointCollisionVolume() {};
 
     /*virtual*/ bool inheritScale() { return true; }
-    /*virtual*/ U32 render( F32 pixelArea, bool first_pass = true, bool is_dummy = false );
+    /*virtual*/ U32 render( const LLJointRenderFlags& flags, F32 pixelArea, bool first_pass = true, bool is_dummy = false );
 
     void renderCollision();
 

@@ -31,6 +31,7 @@
 #include "v2math.h"
 #include "v3math.h"
 #include "llvertexbuffer.h"
+#include "llrecordpasscontext.h"
 
 class LLFace;
 class LLViewerTexture;
@@ -96,34 +97,34 @@ public:
     void setSkipRenderFlag( bool flag ) { mSkipRender = flag; }
 
     virtual LLViewerTexture *getDebugTexture();
-    virtual void beginRenderPass( S32 pass );
-    virtual void endRenderPass( S32 pass );
+    virtual void beginRenderPass(const LLRecordPassContext& ctx, S32 pass);
+    virtual void endRenderPass(const LLRecordPassContext& ctx, S32 pass);
     virtual S32  getNumPasses();
 
-    virtual void beginDeferredPass(S32 pass);
-    virtual void endDeferredPass(S32 pass);
+    virtual void beginDeferredPass(const LLRecordPassContext& ctx, S32 pass);
+    virtual void endDeferredPass(const LLRecordPassContext& ctx, S32 pass);
     virtual S32 getNumDeferredPasses();
-    virtual void renderDeferred(S32 pass = 0);
+    virtual void renderDeferred(const LLRecordPassContext& ctx, S32 pass = 0);
 
-    virtual void beginPostDeferredPass(S32 pass);
-    virtual void endPostDeferredPass(S32 pass);
+    virtual void beginPostDeferredPass(const LLRecordPassContext& ctx, S32 pass);
+    virtual void endPostDeferredPass(const LLRecordPassContext& ctx, S32 pass);
     virtual S32 getNumPostDeferredPasses();
-    virtual void renderPostDeferred(S32 pass = 0);
+    virtual void renderPostDeferred(const LLRecordPassContext& ctx, S32 pass = 0);
 
-    virtual void beginShadowPass(S32 pass);
-    virtual void endShadowPass(S32 pass);
+    virtual void beginShadowPass(const LLRecordPassContext& ctx, S32 pass);
+    virtual void endShadowPass(const LLRecordPassContext& ctx, S32 pass);
     virtual S32 getNumShadowPasses();
-    virtual void renderShadow(S32 pass = 0);
+    virtual void renderShadow(const LLRecordPassContext& ctx, S32 pass = 0);
 
     // <AYAstorm r30 P2> Velocity-buffer pass (BD lineage). Default impls return
     // 0 / do nothing, so a pool that has no velocity work is a no-op.
-    virtual void beginMotionBlurPass(S32 pass);
-    virtual void endMotionBlurPass(S32 pass);
+    virtual void beginMotionBlurPass(const LLRecordPassContext& ctx, S32 pass);
+    virtual void endMotionBlurPass(const LLRecordPassContext& ctx, S32 pass);
     virtual S32 getNumMotionBlurPasses();
-    virtual void renderMotionBlur(S32 pass = 0);
+    virtual void renderMotionBlur(const LLRecordPassContext& ctx, S32 pass = 0);
     // </AYAstorm r30 P2>
 
-    virtual void render(S32 pass = 0) {};
+    virtual void render(const LLRecordPassContext& ctx, S32 pass = 0) {};
     virtual void prerender() {};
 
     virtual U32 getVertexDataMask() { return 0; } // DEPRECATED -- draw pool doesn't actually determine vertex data mask any more
@@ -368,33 +369,33 @@ public:
     // For rendering that doesn't use LLDrawInfo for some reason
     static void applyModelMatrix(const LLMatrix4* model_matrix);
     static void vkcVerifyDrawModelview(const LLDrawInfo& params);
-    void pushBatches(U32 type, bool texture = true, bool batch_textures = false);
-    void pushUntexturedBatches(U32 type);
-    void pushIndirectBucket(LLVKBucket::Bucket& bucket, const std::vector<U64>& vis_bits, bool textured, bool emit_dyn = true, U64* out_rec = nullptr, U64* out_dyn = nullptr);
-    static void freezeAuthorShadowSources();
+    void pushBatches(const LLRecordPassContext& ctx, U32 type, bool texture = true, bool batch_textures = false);
+    void pushUntexturedBatches(const LLRecordPassContext& ctx, U32 type);
+    void pushIndirectBucket(const LLRecordPassContext& ctx, LLVKBucket::Bucket& bucket, const std::vector<U64>& vis_bits, bool textured, bool emit_dyn = true, U64* out_rec = nullptr, U64* out_dyn = nullptr);
+    static void freezeAuthorShadowSources(LLCullResult* cull);
 
-    void pushRiggedBatches(U32 type, bool texture = true, bool batch_textures = false);
-    void pushUntexturedRiggedBatches(U32 type);
+    void pushRiggedBatches(const LLRecordPassContext& ctx, U32 type, bool texture = true, bool batch_textures = false);
+    void pushUntexturedRiggedBatches(const LLRecordPassContext& ctx, U32 type);
 
     // push full GLTF batches
     // assumes draw infos of given type have valid GLTF materials
-    void pushGLTFBatches(U32 type);
+    void pushGLTFBatches(const LLRecordPassContext& ctx, U32 type);
 
     // like pushGLTFBatches, but will not bind textures or set up texture transforms
-    void pushUntexturedGLTFBatches(U32 type);
+    void pushUntexturedGLTFBatches(const LLRecordPassContext& ctx, U32 type);
 
     // helper function for dispatching to textured or untextured pass based on bool
-    void pushGLTFBatches(U32 type, bool textured);
+    void pushGLTFBatches(const LLRecordPassContext& ctx, U32 type, bool textured);
 
 
     // rigged variants of above
-    void pushRiggedGLTFBatches(U32 type);
-    void pushRiggedGLTFBatches(U32 type, bool textured);
-    void pushUntexturedRiggedGLTFBatches(U32 type);
+    void pushRiggedGLTFBatches(const LLRecordPassContext& ctx, U32 type);
+    void pushRiggedGLTFBatches(const LLRecordPassContext& ctx, U32 type, bool textured);
+    void pushUntexturedRiggedGLTFBatches(const LLRecordPassContext& ctx, U32 type);
 
     // push a single GLTF draw call
-    static void pushGLTFBatch(LLDrawInfo& params);
-    static void pushRiggedGLTFBatch(LLDrawInfo& params, const LLVOAvatar*& lastAvatar, U64& lastMeshId, bool& skipLastSkin);
+    static void pushGLTFBatch(const LLRecordPassContext& ctx, LLDrawInfo& params);
+    static void pushRiggedGLTFBatch(const LLRecordPassContext& ctx, LLDrawInfo& params, const LLVOAvatar*& lastAvatar, U64& lastMeshId, bool& skipLastSkin);
     static void pushUntexturedGLTFBatch(LLDrawInfo& params);
     static void pushUntexturedRiggedGLTFBatch(LLDrawInfo& params, const LLVOAvatar*& lastAvatar, U64& lastMeshId, bool& skipLastSkin);
 
@@ -424,8 +425,8 @@ public:
 
     static thread_local F32 sShadowBatchCullRadius;
 
-    void pushMaskBatches(U32 type, bool texture = true, bool batch_textures = false);
-    void pushRiggedMaskBatches(U32 type, bool texture = true, bool batch_textures = false);
+    void pushMaskBatches(const LLRecordPassContext& ctx, U32 type, bool texture = true, bool batch_textures = false);
+    void pushRiggedMaskBatches(const LLRecordPassContext& ctx, U32 type, bool texture = true, bool batch_textures = false);
     void pushBatch(LLDrawInfo& params, bool texture, bool batch_textures = false);
     void pushUntexturedBatch(LLDrawInfo& params);
     void pushBumpBatch(LLDrawInfo& params, bool texture, bool batch_textures = false);
@@ -442,10 +443,10 @@ public:
     // <AYAstorm r30 P2> Velocity-buffer batch push (BD lineage). Iterate the
     // render map for the given pool type, upload per-object last/current
     // matrices, draw, then store current matrix back into mLastModelMatrix.
-    void pushVelocityBatches(U32 type);
-    void pushRiggedVelocityBatches(U32 type);
-    void pushVelocityBatchesTextured(U32 type);
-    void pushRiggedVelocityBatchesTextured(U32 type);
+    void pushVelocityBatches(const LLRecordPassContext& ctx, U32 type);
+    void pushRiggedVelocityBatches(const LLRecordPassContext& ctx, U32 type);
+    void pushVelocityBatchesTextured(const LLRecordPassContext& ctx, U32 type);
+    void pushRiggedVelocityBatchesTextured(const LLRecordPassContext& ctx, U32 type);
     // On first visible frame of a (avatar, mesh) pair, mLastGLMp is empty;
     // the helper falls back to mGLMp so last_pose == curr_pose → velocity 0,
     // instead of leaving lastMatrixPalette[] holding bones from whatever

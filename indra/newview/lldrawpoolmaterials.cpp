@@ -56,7 +56,7 @@ S32 LLDrawPoolMaterials::getNumDeferredPasses()
     return 12*2;
 }
 
-void LLDrawPoolMaterials::beginDeferredPass(S32 pass)
+void LLDrawPoolMaterials::beginDeferredPass(const LLRecordPassContext& ctx, S32 pass)
 {
     LL_PROFILE_ZONE_SCOPED_CATEGORY_MATERIAL;
 
@@ -99,16 +99,16 @@ void LLDrawPoolMaterials::beginDeferredPass(S32 pass)
     gPipeline.bindDeferredShader(*mShader);
 }
 
-void LLDrawPoolMaterials::endDeferredPass(S32 pass)
+void LLDrawPoolMaterials::endDeferredPass(const LLRecordPassContext& ctx, S32 pass)
 {
     LL_PROFILE_ZONE_SCOPED_CATEGORY_MATERIAL;
 
     mShader->unbind();
 
-    LLRenderPass::endRenderPass(pass);
+    LLRenderPass::endRenderPass(ctx, pass);
 }
 
-void LLDrawPoolMaterials::renderDeferred(S32 pass)
+void LLDrawPoolMaterials::renderDeferred(const LLRecordPassContext& ctx, S32 pass)
 {
     LL_PROFILE_ZONE_SCOPED_CATEGORY_MATERIAL;
     static const U32 type_list[] =
@@ -154,12 +154,12 @@ void LLDrawPoolMaterials::renderDeferred(S32 pass)
         && mShader->mVkUsesHeapSet
         && !gSnapshot)
     {
-        const std::vector<U64>* bits = LLVKBucket::currentVisBits();
+        const std::vector<U64>* bits = LLVKBucket::currentVisBits(ctx);
         if (bits != nullptr)
         {
             for (LLVKBucket::Bucket* bucket : LLVKBucket::bucketsForPass(type))
             {
-                pushIndirectBucket(*bucket, *bits, true);
+                pushIndirectBucket(ctx, *bucket, *bits, true);
             }
             return;
         }
@@ -181,7 +181,7 @@ void LLDrawPoolMaterials::renderDeferred(S32 pass)
 
     const bool mat_bindless = (mShader != nullptr && mShader->mVkUsesHeapSet);
 
-    LLVKBucket::forEachSource(type, [&](LLDrawInfo& params)
+    LLVKBucket::forEachSource(ctx, type, [&](LLDrawInfo& params)
     {
         LL_PROFILE_ZONE_NAMED_CATEGORY_MATERIAL("materials draw loop");
         ++LLVKLoader::gVkPerf.mat_draws;
@@ -286,50 +286,50 @@ S32 LLDrawPoolMaterials::getNumMotionBlurPasses()
     return 1;
 }
 
-void LLDrawPoolMaterials::beginMotionBlurPass(S32 pass)
+void LLDrawPoolMaterials::beginMotionBlurPass(const LLRecordPassContext& ctx, S32 pass)
 {
     LL_PROFILE_ZONE_SCOPED;
     gVelocityProgram.bind();
 }
 
-void LLDrawPoolMaterials::endMotionBlurPass(S32 pass)
+void LLDrawPoolMaterials::endMotionBlurPass(const LLRecordPassContext& ctx, S32 pass)
 {
     LL_PROFILE_ZONE_SCOPED;
     gVelocityProgram.unbind();
 }
 
-void LLDrawPoolMaterials::renderMotionBlur(S32 pass)
+void LLDrawPoolMaterials::renderMotionBlur(const LLRecordPassContext& ctx, S32 pass)
 {
     LL_PROFILE_ZONE_SCOPED;
     LLGLEnable cull(GL_CULL_FACE);
 
-    pushVelocityBatches(LLRenderPass::PASS_MATERIAL);
-    pushVelocityBatches(LLRenderPass::PASS_MATERIAL_ALPHA_MASK);
-    pushVelocityBatches(LLRenderPass::PASS_MATERIAL_ALPHA_EMISSIVE);
-    pushVelocityBatches(LLRenderPass::PASS_SPECMAP);
-    pushVelocityBatches(LLRenderPass::PASS_SPECMAP_MASK);
-    pushVelocityBatches(LLRenderPass::PASS_SPECMAP_EMISSIVE);
-    pushVelocityBatches(LLRenderPass::PASS_NORMMAP);
-    pushVelocityBatches(LLRenderPass::PASS_NORMMAP_MASK);
-    pushVelocityBatches(LLRenderPass::PASS_NORMMAP_EMISSIVE);
-    pushVelocityBatches(LLRenderPass::PASS_NORMSPEC);
-    pushVelocityBatches(LLRenderPass::PASS_NORMSPEC_MASK);
-    pushVelocityBatches(LLRenderPass::PASS_NORMSPEC_EMISSIVE);
+    pushVelocityBatches(ctx, LLRenderPass::PASS_MATERIAL);
+    pushVelocityBatches(ctx, LLRenderPass::PASS_MATERIAL_ALPHA_MASK);
+    pushVelocityBatches(ctx, LLRenderPass::PASS_MATERIAL_ALPHA_EMISSIVE);
+    pushVelocityBatches(ctx, LLRenderPass::PASS_SPECMAP);
+    pushVelocityBatches(ctx, LLRenderPass::PASS_SPECMAP_MASK);
+    pushVelocityBatches(ctx, LLRenderPass::PASS_SPECMAP_EMISSIVE);
+    pushVelocityBatches(ctx, LLRenderPass::PASS_NORMMAP);
+    pushVelocityBatches(ctx, LLRenderPass::PASS_NORMMAP_MASK);
+    pushVelocityBatches(ctx, LLRenderPass::PASS_NORMMAP_EMISSIVE);
+    pushVelocityBatches(ctx, LLRenderPass::PASS_NORMSPEC);
+    pushVelocityBatches(ctx, LLRenderPass::PASS_NORMSPEC_MASK);
+    pushVelocityBatches(ctx, LLRenderPass::PASS_NORMSPEC_EMISSIVE);
 
     gVelocityProgram.bind(true);
 
-    pushRiggedVelocityBatches(LLRenderPass::PASS_MATERIAL_RIGGED);
-    pushRiggedVelocityBatches(LLRenderPass::PASS_MATERIAL_ALPHA_MASK_RIGGED);
-    pushRiggedVelocityBatches(LLRenderPass::PASS_MATERIAL_ALPHA_EMISSIVE_RIGGED);
-    pushRiggedVelocityBatches(LLRenderPass::PASS_SPECMAP_RIGGED);
-    pushRiggedVelocityBatches(LLRenderPass::PASS_SPECMAP_MASK_RIGGED);
-    pushRiggedVelocityBatches(LLRenderPass::PASS_SPECMAP_EMISSIVE_RIGGED);
-    pushRiggedVelocityBatches(LLRenderPass::PASS_NORMMAP_RIGGED);
-    pushRiggedVelocityBatches(LLRenderPass::PASS_NORMMAP_MASK_RIGGED);
-    pushRiggedVelocityBatches(LLRenderPass::PASS_NORMMAP_EMISSIVE_RIGGED);
-    pushRiggedVelocityBatches(LLRenderPass::PASS_NORMSPEC_RIGGED);
-    pushRiggedVelocityBatches(LLRenderPass::PASS_NORMSPEC_MASK_RIGGED);
-    pushRiggedVelocityBatches(LLRenderPass::PASS_NORMSPEC_EMISSIVE_RIGGED);
+    pushRiggedVelocityBatches(ctx, LLRenderPass::PASS_MATERIAL_RIGGED);
+    pushRiggedVelocityBatches(ctx, LLRenderPass::PASS_MATERIAL_ALPHA_MASK_RIGGED);
+    pushRiggedVelocityBatches(ctx, LLRenderPass::PASS_MATERIAL_ALPHA_EMISSIVE_RIGGED);
+    pushRiggedVelocityBatches(ctx, LLRenderPass::PASS_SPECMAP_RIGGED);
+    pushRiggedVelocityBatches(ctx, LLRenderPass::PASS_SPECMAP_MASK_RIGGED);
+    pushRiggedVelocityBatches(ctx, LLRenderPass::PASS_SPECMAP_EMISSIVE_RIGGED);
+    pushRiggedVelocityBatches(ctx, LLRenderPass::PASS_NORMMAP_RIGGED);
+    pushRiggedVelocityBatches(ctx, LLRenderPass::PASS_NORMMAP_MASK_RIGGED);
+    pushRiggedVelocityBatches(ctx, LLRenderPass::PASS_NORMMAP_EMISSIVE_RIGGED);
+    pushRiggedVelocityBatches(ctx, LLRenderPass::PASS_NORMSPEC_RIGGED);
+    pushRiggedVelocityBatches(ctx, LLRenderPass::PASS_NORMSPEC_MASK_RIGGED);
+    pushRiggedVelocityBatches(ctx, LLRenderPass::PASS_NORMSPEC_EMISSIVE_RIGGED);
 }
 // </AYAstorm r30 P2>
 

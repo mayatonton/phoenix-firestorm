@@ -55,7 +55,7 @@ LLDrawPoolTree::LLDrawPoolTree(LLViewerTexture *texturep) :
 }
 
 // deferred implementation
-void LLDrawPoolTree::beginDeferredPass(S32 pass)
+void LLDrawPoolTree::beginDeferredPass(const LLRecordPassContext& ctx, S32 pass)
 {
     LL_RECORD_BLOCK_TIME(FTM_RENDER_TREES);
 
@@ -64,7 +64,7 @@ void LLDrawPoolTree::beginDeferredPass(S32 pass)
     shader->setMinimumAlpha(0.5f);
 }
 
-void LLDrawPoolTree::renderDeferred(S32 pass)
+void LLDrawPoolTree::renderDeferred(const LLRecordPassContext& ctx, S32 pass)
 {
     LL_PROFILE_ZONE_SCOPED;
 
@@ -123,7 +123,7 @@ void LLDrawPoolTree::renderDeferred(S32 pass)
     }
 }
 
-void LLDrawPoolTree::endDeferredPass(S32 pass)
+void LLDrawPoolTree::endDeferredPass(const LLRecordPassContext& ctx, S32 pass)
 {
     LL_RECORD_BLOCK_TIME(FTM_RENDER_TREES);
 
@@ -131,7 +131,7 @@ void LLDrawPoolTree::endDeferredPass(S32 pass)
 }
 
 // shadow implementation
-void LLDrawPoolTree::beginShadowPass(S32 pass)
+void LLDrawPoolTree::beginShadowPass(const LLRecordPassContext& ctx, S32 pass)
 {
     LL_PROFILE_ZONE_SCOPED;
 
@@ -143,9 +143,9 @@ void LLDrawPoolTree::beginShadowPass(S32 pass)
     gDeferredTreeShadowProgram.setMinimumAlpha(0.5f);
 }
 
-void LLDrawPoolTree::renderShadow(S32 pass)
+void LLDrawPoolTree::renderShadow(const LLRecordPassContext& ctx, S32 pass)
 {
-    renderDeferred(pass);
+    renderDeferred(ctx, pass);
 }
 
 // <AYAstorm r30 P2> Motion blur / velocity pass (BD lineage, NiranV Dean,
@@ -158,19 +158,19 @@ S32 LLDrawPoolTree::getNumMotionBlurPasses()
     return 1;
 }
 
-void LLDrawPoolTree::beginMotionBlurPass(S32 pass)
+void LLDrawPoolTree::beginMotionBlurPass(const LLRecordPassContext& ctx, S32 pass)
 {
     LL_PROFILE_ZONE_SCOPED;
     gVelocityProgram.bind();
 }
 
-void LLDrawPoolTree::endMotionBlurPass(S32 pass)
+void LLDrawPoolTree::endMotionBlurPass(const LLRecordPassContext& ctx, S32 pass)
 {
     LL_PROFILE_ZONE_SCOPED;
     gVelocityProgram.unbind();
 }
 
-void LLDrawPoolTree::renderMotionBlur(S32 pass)
+void LLDrawPoolTree::renderMotionBlur(const LLRecordPassContext& ctx, S32 pass)
 {
     LL_PROFILE_ZONE_SCOPED;
     LLGLEnable cull(GL_CULL_FACE);
@@ -211,7 +211,7 @@ void LLDrawPoolTree::renderMotionBlur(S32 pass)
 }
 // </AYAstorm r30 P2>
 
-void LLDrawPoolTree::endShadowPass(S32 pass)
+void LLDrawPoolTree::endShadowPass(const LLRecordPassContext& ctx, S32 pass)
 {
     LL_PROFILE_ZONE_SCOPED;
 

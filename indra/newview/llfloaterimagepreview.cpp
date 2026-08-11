@@ -982,7 +982,7 @@ bool LLImagePreviewAvatar::render()
         {
             LLDrawPoolAvatar *avatarPoolp = (LLDrawPoolAvatar *)face->getPool();
             gPipeline.enableLightsPreview();
-            avatarPoolp->renderAvatars(avatarp);  // renders only one avatar
+            avatarPoolp->renderAvatars(LLPipeline::buildRecordPassContext(), avatarp);  // renders only one avatar
         }
     }
 

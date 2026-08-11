@@ -65,7 +65,7 @@ LLFetchedGLTFMaterial& LLFetchedGLTFMaterial::operator=(const LLFetchedGLTFMater
     return *this;
 }
 
-void LLFetchedGLTFMaterial::bind(LLViewerTexture* media_tex)
+void LLFetchedGLTFMaterial::bind(const LLRecordPassContext& ctx, LLViewerTexture* media_tex)
 {
     // glTF 2.0 Specification 3.9.4. Alpha Coverage
     // mAlphaCutoff is only valid for LLGLTFMaterial::ALPHA_MODE_MASK
@@ -77,7 +77,7 @@ void LLFetchedGLTFMaterial::bind(LLViewerTexture* media_tex)
     LLViewerTexture* baseColorTex = media_tex ? media_tex : mBaseColorTexture;
     LLViewerTexture* emissiveTex = media_tex ? media_tex : mEmissiveTexture;
 
-    if (!LLPipelineFrameContext::getInstance().isShadowPass() || (mAlphaMode == LLGLTFMaterial::ALPHA_MODE_MASK))
+    if (!ctx.shadowPass || (mAlphaMode == LLGLTFMaterial::ALPHA_MODE_MASK))
     {
         if (mAlphaMode == LLGLTFMaterial::ALPHA_MODE_MASK)
         {
@@ -95,7 +95,7 @@ void LLFetchedGLTFMaterial::bind(LLViewerTexture* media_tex)
         shader->bindTexture(LLShaderMgr::DIFFUSE_MAP, LLViewerFetchedTexture::sWhiteImagep);
     }
 
-    if (!LLPipelineFrameContext::getInstance().isShadowPass())
+    if (!ctx.shadowPass)
     {
         if (mNormalTexture.notNull() && mNormalTexture->getDiscardLevel() <= 4)
         {

@@ -72,7 +72,7 @@ LLViewerTexture *LLDrawPoolWLSky::getDebugTexture()
     return NULL;
 }
 
-void LLDrawPoolWLSky::beginDeferredPass(S32 pass)
+void LLDrawPoolWLSky::beginDeferredPass(const LLRecordPassContext& ctx, S32 pass)
 {
     sky_shader = &gDeferredWLSkyProgram;
     cloud_shader = &gDeferredWLCloudProgram;
@@ -82,7 +82,7 @@ void LLDrawPoolWLSky::beginDeferredPass(S32 pass)
     moon_shader = &gDeferredWLMoonProgram;
 }
 
-void LLDrawPoolWLSky::endDeferredPass(S32 pass)
+void LLDrawPoolWLSky::endDeferredPass(const LLRecordPassContext& ctx, S32 pass)
 {
     sky_shader   = nullptr;
     cloud_shader = nullptr;
@@ -93,7 +93,7 @@ void LLDrawPoolWLSky::endDeferredPass(S32 pass)
     LLRenderTarget::clearBoundTarget(GL_DEPTH_BUFFER_BIT);
 }
 
-void LLDrawPoolWLSky::renderDome(const LLVector3& camPosLocal, F32 camHeightLocal, LLGLSLShader * shader) const
+void LLDrawPoolWLSky::renderDome(const LLRecordPassContext& ctx, const LLVector3& camPosLocal, F32 camHeightLocal, LLGLSLShader * shader) const
 {
     llassert_always(NULL != shader);
 
@@ -101,7 +101,7 @@ void LLDrawPoolWLSky::renderDome(const LLVector3& camPosLocal, F32 camHeightLoca
     gGL.pushMatrix();
 
     //chop off translation
-    if (LLPipelineFrameContext::getInstance().isReflectionPass() && camPosLocal.mV[2] > 256.f)
+    if (ctx.reflectionPass && camPosLocal.mV[2] > 256.f)
     {
         gGL.translatef(camPosLocal.mV[0], camPosLocal.mV[1], 256.f-camPosLocal.mV[2]*0.5f);
     }
@@ -277,7 +277,7 @@ void LLDrawPoolWLSky::writeWindlightAtmosUBOs()
     LLVKLoader::writeCurrentWindlightHDRUBO(hdr_data);
 }
 
-void LLDrawPoolWLSky::renderSkyHazeDeferred(const LLVector3& camPosLocal, F32 camHeightLocal) const
+void LLDrawPoolWLSky::renderSkyHazeDeferred(const LLRecordPassContext& ctx, const LLVector3& camPosLocal, F32 camHeightLocal) const
 {
     if (!gSky.mVOSkyp)
     {
@@ -364,13 +364,13 @@ void LLDrawPoolWLSky::renderSkyHazeDeferred(const LLVector3& camPosLocal, F32 ca
         }
 
         /// Render the skydome
-        renderDome(origin, camHeightLocal, sky_shader);
+        renderDome(ctx, origin, camHeightLocal, sky_shader);
 
         sky_shader->unbind();
     }
 }
 
-void LLDrawPoolWLSky::renderStarsDeferred(const LLVector3& camPosLocal) const
+void LLDrawPoolWLSky::renderStarsDeferred(const LLRecordPassContext& ctx, const LLVector3& camPosLocal) const
 {
     if (!gSky.mVOSkyp || use_hdri_sky())
     {
@@ -419,7 +419,7 @@ void LLDrawPoolWLSky::renderStarsDeferred(const LLVector3& camPosLocal) const
     gGL.pushMatrix();
     gGL.translatef(camPosLocal.mV[0], camPosLocal.mV[1], camPosLocal.mV[2]);
     gGL.rotatef(gFrameTimeSeconds*0.01f, 0.f, 0.f, 1.f);
-    if (LLPipelineFrameContext::getInstance().isReflectionPass())
+    if (ctx.reflectionPass)
     {
         star_alpha = 1.0f;
     }
@@ -444,7 +444,7 @@ void LLDrawPoolWLSky::renderStarsDeferred(const LLVector3& camPosLocal) const
     gGL.popMatrix();
 }
 
-void LLDrawPoolWLSky::renderSkyCloudsDeferred(const LLVector3& camPosLocal, F32 camHeightLocal, LLGLSLShader* cloudshader) const
+void LLDrawPoolWLSky::renderSkyCloudsDeferred(const LLRecordPassContext& ctx, const LLVector3& camPosLocal, F32 camHeightLocal, LLGLSLShader* cloudshader) const
 {
     if (use_hdri_sky())
     {
@@ -544,7 +544,7 @@ void LLDrawPoolWLSky::renderSkyCloudsDeferred(const LLVector3& camPosLocal, F32 
         }
 
         /// Render the skydome
-        renderDome(camPosLocal, camHeightLocal, cloudshader);
+        renderDome(ctx, camPosLocal, camHeightLocal, cloudshader);
 
         cloudshader->unbind();
 
@@ -683,7 +683,7 @@ void LLDrawPoolWLSky::renderHeavenlyBodies()
     gGL.popMatrix();
 }
 
-void LLDrawPoolWLSky::renderDeferred(S32 pass)
+void LLDrawPoolWLSky::renderDeferred(const LLRecordPassContext& ctx, S32 pass)
 {
     LL_PROFILE_ZONE_SCOPED_CATEGORY_DRAWPOOL; //LL_RECORD_BLOCK_TIME(FTM_RENDER_WL_SKY);
     if (!gPipeline.hasRenderType(LLPipeline::RENDER_TYPE_SKY) || gSky.mVOSkyp.isNull())
@@ -701,16 +701,16 @@ void LLDrawPoolWLSky::renderDeferred(S32 pass)
 
     if (gPipeline.canUseWindLightShaders())
     {
-        renderSkyHazeDeferred(origin, camHeightLocal);
+        renderSkyHazeDeferred(ctx, origin, camHeightLocal);
         renderHeavenlyBodies();
         if (!gCubeSnapshot)
         {
-            renderStarsDeferred(origin);
+            renderStarsDeferred(ctx, origin);
         }
 
         if (!gCubeSnapshot || gPipeline.mReflectionMapManager.isRadiancePass()) // don't draw clouds in irradiance maps to avoid popping
         {
-            renderSkyCloudsDeferred(origin, camHeightLocal, cloud_shader);
+            renderSkyCloudsDeferred(ctx, origin, camHeightLocal, cloud_shader);
         }
     }
 }

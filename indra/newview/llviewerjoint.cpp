@@ -60,7 +60,7 @@ LLViewerJoint::~LLViewerJoint()
 }
 
 // render()
-U32 LLViewerJoint::render( F32 pixelArea, bool first_pass, bool is_dummy )
+U32 LLViewerJoint::render( const LLJointRenderFlags& flags, F32 pixelArea, bool first_pass, bool is_dummy )
 {
 
     U32 triangle_count = 0;
@@ -73,11 +73,11 @@ U32 LLViewerJoint::render( F32 pixelArea, bool first_pass, bool is_dummy )
         {
             triangle_count += drawShape( pixelArea, first_pass, is_dummy );
         }
-        else if (LLPipelineFrameContext::getInstance().isShadowPass())
+        else if (flags.shadow)
         {
             triangle_count += drawShape(pixelArea, first_pass, is_dummy );
         }
-        else if ( isTransparent() && !LLPipelineFrameContext::getInstance().isReflectionPass())
+        else if ( isTransparent() && !flags.reflection)
         {
             // Hair and Skirt
             if ((pixelArea > MIN_PIXEL_AREA_3PASS_HAIR))
@@ -131,7 +131,7 @@ U32 LLViewerJoint::render( F32 pixelArea, bool first_pass, bool is_dummy )
         F32 jointLOD = joint->getLOD();
         if (pixelArea >= jointLOD || sDisableLOD)
         {
-            triangle_count += joint->render( pixelArea, true, is_dummy );
+            triangle_count += joint->render( flags, pixelArea, true, is_dummy );
 
             if (jointLOD != DEFAULT_AVATAR_JOINT_LOD)
             {

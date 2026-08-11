@@ -57,6 +57,8 @@ public:
     void setUnderWaterRendering(bool b)       { mUnderWaterRendering = b; }
     bool isReflectionProbesEnabled()    const { return mReflectionProbesEnabled; }
     void setReflectionProbesEnabled(bool b)   { mReflectionProbesEnabled = b; }
+    F32  getAvatarMinimumAlpha()        const { return mAvatarMinimumAlpha; }
+    void setAvatarMinimumAlpha(F32 a)         { mAvatarMinimumAlpha = a; }
 
     LLViewerCamera::eCameraID getCurCameraID() const  { return LLViewerCamera::getCurCameraID(); }
     void                      setCurCameraID(LLViewerCamera::eCameraID id) { LLViewerCamera::setCurCameraID(id); }
@@ -113,6 +115,7 @@ private:
     bool mRenderingDeferred;
     bool mUnderWaterRendering;
     bool mReflectionProbesEnabled;
+    F32  mAvatarMinimumAlpha = 0.2f;
 };
 
 #endif // LL_LLPIPELINEFRAMECONTEXT_H

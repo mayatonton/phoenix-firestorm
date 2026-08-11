@@ -41,7 +41,7 @@ void LLDrawPoolSky::prerender()
 {
 }
 
-void LLDrawPoolSky::render(S32 pass)
+void LLDrawPoolSky::render(const LLRecordPassContext& ctx, S32 pass)
 {
 
 }
@@ -51,7 +51,7 @@ void LLDrawPoolSky::renderSkyFace(U8 index)
 
 }
 
-void LLDrawPoolSky::endRenderPass( S32 pass )
+void LLDrawPoolSky::endRenderPass(const LLRecordPassContext& ctx, S32 pass)
 {
 }
 

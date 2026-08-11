@@ -57,20 +57,20 @@ public:
 
     U32 getVertexDataMask() override { return VERTEX_DATA_MASK; }
 
-    void render(S32 pass = 0) override { }
+    void render(const LLRecordPassContext& ctx, S32 pass = 0) override { }
     S32  getNumPasses() override {return 0;}
     void prerender() override;
 
     S32 getNumDeferredPasses() override;
-    void beginDeferredPass(S32 pass) override;
-    void endDeferredPass(S32 pass) override;
-    void renderDeferred(S32 pass) override;
+    void beginDeferredPass(const LLRecordPassContext& ctx, S32 pass) override;
+    void endDeferredPass(const LLRecordPassContext& ctx, S32 pass) override;
+    void renderDeferred(const LLRecordPassContext& ctx, S32 pass) override;
 
     // <AYAstorm r30 P2>
     S32 getNumMotionBlurPasses() override;
-    void beginMotionBlurPass(S32 pass) override;
-    void endMotionBlurPass(S32 pass) override;
-    void renderMotionBlur(S32 pass) override;
+    void beginMotionBlurPass(const LLRecordPassContext& ctx, S32 pass) override;
+    void endMotionBlurPass(const LLRecordPassContext& ctx, S32 pass) override;
+    void renderMotionBlur(const LLRecordPassContext& ctx, S32 pass) override;
     // </AYAstorm r30 P2>
 
 };

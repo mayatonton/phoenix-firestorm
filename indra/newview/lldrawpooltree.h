@@ -46,20 +46,20 @@ public:
     LLDrawPoolTree(LLViewerTexture *texturep);
 
     /*virtual*/ S32 getNumDeferredPasses() { return 1; }
-    /*virtual*/ void beginDeferredPass(S32 pass);
-    /*virtual*/ void endDeferredPass(S32 pass);
-    /*virtual*/ void renderDeferred(S32 pass);
+    /*virtual*/ void beginDeferredPass(const LLRecordPassContext& ctx, S32 pass);
+    /*virtual*/ void endDeferredPass(const LLRecordPassContext& ctx, S32 pass);
+    /*virtual*/ void renderDeferred(const LLRecordPassContext& ctx, S32 pass);
 
     /*virtual*/ S32 getNumShadowPasses() { return 1; }
-    /*virtual*/ void beginShadowPass(S32 pass);
-    /*virtual*/ void endShadowPass(S32 pass);
-    /*virtual*/ void renderShadow(S32 pass);
+    /*virtual*/ void beginShadowPass(const LLRecordPassContext& ctx, S32 pass);
+    /*virtual*/ void endShadowPass(const LLRecordPassContext& ctx, S32 pass);
+    /*virtual*/ void renderShadow(const LLRecordPassContext& ctx, S32 pass);
 
     // <AYAstorm r30 P2> motion blur / velocity pass (BD lineage)
     /*virtual*/ S32 getNumMotionBlurPasses() override;
-    /*virtual*/ void beginMotionBlurPass(S32 pass) override;
-    /*virtual*/ void endMotionBlurPass(S32 pass) override;
-    /*virtual*/ void renderMotionBlur(S32 pass) override;
+    /*virtual*/ void beginMotionBlurPass(const LLRecordPassContext& ctx, S32 pass) override;
+    /*virtual*/ void endMotionBlurPass(const LLRecordPassContext& ctx, S32 pass) override;
+    /*virtual*/ void renderMotionBlur(const LLRecordPassContext& ctx, S32 pass) override;
     // </AYAstorm r30 P2>
 
     /*virtual*/ bool verify() const;

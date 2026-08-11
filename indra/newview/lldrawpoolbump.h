@@ -54,32 +54,32 @@ public:
 
     /*virtual*/ void prerender() override;
 
-    void pushBumpBatches(U32 type);
+    void pushBumpBatches(const LLRecordPassContext& ctx, U32 type);
 
     S32 numBumpPasses();
 
-    void beginFullbrightShiny();
-    void renderFullbrightShiny();
+    void beginFullbrightShiny(const LLRecordPassContext& ctx);
+    void renderFullbrightShiny(const LLRecordPassContext& ctx);
     void endFullbrightShiny();
 
     void beginBump();
-    void renderBump(U32 pass = LLRenderPass::PASS_BUMP);
+    void renderBump(const LLRecordPassContext& ctx, U32 pass = LLRenderPass::PASS_BUMP);
     void endBump(U32 pass = LLRenderPass::PASS_BUMP);
 
     static void bindCubeMap(LLGLSLShader* shader, S32 shader_level, S32& diffuse_channel, S32& cube_channel);
     static void unbindCubeMap(LLGLSLShader* shader, S32 shader_level, S32& diffuse_channel, S32& cube_channel);
 
     virtual S32 getNumDeferredPasses() override;
-    /*virtual*/ void renderDeferred(S32 pass) override;
+    /*virtual*/ void renderDeferred(const LLRecordPassContext& ctx, S32 pass) override;
 
     virtual S32 getNumPostDeferredPasses() override { return 1; }
-    /*virtual*/ void renderPostDeferred(S32 pass) override;
+    /*virtual*/ void renderPostDeferred(const LLRecordPassContext& ctx, S32 pass) override;
 
     // <AYAstorm r30 P2>
     S32 getNumMotionBlurPasses() override;
-    void beginMotionBlurPass(S32 pass) override;
-    void endMotionBlurPass(S32 pass) override;
-    void renderMotionBlur(S32 pass) override;
+    void beginMotionBlurPass(const LLRecordPassContext& ctx, S32 pass) override;
+    void endMotionBlurPass(const LLRecordPassContext& ctx, S32 pass) override;
+    void renderMotionBlur(const LLRecordPassContext& ctx, S32 pass) override;
     // </AYAstorm r30 P2>
 
     static bool bindBumpMap(LLDrawInfo& params, S32 channel = -2);

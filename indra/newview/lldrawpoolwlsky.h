@@ -46,9 +46,9 @@ public:
     /*virtual*/ bool isDead() { return false; }
 
     /*virtual*/ S32 getNumDeferredPasses() { return 1; }
-    /*virtual*/ void beginDeferredPass(S32 pass);
-    /*virtual*/ void endDeferredPass(S32 pass);
-    /*virtual*/ void renderDeferred(S32 pass);
+    /*virtual*/ void beginDeferredPass(const LLRecordPassContext& ctx, S32 pass);
+    /*virtual*/ void endDeferredPass(const LLRecordPassContext& ctx, S32 pass);
+    /*virtual*/ void renderDeferred(const LLRecordPassContext& ctx, S32 pass);
 
     /*virtual*/ LLViewerTexture *getDebugTexture();
     /*virtual*/ U32 getVertexDataMask() { return SKY_VERTEX_DATA_MASK; }
@@ -66,12 +66,12 @@ public:
 
     static void writeWindlightAtmosUBOs();
 private:
-    void renderDome(const LLVector3& camPosLocal, F32 camHeightLocal, LLGLSLShader * shader) const;
+    void renderDome(const LLRecordPassContext& ctx, const LLVector3& camPosLocal, F32 camHeightLocal, LLGLSLShader * shader) const;
 
-    void renderSkyHazeDeferred(const LLVector3& camPosLocal, F32 camHeightLocal) const;
-    void renderSkyCloudsDeferred(const LLVector3& camPosLocal, F32 camHeightLocal, LLGLSLShader* cloudshader) const;
+    void renderSkyHazeDeferred(const LLRecordPassContext& ctx, const LLVector3& camPosLocal, F32 camHeightLocal) const;
+    void renderSkyCloudsDeferred(const LLRecordPassContext& ctx, const LLVector3& camPosLocal, F32 camHeightLocal, LLGLSLShader* cloudshader) const;
 
-    void renderStarsDeferred(const LLVector3& camPosLocal) const;
+    void renderStarsDeferred(const LLRecordPassContext& ctx, const LLVector3& camPosLocal) const;
     void renderHeavenlyBodies();
 };
 

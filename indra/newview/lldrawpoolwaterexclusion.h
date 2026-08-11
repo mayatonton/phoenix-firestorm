@@ -52,9 +52,9 @@ public:
 
     virtual void prerender() {}
 
-    virtual void render(S32 pass = 0);
-    virtual void beginRenderPass(S32 pass) {}
-    virtual void endRenderPass(S32 pass) {}
+    virtual void render(const LLRecordPassContext& ctx, S32 pass = 0);
+    virtual void beginRenderPass(const LLRecordPassContext& ctx, S32 pass) {}
+    virtual void endRenderPass(const LLRecordPassContext& ctx, S32 pass) {}
     virtual S32  getNumPasses() { return 1; }
 
 };
