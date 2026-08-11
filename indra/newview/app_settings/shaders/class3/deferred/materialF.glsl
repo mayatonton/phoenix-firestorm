@@ -310,7 +310,7 @@ out vec4 frag_data[4];
 
 #ifdef LL_VULKAN_GLSL
 #if defined(AYA_MAT_HEAP) || (defined(AYA_BINDLESS_MAT) && (DIFFUSE_ALPHA_MODE != DIFFUSE_ALPHA_MODE_BLEND))
-struct AyaDrawData { uvec4 tex_slots; vec4 spec_color; vec4 misc; vec4 misc2; };
+struct AyaDrawData { uvec4 tex_slots; vec4 spec_color; vec4 misc; float object_alpha; uint normal_slot; uint specular_slot; uint dd_pad; };
 layout(set = 2, binding = 0, std430) readonly buffer AyaDrawDataBlock { AyaDrawData aya_dd[]; };
 layout(location = 19) flat in int aya_draw_id;
 #endif
@@ -327,7 +327,7 @@ uniform sampler2D diffuseMap;  //always in sRGB space
 #ifdef HAS_NORMAL_MAP
 #ifdef LL_VULKAN_GLSL
 #ifdef AYA_MAT_HEAP
-#define bumpMap ayaTexHeap[nonuniformEXT(aya_dd[aya_draw_id].tex_slots.y)]
+#define bumpMap ayaTexHeap[nonuniformEXT(aya_dd[aya_draw_id].normal_slot)]
 #else
 layout(set = 1, binding = 3) uniform sampler2D bumpMap;
 #endif
@@ -339,7 +339,7 @@ uniform sampler2D bumpMap;
 #ifdef HAS_SPECULAR_MAP
 #ifdef LL_VULKAN_GLSL
 #ifdef AYA_MAT_HEAP
-#define specularMap ayaTexHeap[nonuniformEXT(aya_dd[aya_draw_id].tex_slots.z)]
+#define specularMap ayaTexHeap[nonuniformEXT(aya_dd[aya_draw_id].specular_slot)]
 #else
 layout(set = 1, binding = 4) uniform sampler2D specularMap;
 #endif

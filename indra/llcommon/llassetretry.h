@@ -6,6 +6,7 @@
 #include <cstdlib>
 
 constexpr U8 ASSET_RETRY_LIMIT = 8;
+constexpr F32 ASSET_RETRY_DRAWN_CAP_SEC = 32.f;
 
 inline std::atomic<U32> gAssetOracleTexStuck{0};
 inline std::atomic<U32> gAssetOracleWearPending{0};

@@ -122,11 +122,11 @@ constexpr U8 MDI_SITE_VB_SINGLE   = 7;
 void mdiAuthor(U32 id, U64 content_hash, const void* src, U8 site = MDI_SITE_UNKNOWN);
 void mdiReference(U32 id, const void* src, U8 site = MDI_SITE_UNKNOWN);
 
-// slot[0..12]（GPU が実読する DrawData の全フィールド）の 64bit 指紋
+// slot[0..14]（GPU が実読する DrawData の全フィールド）の 64bit 指紋
 inline U64 mdiHash(const U32* slots)
 {
     U64 h = 1469598103934665603ULL;
-    for (int i = 0; i < 13; ++i) { h ^= (U64)slots[i]; h *= 1099511628211ULL; }
+    for (int i = 0; i < 15; ++i) { h ^= (U64)slots[i]; h *= 1099511628211ULL; }
     return h;
 }
 

@@ -144,6 +144,7 @@ public:
     bool commitVkBacking(const VkBacking& b);
     void publishStagedVkBacking();
     void discardStagedVkBacking();
+    bool hasStagedVkBacking() const { return mVkRes.hasStaged(); }
     void resampleVkSlot();
     U32  ensureVkSlot();
 

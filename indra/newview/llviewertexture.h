@@ -144,6 +144,8 @@ public:
     S32 getTextureListType() { return mTextureListType; }
 
     void addTextureStats(F32 virtual_size, bool needs_gltexture = true) const;
+    void noteDrawnDemand() { mDrawnDemandEver = true; mDrawnDemandTimer.reset(); }
+    bool hasRecentDrawnDemand() const { return mDrawnDemandEver && mDrawnDemandTimer.getElapsedTimeF32() < 5.f; }
     void resetTextureStats();
     void setMaxVirtualSizeResetInterval(S32 interval)const {mMaxVirtualSizeResetInterval = interval;}
     void resetMaxVirtualSizeResetCounter()const {mMaxVirtualSizeResetCounter = mMaxVirtualSizeResetInterval;}
@@ -213,6 +215,8 @@ protected:
     F32 mLastPriScanTime = -1000.f;
     F32 mCachedPriVsize = 0.f;
     LLFrameTimer mLastReferencedTimer;
+    LLFrameTimer mDrawnDemandTimer;
+    bool mDrawnDemandEver = false;
 
     ll_face_list_t    mFaceList[LLRender::NUM_TEXTURE_CHANNELS]; //reverse pointer pointing to the faces using this image as texture
     U32               mNumFaces[LLRender::NUM_TEXTURE_CHANNELS];

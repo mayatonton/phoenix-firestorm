@@ -1598,6 +1598,8 @@ namespace LLVKLoader
         std::atomic<U64> tex_pub{0};
         std::atomic<U64> tex_fail{0};
         std::atomic<U64> tex_dec{0};
+        std::atomic<U64> tex_floor{0};
+        std::atomic<U64> tex_strand{0};
         std::atomic<U64> img_pri_skip{0};
         std::atomic<U64> img_pri_full{0};
         std::atomic<U64> geo_enq{0};
@@ -1668,7 +1670,7 @@ namespace LLVKLoader
             for (auto& v : img_us) v = 0;
             for (auto& v : mlp_us) v = 0;
             for (auto& v : gupd_us) v = 0;
-            tex_enq = 0; tex_pub = 0; tex_fail = 0; tex_dec = 0;
+            tex_enq = 0; tex_pub = 0; tex_fail = 0; tex_dec = 0; tex_floor = 0; tex_strand = 0;
             img_pri_skip = 0; img_pri_full = 0;
             geo_enq = 0; geo_pub = 0; geo_pub_us = 0; geo_dis = 0; geo_inl = 0; geo_defer = 0;
             geo_snap_bytes = 0;

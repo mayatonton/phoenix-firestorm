@@ -1740,7 +1740,7 @@ bool LLGLSLShader::generatePerProgramSPIRV(const std::vector<StageSource>& stage
     }
 
     HBXXH128 program_hash_obj;
-    program_hash_obj.update(std::string("vulkanize:v5_p2_inout_pair_prepass_group_fix"));
+    program_hash_obj.update(std::string("vulkanize:v6_drawdata_layout_unify"));
     program_hash_obj.update(std::string("auto_loc=1"));
     program_hash_obj.update(std::string("spv_debug_names=1"));
     program_hash_obj.update(std::string("key:v2_full_concat"));

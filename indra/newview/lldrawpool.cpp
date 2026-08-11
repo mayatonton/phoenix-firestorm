@@ -514,29 +514,73 @@ LLRenderPass::~LLRenderPass()
 
 }
 
-void LLRenderPass::computeDrawDataSlots(const LLDrawInfo* params, bool batch_textures, U32* slots)
+namespace
+{
+    constexpr F32 DRAWN_TEXTURE_DEMAND_FLOOR = 4096.f;
+
+    LLImageGL* drawSupplyGL(LLViewerTexture* t)
+    {
+        if (t == nullptr)
+        {
+            return nullptr;
+        }
+        if (t->isMissingAsset() && !t->hasGLTexture())
+        {
+            return nullptr;
+        }
+        return t->getGLTexture();
+    }
+}
+
+void LLRenderPass::demandDrawInfoTextures(const LLDrawInfo* params)
+{
+    if (params == nullptr)
+    {
+        return;
+    }
+    auto feed = [](LLViewerTexture* t)
+    {
+        if (t != nullptr && !t->isMissingAsset() && !t->hasGLTexture())
+        {
+            t->addTextureStats(DRAWN_TEXTURE_DEMAND_FLOOR);
+            t->noteDrawnDemand();
+            ++LLVKLoader::gVkPerf.tex_floor;
+        }
+    };
+    feed(params->mTexture.get());
+    for (const LLPointer<LLViewerTexture>& t : params->mTextureList)
+    {
+        feed(t.get());
+    }
+    feed(params->mNormalMap.get());
+    feed(params->mSpecularMap.get());
+    if (params->mGLTFMaterial.notNull())
+    {
+        feed(params->mGLTFMaterial->mBaseColorTexture.get());
+        feed(params->mGLTFMaterial->mNormalTexture.get());
+        feed(params->mGLTFMaterial->mMetallicRoughnessTexture.get());
+        feed(params->mGLTFMaterial->mEmissiveTexture.get());
+    }
+}
+
+void LLRenderPass::computeDrawDataSlots(const LLDrawInfo* params, U32* slots)
 {
     slots[0] = slots[1] = slots[2] = slots[3] = 0;
-    if (params != nullptr && batch_textures && params->mTextureList.size() > 1)
+    if (params != nullptr && params->mTextureList.size() > 1)
     {
         const U32 n = llmin((U32)params->mTextureList.size(), 4u);
         for (U32 i = 0; i < n; ++i)
         {
-            LLTexture* t = params->mTextureList[i].get();
-            slots[i] = LLImageGL::vkHeapSlotOrDefault(t ? t->getGLTexture() : nullptr);
+            slots[i] = LLImageGL::vkHeapSlotOrDefault(drawSupplyGL(params->mTextureList[i].get()));
+        }
+        if (params->mTextureList[0].isNull() && params->mTexture.notNull())
+        {
+            slots[0] = LLImageGL::vkHeapSlotOrDefault(drawSupplyGL(params->mTexture.get()));
         }
     }
     else if (params != nullptr && params->mTexture.notNull())
     {
-        slots[0] = LLImageGL::vkHeapSlotOrDefault(params->mTexture->getGLTexture());
-        if (params->mNormalMap.notNull())
-        {
-            slots[1] = LLImageGL::vkHeapSlotOrDefault(params->mNormalMap->getGLTexture());
-        }
-        if (params->mSpecularMap.notNull())
-        {
-            slots[2] = LLImageGL::vkHeapSlotOrDefault(params->mSpecularMap->getGLTexture());
-        }
+        slots[0] = LLImageGL::vkHeapSlotOrDefault(drawSupplyGL(params->mTexture.get()));
     }
     else
     {
@@ -559,11 +603,33 @@ void LLRenderPass::computeDrawDataSlots(const LLDrawInfo* params, bool batch_tex
         memcpy(&slots[10], &minimum_alpha,       sizeof(F32));
         memcpy(&slots[11], &aya_sss_skin_flag,   sizeof(F32));
         memcpy(&slots[12], &object_alpha,        sizeof(F32));
+        if (params->mNormalMap.notNull())
+        {
+            slots[13] = LLImageGL::vkHeapSlotOrDefault(drawSupplyGL(params->mNormalMap.get()));
+        }
+        if (params->mSpecularMap.notNull())
+        {
+            slots[14] = LLImageGL::vkHeapSlotOrDefault(drawSupplyGL(params->mSpecularMap.get()));
+        }
     }
 }
 
-U32 LLRenderPass::establishPerDrawId(LLDrawInfo* params, LLGLSLShader* cur, bool batch_textures)
+bool LLRenderPass::authorRecordDrawData(LLDrawInfo& rec, U8 site)
 {
+    demandDrawInfoTextures(&rec);
+    U32 slots[LLVKLoader::DRAWDATA_SLOT_UINTS];
+    computeDrawDataSlots(&rec, slots);
+    if (!rec.ensureVkDrawDataSlot(slots))
+    {
+        return false;
+    }
+    mdiAuthorAndCheck(&rec, slots, rec.mVkDrawDataSlot, site);
+    return true;
+}
+
+U32 LLRenderPass::establishPerDrawId(LLDrawInfo* params, LLGLSLShader* cur)
+{
+    demandDrawInfoTextures(params);
     if (!LLVKLoader::isVulkanInitialized() || cur == nullptr)
     {
         return LLVKLoader::PERDRAW_SLOT_INHERIT;
@@ -576,7 +642,7 @@ U32 LLRenderPass::establishPerDrawId(LLDrawInfo* params, LLGLSLShader* cur, bool
     U32 slots[LLVKLoader::DRAWDATA_SLOT_UINTS] = {};
     if (params != nullptr)
     {
-        computeDrawDataSlots(params, batch_textures, slots);
+        computeDrawDataSlots(params, slots);
     }
     else if (cur->mVkUsesHeapSet)
     {
@@ -606,14 +672,14 @@ U32 LLRenderPass::establishPerDrawId(LLDrawInfo* params, LLGLSLShader* cur, bool
     LLVKLoader::commitPerDrawID(id, cur->mVkUsesSkinSet, skin_avatar, skin_hash);
 
     // MDI 供給検証器: α author + β heap-identity(多テクスチャ)
-    mdiAuthorAndCheck(params, slots, id, batch_textures, LLVKContract::MDI_SITE_ESTABLISH);
+    mdiAuthorAndCheck(params, slots, id, LLVKContract::MDI_SITE_ESTABLISH);
     return id;
 }
 
 // MDI 供給検証器(docs/vknative_mdi_supply_verifier.md §5.1/§6.1)。
 // α = DrawData 16-uint 指紋を shadow に stamp。β = 各テクスチャ slot の heap 実体が
 // 当該 draw の tex view を保持しているか照合(番号正・実体別=当初 particle 混入)。
-void LLRenderPass::mdiAuthorAndCheck(const LLDrawInfo* params, const U32* slots, U32 id, bool batch_textures, U8 site)
+void LLRenderPass::mdiAuthorAndCheck(const LLDrawInfo* params, const U32* slots, U32 id, U8 site)
 {
     LLVKContract::mdiAuthor(id, LLVKContract::mdiHash(slots), (const void*)params, site);
 
@@ -626,16 +692,15 @@ void LLRenderPass::mdiAuthorAndCheck(const LLDrawInfo* params, const U32* slots,
     // 既定テクスチャ slot（heap 枯渇/未 resident 時の fb_heap_default 落ち先・非ゼロ）を除外（設計 §6.1）
     const U32 def_slot = (LLImageGL::sDefaultGLTexture != nullptr)
                              ? LLImageGL::sDefaultGLTexture->getVkHeapSlot() : 0u;
-    const U32 n = (batch_textures && params->mTextureList.size() > 1)
+    const U32 n = (params->mTextureList.size() > 1)
                       ? llmin((U32)params->mTextureList.size(), 4u) : 1u;
-    for (U32 i = 0; i < n; ++i)
+    auto check_slot = [&](U32 ch, LLTexture* t)
     {
-        const U32 slot = slots[i];
+        const U32 slot = slots[ch];
         if (slot == 0 || slot == def_slot)
         {
-            continue;   // 未 resident 白/既定 slot は fb_heap_default 管轄=β 対象外
+            return;     // 未 resident 白/既定 slot は fb_heap_default 管轄=β 対象外
         }
-        LLTexture* t = (n > 1) ? params->mTextureList[i].get() : params->mTexture.get();
         LLImageGL* gl = (t != nullptr) ? t->getGLTexture() : nullptr;
         const VkImageView intended = (gl != nullptr) ? gl->getVkImageView() : VK_NULL_HANDLE;
         const VkImageView actual   = LLVKLoader::bindlessSlotView(slot);
@@ -644,9 +709,15 @@ void LLRenderPass::mdiAuthorAndCheck(const LLDrawInfo* params, const U32* slots,
         {
             LLVKContract::causeNamed(LLVKContract::C_MDI_HEAP_IDENTITY,
                                      std::string("slot=") + std::to_string(slot)
-                                         + " ch=" + std::to_string(i));
+                                         + " ch=" + std::to_string(ch));
         }
+    };
+    for (U32 i = 0; i < n; ++i)
+    {
+        check_slot(i, (n > 1) ? params->mTextureList[i].get() : params->mTexture.get());
     }
+    check_slot(13u, params->mNormalMap.get());
+    check_slot(14u, params->mSpecularMap.get());
 }
 
 void LLRenderPass::mdiSetFirstInstance(U32& first_instance, U32 id, const void* src, U8 site)
@@ -688,7 +759,7 @@ U32 LLRenderPass::buildAndOverrideScenePerDrawSet(LLDrawInfo* params, bool batch
                               ? llmin((U32)params->mTextureList.size(), indexed_layout_count)
                               : (is_indexed ? 1u : 0u);
 
-    const U32 id = establishPerDrawId(params, cur, batch_textures);
+    const U32 id = establishPerDrawId(params, cur);
 
     const bool memo_eligible = (params != nullptr && is_indexed && set_shape >= 1
                                 && gltf_materials_ubo == 0 && gltf_geometry_ubo == 0);
@@ -1292,7 +1363,7 @@ void LLRenderPass::drawInfoBindless(LLDrawInfo& params, BindlessEstablish mode, 
 {
     const U32 id = (mode == BindlessEstablish::Authored)
                        ? buildAndOverrideScenePerDrawSet(&params, batch_textures)
-                       : establishPerDrawId(&params, LLGLSLShader::sCurBoundShaderPtr, batch_textures);
+                       : establishPerDrawId(&params, LLGLSLShader::sCurBoundShaderPtr);
     params.mVertexBuffer->setBuffer();
     params.mVertexBuffer->drawRange(LLRender::TRIANGLES, params.mStart, params.mEnd, params.mCount, params.mOffset, id);
     vkcVerifyDrawModelview(params);
@@ -1343,7 +1414,6 @@ void LLRenderPass::freezeAuthorShadowSources()
         {
             continue;
         }
-        const bool bt = LLVKBucket::mdiBatchTextures(pass);
         for (LLVKBucket::Bucket* bucket : buckets)
         {
             LLVKBucket::rebuildTemplateIfDirty(*bucket);
@@ -1365,12 +1435,7 @@ void LLRenderPass::freezeAuthorShadowSources()
                         continue;
                     }
                     rec.mVkAuthorFrame = frame;
-                    U32 slots[LLVKLoader::DRAWDATA_SLOT_UINTS];
-                    computeDrawDataSlots(&rec, bt, slots);
-                    if (rec.ensureVkDrawDataSlot(slots))
-                    {
-                        mdiAuthorAndCheck(&rec, slots, rec.mVkDrawDataSlot, bt, LLVKContract::MDI_SITE_FREEZE);
-                    }
+                    authorRecordDrawData(rec, LLVKContract::MDI_SITE_FREEZE);
                     if (vis && rec.mAvatar.notNull() && rec.mSkinInfo != nullptr)
                     {
                         rec.mAvatar->updateSkinInfoMatrixPalette(rec.mSkinInfo);
@@ -1553,14 +1618,7 @@ void LLRenderPass::pushIndirectBucket(LLVKBucket::Bucket& bucket, const std::vec
                                 LLVKContract::cause(LLVKContract::C_RECORD_PHASE_ACQUIRE);
                             }
                             rec->mVkAuthorFrame = LLVKLoader::getMonotonicFrameCount();
-                            const bool bt = LLVKBucket::mdiBatchTextures(bucket.mPass);
-                            U32 slots[LLVKLoader::DRAWDATA_SLOT_UINTS];
-                            computeDrawDataSlots(rec, bt, slots);
-                            rec->ensureVkDrawDataSlot(slots);
-                            if (rec->mVkDrawDataSlot != 0xFFFFFFFFu)
-                            {
-                                mdiAuthorAndCheck(rec, slots, rec->mVkDrawDataSlot, bt, LLVKContract::MDI_SITE_TPL_FIRE);
-                            }
+                            authorRecordDrawData(*rec, LLVKContract::MDI_SITE_TPL_FIRE);
                         }
                         if (rec->mVkDrawDataSlot != 0xFFFFFFFFu)
                         {
@@ -1732,16 +1790,11 @@ namespace
             }
             else
             {
-                U32 slots[LLVKLoader::DRAWDATA_SLOT_UINTS] = {};
-                LLRenderPass::computeDrawDataSlots(p, batch_textures, slots);
-                if (!p->ensureVkDrawDataSlot(slots))
+                if (!LLRenderPass::authorRecordDrawData(*p, LLVKContract::MDI_SITE_RIGGED))
                 {
                     return false;
                 }
-                draw_id = (p->mVkDrawDataSlot == LLVKLoader::BINDLESS_INVALID_SLOT)
-                              ? 0 : p->mVkDrawDataSlot;
-
-                LLRenderPass::mdiAuthorAndCheck(p, slots, draw_id, batch_textures, LLVKContract::MDI_SITE_RIGGED);
+                draw_id = p->mVkDrawDataSlot;
 
                 if (LLVKLoader::publishDrawSkinBase(draw_id, p->mAvatar.get(),
                                                     p->mSkinInfo->mHash)

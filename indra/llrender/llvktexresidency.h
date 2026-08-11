@@ -25,6 +25,7 @@ class VkTexResidency
 public:
     bool        isLive() const { return mView.load(std::memory_order_acquire) != VK_NULL_HANDLE; }
     bool        hasBacking() const { return mCur.valid(); }
+    bool        hasStaged() const { return mStagedValid; }
     VkImageView view()   const { return mView.load(std::memory_order_acquire); }
     U32         slot()   const { return mSlot.load(std::memory_order_relaxed); }
     VkImage     image()  const { return mCur.image; }

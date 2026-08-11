@@ -357,11 +357,17 @@ void onRegionDestroyed(LLViewerRegion* region)
 
 namespace
 {
-    bool ensureRecordDrawDataSlot(LLDrawInfo* info, U32 pass)
+    bool ensureRecordDrawDataSlot(LLDrawInfo* info)
     {
+        const U32 prev_slot = info->mVkDrawDataSlot;
         U32 slots[LLVKLoader::DRAWDATA_SLOT_UINTS] = {};
-        LLRenderPass::computeDrawDataSlots(info, mdiBatchTextures(pass), slots);
-        return info->ensureVkDrawDataSlot(slots);
+        LLRenderPass::computeDrawDataSlots(info, slots);
+        const bool ok = info->ensureVkDrawDataSlot(slots);
+        if (ok && info->mVkDrawDataSlot != prev_slot)
+        {
+            info->mVkAuthorFrame = 0;
+        }
+        return ok;
     }
 
 }
@@ -422,7 +428,7 @@ void rebuildTemplateIfDirty(Bucket& bucket)
             }
             if (is_static && mdi_pass)
             {
-                is_static = ensureRecordDrawDataSlot(info, bucket.mPass);
+                is_static = ensureRecordDrawDataSlot(info);
             }
             if (is_static)
             {

@@ -69,7 +69,7 @@ void main()
 
 #ifdef LL_VULKAN_GLSL
 #ifdef AYA_BINDLESS
-    float obj_a = (object_alpha >= 0.0) ? object_alpha : aya_dd[aya_draw_id].misc2.x;
+    float obj_a = (object_alpha >= 0.0) ? object_alpha : aya_dd[aya_draw_id].object_alpha;
 #else
     float obj_a = object_alpha;
 #endif

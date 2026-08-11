@@ -1609,11 +1609,17 @@ bool LLViewerFetchedTexture::preCreateTexture(S32 usename/*= 0*/)
 
 std::string LLViewerFetchedTexture::fetchRetryStuckInfo() const
 {
-    return llformat("fail=%u overdue_s=%.0f discard=%d min_discard=%d boost=%d fetcher=%d",
+    return llformat("fail=%u overdue_s=%.0f discard=%d min_discard=%d boost=%d fetcher=%d"
+                    " vsize=%d desired=%d maxdis=%d needc=%d cb=%d fcache=%d missing=%d",
                     (U32)mFetchFailCount,
                     -mFetchFailTimer.getTimeToExpireF32(),
                     getDiscardLevel(), (S32)mMinDiscardLevel,
-                    (S32)mBoostLevel, (S32)mHasFetcher);
+                    (S32)mBoostLevel, (S32)mHasFetcher,
+                    (S32)mMaxVirtualSize, (S32)mDesiredDiscardLevel,
+                    mGLTexturep.notNull() ? getMaxDiscardLevel() : -1,
+                    const_cast<LLViewerFetchedTexture*>(this)->mNeedsCreateTexture ? 1 : 0,
+                    (S32)(!mLoadedCallbackList.empty() && mRawImage.notNull()),
+                    (S32)mInFastCacheList, (S32)mIsMissingAsset);
 }
 
 bool LLViewerFetchedTexture::sweepFetchObligation()
@@ -1626,7 +1632,8 @@ bool LLViewerFetchedTexture::sweepFetchObligation()
         || mIsFetching || mHasFetcher
         || mMaxVirtualSize <= 0.f
         || mDesiredDiscardLevel > getMaxDiscardLevel()
-        || (mFetchFailCount > 0 && !mFetchFailTimer.hasExpired())
+        || ((mFetchFailCount > 0 && !mFetchFailTimer.hasExpired())
+            && !(hasRecentDrawnDemand() && mFetchFailTimer.getElapsedTimeF32() >= ASSET_RETRY_DRAWN_CAP_SEC))
         || (mCreateFailCount > 0 && !mCreateFailTimer.hasExpired()))
     {
         unmet = false;
@@ -1668,6 +1675,11 @@ void LLViewerFetchedTexture::postCreateTexture()
     LL_PROFILE_ZONE_SCOPED_CATEGORY_TEXTURE;
     if (!mNeedsCreateTexture)
     {
+        if (mGLTexturep.notNull() && mGLTexturep->hasStagedVkBacking())
+        {
+            ++LLVKLoader::gVkPerf.tex_strand;
+            mGLTexturep->publishStagedVkBacking();
+        }
         return;
     }
     mGLTexturep->publishStagedVkBacking();
@@ -2296,7 +2308,8 @@ bool LLViewerFetchedTexture::updateFetch()
         LL_PROFILE_ZONE_NAMED_CATEGORY_TEXTURE("vftuf - create or missing");
         make_request = false;
     }
-    else if ((mFetchFailCount > 0 && !mFetchFailTimer.hasExpired()) ||
+    else if (((mFetchFailCount > 0 && !mFetchFailTimer.hasExpired())
+              && !(hasRecentDrawnDemand() && mFetchFailTimer.getElapsedTimeF32() >= ASSET_RETRY_DRAWN_CAP_SEC)) ||
              (mCreateFailCount > 0 && !mCreateFailTimer.hasExpired()))
     {
         LL_PROFILE_ZONE_NAMED_CATEGORY_TEXTURE("vftuf - retry backoff");

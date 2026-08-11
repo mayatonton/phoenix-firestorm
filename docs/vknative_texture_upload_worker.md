@@ -300,3 +300,8 @@ worker 有効時の `UNASSIGNED-CoreValidation-DrawState-InvalidImageLayout`(IIL
 
 ## gate(憲法 2・PASS は AYA のみ)
 - 層0 落ちない(起動/TP/teardown)。層1 validation 0 + 検出器沈黙 + `fb_heap_default`(白 fallback)有意減。層2 視覚(AYA・crowd で FPS が texture DL に結合しない = 北極星)。
+
+## PART K. 既知欠陥の根治記録: staged strand(2026-08-11)
+- **欠陥**: staged VkBacking の publish が upstream 由来の gate(`postCreateTexture` 冒頭 `if (!mNeedsCreateTexture) return;` llviewertexture.cpp)の内側にあり、worker 飛行中に flag が外から消される interleaving(init 再利用 / addToCreateTexture 縮退枝 ← fast-cache 経路が updateFetch guard を迂回)で **staged が publish も discard もされず恒久宙吊り**。結果 = データ有・hasGLTexture=true・mView null = 「正しい texture を指すのに default(灰)を描き続け、select の再 create サイクルで初めて復活」。全検出器の盲点(fetch 正常・floor 沈黙)。
+- **不変条件**: 「staged された VkBacking は必ず publish か discard で決着する」。
+- **修理**: early-return 枝で staged があれば publish(main thread = INV-1 維持)+ VkPerf `tex_strand` 計上(strand 救済の発生数 = 定常で 0 が正常・非 0 は interleaving の存在証明として観測可能)。
