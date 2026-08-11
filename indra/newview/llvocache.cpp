@@ -813,11 +813,12 @@ class LLVOCacheOctreeCull : public LLViewerOctreeCull
 {
 public:
     LLVOCacheOctreeCull(LLCamera* camera, LLViewerRegion* regionp,
-        const LLVector3& shift, bool use_object_cache_occlusion, F32 pixel_threshold, LLVOCachePartition* part)
+        const LLVector3& shift, bool use_object_cache_occlusion, S32 use_occlusion, F32 pixel_threshold, LLVOCachePartition* part)
         : LLViewerOctreeCull(camera),
           mRegionp(regionp),
           mPartition(part),
-          mPixelThreshold(pixel_threshold)
+          mPixelThreshold(pixel_threshold),
+          mUseOcclusionLevel(use_occlusion)
     {
         mLocalShift = shift;
         mUseObjectCacheOcclusion = use_object_cache_occlusion;
@@ -836,7 +837,7 @@ public:
                 return false;
             }
 
-            group->checkOcclusion();
+            group->checkOcclusion(mUseOcclusionLevel);
 
             if (group->isOcclusionState(LLOcclusionCullingGroup::OCCLUDED))
             {
@@ -927,6 +928,7 @@ private:
     F32                 mPixelThreshold;
     F32                 mNearRadius;
     bool                mUseObjectCacheOcclusion;
+    S32                 mUseOcclusionLevel;
 };
 
 //select objects behind camera
@@ -1029,7 +1031,7 @@ void LLVOCachePartition::selectBackObjects(LLCamera &camera, F32 pixel_threshold
 }
 
 #ifndef LL_TEST
-S32 LLVOCachePartition::cull(LLCamera &camera, bool do_occlusion)
+S32 LLVOCachePartition::cull(LLCamera &camera, S32 use_occlusion)
 {
     static LLCachedControl<bool> use_object_cache_occlusion(gSavedSettings,"UseObjectCacheOcclusion");
 
@@ -1071,7 +1073,7 @@ S32 LLVOCachePartition::cull(LLCamera &camera, bool do_occlusion)
 
             //process back objects selection
             selectBackObjects(camera, LLVOCacheEntry::getSquaredPixelThreshold(mFrontCull),
-                do_occlusion && use_object_cache_occlusion);
+                use_occlusion > 0 && use_object_cache_occlusion);
             return 0; //nothing changed, reduce frequency of culling
         }
     }
@@ -1085,8 +1087,8 @@ S32 LLVOCachePartition::cull(LLCamera &camera, bool do_occlusion)
     camera.calcRegionFrustumPlanes(region_agent, gAgentCamera.mDrawDistance);
 
     mFrontCull = true;
-    LLVOCacheOctreeCull culler(&camera, mRegionp, region_agent, do_occlusion && use_object_cache_occlusion,
-        LLVOCacheEntry::getSquaredPixelThreshold(mFrontCull), this);
+    LLVOCacheOctreeCull culler(&camera, mRegionp, region_agent, use_occlusion > 0 && use_object_cache_occlusion,
+        use_occlusion, LLVOCacheEntry::getSquaredPixelThreshold(mFrontCull), this);
     culler.traverse(mOctree);
 
     if(!sNeedsOcclusionCheck)
@@ -1114,7 +1116,7 @@ void LLVOCachePartition::addOccluders(LLViewerOctreeGroup* gp)
     }
 }
 
-void LLVOCachePartition::processOccluders(LLCamera* camera)
+void LLVOCachePartition::processOccluders(LLCamera* camera, S32 use_occlusion)
 {
     if(mOccludedGroups.empty())
     {
@@ -1132,7 +1134,7 @@ void LLVOCachePartition::processOccluders(LLCamera* camera)
         LLVOCacheGroup* group = *iter;
         if(group->isOcclusionState(LLOcclusionCullingGroup::ACTIVE_OCCLUSION))
         {
-            group->doOcclusion(camera, &shift);
+            group->doOcclusion(camera, use_occlusion, &shift);
             group->clearOcclusionState(LLOcclusionCullingGroup::ACTIVE_OCCLUSION);
         }
     }

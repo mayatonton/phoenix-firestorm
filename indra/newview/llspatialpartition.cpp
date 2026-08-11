@@ -1159,7 +1159,10 @@ void LLSpatialPartition::shift(const LLVector4a &offset)
 class LLOctreeCull : public LLViewerOctreeCull
 {
 public:
-    LLOctreeCull(LLCamera* camera) : LLViewerOctreeCull(camera) {}
+    LLOctreeCull(LLCamera* camera, S32 use_occlusion)
+        : LLViewerOctreeCull(camera), mUseOcclusion(use_occlusion) {}
+
+    S32 mUseOcclusion;
 
     virtual bool earlyFail(LLViewerOctreeGroup* base_group)
     {
@@ -1169,14 +1172,14 @@ public:
         }
 
         LLSpatialGroup* group = (LLSpatialGroup*)base_group;
-        group->checkOcclusion();
+        group->checkOcclusion(mUseOcclusion);
 
         if (group->getOctreeNode() &&
             group->getOctreeNode()->getParent() &&  //never occlusion cull the root node
-            LLPipeline::sUseOcclusion &&            //ignore occlusion if disabled
+            mUseOcclusion &&                        //ignore occlusion if disabled
             group->isOcclusionState(LLSpatialGroup::OCCLUDED))
         {
-            gPipeline.markOccluder(group);
+            gPipeline.markOccluder(group, mUseOcclusion);
             return true;
         }
 
@@ -1221,8 +1224,8 @@ public:
 class LLOctreeCullNoFarClip : public LLOctreeCull
 {
 public:
-    LLOctreeCullNoFarClip(LLCamera* camera)
-        : LLOctreeCull(camera) { }
+    LLOctreeCullNoFarClip(LLCamera* camera, S32 use_occlusion)
+        : LLOctreeCull(camera, use_occlusion) { }
 
     virtual S32 frustumCheck(const LLViewerOctreeGroup* group)
     {
@@ -1239,8 +1242,8 @@ public:
 class LLOctreeCullShadow : public LLOctreeCull
 {
 public:
-    LLOctreeCullShadow(LLCamera* camera)
-        : LLOctreeCull(camera) { }
+    LLOctreeCullShadow(LLCamera* camera, S32 use_occlusion)
+        : LLOctreeCull(camera, use_occlusion) { }
 
     virtual S32 frustumCheck(const LLViewerOctreeGroup* group)
     {
@@ -1256,15 +1259,15 @@ public:
 class LLOctreeCullVisExtents: public LLOctreeCullShadow
 {
 public:
-    LLOctreeCullVisExtents(LLCamera* camera, LLVector4a& min, LLVector4a& max)
-        : LLOctreeCullShadow(camera), mMin(min), mMax(max), mEmpty(true) { }
+    LLOctreeCullVisExtents(LLCamera* camera, S32 use_occlusion, LLVector4a& min, LLVector4a& max)
+        : LLOctreeCullShadow(camera, use_occlusion), mMin(min), mMax(max), mEmpty(true) { }
 
     virtual bool earlyFail(LLViewerOctreeGroup* base_group)
     {
         LLSpatialGroup* group = (LLSpatialGroup*)base_group;
 
         if (group->getOctreeNode()->getParent() &&  //never occlusion cull the root node
-            LLPipeline::sUseOcclusion &&            //ignore occlusion if disabled
+            mUseOcclusion &&                        //ignore occlusion if disabled
             group->isOcclusionState(LLSpatialGroup::OCCLUDED))
         {
             return true;
@@ -1333,8 +1336,8 @@ public:
 class LLOctreeCullDetectVisible: public LLOctreeCullShadow
 {
 public:
-    LLOctreeCullDetectVisible(LLCamera* camera)
-        : LLOctreeCullShadow(camera), mResult(false) { }
+    LLOctreeCullDetectVisible(LLCamera* camera, S32 use_occlusion)
+        : LLOctreeCullShadow(camera, use_occlusion), mResult(false) { }
 
     virtual bool earlyFail(LLViewerOctreeGroup* base_group)
     {
@@ -1342,7 +1345,7 @@ public:
 
         if (mResult || //already found a node, don't check any more
             (group->getOctreeNode()->getParent() && //never occlusion cull the root node
-             LLPipeline::sUseOcclusion &&           //ignore occlusion if disabled
+             mUseOcclusion &&                       //ignore occlusion if disabled
              group->isOcclusionState(LLSpatialGroup::OCCLUDED)))
         {
             return true;
@@ -1366,7 +1369,7 @@ class LLOctreeSelect : public LLOctreeCull
 {
 public:
     LLOctreeSelect(LLCamera* camera, std::vector<LLDrawable*>* results)
-        : LLOctreeCull(camera), mResults(results) { }
+        : LLOctreeCull(camera, 0), mResults(results) { }
 
     virtual bool earlyFail(LLViewerOctreeGroup* group) { return false; }
     virtual void preprocess(LLViewerOctreeGroup* group) { }
@@ -1503,7 +1506,7 @@ void LLSpatialPartition::restoreGL()
 {
 }
 
-bool LLSpatialPartition::getVisibleExtents(LLCamera& camera, LLVector3& visMin, LLVector3& visMax)
+bool LLSpatialPartition::getVisibleExtents(LLCamera& camera, LLVector3& visMin, LLVector3& visMax, S32 use_occlusion)
 {
     LL_PROFILE_ZONE_SCOPED_CATEGORY_SPATIAL;
     LLVector4a visMina, visMaxa;
@@ -1515,7 +1518,7 @@ bool LLSpatialPartition::getVisibleExtents(LLCamera& camera, LLVector3& visMin, 
         group->rebound();
     }
 
-    LLOctreeCullVisExtents vis(&camera, visMina, visMaxa);
+    LLOctreeCullVisExtents vis(&camera, use_occlusion, visMina, visMaxa);
     vis.traverse(mOctree);
 
     visMin.set(visMina.getF32ptr());
@@ -1525,7 +1528,7 @@ bool LLSpatialPartition::getVisibleExtents(LLCamera& camera, LLVector3& visMin, 
 
 bool LLSpatialPartition::visibleObjectsInFrustum(LLCamera& camera)
 {
-    LLOctreeCullDetectVisible vis(&camera);
+    LLOctreeCullDetectVisible vis(&camera, LLPipeline::sUseOcclusion);
     vis.traverse(mOctree);
     return vis.mResult;
 }
@@ -1553,7 +1556,7 @@ S32 LLSpatialPartition::cull(LLCamera &camera, std::vector<LLDrawable *>* result
 
 extern bool gCubeSnapshot;
 
-S32 LLSpatialPartition::cull(LLCamera &camera, bool do_occlusion)
+S32 LLSpatialPartition::cull(LLCamera &camera, S32 use_occlusion)
 {
     LL_PROFILE_ZONE_SCOPED_CATEGORY_SPATIAL;
 #if LL_OCTREE_PARANOIA_CHECK
@@ -1568,17 +1571,17 @@ S32 LLSpatialPartition::cull(LLCamera &camera, bool do_occlusion)
 
     if (LLPipelineFrameContext::getInstance().isShadowPass())
     {
-        LLOctreeCullShadow culler(&camera);
+        LLOctreeCullShadow culler(&camera, use_occlusion);
         culler.traverse(mOctree);
     }
     else if (mInfiniteFarClip || (!LLPipeline::sUseFarClip && !gCubeSnapshot))
     {
-        LLOctreeCullNoFarClip culler(&camera);
+        LLOctreeCullNoFarClip culler(&camera, use_occlusion);
         culler.traverse(mOctree);
     }
     else
     {
-        LLOctreeCull culler(&camera);
+        LLOctreeCull culler(&camera, use_occlusion);
         culler.traverse(mOctree);
     }
 

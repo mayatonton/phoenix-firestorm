@@ -6797,10 +6797,6 @@ bool LLViewerWindow::cubeSnapshot(const LLVector3& origin, LLCubeMapArray* cubea
     U32 res = LLPipelineFrameContext::getInstance().getActiveRT()->deferredScreen.getWidth();
 
     // save current view/camera settings so we can restore them afterwards
-    S32 old_occlusion = LLPipeline::sUseOcclusion;
-
-    // set new parameters specific to the 360 requirements
-    LLPipeline::sUseOcclusion = 0;
     LLViewerCamera* camera = LLViewerCamera::getInstance();
 
     LLViewerCamera saved_camera = LLViewerCamera::instance();
@@ -6930,7 +6926,6 @@ bool LLViewerWindow::cubeSnapshot(const LLVector3& origin, LLCubeMapArray* cubea
     set_current_modelview(saved_mod);
     set_current_projection(saved_proj);
     setup3DViewport();
-    LLPipeline::sUseOcclusion = old_occlusion;
 
     // ====================================================
     return true;

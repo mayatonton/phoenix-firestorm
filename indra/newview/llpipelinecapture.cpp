@@ -1164,9 +1164,6 @@ void LLPipeline::generateImpostor(LLVOAvatar* avatar, bool preview_avatar, bool 
         setRenderTypeMask(RENDER_TYPE_HUD, END_RENDER_TYPES);
     }
 
-    S32 occlusion = sUseOcclusion;
-    sUseOcclusion = 0;
-
     LLPipelineFrameContext::getInstance().setReflectionPass(!isFrameRenderingDeferred());
 
     LLPipelineFrameContext::getInstance().setShadowPass(true);
@@ -1449,7 +1446,6 @@ void LLPipeline::generateImpostor(LLVOAvatar* avatar, bool preview_avatar, bool 
         avatar->setImpostorDim(tdim);
     }
 
-    sUseOcclusion = occlusion;
     LLPipelineFrameContext::getInstance().setReflectionPass(false);
     LLPipelineFrameContext::getInstance().setImpostorPass(false);
     LLPipelineFrameContext::getInstance().setShadowPass(false);

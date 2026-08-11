@@ -1042,9 +1042,9 @@ U32 LLOcclusionCullingGroup::getLastOcclusionIssuedTime()
     return mOcclusionIssued[LLViewerCamera::getCurCameraID()];
 }
 
-void LLOcclusionCullingGroup::checkOcclusion()
+void LLOcclusionCullingGroup::checkOcclusion(S32 use_occlusion)
 {
-    if (LLPipeline::sUseOcclusion < 2) return;  // 0 - NoOcclusion, 1 = ReadOnly, 2 = ModifyOcclusionState  TODO: DJH 11-2021 ENUM this
+    if (use_occlusion < 2) return;  // 0 - NoOcclusion, 1 = ReadOnly, 2 = ModifyOcclusionState  TODO: DJH 11-2021 ENUM this
 
     LL_PROFILE_ZONE_SCOPED_CATEGORY_OCTREE;
     LLOcclusionCullingGroup* parent = (LLOcclusionCullingGroup*)getParent();
@@ -1112,11 +1112,11 @@ void LLOcclusionCullingGroup::checkOcclusion()
     }
 }
 
-void LLOcclusionCullingGroup::doOcclusion(LLCamera* camera, const LLVector4a* shift)
+void LLOcclusionCullingGroup::doOcclusion(LLCamera* camera, S32 use_occlusion, const LLVector4a* shift)
 {
     LL_PROFILE_ZONE_SCOPED_CATEGORY_OCTREE;
     LLVKLoader::VkPerfPassScope perf_pass_scope(2);
-    if (mSpatialPartition->isOcclusionEnabled() && LLPipeline::sUseOcclusion > 1)
+    if (mSpatialPartition->isOcclusionEnabled() && use_occlusion > 1)
     {
         LLVector4a bounds[2];
         bounds[0] = mBounds[0];
@@ -1279,7 +1279,7 @@ void LLViewerOctreePartition::cleanup()
 
 bool LLViewerOctreePartition::isOcclusionEnabled()
 {
-    return mOcclusionEnabled || LLPipeline::sUseOcclusion > 2;
+    return mOcclusionEnabled;
 }
 
 

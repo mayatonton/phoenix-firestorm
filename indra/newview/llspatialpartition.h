@@ -495,7 +495,7 @@ public:
     virtual void rebuildMesh(LLSpatialGroup* group);
 
     bool visibleObjectsInFrustum(LLCamera& camera);
-    /*virtual*/ S32 cull(LLCamera &camera, bool do_occlusion=false); // Cull on arbitrary frustum
+    /*virtual*/ S32 cull(LLCamera &camera, S32 use_occlusion); // Cull on arbitrary frustum
     S32 cull(LLCamera &camera, std::vector<LLDrawable *>* results, bool for_select); // Cull on arbitrary frustum
 
     bool isVisible(const LLVector3& v);
@@ -509,7 +509,7 @@ public:
     void renderIntersectingBBoxes(LLCamera* camera);
     void restoreGL();
 
-    bool getVisibleExtents(LLCamera& camera, LLVector3& visMin, LLVector3& visMax);
+    bool getVisibleExtents(LLCamera& camera, LLVector3& visMin, LLVector3& visMax, S32 use_occlusion);
 
 public:
     LLSpatialBridge* mBridge; // NULL for non-LLSpatialBridge instances, otherwise, mBridge == this
@@ -590,6 +590,9 @@ public:
 
     void clear();
 
+    S32  getUseOcclusion() const { return mUseOcclusion; }
+    void setUseOcclusion(S32 level) { mUseOcclusion = level; }
+
     sg_iterator beginVisibleGroups();
     sg_iterator endVisibleGroups();
 
@@ -641,6 +644,7 @@ private:
 
     template <class T, class V> void pushBack(T &head, U32& count, V* val);
 
+    S32                 mUseOcclusion = 0;
     U32                 mVisibleGroupsSize;
     U32                 mAlphaGroupsSize;
     U32                 mRiggedAlphaGroupsSize;

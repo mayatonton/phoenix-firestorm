@@ -303,8 +303,8 @@ public:
 
     void setOcclusionState(U32 state, S32 mode = STATE_MODE_SINGLE);
     void clearOcclusionState(U32 state, S32 mode = STATE_MODE_SINGLE);
-    void checkOcclusion(); //read back last occlusion query (if any)
-    void doOcclusion(LLCamera* camera, const LLVector4a* shift = NULL); //issue occlusion query
+    void checkOcclusion(S32 use_occlusion); //read back last occlusion query (if any)
+    void doOcclusion(LLCamera* camera, S32 use_occlusion, const LLVector4a* shift = NULL); //issue occlusion query
     bool isOcclusionState(U32 state) const { return mOcclusionState[LLViewerCamera::getCurCameraID()] & state; }
     U32  getOcclusionState() const { return mOcclusionState[LLViewerCamera::getCurCameraID()];}
 
@@ -352,7 +352,7 @@ public:
     virtual ~LLViewerOctreePartition();
 
     // Cull on arbitrary frustum
-    virtual S32 cull(LLCamera &camera, bool do_occlusion) = 0;
+    virtual S32 cull(LLCamera &camera, S32 use_occlusion) = 0;
     bool isOcclusionEnabled();
 
 protected:

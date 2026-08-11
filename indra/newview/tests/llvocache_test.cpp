@@ -50,7 +50,7 @@ namespace
 
 //----------------------------------------------------------------------------
 // Mock objects for the dependencies of the code we're testing
-S32 LLVOCachePartition::cull(LLCamera &camera, bool do_occlusion) { return 0; }
+S32 LLVOCachePartition::cull(LLCamera &camera, S32 use_occlusion) { return 0; }
 
 LLViewerObjectList::LLViewerObjectList() = default;
 LLViewerObjectList::~LLViewerObjectList() = default;

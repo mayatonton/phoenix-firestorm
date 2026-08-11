@@ -967,11 +967,8 @@ void display(bool rebuild, F32 zoom_factor, int subfield, bool for_snapshot)
 
         LLSpatialGroup::sNoDelete = true;
 
-        S32 occlusion = LLPipeline::sUseOcclusion;
-        if (gDepthDirty)
-        { //depth buffer is invalid, don't overwrite occlusion state
-            LLPipeline::sUseOcclusion = llmin(occlusion, 1);
-        }
+        const S32 use_occlusion = gDepthDirty ? llmin(LLPipeline::sUseOcclusion, 1)
+                                              : LLPipeline::sUseOcclusion;
         gDepthDirty = false;
 
 
@@ -980,7 +977,7 @@ void display(bool rebuild, F32 zoom_factor, int subfield, bool for_snapshot)
         LLPipelineFrameContext::getInstance().setUnderWaterRendering(LLViewerCamera::getInstance()->cameraUnderWater());
         {
             LLVKLoader::VkPerfPhaseScope ph(5);
-            gPipeline.updateCull(*LLViewerCamera::getInstance(), result);
+            gPipeline.updateCull(*LLViewerCamera::getInstance(), result, use_occlusion);
         }
 
 
@@ -1093,8 +1090,7 @@ void display(bool rebuild, F32 zoom_factor, int subfield, bool for_snapshot)
 
         LLSceneMonitor::getInstance()->fetchQueryResult();
 
-
-        LLPipeline::sUseOcclusion = occlusion;
+        result.setUseOcclusion(LLPipeline::sUseOcclusion);
 
         {
             LLAppViewer::instance()->pingMainloopTimeout("Display:Sky");
@@ -1420,14 +1416,13 @@ void display_cube_face()
 
     LLSpatialGroup::sNoDelete = true;
 
-    S32 occlusion = LLPipeline::sUseOcclusion;
-    LLPipeline::sUseOcclusion = 0; // occlusion data is from main camera point of view, don't read or write it during cube snapshots
     //gDepthDirty = true; //let "real" render pipe know it can't trust the depth buffer for occlusion data
 
     static LLCullResult result;
     LLViewerCamera::setCurCameraID(LLViewerCamera::CAMERA_WORLD);
     LLPipelineFrameContext::getInstance().setUnderWaterRendering(LLViewerCamera::getInstance()->cameraUnderWater());
-    gPipeline.updateCull(*LLViewerCamera::getInstance(), result);
+    // occlusion data is from main camera point of view, don't read or write it during cube snapshots
+    gPipeline.updateCull(*LLViewerCamera::getInstance(), result, 0);
 
     gGL.setColorMask(true, true);
 
@@ -1448,8 +1443,6 @@ void display_cube_face()
             gPipeline.rebuildPools();
         }
     }
-
-    LLPipeline::sUseOcclusion = occlusion;
 
     LLAppViewer::instance()->pingMainloopTimeout("Display:RenderStart");
 
@@ -1543,15 +1536,12 @@ void render_hud_attachments()
             gPipeline.toggleRenderDebugFeature(LLPipeline::RENDER_DEBUG_FEATURE_UI);
         }
 
-        S32 use_occlusion = LLPipeline::sUseOcclusion;
-        LLPipeline::sUseOcclusion = 0;
-
         //cull, sort, and render hud objects
         static LLCullResult result;
         LLSpatialGroup::sNoDelete = true;
 
         LLViewerCamera::setCurCameraID(LLViewerCamera::CAMERA_WORLD);
-        gPipeline.updateCull(hud_cam, result, true);
+        gPipeline.updateCull(hud_cam, result, 0, true);
 
         // Toggle render types
         gPipeline.toggleRenderType(LLPipeline::RENDER_TYPE_BUMP);
@@ -1595,7 +1585,6 @@ void render_hud_attachments()
         {
             gPipeline.toggleRenderDebugFeature(LLPipeline::RENDER_DEBUG_FEATURE_UI);
         }
-        LLPipeline::sUseOcclusion = use_occlusion;
         LLPipelineFrameContext::getInstance().setHUDPass(false);
     }
     gGL.matrixMode(LLRender::MM_PROJECTION);

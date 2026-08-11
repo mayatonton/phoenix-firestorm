@@ -250,23 +250,6 @@ static bool sShadowAlphaMvEnabled()
     return LLVKLoader::isBindlessActiveVk();
 }
 
-class LLDisableOcclusionCulling
-{
-public:
-    S32 mUseOcclusion;
-
-    LLDisableOcclusionCulling()
-    {
-        mUseOcclusion = LLPipeline::sUseOcclusion;
-        LLPipeline::sUseOcclusion = 0;
-    }
-
-    ~LLDisableOcclusionCulling()
-    {
-        LLPipeline::sUseOcclusion = mUseOcclusion;
-    }
-};
-
 void LLPipeline::requestResizeShadowTexture()
 {
     gResizeShadowTexture = true;
@@ -551,9 +534,6 @@ void LLPipeline::renderShadowOpaqueBucketizedMultiview(LLCamera& cam, LLCullResu
     LLVKLoader::VkPerfShadowCtxScope shadow_ctx_scope(LLVKLoader::VKPERF_SHCTX_MV);
     LLVKLoader::gVkPerfShadowMapIndex = 6u;
 
-    U32 saved_occlusion = sUseOcclusion;
-    sUseOcclusion = 0;
-
     LLGLEnable cull(GL_CULL_FACE);
     LLGLEnable clamp_depth(GL_DEPTH_CLAMP);
     LLGLDepthTest depth_test(GL_TRUE, GL_TRUE, GL_LESS);
@@ -598,7 +578,6 @@ void LLPipeline::renderShadowOpaqueBucketizedMultiview(LLCamera& cam, LLCullResu
 
     gGL.setColorMask(true, true);
 
-    sUseOcclusion = saved_occlusion;
     LLPipelineFrameContext::getInstance().setShadowPass(false);
 }
 
@@ -745,10 +724,6 @@ void LLPipeline::renderShadow(const glm::mat4& view, const glm::mat4& proj, LLCa
     LLPipelineFrameContext::getInstance().setShadowPass(true);
     const LLRecordPassContext ctx = buildRecordPassContext();
 
-    // disable occlusion culling during shadow render
-    U32 saved_occlusion = sUseOcclusion;
-    sUseOcclusion = 0;
-
     LLGLEnable cull(GL_CULL_FACE);
 
     //enable depth clamping if available
@@ -790,7 +765,7 @@ void LLPipeline::renderShadow(const glm::mat4& view, const glm::mat4& proj, LLCa
         renderShadowOpaqueBucketized(shadow_cam, result);
     }
 
-    if (LLPipeline::sUseOcclusion > 1)
+    if (getFrameCull()->getUseOcclusion() > 1)
     { // do occlusion culling against non-masked only to take advantage of hierarchical Z
         doOcclusion(shadow_cam);
     }
@@ -911,8 +886,6 @@ void LLPipeline::renderShadow(const glm::mat4& view, const glm::mat4& proj, LLCa
     gGL.popMatrix();
     gGLLastMatrix = NULL;
 
-    // reset occlusion culling flag
-    sUseOcclusion = saved_occlusion;
     LLPipelineFrameContext::getInstance().setShadowPass(false);
 }
 
@@ -939,8 +912,6 @@ void LLPipeline::generateSunShadow(LLCamera& camera)
     LL_PROFILE_GPU_ZONE("generateSunShadow");
 
     LLVKLoader::VkPerfPassScope perf_pass_scope(1);
-
-    LLDisableOcclusionCulling no_occlusion;
 
     bool skip_avatar_update = false;
     if (!isAgentAvatarValid() || gAgentCamera.getCameraAnimating() || gAgentCamera.getCameraMode() != CAMERA_MODE_MOUSELOOK || !LLVOAvatar::sVisibleInFirstPerson)
@@ -1077,7 +1048,7 @@ void LLPipeline::generateSunShadow(LLCamera& camera)
         main_camera.calcAgentFrustumPlanes(main_camera.mAgentFrustum);
 
         LLVector3 min,max;
-        getVisiblePointCloud(main_camera,min,max,fp);
+        getVisiblePointCloud(main_camera,min,max,fp,0);
 
         if (fp.empty())
         {
@@ -1263,7 +1234,7 @@ void LLPipeline::generateSunShadow(LLCamera& camera)
 
             std::vector<LLVector3> fp;
 
-            if (!gPipeline.getVisiblePointCloud(shadow_cam, min, max, fp, lightDir)
+            if (!gPipeline.getVisiblePointCloud(shadow_cam, min, max, fp, 0, lightDir)
                 || j > RenderShadowSplits)
             {
                 //no possible shadow receivers
@@ -1666,7 +1637,7 @@ void LLPipeline::generateSunShadow(LLCamera& camera)
         {
             LLPipelineFrameContext::getInstance().setShadowPass(true);
             ScopedShadowBatchCull cull_scope(mv_batch_cull_radius);
-            updateCull(union_cam, union_result);
+            updateCull(union_cam, union_result, 0);
             stateSort(union_cam, union_result);
             LLPipelineFrameContext::getInstance().setShadowPass(false);
         }
@@ -1764,7 +1735,7 @@ void LLPipeline::generateSunShadow(LLCamera& camera)
                     set_current_modelview(view[j]);
                     set_current_projection(proj[j]);
                     ScopedShadowBatchCull cull_scope(cascade_batch_cull_radius[j]);
-                    updateCull(tight_shadow_cam[j], sun_result[j]);
+                    updateCull(tight_shadow_cam[j], sun_result[j], 0);
                     stateSort(tight_shadow_cam[j], sun_result[j]);
                 }
                 LLPipelineFrameContext::getInstance().setShadowPass(false);
@@ -1931,7 +1902,7 @@ void LLPipeline::generateSunShadow(LLCamera& camera)
 
                 {
                     LLPipelineFrameContext::getInstance().setShadowPass(true);
-                    updateCull(shadow_cam, spot_result[i]);
+                    updateCull(shadow_cam, spot_result[i], 0);
                     stateSort(shadow_cam, spot_result[i]);
                     LLPipelineFrameContext::getInstance().setShadowPass(false);
                 }

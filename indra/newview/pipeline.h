@@ -234,7 +234,7 @@ public:
 
     // Object related methods
     void        markVisible(LLDrawable *drawablep, LLCamera& camera);
-    void        markOccluder(LLSpatialGroup* group);
+    void        markOccluder(LLSpatialGroup* group, S32 use_occlusion);
 
     void        doOcclusion(LLCamera& camera);
     void        markNotCulled(LLSpatialGroup* group, LLCamera &camera);
@@ -299,11 +299,11 @@ public:
     void updateMovedList(LLDrawable::drawable_vector_t& move_list);
     void updateMove();
     bool visibleObjectsInFrustum(LLCamera& camera);
-    bool getVisibleExtents(LLCamera& camera, LLVector3 &min, LLVector3& max);
-    bool getVisiblePointCloud(LLCamera& camera, LLVector3 &min, LLVector3& max, std::vector<LLVector3>& fp, LLVector3 light_dir = LLVector3(0,0,0));
+    bool getVisibleExtents(LLCamera& camera, LLVector3 &min, LLVector3& max, S32 use_occlusion);
+    bool getVisiblePointCloud(LLCamera& camera, LLVector3 &min, LLVector3& max, std::vector<LLVector3>& fp, S32 use_occlusion, LLVector3 light_dir = LLVector3(0,0,0));
 
     // Populate given LLCullResult with results of a frustum cull of the entire scene against the given LLCamera
-    void updateCull(LLCamera& camera, LLCullResult& result, bool hud_attachments = false);
+    void updateCull(LLCamera& camera, LLCullResult& result, S32 use_occlusion, bool hud_attachments = false);
     void createObjects(F32 max_dtime);
     void createObject(LLViewerObject* vobj);
     void processPartitionQ();

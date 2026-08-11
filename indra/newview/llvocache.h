@@ -221,10 +221,10 @@ public:
 
     bool addEntry(LLViewerOctreeEntry* entry);
     void removeEntry(LLViewerOctreeEntry* entry);
-    /*virtual*/ S32 cull(LLCamera &camera, bool do_occlusion);
+    /*virtual*/ S32 cull(LLCamera &camera, S32 use_occlusion);
     void addOccluders(LLViewerOctreeGroup* gp);
     void resetOccluders();
-    void processOccluders(LLCamera* camera);
+    void processOccluders(LLCamera* camera, S32 use_occlusion);
     void removeOccluder(LLVOCacheGroup* group);
 
     void setCullHistory(bool has_new_object);

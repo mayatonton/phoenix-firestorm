@@ -592,7 +592,7 @@ bool LLPipeline::visibleObjectsInFrustum(LLCamera& camera)
     return false;
 }
 
-bool LLPipeline::getVisibleExtents(LLCamera& camera, LLVector3& min, LLVector3& max)
+bool LLPipeline::getVisibleExtents(LLCamera& camera, LLVector3& min, LLVector3& max, S32 use_occlusion)
 {
     const F32 X = 65536.f;
 
@@ -615,7 +615,7 @@ bool LLPipeline::getVisibleExtents(LLCamera& camera, LLVector3& min, LLVector3& 
             {
                 if (hasRenderType(part->mDrawableType))
                 {
-                    if (!part->getVisibleExtents(camera, min, max))
+                    if (!part->getVisibleExtents(camera, min, max, use_occlusion))
                     {
                         res = false;
                     }
@@ -635,7 +635,7 @@ bool LLPipeline::isWaterClip()
 
 // </FS:AYAstorm>
 
-void LLPipeline::updateCull(LLCamera& camera, LLCullResult& result, bool hud_attachments)
+void LLPipeline::updateCull(LLCamera& camera, LLCullResult& result, S32 use_occlusion, bool hud_attachments)
 {
     LL_PROFILE_ZONE_SCOPED_CATEGORY_PIPELINE; //LL_RECORD_BLOCK_TIME(FTM_CULL);
     LL_PROFILE_GPU_ZONE("updateCull"); // should always be zero GPU time, but drop a timer to flush stuff out
@@ -673,6 +673,7 @@ void LLPipeline::updateCull(LLCamera& camera, LLCullResult& result, bool hud_att
     grabReferences(result);
 
     getFrameCull()->clear();
+    getFrameCull()->setUseOcclusion(use_occlusion);
 
     for (LLWorld::region_list_t::const_iterator iter = LLWorld::getInstance()->getRegionList().begin();
             iter != LLWorld::getInstance()->getRegionList().end(); ++iter)
@@ -686,7 +687,7 @@ void LLPipeline::updateCull(LLCamera& camera, LLCullResult& result, bool hud_att
             {
                 if (!hud_attachments ? LLViewerRegion::PARTITION_BRIDGE == i || hasRenderType(part->mDrawableType) : hasRenderType(part->mDrawableType))
                 {
-                    part->cull(camera);
+                    part->cull(camera, use_occlusion);
                 }
             }
         }
@@ -697,7 +698,7 @@ void LLPipeline::updateCull(LLCamera& camera, LLCullResult& result, bool hud_att
         {
             // <FS:Beq> Fix area search again
             //vo_part->cull(camera, sUseOcclusion > 0);
-            vo_part->cull(camera, sUseOcclusion > 0 && !gAgent.getFSAreaSearchActive());
+            vo_part->cull(camera, gAgent.getFSAreaSearchActive() ? 0 : use_occlusion);
         }
     }
 
@@ -750,14 +751,14 @@ void LLPipeline::markNotCulled(LLSpatialGroup* group, LLCamera& camera)
     {
         // include this group in occlusion groups, not because it is an occluder, but because we want to run
         // an occlusion query to find out if it's an occluder
-        markOccluder(group);
+        markOccluder(group, getFrameCull()->getUseOcclusion());
     }
     mNumVisibleNodes++;
 }
 
-void LLPipeline::markOccluder(LLSpatialGroup* group)
+void LLPipeline::markOccluder(LLSpatialGroup* group, S32 use_occlusion)
 {
-    if (sUseOcclusion > 1 && group && !group->isOcclusionQueuedThisFrame((U32)gFrameCount))
+    if (use_occlusion > 1 && group && !group->isOcclusionQueuedThisFrame((U32)gFrameCount))
     {
         LLSpatialGroup* parent = group->getParent();
 
@@ -786,7 +787,9 @@ void LLPipeline::doOcclusion(LLCamera& camera)
     llassert(!gCubeSnapshot);
     LLVKLoader::VkPerfPassScope perf_pass_scope(2);
 
-    if (isFrameReflectionProbesEnabled() && sUseOcclusion > 1 && !isFrameShadowPass() && !gCubeSnapshot)
+    const S32 use_occlusion = getFrameCull()->getUseOcclusion();
+
+    if (isFrameReflectionProbesEnabled() && use_occlusion > 1 && !isFrameShadowPass() && !gCubeSnapshot)
     {
         gGL.setColorMask(false, false);
         LLGLDepthTest depth(GL_TRUE, GL_FALSE);
@@ -807,7 +810,7 @@ void LLPipeline::doOcclusion(LLCamera& camera)
         gGL.setColorMask(true, true);
     }
 
-    if (LLPipeline::sUseOcclusion > 1 &&
+    if (use_occlusion > 1 &&
         (getFrameCull()->hasOcclusionGroups() || LLVOCachePartition::sNeedsOcclusionCheck))
     {
         LLVertexBuffer::unbind();
@@ -900,7 +903,7 @@ void LLPipeline::doOcclusion(LLCamera& camera)
             LLSpatialGroup* group = *iter;
             if (!group->isDead())
             {
-                group->doOcclusion(&camera);
+                group->doOcclusion(&camera, use_occlusion);
             }
         }
 
@@ -911,7 +914,7 @@ void LLPipeline::doOcclusion(LLCamera& camera)
             LLVOCachePartition* vo_part = (*iter)->getVOCachePartition();
             if(vo_part)
             {
-                vo_part->processOccluders(&camera);
+                vo_part->processOccluders(&camera, use_occlusion);
             }
         }
 
@@ -1095,6 +1098,7 @@ void LLPipeline::stateSort(LLCamera& camera, LLCullResult &result)
     //LLVertexBuffer::unbind();
 
     grabReferences(result);
+    const S32 use_occlusion = result.getUseOcclusion();
     {
         LL_PROFILE_ZONE_NAMED_CATEGORY_PIPELINE("checkOcclusionAndRebuildMesh");
     for (LLCullResult::sg_iterator iter = getFrameCull()->beginDrawableGroups(); iter != getFrameCull()->endDrawableGroups(); ++iter)
@@ -1104,10 +1108,10 @@ void LLPipeline::stateSort(LLCamera& camera, LLCullResult &result)
         {
             continue;
         }
-        group->checkOcclusion();
-        if (sUseOcclusion > 1 && group->isOcclusionState(LLSpatialGroup::OCCLUDED))
+        group->checkOcclusion(use_occlusion);
+        if (use_occlusion > 1 && group->isOcclusionState(LLSpatialGroup::OCCLUDED))
         {
-            markOccluder(group);
+            markOccluder(group, use_occlusion);
         }
         else
         {
@@ -1181,10 +1185,10 @@ void LLPipeline::stateSort(LLCamera& camera, LLCullResult &result)
             vkcScanEmptyDrawmapDefects(group, s_acc_hasgeom, s_acc_zerogeomv,
                                        s_vkc_hole_uuids, s_vkc_zerogeomv_info);
         }
-        group->checkOcclusion();
-        if (sUseOcclusion > 1 && group->isOcclusionState(LLSpatialGroup::OCCLUDED))
+        group->checkOcclusion(use_occlusion);
+        if (use_occlusion > 1 && group->isOcclusionState(LLSpatialGroup::OCCLUDED))
         {
-            markOccluder(group);
+            markOccluder(group, use_occlusion);
         }
         else
         {
@@ -1376,6 +1380,7 @@ void LLPipeline::postSort(LLCamera &camera)
     LL_PROFILE_ZONE_SCOPED_CATEGORY_PIPELINE;
 
     assertInitialized();
+    const S32 use_occlusion = getFrameCull()->getUseOcclusion();
     sVolumeSAFrame = 0.f; //ZK LBG
 
     LL_PUSH_CALLSTACKS();
@@ -1390,7 +1395,7 @@ void LLPipeline::postSort(LLCamera &camera)
             {
                 continue;
             }
-            if (!sUseOcclusion || !group->isOcclusionState(LLSpatialGroup::OCCLUDED))
+            if (!use_occlusion || !group->isOcclusionState(LLSpatialGroup::OCCLUDED))
             {
                 group->rebuildGeom();
             }
@@ -1416,7 +1421,7 @@ void LLPipeline::postSort(LLCamera &camera)
             continue;
         }
 
-        if ((sUseOcclusion && group->isOcclusionState(LLSpatialGroup::OCCLUDED)) ||
+        if ((use_occlusion && group->isOcclusionState(LLSpatialGroup::OCCLUDED)) ||
             (RenderAutoHideSurfaceAreaLimit > 0.f &&
              group->mSurfaceArea > RenderAutoHideSurfaceAreaLimit * llmax(group->mObjectBoxSize, 10.f)))
         {
@@ -1699,12 +1704,12 @@ void LLPipeline::postSort(LLCamera &camera)
     LL_PUSH_CALLSTACKS();
 }
 
-bool LLPipeline::getVisiblePointCloud(LLCamera& camera, LLVector3& min, LLVector3& max, std::vector<LLVector3>& fp, LLVector3 light_dir)
+bool LLPipeline::getVisiblePointCloud(LLCamera& camera, LLVector3& min, LLVector3& max, std::vector<LLVector3>& fp, S32 use_occlusion, LLVector3 light_dir)
 {
     LL_PROFILE_ZONE_SCOPED_CATEGORY_PIPELINE;
     //get point cloud of intersection of frust and min, max
 
-    if (getVisibleExtents(camera, min, max))
+    if (getVisibleExtents(camera, min, max, use_occlusion))
     {
         return false;
     }

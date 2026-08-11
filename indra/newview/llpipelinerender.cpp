@@ -317,7 +317,7 @@ void LLPipeline::renderGeomDeferred(LLCamera& camera, bool do_occlusion)
         LLVKLoader::writeCurrentGlobalFUBO(gf);
     }
 
-    bool occlude = LLPipeline::sUseOcclusion > 1 && do_occlusion && !LLGLSLShader::sProfileEnabled;
+    bool occlude = getFrameCull()->getUseOcclusion() > 1 && do_occlusion && !LLGLSLShader::sProfileEnabled;
 
     setupHWLights();
 

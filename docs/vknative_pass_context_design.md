@@ -73,4 +73,13 @@ struct LLRecordPassContext
 - 44+ file・compile 9 巡収束。gate grep = ①pass 系 8 method の record 面参照 0 件 ②旧 signature 定義 0 件、両方合格。判定走行 = 硬チャネル 0・VKC 全層沈黙・S1 0・視覚 OK(AYA)。
 - 実装で確定した形: `LLPipeline::buildRecordPassContext()`(singleton snapshot・public static)。構築点 = renderGeom* 4 入口・影 5 関数(setShadowPass(true) 直後)・演出側 orchestration(display/preview/bvh/image preview)。snapshot ≡ live 読みの等価は pass 状態全書き手 36 site と構築点の位置照合で検証済(renderGeom* 本体内に書き手ゼロ)。
 - 副産物 dead 削除: `LLDrawPoolTerrain::getVertexDataMask`(呼び手ゼロ)・`LLDrawPoolAvatar::sMinimumAlpha` static。
-- **残(OPEN・次工事)**: §4 の sUseOcclusion 深部(updateCull 引数化・§2 連動)/ §3 の texture stats 呼び鎖(llviewertexture.cpp:1870)/ LLPipeline statics 分類表。2 段目 = pipeline.cpp pure-move 分割(AYA 合意済・別弾)。
+- **残 OPEN = なし(2026-08-11 完走)**: sUseOcclusion 深部 = 引数化完了(`docs/vknative_occlusion_argumentization.md`)/ texture stats 呼び鎖 = 非欠陥決着(下記)/ LLPipeline statics 分類表 = 納品(`docs/vknative_pipeline_statics_ledger.md`)。2 段目 = pipeline.cpp pure-move 分割 = 完了(`cb9f74df394`)。
+
+### texture stats 呼び鎖 決着(2026-08-11・呼び鎖全列挙済・AYA 裁定待ちの非欠陥提案)
+
+§3 の処方(「抑制判断を呼び元へ移す」)は列挙前の方向であり、**全列挙の結果 record 相から processTextureStats に到達する呼び鎖はゼロ**と確定 = 移すべき抑制が存在しない。
+
+- 直接呼び 3 site(全て llviewertexturelist.cpp): updateImageDecodePriority :1255 / forceImmediateUpdate :1421 / decodeAllImages :1629(virtual = LLViewerLODTexture override llviewertexture.cpp:3249 も同一呼び元・singleton 読みなし)。
+- 呼び元の相(全列挙): updateImageDecodePriority ← updateImagesFetchTextures(:1567/:1574・updateImages = main texture update)+ LLViewerTexture::updateClass 緊急 purge(llviewertexture.cpp:559・updateClass 呼び元 = llviewerdisplay.cpp:630/:1043 = main orchestration・shadow flag 復元後)/ forceImmediateUpdate ← llworldmap.cpp:105・llinspecttexture.cpp:176(UI)/ decodeAllImages ← llstartup.cpp:2420・LLUIImageList::initFromFile(起動)。
+- 処置案: llviewertexture.cpp:1870 の `llassert(!isShadowPass())` は**契約検出器として残置**(record 相からの新規呼び込みを debug で検知 = 観測可能性の原則)。コード変更なし。
+- LLPipeline statics 分類表 = 納品済(`docs/vknative_pipeline_statics_ledger.md`・`adf4d667b20`)。
