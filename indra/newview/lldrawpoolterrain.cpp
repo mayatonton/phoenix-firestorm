@@ -465,7 +465,7 @@ void LLDrawPoolTerrain::renderFullShaderTextures()
         ubo_data.object_plane_t[1] = tp1.mV[1];
         ubo_data.object_plane_t[2] = tp1.mV[2];
         ubo_data.object_plane_t[3] = tp1.mV[3];
-        memcpy(shader->mVkPerProgramUBOMapped, &ubo_data, sizeof(ubo_data));
+        memcpy(shader->vkPerProgramBaseWritePtr(), &ubo_data, sizeof(ubo_data));
     }
 
     LLSettingsWater::ptr_t pwater = LLEnvironment::instance().getCurrentWater();

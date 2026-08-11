@@ -2274,7 +2274,7 @@ void renderNormals(LLDrawable *drawablep)
                 {
                     LLVKLoader::NormalDebug_PerProgramBind ubo_data = {};
                     ubo_data.debug_normal_draw_length = draw_length;
-                    std::memcpy(shader->mVkPerProgramUBOMapped, &ubo_data,
+                    std::memcpy(shader->vkPerProgramBaseWritePtr(), &ubo_data,
                                 llmin((U32)sizeof(ubo_data), shader->mVkPerProgramUBOSize));
                 }
 

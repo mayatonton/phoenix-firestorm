@@ -311,7 +311,7 @@ void LLDrawPoolWater::renderPostDeferred(S32 pass)
             ubo_data.waterFogColorLinear[2] = fog_color_linear.mV[2];
             ubo_data.refScale               = effective_refScale;
             shader->rotatePerProgramUBOSlot();
-            memcpy(shader->mVkActivePerProgramUBOMapped, &ubo_data,
+            memcpy(shader->vkPerProgramActiveWritePtr(), &ubo_data,
                    llmin((U32)sizeof(ubo_data), shader->mVkPerProgramUBOSize));
         }
         else
@@ -334,7 +334,7 @@ void LLDrawPoolWater::renderPostDeferred(S32 pass)
             ubo_data.classic_mode    = (psky->canAutoAdjust() && !should_auto_adjust()) ? 1 : 0;
             ubo_data._pad_waterf0    = 0.0f;
             shader->rotatePerProgramUBOSlot();
-            memcpy(shader->mVkActivePerProgramUBOMapped, &ubo_data,
+            memcpy(shader->vkPerProgramActiveWritePtr(), &ubo_data,
                    llmin((U32)sizeof(ubo_data), shader->mVkPerProgramUBOSize));
         }
 

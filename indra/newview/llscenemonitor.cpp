@@ -358,7 +358,7 @@ void LLSceneMonitor::compare()
         ubo_data.dither_scale   = mDitherScale;
         ubo_data.dither_scale_s = mDitherScaleS;
         ubo_data.dither_scale_t = mDitherScaleT;
-        std::memcpy(gTwoTextureCompareProgram.mVkPerProgramUBOMapped, &ubo_data,
+        std::memcpy(gTwoTextureCompareProgram.vkPerProgramBaseWritePtr(), &ubo_data,
                     llmin((U32)sizeof(ubo_data), gTwoTextureCompareProgram.mVkPerProgramUBOSize));
     }
 
@@ -428,7 +428,7 @@ void LLSceneMonitor::calcDiffAggregate()
     {
         LLVKLoader::OneTextureFilter_PerProgramBind ubo_data = {};
         ubo_data.tolerance = mDiffTolerance;
-        std::memcpy(gOneTextureFilterProgram.mVkPerProgramUBOMapped, &ubo_data,
+        std::memcpy(gOneTextureFilterProgram.vkPerProgramBaseWritePtr(), &ubo_data,
                     llmin((U32)sizeof(ubo_data), gOneTextureFilterProgram.mVkPerProgramUBOSize));
     }
 

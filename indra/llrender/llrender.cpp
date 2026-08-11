@@ -964,7 +964,7 @@ void LLRender::syncLightState()
                 ubo_data.light_diffuse[i][1] = diffuse[i].mV[1];
                 ubo_data.light_diffuse[i][2] = diffuse[i].mV[2];
             }
-            memcpy(shader->mVkPerProgramUBOMapped, &ubo_data, sizeof(ubo_data));
+            memcpy(shader->vkPerProgramBaseWritePtr(), &ubo_data, sizeof(ubo_data));
         }
 
         if (LLVKLoader::isVulkanInitialized() && shader->mWritePerProgramUBOMinimumAlpha
@@ -973,7 +973,7 @@ void LLRender::syncLightState()
             && (shader->mVkPerProgramUBOSize == LLVKLoader::ALPHAF_UBO_SIZE_SHADOW
                 || shader->mVkPerProgramUBOSize == LLVKLoader::ALPHAF_UBO_SIZE_NO_SHADOW))
         {
-            char* mapped = (char*)shader->mVkPerProgramUBOMapped;
+            char* mapped = (char*)shader->vkPerProgramBaseWritePtr();
             U32 lights_offset =
                 (shader->mVkPerProgramUBOSize == LLVKLoader::ALPHAF_UBO_SIZE_NO_SHADOW)
                 ? LLVKLoader::ALPHAF_UBO_OFFSET_LIGHTS_NO_SHADOW
@@ -1013,7 +1013,7 @@ void LLRender::syncLightState()
             && (shader->mVkPerProgramUBOSize == LLVKLoader::GLTFMR_UBO_SIZE_ALPHA_SUNSHADOW
                 || shader->mVkPerProgramUBOSize == LLVKLoader::GLTFMR_UBO_SIZE_ALPHA_NOSHADOW))
         {
-            char* mapped = (char*)shader->mVkPerProgramUBOMapped;
+            char* mapped = (char*)shader->vkPerProgramBaseWritePtr();
             U32 lights_offset =
                 (shader->mVkPerProgramUBOSize == LLVKLoader::GLTFMR_UBO_SIZE_ALPHA_NOSHADOW)
                 ? LLVKLoader::GLTFMR_UBO_OFFSET_LIGHTS_NOSHADOW

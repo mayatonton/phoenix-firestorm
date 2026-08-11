@@ -409,8 +409,6 @@ public:
 
     static constexpr U32 VK_FRAG_PC_BASE   = 64;
     static constexpr U32 VK_FRAG_PC_DWORDS = 16;
-    F32 mVkFragPC[VK_FRAG_PC_DWORDS] = {};
-    U32 mVkFragPCMask = 0;
     void vkPushFragPC(U32 offset, U32 size, const void* data);
     void vkReassertFragPC(VkCommandBuffer cmd);
 
@@ -433,26 +431,33 @@ public:
     static void vkPinPerDrawSlot(LLVKLoader::PerDrawCacheLane& lane, U32 frame,
                                  VkDescriptorSet set, void* tok, const LLVKLoader::PerDrawEvidence& ev);
 
-    VkBuffer                   mVkActivePerProgramUBO       = VK_NULL_HANDLE;
-    void*                      mVkActivePerProgramUBOMapped = nullptr;
     struct PerProgramUBORingSlot
     {
         VkBuffer buffer     = VK_NULL_HANDLE;
         void*    allocation = nullptr;
         void*    mapped     = nullptr;
     };
-    std::vector<PerProgramUBORingSlot> mVkPerProgramUBORing[3];
-    U32                        mVkPerProgramRingIdx[3]   = { 0, 0, 0 };
-    U64                        mVkPerProgramRingFrame[3] = { 0, 0, 0 };
+    struct VkRecordLaneState
+    {
+        F32      fragPC[VK_FRAG_PC_DWORDS] = {};
+        U32      fragPCMask = 0;
+        VkBuffer activePerProgramUBO       = VK_NULL_HANDLE;
+        void*    activePerProgramUBOMapped = nullptr;
+        std::vector<PerProgramUBORingSlot> ring[3];
+        U32      ringIdx[3]   = { 0, 0, 0 };
+        U64      ringFrame[3] = { 0, 0, 0 };
+        std::vector<U8> shadow;
+    };
+    VkRecordLaneState          mVkRecordLane[LLVKLoader::MAX_RECORD_LANES];
     void rotatePerProgramUBOSlot();
+    void* vkPerProgramActiveWritePtr();
+    void* vkPerProgramBaseWritePtr();
+    bool vkPerProgramArenaActive(U32 lane) const;
 
     U32                        mVkSet1DynamicCount        = 0;
     U64                        mVkDynamicBindingMask      = 0;
     U64                        mVkSet1LayoutBindingMask   = 0;
     std::vector<U32>           mVkDynamicBindings;
-    U64                        mVkPerProgramUBOGeneration = 0;
-    void*                      mVkPerProgramUBOBaseMapped = nullptr;
-    std::vector<U8>            mVkPerProgramShadow;
     bool vkResolvePerProgramForDraw(VkBuffer& out_buf, U32& out_offset);
     static bool vkCollectDynamicUBOWrites(LLGLSLShader*                     cur,
                                           LLVKLoader::ScenePerDrawBindings& bindings,

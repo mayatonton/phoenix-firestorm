@@ -646,7 +646,7 @@ static void writeGLTFMRPerDrawRingUBO(LLGLSLShader* sh, S32 material_id, S32 nod
     }
     const U32 size = sh->mVkPerProgramUBOSize;
     sh->rotatePerProgramUBOSlot();
-    char* base = (char*)sh->mVkActivePerProgramUBOMapped;
+    char* base = (char*)sh->vkPerProgramActiveWritePtr();
 
     memcpy(base + 0, &material_id, sizeof(S32));
 
@@ -784,7 +784,7 @@ void GLTFSceneManager::render(Asset& asset, U8 variant)
                     sh->mVkPerProgramUBOSize >= 4)
                 {
                     S32 v = -1;
-                    memcpy(sh->mVkPerProgramUBOMapped, &v, sizeof(S32));
+                    memcpy(sh->vkPerProgramBaseWritePtr(), &v, sizeof(S32));
                 }
             }
 
@@ -911,7 +911,7 @@ void GLTFSceneManager::bind(Asset& asset, Material& material)
         shader->mVkPerProgramUBOSize >= 4)
     {
         S32 v = (S32)(&material - &asset.mMaterials[0]);
-        memcpy(shader->mVkPerProgramUBOMapped, &v, sizeof(S32));
+        memcpy(shader->vkPerProgramBaseWritePtr(), &v, sizeof(S32));
     }
 }
 

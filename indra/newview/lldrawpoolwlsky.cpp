@@ -310,7 +310,7 @@ void LLDrawPoolWLSky::renderSkyHazeDeferred(const LLVector3& camPosLocal, F32 ca
                 && sky_shader->mVkPerProgramUBO != VK_NULL_HANDLE
                 && sky_shader->mVkPerProgramUBOMapped != nullptr)
             {
-                U8* ubo_base = (U8*) sky_shader->mVkActivePerProgramUBOMapped;
+                U8* ubo_base = (U8*) sky_shader->vkPerProgramActiveWritePtr();
                 const F32 hdr_scale_val    = powf(2.f, hdri_exposure);
                 const F32 split_screen_val = gCubeSnapshot ? 1.f : (F32) hdri_split;
                 memcpy(ubo_base + 32, &hdr_scale_val,    sizeof(F32));
@@ -353,7 +353,7 @@ void LLDrawPoolWLSky::renderSkyHazeDeferred(const LLVector3& camPosLocal, F32 ca
         if (LLVKLoader::isVulkanInitialized() && sky_shader->mVkPerProgramUBO != VK_NULL_HANDLE
             && sky_shader->mVkPerProgramUBOMapped != nullptr)
         {
-            U8* ubo_base = (U8*) sky_shader->mVkActivePerProgramUBOMapped;
+            U8* ubo_base = (U8*) sky_shader->vkPerProgramActiveWritePtr();
             const F32 cam_pos_local[3] = { 0.f, camHeightLocal, 0.f };
             const S32 cube_snap        = gCubeSnapshot ? 1 : 0;
             memcpy(ubo_base + 0,  cam_pos_local,   3 * sizeof(F32));
@@ -540,7 +540,7 @@ void LLDrawPoolWLSky::renderSkyCloudsDeferred(const LLVector3& camPosLocal, F32 
             ubo_data.aya_r18_cloud_volumetric_enabled = r18_on ? 1 : 0;
             ubo_data.aya_r18_strength = llclamp((F32)aya_r18_strength, 0.f, 1.f);
 
-            memcpy(cloudshader->mVkPerProgramUBOMapped, &ubo_data, sizeof(ubo_data));
+            memcpy(cloudshader->vkPerProgramBaseWritePtr(), &ubo_data, sizeof(ubo_data));
         }
 
         /// Render the skydome
@@ -608,7 +608,7 @@ void LLDrawPoolWLSky::renderHeavenlyBodies()
                 {
                     LLVKLoader::SunDiscF_PerProgramBind ubo_data = {};
                     ubo_data.blend_factor = blend_factor;
-                    memcpy(sun_shader->mVkPerProgramUBOMapped, &ubo_data, sizeof(ubo_data));
+                    memcpy(sun_shader->vkPerProgramBaseWritePtr(), &ubo_data, sizeof(ubo_data));
                 }
 
                 face->renderIndexed();
@@ -668,7 +668,7 @@ void LLDrawPoolWLSky::renderHeavenlyBodies()
                 ubo_data.moon_dir[1]   = mdir.mV[1];
                 ubo_data.moon_dir[2]   = mdir.mV[2];
                 ubo_data.moon_brightness = moon_brightness;
-                memcpy(moon_shader->mVkPerProgramUBOMapped, &ubo_data, sizeof(ubo_data));
+                memcpy(moon_shader->vkPerProgramBaseWritePtr(), &ubo_data, sizeof(ubo_data));
             }
 
             face->renderIndexed();

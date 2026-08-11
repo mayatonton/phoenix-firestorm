@@ -5348,7 +5348,7 @@ void LLPipeline::renderMotionBlurComposite(LLRenderTarget* src, LLRenderTarget* 
                 ubo_data._mbF_screen_res[1]        = (F32)src->getHeight();
                 ubo_data._mbF_motion_blur_strength = (S32)blur_strength;
                 ubo_data._motionBlurF_pad0         = 0;
-                std::memcpy(gDeferredMotionBlurProgram.mVkPerProgramUBOMapped,
+                std::memcpy(gDeferredMotionBlurProgram.vkPerProgramBaseWritePtr(),
                             &ubo_data,
                             sizeof(ubo_data));
             }
@@ -5401,7 +5401,7 @@ void LLPipeline::renderVolumetric(LLRenderTarget* src)
                 ubo_data.godray_multiplier      = (F32)godray_mult;
                 ubo_data.falloff_multiplier     = (F32)falloff_mult;
                 ubo_data._volumetricLightF_pad0 = 0.f;
-                std::memcpy(gVolumetricLightProgram.mVkPerProgramUBOMapped,
+                std::memcpy(gVolumetricLightProgram.vkPerProgramBaseWritePtr(),
                             &ubo_data,
                             sizeof(ubo_data));
             }
@@ -6440,7 +6440,7 @@ void LLPipeline::renderDebug()
                         ubo_data.tint        = 1.f;
                         ubo_data.ambiance    = 1.f;
                         ubo_data.alpha_scale = 1.f;
-                        memcpy(gPathfindingProgram.mVkPerProgramUBOMapped, &ubo_data, sizeof(ubo_data));
+                        memcpy(gPathfindingProgram.vkPerProgramBaseWritePtr(), &ubo_data, sizeof(ubo_data));
                     }
 
                     //Requried character physics capsule render parameters
@@ -6465,7 +6465,7 @@ void LLPipeline::renderDebug()
                             ubo_data.tint        = 1.f;
                             ubo_data.ambiance    = 1.f;
                             ubo_data.alpha_scale = 0.90f;
-                            memcpy(gPathfindingProgram.mVkPerProgramUBOMapped, &ubo_data, sizeof(ubo_data));
+                            memcpy(gPathfindingProgram.vkPerProgramBaseWritePtr(), &ubo_data, sizeof(ubo_data));
                         }
                     }
                 }
@@ -6492,7 +6492,7 @@ void LLPipeline::renderDebug()
                         ubo_data.tint        = 1.f;
                         ubo_data.ambiance    = ambiance;
                         ubo_data.alpha_scale = 1.f;
-                        memcpy(gPathfindingProgram.mVkPerProgramUBOMapped, &ubo_data, sizeof(ubo_data));
+                        memcpy(gPathfindingProgram.vkPerProgramBaseWritePtr(), &ubo_data, sizeof(ubo_data));
                     }
 
                     if ( !pathfindingConsole->isRenderWorld() )
@@ -6533,7 +6533,7 @@ void LLPipeline::renderDebug()
                             ubo_data.tint        = 1.f;
                             ubo_data.ambiance    = 1.f;
                             ubo_data.alpha_scale = 1.f;
-                            memcpy(gPathfindingNoNormalsProgram.mVkPerProgramUBOMapped, &ubo_data, sizeof(ubo_data));
+                            memcpy(gPathfindingNoNormalsProgram.vkPerProgramBaseWritePtr(), &ubo_data, sizeof(ubo_data));
                         }
                         llPathingLibInstance->renderNavMeshEdges();
                         gPathfindingProgram.bind();
@@ -6545,7 +6545,7 @@ void LLPipeline::renderDebug()
                             ubo_data.tint        = 1.f;
                             ubo_data.ambiance    = ambiance;
                             ubo_data.alpha_scale = 1.f;
-                            memcpy(gPathfindingProgram.mVkPerProgramUBOMapped, &ubo_data, sizeof(ubo_data));
+                            memcpy(gPathfindingProgram.vkPerProgramBaseWritePtr(), &ubo_data, sizeof(ubo_data));
                         }
 
                         gGL.flush();
@@ -6569,7 +6569,7 @@ void LLPipeline::renderDebug()
                             ubo_data.tint        = 1.f;
                             ubo_data.ambiance    = ambiance;
                             ubo_data.alpha_scale = 1.f;
-                            memcpy(gPathfindingProgram.mVkPerProgramUBOMapped, &ubo_data, sizeof(ubo_data));
+                            memcpy(gPathfindingProgram.vkPerProgramBaseWritePtr(), &ubo_data, sizeof(ubo_data));
                         }
 
                         //The bookends
@@ -6592,7 +6592,7 @@ void LLPipeline::renderDebug()
                             ubo_data.tint        = 1.f;
                             ubo_data.ambiance    = ambiance;
                             ubo_data.alpha_scale = 0.90f;
-                            memcpy(gPathfindingProgram.mVkPerProgramUBOMapped, &ubo_data, sizeof(ubo_data));
+                            memcpy(gPathfindingProgram.vkPerProgramBaseWritePtr(), &ubo_data, sizeof(ubo_data));
                         }
                     }
 
@@ -6725,7 +6725,7 @@ void LLPipeline::renderDebug()
                             ubo_data.tint        = gSavedSettings.getF32("PathfindingXRayTint");
                             ubo_data.ambiance    = 1.f;
                             ubo_data.alpha_scale = gSavedSettings.getF32("PathfindingXRayOpacity");
-                            memcpy(gPathfindingNoNormalsProgram.mVkPerProgramUBOMapped, &ubo_data, sizeof(ubo_data));
+                            memcpy(gPathfindingNoNormalsProgram.vkPerProgramBaseWritePtr(), &ubo_data, sizeof(ubo_data));
                         }
                         llPathingLibInstance->renderNavMeshEdges();
                         gPathfindingProgram.bind();
@@ -6737,7 +6737,7 @@ void LLPipeline::renderDebug()
                             ubo_data.tint        = gSavedSettings.getF32("PathfindingXRayTint");
                             ubo_data.ambiance    = gSavedSettings.getBOOL("PathfindingXRayWireframe") ? 1.f : ambiance;
                             ubo_data.alpha_scale = gSavedSettings.getF32("PathfindingXRayOpacity");
-                            memcpy(gPathfindingProgram.mVkPerProgramUBOMapped, &ubo_data, sizeof(ubo_data));
+                            memcpy(gPathfindingProgram.vkPerProgramBaseWritePtr(), &ubo_data, sizeof(ubo_data));
                         }
 
                         gGL.flush();
@@ -9208,7 +9208,7 @@ void LLPipeline::visualizeBuffers(LLRenderTarget* src, LLRenderTarget* dst, U32 
             {
                 LLVKLoader::PostVisualizeBuffers_PerProgramBind ubo_data = {};
                 ubo_data.mipLevel = (RenderBufferVisualization != 4) ? 0.f : 8.f;
-                std::memcpy(gDeferredBufferVisualProgram.mVkPerProgramUBOMapped, &ubo_data,
+                std::memcpy(gDeferredBufferVisualProgram.vkPerProgramBaseWritePtr(), &ubo_data,
                             llmin((U32)sizeof(ubo_data), gDeferredBufferVisualProgram.mVkPerProgramUBOSize));
             }
 
@@ -9261,7 +9261,7 @@ void LLPipeline::generateLuminance(LLRenderTarget* src, LLRenderTarget* dst)
                 {
                     LLVKLoader::LuminanceF_PerProgramBind ubo_data = {};
                     ubo_data.diffuse_luminance_scale = (F32)diffuse_luminance_scale;
-                    std::memcpy(gLuminanceProgram.mVkPerProgramUBOMapped, &ubo_data,
+                    std::memcpy(gLuminanceProgram.vkPerProgramBaseWritePtr(), &ubo_data,
                                 llmin((U32)sizeof(ubo_data), gLuminanceProgram.mVkPerProgramUBOSize));
                 }
 
@@ -9392,7 +9392,7 @@ void LLPipeline::generateExposure(LLRenderTarget* src, LLRenderTarget* dst, bool
             ubo_data.dynamic_exposure_params2[2] = exp_max;
             ubo_data.dynamic_exposure_params2[3] = (F32)dynamic_exposure_speed_target;
             ubo_data.dt                          = gFrameIntervalSeconds;
-            std::memcpy(shader->mVkPerProgramUBOMapped, &ubo_data,
+            std::memcpy(shader->vkPerProgramBaseWritePtr(), &ubo_data,
                         llmin((U32)sizeof(ubo_data), shader->mVkPerProgramUBOSize));
         }
 
@@ -9512,7 +9512,7 @@ void LLPipeline::tonemap(LLRenderTarget* src, LLRenderTarget* dst, bool gamma_co
             ubo_data.color_grading_lut_intensity = gSavedSettings.getF32("RenderColorGradingLUTIntensity");
             ubo_data.color_grading_lut_enabled   = mColorGradingLUTValid ? 1 : 0;
             ubo_data.gamma                       = gamma_correct ? (F32)psky->getGamma() : 0.f;
-            std::memcpy(shader->mVkPerProgramUBOMapped, &ubo_data,
+            std::memcpy(shader->vkPerProgramBaseWritePtr(), &ubo_data,
                         llmin((U32)sizeof(ubo_data), shader->mVkPerProgramUBOSize));
         }
 
@@ -9560,7 +9560,7 @@ void LLPipeline::gammaCorrect(LLRenderTarget* src, LLRenderTarget* dst)
             ubo_data._postGammaCorrect_pad0 = 0.f;
             ubo_data._postGammaCorrect_pad1 = 0.f;
             ubo_data._postGammaCorrect_pad2 = 0.f;
-            std::memcpy(shader.mVkPerProgramUBOMapped, &ubo_data, sizeof(ubo_data));
+            std::memcpy(shader.vkPerProgramBaseWritePtr(), &ubo_data, sizeof(ubo_data));
         }
 
         shader.bindTexture(LLShaderMgr::DEFERRED_DIFFUSE, src, false, LLTexUnit::TFO_POINT);
@@ -9666,7 +9666,7 @@ void LLPipeline::generateGlow(LLRenderTarget* src)
                 ubo_data.screen_res[0]     = (F32)mGlow[2].getWidth();
                 ubo_data.screen_res[1]     = (F32)mGlow[2].getHeight();
 
-                memcpy(gGlowExtractProgram.mVkPerProgramUBOMapped, &ubo_data,
+                memcpy(gGlowExtractProgram.vkPerProgramBaseWritePtr(), &ubo_data,
                        llmin((U32)sizeof(ubo_data), gGlowExtractProgram.mVkPerProgramUBOSize));
             }
 
@@ -9736,7 +9736,7 @@ void LLPipeline::generateGlow(LLRenderTarget* src)
                 ubo_data.glowDelta[1] = delta_y;
                 ubo_data.glowStrength = strength;
                 gGlowProgram.rotatePerProgramUBOSlot();
-                memcpy(gGlowProgram.mVkActivePerProgramUBOMapped, &ubo_data, sizeof(ubo_data));
+                memcpy(gGlowProgram.vkPerProgramActiveWritePtr(), &ubo_data, sizeof(ubo_data));
             }
 
             mScreenTriangleVB->setBuffer();
@@ -9816,7 +9816,7 @@ void LLPipeline::applyCAS(LLRenderTarget* src, LLRenderTarget* dst)
             ubo_data.cas_param_1_uniform[2]    = const1[2];
             ubo_data.cas_param_1_uniform[3]    = const1[3];
             ubo_data.gamma = (F32)psky->getGamma();
-            memcpy(sharpen_shader->mVkPerProgramUBOMapped, &ubo_data,
+            memcpy(sharpen_shader->vkPerProgramBaseWritePtr(), &ubo_data,
                    llmin((U32)sizeof(ubo_data), sharpen_shader->mVkPerProgramUBOSize));
         }
     }
@@ -9924,7 +9924,7 @@ void LLPipeline::applyFXAA(LLRenderTarget* src, LLRenderTarget* dst)
                 ubo_data.rcp_frame_opt2[1]   = -2.f / height * scale_y;
                 ubo_data.rcp_frame_opt2[2]   =  2.f / width * scale_x;
                 ubo_data.rcp_frame_opt2[3]   =  2.f / height * scale_y;
-                std::memcpy(shader->mVkPerProgramUBOMapped, &ubo_data, sizeof(ubo_data));
+                std::memcpy(shader->vkPerProgramBaseWritePtr(), &ubo_data, sizeof(ubo_data));
             }
 
             {
@@ -9984,7 +9984,7 @@ void LLPipeline::generateSMAABuffers(LLRenderTarget* src)
             {
                 LLVKLoader::SMAA_PerProgramBind smaa_ubo = {};
                 memcpy(smaa_ubo.SMAA_RT_METRICS, rt_metrics, sizeof(smaa_ubo.SMAA_RT_METRICS));
-                memcpy(edge_shader.mVkPerProgramUBOMapped, &smaa_ubo, sizeof(smaa_ubo));
+                memcpy(edge_shader.vkPerProgramBaseWritePtr(), &smaa_ubo, sizeof(smaa_ubo));
             }
 
             S32 channel = edge_shader.enableTexture(LLShaderMgr::DEFERRED_DIFFUSE, src->getUsage());
@@ -10030,7 +10030,7 @@ void LLPipeline::generateSMAABuffers(LLRenderTarget* src)
             {
                 LLVKLoader::SMAA_PerProgramBind smaa_ubo = {};
                 memcpy(smaa_ubo.SMAA_RT_METRICS, rt_metrics, sizeof(smaa_ubo.SMAA_RT_METRICS));
-                memcpy(blend_weights_shader.mVkPerProgramUBOMapped, &smaa_ubo, sizeof(smaa_ubo));
+                memcpy(blend_weights_shader.vkPerProgramBaseWritePtr(), &smaa_ubo, sizeof(smaa_ubo));
             }
 
             if (LLVKLoader::isVulkanInitialized())
@@ -10115,7 +10115,7 @@ void LLPipeline::applySMAA(LLRenderTarget* src, LLRenderTarget* dst)
             {
                 LLVKLoader::SMAA_PerProgramBind smaa_ubo = {};
                 memcpy(smaa_ubo.SMAA_RT_METRICS, rt_metrics, sizeof(smaa_ubo.SMAA_RT_METRICS));
-                memcpy(blend_shader.mVkPerProgramUBOMapped, &smaa_ubo, sizeof(smaa_ubo));
+                memcpy(blend_shader.vkPerProgramBaseWritePtr(), &smaa_ubo, sizeof(smaa_ubo));
             }
 
             S32 diffuse_channel = blend_shader.enableTexture(LLShaderMgr::DEFERRED_DIFFUSE);
@@ -10239,7 +10239,7 @@ void LLPipeline::copyRenderTarget(LLRenderTarget* src, LLRenderTarget* dst)
         ubo_data.screen_res[0] = (F32)src->getWidth();
         ubo_data.screen_res[1] = (F32)src->getHeight();
         ubo_data.chroma_str    = nodof_chroma_str;
-        memcpy(gDeferredPostNoDoFProgram.mVkPerProgramUBOMapped, &ubo_data, sizeof(ubo_data));
+        memcpy(gDeferredPostNoDoFProgram.vkPerProgramBaseWritePtr(), &ubo_data, sizeof(ubo_data));
     }
 
     {
@@ -10373,7 +10373,7 @@ bool LLPipeline::renderVignette(LLRenderTarget* src, LLRenderTarget* dst)
             ubo_data.vignette[0]       = RenderVignette.mV[0];
             ubo_data.vignette[1]       = RenderVignette.mV[1];
             ubo_data.vignette[2]       = RenderVignette.mV[2];
-            memcpy(shader->mVkPerProgramUBOMapped, &ubo_data, sizeof(ubo_data));
+            memcpy(shader->vkPerProgramBaseWritePtr(), &ubo_data, sizeof(ubo_data));
         }
 
         mScreenTriangleVB->setBuffer();
@@ -10556,7 +10556,7 @@ bool LLPipeline::renderSnapshotFrame(LLRenderTarget* src, LLRenderTarget* dst)
         ubo_data.border_color[1]        = border_color().mV[1];
         ubo_data.border_color[2]        = border_color().mV[2];
         ubo_data.border_thickness       = (F32)border_thickness;
-        memcpy(shader->mVkPerProgramUBOMapped, &ubo_data, sizeof(ubo_data));
+        memcpy(shader->vkPerProgramBaseWritePtr(), &ubo_data, sizeof(ubo_data));
     }
 
     // Guides are rendered in a later UI pass; no additional uniforms required here.
@@ -10773,7 +10773,7 @@ void LLPipeline::renderDoF(LLRenderTarget* src, LLRenderTarget* dst)
                     ubo_data._cofF_pad0       = 0.f;
                     ubo_data._cofF_pad1       = 0.f;
                     ubo_data._cofF_pad2       = 0.f;
-                    std::memcpy(gDeferredCoFProgram.mVkPerProgramUBOMapped, &ubo_data, sizeof(ubo_data));
+                    std::memcpy(gDeferredCoFProgram.vkPerProgramBaseWritePtr(), &ubo_data, sizeof(ubo_data));
                 }
 
                 mScreenTriangleVB->setBuffer();
@@ -10820,7 +10820,7 @@ void LLPipeline::renderDoF(LLRenderTarget* src, LLRenderTarget* dst)
                     ubo_data.screen_res[1] = (F32)dst->getHeight();
                     ubo_data.max_cof       = adj_COF;
                     ubo_data.chroma_str    = dof_chroma_str;
-                    memcpy(gDeferredPostProgram.mVkPerProgramUBOMapped, &ubo_data, sizeof(ubo_data));
+                    memcpy(gDeferredPostProgram.vkPerProgramBaseWritePtr(), &ubo_data, sizeof(ubo_data));
                 }
 
                 mScreenTriangleVB->setBuffer();
@@ -10862,7 +10862,7 @@ void LLPipeline::renderDoF(LLRenderTarget* src, LLRenderTarget* dst)
                     ubo_data._dofC_res_scale     = CameraDoFResScale;
                     ubo_data._dofC_dof_width     = (F32)(dof_width - 1) / (F32)src->getWidth();
                     ubo_data._dofC_dof_height    = (F32)(dof_height - 1) / (F32)src->getHeight();
-                    std::memcpy(gDeferredDoFCombineProgram.mVkPerProgramUBOMapped, &ubo_data, sizeof(ubo_data));
+                    std::memcpy(gDeferredDoFCombineProgram.vkPerProgramBaseWritePtr(), &ubo_data, sizeof(ubo_data));
                 }
 
                 mScreenTriangleVB->setBuffer();
@@ -11187,7 +11187,7 @@ void LLPipeline::renderFinalize()
         ubo_data.screen_res[0] = (F32)sourceBuffer->getWidth();
         ubo_data.screen_res[1] = (F32)sourceBuffer->getHeight();
         ubo_data.chroma_str    = nodof_noise_chroma_str;
-        memcpy(gDeferredPostNoDoFNoiseProgram.mVkPerProgramUBOMapped, &ubo_data, sizeof(ubo_data));
+        memcpy(gDeferredPostNoDoFNoiseProgram.vkPerProgramBaseWritePtr(), &ubo_data, sizeof(ubo_data));
     }
 
     {
@@ -11423,7 +11423,7 @@ void LLPipeline::bindDeferredShader(LLGLSLShader& shader, LLRenderTarget* light_
         && shader.mVkPerProgramUBOMapped != nullptr
         && shader.mVkPerProgramUBOSize == LLVKLoader::ALPHAF_UBO_SIZE_NO_SHADOW)
     {
-        char* mapped = (char*)shader.mVkPerProgramUBOMapped;
+        char* mapped = (char*)shader.vkPerProgramBaseWritePtr();
         F32 sun_moon[8] = {
             mTransformedSunDir.mV[0],  mTransformedSunDir.mV[1],  mTransformedSunDir.mV[2],  0.f,
             mTransformedMoonDir.mV[0], mTransformedMoonDir.mV[1], mTransformedMoonDir.mV[2], 0.f,
@@ -11437,7 +11437,7 @@ void LLPipeline::bindDeferredShader(LLGLSLShader& shader, LLRenderTarget* light_
         && (shader.mVkPerProgramUBOSize == LLVKLoader::ALPHAF_UBO_SIZE_SHADOW
             || shader.mVkPerProgramUBOSize == LLVKLoader::ALPHAF_UBO_SIZE_NO_SHADOW))
     {
-        char* mapped = (char*)shader.mVkPerProgramUBOMapped;
+        char* mapped = (char*)shader.vkPerProgramBaseWritePtr();
         const F32 near_clip_v = LLViewerCamera::getInstance()->getNear() * 2.f;
         memcpy(mapped + LLVKLoader::ALPHAF_UBO_OFFSET_NEAR_CLIP, &near_clip_v, sizeof(F32));
     }
@@ -11446,7 +11446,7 @@ void LLPipeline::bindDeferredShader(LLGLSLShader& shader, LLRenderTarget* light_
         && shader.mVkPerProgramUBOMapped != nullptr
         && shader.mVkPerProgramUBOSize == LLVKLoader::GLTFMR_UBO_SIZE_ALPHA_NOSHADOW)
     {
-        char* mapped = (char*)shader.mVkPerProgramUBOMapped;
+        char* mapped = (char*)shader.vkPerProgramBaseWritePtr();
         F32 sun_v[4]  = { mTransformedSunDir.mV[0],  mTransformedSunDir.mV[1],  mTransformedSunDir.mV[2],  0.f };
         F32 moon_v[4] = { mTransformedMoonDir.mV[0], mTransformedMoonDir.mV[1], mTransformedMoonDir.mV[2], 0.f };
         memcpy(mapped + LLVKLoader::GLTFMR_UBO_OFFSET_SUN_DIR,  sun_v,  16);
@@ -11637,7 +11637,7 @@ bool LLPipeline::renderRiggedObjectIDBufferForAvatar(LLVOAvatar* target_avatar,
                 ubo_data.object_id_packed[2] = b;
                 ubo_data.object_id_packed[3] = a;
                 gFSObjectIDShader.rotatePerProgramUBOSlot();
-                std::memcpy(gFSObjectIDShader.mVkActivePerProgramUBOMapped, &ubo_data, sizeof(ubo_data));
+                std::memcpy(gFSObjectIDShader.vkPerProgramActiveWritePtr(), &ubo_data, sizeof(ubo_data));
             }
 
             if (!LLRenderPass::uploadMatrixPalette(target_avatar, skin,
@@ -12052,7 +12052,7 @@ void LLPipeline::renderDeferredLighting()
                         ubo_data.sun_dir[0]    = mTransformedSunDir.mV[0];
                         ubo_data.sun_dir[1]    = mTransformedSunDir.mV[1];
                         ubo_data.sun_dir[2]    = mTransformedSunDir.mV[2];
-                        memcpy(sun_shader.mVkPerProgramUBOMapped, &ubo_data, sizeof(ubo_data));
+                        memcpy(sun_shader.vkPerProgramBaseWritePtr(), &ubo_data, sizeof(ubo_data));
                     }
 
                     {
@@ -12136,7 +12136,7 @@ void LLPipeline::renderDeferredLighting()
                 ubo_data.blur_size     = RenderShadowBlurSize;
                 ubo_data.kern_scale    = blur_size * (kern_length / 2.f - 0.5f);
                 gDeferredBlurLightProgram.rotatePerProgramUBOSlot();
-                memcpy(gDeferredBlurLightProgram.mVkActivePerProgramUBOMapped, &ubo_data, sizeof(ubo_data));
+                memcpy(gDeferredBlurLightProgram.vkPerProgramActiveWritePtr(), &ubo_data, sizeof(ubo_data));
             }
 
             {
@@ -12177,7 +12177,7 @@ void LLPipeline::renderDeferredLighting()
                 ubo_data.blur_size     = RenderShadowBlurSize;
                 ubo_data.kern_scale    = blur_size * (kern_length / 2.f - 0.5f);
                 gDeferredBlurLightProgram.rotatePerProgramUBOSlot();
-                memcpy(gDeferredBlurLightProgram.mVkActivePerProgramUBOMapped, &ubo_data, sizeof(ubo_data));
+                memcpy(gDeferredBlurLightProgram.vkPerProgramActiveWritePtr(), &ubo_data, sizeof(ubo_data));
             }
 
             {
@@ -12292,7 +12292,7 @@ void LLPipeline::renderDeferredLighting()
                     cursor += 16;
                 }
 
-                memcpy(soften_shader.mVkPerProgramUBOMapped, ubo_buffer, ubo_size);
+                memcpy(soften_shader.vkPerProgramBaseWritePtr(), ubo_buffer, ubo_size);
             }
 
             {
@@ -12440,7 +12440,7 @@ void LLPipeline::renderDeferredLighting()
                             && gDeferredLightProgram.mVkPerProgramUBO != VK_NULL_HANDLE)
                         {
                             gDeferredLightProgram.rotatePerProgramUBOSlot();
-                            if (gDeferredLightProgram.mVkActivePerProgramUBOMapped != nullptr)
+                            if (gDeferredLightProgram.vkPerProgramActiveWritePtr() != nullptr)
                             {
                                 LLVKLoader::PointLightPerDraw ubo_data = {};
                                 ubo_data.center[0]             = c[0];
@@ -12453,7 +12453,7 @@ void LLPipeline::renderDeferredLighting()
                                 ubo_data.falloff               = volume->getLightFalloff(DEFERRED_LIGHT_FALLOFF);
                                 ubo_data.global_light_strength = LLPipeline::RenderGlobalLightStrength;
                                 ubo_data.classic_mode          = (psky && psky->canAutoAdjust()) ? 1 : 0;
-                                memcpy(gDeferredLightProgram.mVkActivePerProgramUBOMapped, &ubo_data, sizeof(ubo_data));
+                                memcpy(gDeferredLightProgram.vkPerProgramActiveWritePtr(), &ubo_data, sizeof(ubo_data));
                             }
                         }
 
@@ -12527,7 +12527,7 @@ void LLPipeline::renderDeferredLighting()
                         && gDeferredSpotLightProgram.mVkPerProgramUBO != VK_NULL_HANDLE)
                     {
                         gDeferredSpotLightProgram.rotatePerProgramUBOSlot();
-                        if (gDeferredSpotLightProgram.mVkActivePerProgramUBOMapped != nullptr)
+                        if (gDeferredSpotLightProgram.vkPerProgramActiveWritePtr() != nullptr)
                         {
                             LLVKLoader::SpotLightPerDraw sd = {};
                             sd.center[0] = c[0]; sd.center[1] = c[1]; sd.center[2] = c[2];
@@ -12540,7 +12540,7 @@ void LLPipeline::renderDeferredLighting()
                             sd.global_light_strength = LLPipeline::RenderGlobalLightStrength;
                             sd.proj_shadow_idx       = spot_proj_shadow_idx;
                             sd.classic_mode          = (psky && psky->canAutoAdjust()) ? 1 : 0;
-                            memcpy(gDeferredSpotLightProgram.mVkActivePerProgramUBOMapped, &sd, sizeof(sd));
+                            memcpy(gDeferredSpotLightProgram.vkPerProgramActiveWritePtr(), &sd, sizeof(sd));
                         }
                         VkBuffer du_ov_buf = VK_NULL_HANDLE; void* du_ov_map = nullptr;
                         if (LLVKLoader::acquireDeferredUtilOverrideSlot(du_ov_buf, du_ov_map) && du_ov_map)
@@ -12602,7 +12602,7 @@ void LLPipeline::renderDeferredLighting()
                             && gDeferredMultiLightProgram[idx].mVkPerProgramUBO != VK_NULL_HANDLE)
                         {
                             gDeferredMultiLightProgram[idx].rotatePerProgramUBOSlot();
-                            if (gDeferredMultiLightProgram[idx].mVkActivePerProgramUBOMapped != nullptr)
+                            if (gDeferredMultiLightProgram[idx].vkPerProgramActiveWritePtr() != nullptr)
                             {
                                 U8 buf[16 * 32 + 16] = {};
                                 U32 light_arr_bytes = count * 16;
@@ -12611,7 +12611,7 @@ void LLPipeline::renderDeferredLighting()
                                 F32 footer[4] = { far_z, LLPipeline::RenderGlobalLightStrength, 0.f, 0.f };
                                 memcpy(buf + light_arr_bytes * 2, footer, sizeof(footer));
                                 U32 ubo_size = light_arr_bytes * 2 + 16;
-                                memcpy(gDeferredMultiLightProgram[idx].mVkActivePerProgramUBOMapped, buf, ubo_size);
+                                memcpy(gDeferredMultiLightProgram[idx].vkPerProgramActiveWritePtr(), buf, ubo_size);
                             }
                         }
                         far_z = 0.f;
@@ -12655,7 +12655,7 @@ void LLPipeline::renderDeferredLighting()
                         && gDeferredMultiSpotLightProgram.mVkPerProgramUBO != VK_NULL_HANDLE)
                     {
                         gDeferredMultiSpotLightProgram.rotatePerProgramUBOSlot();
-                        if (gDeferredMultiSpotLightProgram.mVkActivePerProgramUBOMapped != nullptr)
+                        if (gDeferredMultiSpotLightProgram.vkPerProgramActiveWritePtr() != nullptr)
                         {
                             LLVKLoader::SpotLightPerDraw sd = {};
                             sd.center[0] = tc.x; sd.center[1] = tc.y; sd.center[2] = tc.z;
@@ -12668,7 +12668,7 @@ void LLPipeline::renderDeferredLighting()
                             sd.global_light_strength = LLPipeline::RenderGlobalLightStrength;
                             sd.proj_shadow_idx       = spot_proj_shadow_idx;
                             sd.classic_mode          = (psky && psky->canAutoAdjust()) ? 1 : 0;
-                            memcpy(gDeferredMultiSpotLightProgram.mVkActivePerProgramUBOMapped, &sd, sizeof(sd));
+                            memcpy(gDeferredMultiSpotLightProgram.vkPerProgramActiveWritePtr(), &sd, sizeof(sd));
                         }
                         VkBuffer du_ov_buf = VK_NULL_HANDLE; void* du_ov_map = nullptr;
                         if (LLVKLoader::acquireDeferredUtilOverrideSlot(du_ov_buf, du_ov_map) && du_ov_map)
@@ -12891,7 +12891,7 @@ bool LLPipeline::doAtmospherics()
             ubo_data.moon_dir[2]  = mTransformedMoonDir.mV[2];
             ubo_data.sun_up_factor = environment.getIsSunUp() ? 1 : 0;
             haze_shader.rotatePerProgramUBOSlot();
-            memcpy(haze_shader.mVkActivePerProgramUBOMapped, &ubo_data, sizeof(ubo_data));
+            memcpy(haze_shader.vkPerProgramActiveWritePtr(), &ubo_data, sizeof(ubo_data));
         }
 
         LLGLDepthTest depth(GL_FALSE);
@@ -12973,7 +12973,7 @@ void LLPipeline::doGodrays(bool scene_depth_ok)
         ubo_data.aya_r15_godrays_enabled        = r15_on ? 1 : 0;
         ubo_data.aya_r15_godrays_phase_exponent = (F32)aya_r15_phase_exp;
         ubo_data.aya_r15_godrays_strength       = (F32)aya_r15_strength;
-        memcpy(shader.mVkPerProgramUBOMapped, &ubo_data, sizeof(ubo_data));
+        memcpy(shader.vkPerProgramBaseWritePtr(), &ubo_data, sizeof(ubo_data));
     }
 
     mScreenTriangleVB->setBuffer();
@@ -13100,7 +13100,7 @@ void LLPipeline::doSkinSSS()
             ubo_data.aya_visual_realism_enabled   = 1;
             ubo_data.aya_r20_skin_sss_enabled     = 1;
             gDeferredSkinSSSProgram.rotatePerProgramUBOSlot();
-            memcpy(gDeferredSkinSSSProgram.mVkActivePerProgramUBOMapped, &ubo_data, sizeof(ubo_data));
+            memcpy(gDeferredSkinSSSProgram.vkPerProgramActiveWritePtr(), &ubo_data, sizeof(ubo_data));
         }
 
         mScreenTriangleVB->setBuffer();
@@ -13176,7 +13176,7 @@ void LLPipeline::doSkinSSS()
             ubo_data.aya_visual_realism_enabled   = 1;
             ubo_data.aya_r20_skin_sss_enabled     = 1;
             gDeferredSkinSSSProgram.rotatePerProgramUBOSlot();
-            memcpy(gDeferredSkinSSSProgram.mVkActivePerProgramUBOMapped, &ubo_data, sizeof(ubo_data));
+            memcpy(gDeferredSkinSSSProgram.vkPerProgramActiveWritePtr(), &ubo_data, sizeof(ubo_data));
         }
 
         mScreenTriangleVB->setBuffer();
@@ -13262,7 +13262,7 @@ void LLPipeline::doWaterHaze()
         {
             LLVKLoader::WaterHazeF_PerProgramBind ubo_data = {};
             ubo_data.above_water = above_water_val;
-            memcpy(haze_shader.mVkPerProgramUBOMapped, &ubo_data,
+            memcpy(haze_shader.vkPerProgramBaseWritePtr(), &ubo_data,
                    llmin((U32)sizeof(ubo_data), haze_shader.mVkPerProgramUBOSize));
             mWaterExclusionMask.bindForShaderRead(0, false);
         }

@@ -480,7 +480,7 @@ void LLHeroProbeManager::generateRadiance(LLReflectionMap* probe)
                     ubo_data.max_probe_lod    = mMaxProbeLOD;
                     ubo_data.probe_strength   = 1.f;
                     gHeroRadianceGenProgram.rotatePerProgramUBOSlot();
-                    memcpy(gHeroRadianceGenProgram.mVkActivePerProgramUBOMapped, &ubo_data, sizeof(ubo_data));
+                    memcpy(gHeroRadianceGenProgram.vkPerProgramActiveWritePtr(), &ubo_data, sizeof(ubo_data));
                 }
 
                 for (int cf = 0; cf < 6; ++cf)

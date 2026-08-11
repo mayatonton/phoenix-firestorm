@@ -953,7 +953,7 @@ void LLReflectionMapManager::updateProbeFace(LLReflectionMap* probe, U32 face)
                     ubo_data.max_probe_lod    = mMaxProbeLOD;
                     ubo_data.probe_strength   = 1.f;
                     gRadianceGenProgram.rotatePerProgramUBOSlot();
-                    memcpy(gRadianceGenProgram.mVkActivePerProgramUBOMapped, &ubo_data, sizeof(ubo_data));
+                    memcpy(gRadianceGenProgram.vkPerProgramActiveWritePtr(), &ubo_data, sizeof(ubo_data));
                 }
 
                 for (int cf = 0; cf < 6; ++cf)
@@ -1001,7 +1001,7 @@ void LLReflectionMapManager::updateProbeFace(LLReflectionMap* probe, U32 face)
                 ubo_data.sourceIdx          = sourceIdx;
                 ubo_data.max_probe_lod      = mMaxProbeLOD;
                 gIrradianceGenProgram.rotatePerProgramUBOSlot();
-                memcpy(gIrradianceGenProgram.mVkActivePerProgramUBOMapped, &ubo_data, sizeof(ubo_data));
+                memcpy(gIrradianceGenProgram.vkPerProgramActiveWritePtr(), &ubo_data, sizeof(ubo_data));
             }
 
             mVertexBuffer->setBuffer();

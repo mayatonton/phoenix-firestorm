@@ -901,7 +901,7 @@ void LLDrawPoolAvatar::renderAvatars(LLVOAvatar* single_avatar, S32 pass)
             && sVertexProgram->mVkPerProgramUBOMapped != nullptr)
         {
             sVertexProgram->rotatePerProgramUBOSlot();
-            char* base = static_cast<char*>(sVertexProgram->mVkActivePerProgramUBOMapped);
+            char* base = static_cast<char*>(sVertexProgram->vkPerProgramActiveWritePtr());
             memcpy(base +  0, wind.mV,       sizeof(F32) * 4);
             memcpy(base + 16, sin_params.mV, sizeof(F32) * 4);
             memcpy(base + 32, gravity.mV,    sizeof(F32) * 4);

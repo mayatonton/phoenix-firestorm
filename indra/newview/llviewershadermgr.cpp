@@ -446,7 +446,7 @@ bool writeMaterialFPerDrawUBO(LLGLSLShader& shader, U32 i,
         return false;
     }
     shader.rotatePerProgramUBOSlot();
-    char* base = static_cast<char*>(shader.mVkActivePerProgramUBOMapped);
+    char* base = static_cast<char*>(shader.vkPerProgramActiveWritePtr());
     memcpy(base + layout.emissive_brightness_offset, &emissive_brightness, sizeof(F32));
     memcpy(base + layout.env_intensity_offset,       &env_intensity,       sizeof(F32));
     memcpy(base + layout.specular_color_offset,      specular_color_4f,    sizeof(F32) * 4);
@@ -475,7 +475,7 @@ bool writeMaterialFAllUBO(LLGLSLShader& shader, U32 i,
     }
     const MaterialFLayoutOffsets& layout = g_material_f_layouts[i];
     shader.rotatePerProgramUBOSlot();
-    char* base = static_cast<char*>(shader.mVkActivePerProgramUBOMapped);
+    char* base = static_cast<char*>(shader.vkPerProgramActiveWritePtr());
 
     memcpy(base + layout.emissive_brightness_offset, &emissive_brightness, sizeof(F32));
     memcpy(base + layout.env_intensity_offset,       &env_intensity,       sizeof(F32));
@@ -3392,7 +3392,7 @@ bool LLViewerShaderMgr::loadShadersDeferred()
             gDeferredAvatarProgram.createVkPipeline(48);
             if (gDeferredAvatarProgram.mVkPerProgramUBOMapped != nullptr)
             {
-                memset(gDeferredAvatarProgram.mVkPerProgramUBOMapped, 0,
+                memset(gDeferredAvatarProgram.vkPerProgramBaseWritePtr(), 0,
                        gDeferredAvatarProgram.mVkPerProgramUBOSize);
             }
         }

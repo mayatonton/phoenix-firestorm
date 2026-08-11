@@ -338,7 +338,7 @@ void RlvSphereEffect::writeVkPerProgramUBO(LLGLSLShader* pShader, F32 blurDirX, 
     }
 
     pShader->rotatePerProgramUBOSlot();
-    char* base = static_cast<char*>(pShader->mVkActivePerProgramUBOMapped);
+    char* base = static_cast<char*>(pShader->vkPerProgramActiveWritePtr());
     if (base == nullptr)
     {
         return;

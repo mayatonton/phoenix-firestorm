@@ -416,27 +416,29 @@ void LLGLSLShader::unloadInternal()
             mVkPerProgramUBOMapped     = nullptr;
             mVkPerProgramUBOSize       = 0;
         }
-        for (U32 f = 0; f < 3; ++f)
+        for (U32 L = 0; L < LLVKLoader::MAX_RECORD_LANES; ++L)
         {
-            for (auto& slot : mVkPerProgramUBORing[f])
+            VkRecordLaneState& ln = mVkRecordLane[L];
+            for (U32 f = 0; f < 3; ++f)
             {
-                if (slot.buffer != VK_NULL_HANDLE)
+                for (auto& slot : ln.ring[f])
                 {
-                    LLVKLoader::destroyBufferVk(slot.buffer, slot.allocation);
+                    if (slot.buffer != VK_NULL_HANDLE)
+                    {
+                        LLVKLoader::destroyBufferVk(slot.buffer, slot.allocation);
+                    }
                 }
+                ln.ring[f].clear();
+                ln.ringIdx[f]   = 0;
+                ln.ringFrame[f] = 0;
             }
-            mVkPerProgramUBORing[f].clear();
-            mVkPerProgramRingIdx[f]   = 0;
-            mVkPerProgramRingFrame[f] = 0;
+            ln.activePerProgramUBO       = VK_NULL_HANDLE;
+            ln.activePerProgramUBOMapped = nullptr;
+            ln.shadow.clear();
         }
-        mVkActivePerProgramUBO       = VK_NULL_HANDLE;
-        mVkActivePerProgramUBOMapped = nullptr;
-        mVkPerProgramShadow.clear();
         mVkSet1DynamicCount        = 0;
         mVkDynamicBindingMask      = 0;
         mVkDynamicBindings.clear();
-        mVkPerProgramUBOGeneration = 0;
-        mVkPerProgramUBOBaseMapped = nullptr;
     }
 
     mTexture.clear();
@@ -2750,10 +2752,12 @@ void LLGLSLShader::vkPushFragPC(U32 offset, U32 size, const void* data)
     }
     const U32 d0 = (offset - VK_FRAG_PC_BASE) / 4u;
     const U32 dn = size / 4u;
-    std::memcpy(&mVkFragPC[d0], data, size);
+    const U32 lane = 0;
+    VkRecordLaneState& ln = mVkRecordLane[lane];
+    std::memcpy(&ln.fragPC[d0], data, size);
     for (U32 i = 0; i < dn; ++i)
     {
-        mVkFragPCMask |= (1u << (d0 + i));
+        ln.fragPCMask |= (1u << (d0 + i));
     }
     if (LLVKLoader::isVulkanInitialized() && mVkPipelineLayout != VK_NULL_HANDLE)
     {
@@ -2767,24 +2771,26 @@ void LLGLSLShader::vkPushFragPC(U32 offset, U32 size, const void* data)
 
 void LLGLSLShader::vkReassertFragPC(VkCommandBuffer cmd)
 {
-    if (mVkFragPCMask == 0 || mVkPipelineLayout == VK_NULL_HANDLE)
+    const U32 lane = 0;
+    VkRecordLaneState& ln = mVkRecordLane[lane];
+    if (ln.fragPCMask == 0 || mVkPipelineLayout == VK_NULL_HANDLE)
     {
         return;
     }
     for (U32 d = 0; d < VK_FRAG_PC_DWORDS; )
     {
-        if (((mVkFragPCMask >> d) & 1u) == 0)
+        if (((ln.fragPCMask >> d) & 1u) == 0)
         {
             ++d;
             continue;
         }
         U32 dn = 0;
-        while (d + dn < VK_FRAG_PC_DWORDS && ((mVkFragPCMask >> (d + dn)) & 1u) != 0)
+        while (d + dn < VK_FRAG_PC_DWORDS && ((ln.fragPCMask >> (d + dn)) & 1u) != 0)
         {
             ++dn;
         }
         vkCmdPushConstants(cmd, mVkPipelineLayout, VK_SHADER_STAGE_FRAGMENT_BIT,
-                           VK_FRAG_PC_BASE + d * 4u, dn * 4u, &mVkFragPC[d]);
+                           VK_FRAG_PC_BASE + d * 4u, dn * 4u, &ln.fragPC[d]);
         d += dn;
     }
 }
@@ -2797,11 +2803,11 @@ void LLGLSLShader::setMinimumAlpha(F32 minimum)
     const F32 minimum_alpha_pc = minimum;
     vkPushFragPC(LLVkUboReg::PC_OFF_MINIMUM_ALPHA, sizeof(F32), &minimum_alpha_pc);
 
+    void* active = vkPerProgramActiveWritePtr();
     if (LLVKLoader::isVulkanInitialized() && mWritePerProgramUBOMinimumAlpha
-        && mVkPerProgramUBO != VK_NULL_HANDLE && mVkActivePerProgramUBOMapped != nullptr)
+        && mVkPerProgramUBO != VK_NULL_HANDLE && active != nullptr)
     {
-        std::memcpy(mVkActivePerProgramUBOMapped, &minimum, sizeof(F32));
-        ++mVkPerProgramUBOGeneration;
+        std::memcpy(active, &minimum, sizeof(F32));
         if (sCurBoundShaderPtr == this)
         {
             sCurPerCallVkOffsetsDirty = true;
@@ -3244,14 +3250,16 @@ bool LLGLSLShader::createVkPipeline(U32 perProgramUBOSize, bool needsSharedWater
                                               &mVkPerProgramUBOMapped))
         {
             mVkPerProgramUBOSize = perProgramUBOSize;
-            mVkPerProgramUBOBaseMapped   = mVkPerProgramUBOMapped;
-            mVkActivePerProgramUBO       = mVkPerProgramUBO;
-            mVkActivePerProgramUBOMapped = mVkPerProgramUBOMapped;
-            if (mVkPerProgramUBOBinding == 0 && mVkSet1DynamicCount > 0)
+            for (U32 L = 0; L < LLVKLoader::MAX_RECORD_LANES; ++L)
             {
-                mVkPerProgramShadow.assign(perProgramUBOSize, 0);
-                mVkPerProgramUBOMapped       = mVkPerProgramShadow.data();
-                mVkActivePerProgramUBOMapped = mVkPerProgramShadow.data();
+                VkRecordLaneState& ln = mVkRecordLane[L];
+                ln.activePerProgramUBO       = mVkPerProgramUBO;
+                ln.activePerProgramUBOMapped = mVkPerProgramUBOMapped;
+                if (mVkPerProgramUBOBinding == 0 && mVkSet1DynamicCount > 0)
+                {
+                    ln.shadow.assign(perProgramUBOSize, 0);
+                    ln.activePerProgramUBOMapped = ln.shadow.data();
+                }
             }
         }
     }
@@ -3269,7 +3277,6 @@ void LLGLSLShader::rotatePerProgramUBOSlot()
     }
     if (mVkPerProgramUBOBinding == 0 && mVkSet1DynamicCount > 0)
     {
-        ++mVkPerProgramUBOGeneration;
         if (sCurBoundShaderPtr == this)
         {
             sCurPerCallVkOffsetsDirty = true;
@@ -3281,14 +3288,16 @@ void LLGLSLShader::rotatePerProgramUBOSlot()
     {
         return;
     }
+    const U32 lane = 0;
+    VkRecordLaneState& ln = mVkRecordLane[lane];
     const U64 mono = LLVKLoader::getMonotonicFrameCount();
-    if (mVkPerProgramRingFrame[f] != mono)
+    if (ln.ringFrame[f] != mono)
     {
-        mVkPerProgramRingFrame[f] = mono;
-        mVkPerProgramRingIdx[f]   = 0;
+        ln.ringFrame[f] = mono;
+        ln.ringIdx[f]   = 0;
     }
-    const U32 idx = mVkPerProgramRingIdx[f];
-    while (mVkPerProgramUBORing[f].size() <= (size_t)idx)
+    const U32 idx = ln.ringIdx[f];
+    while (ln.ring[f].size() <= (size_t)idx)
     {
         PerProgramUBORingSlot slot;
         if (!LLVKLoader::createPerProgramUBOVk(mVkPerProgramUBOSize,
@@ -3298,20 +3307,34 @@ void LLGLSLShader::rotatePerProgramUBOSlot()
         {
             return;
         }
-        mVkPerProgramUBORing[f].push_back(slot);
+        ln.ring[f].push_back(slot);
     }
-    mVkPerProgramRingIdx[f]       = idx + 1;
-    mVkActivePerProgramUBO        = mVkPerProgramUBORing[f][idx].buffer;
-    mVkActivePerProgramUBOMapped  = mVkPerProgramUBORing[f][idx].mapped;
-    if (sCurBoundShaderPtr == this)
+    ln.ringIdx[f]                = idx + 1;
+    ln.activePerProgramUBO       = ln.ring[f][idx].buffer;
+    ln.activePerProgramUBOMapped = ln.ring[f][idx].mapped;
+}
+
+void* LLGLSLShader::vkPerProgramActiveWritePtr()
+{
+    const U32 lane = 0;
+    return mVkRecordLane[lane].activePerProgramUBOMapped;
+}
+
+void* LLGLSLShader::vkPerProgramBaseWritePtr()
+{
+    const U32 lane = 0;
+    if (vkPerProgramArenaActive(lane))
     {
-        const bool arena_path = (mVkPerProgramUBOBinding == 0 && mVkSet1DynamicCount > 0
-                                 && mVkPerProgramShadow.size() >= mVkPerProgramUBOSize);
-        if (arena_path)
-        {
-            sCurPerCallVkOffsetsDirty = true;
-        }
+        return mVkRecordLane[lane].shadow.data();
     }
+    return mVkPerProgramUBOMapped;
+}
+
+bool LLGLSLShader::vkPerProgramArenaActive(U32 lane) const
+{
+    return mVkPerProgramUBOBinding == 0 && mVkSet1DynamicCount > 0
+        && mVkPerProgramUBOSize > 0
+        && mVkRecordLane[lane].shadow.size() >= mVkPerProgramUBOSize;
 }
 
 bool LLGLSLShader::vkCollectDynamicUBOWrites(LLGLSLShader*                     cur,
@@ -3456,10 +3479,11 @@ bool LLGLSLShader::vkResolvePerProgramForDraw(VkBuffer& out_buf, U32& out_offset
     {
         return false;
     }
-    if (mVkPerProgramUBOBinding != 0 || mVkSet1DynamicCount == 0
-        || mVkPerProgramShadow.size() < mVkPerProgramUBOSize)
+    const U32 lane = 0;
+    VkRecordLaneState& ln = mVkRecordLane[lane];
+    if (!vkPerProgramArenaActive(lane))
     {
-        out_buf = mVkActivePerProgramUBO;
+        out_buf = ln.activePerProgramUBO;
         return out_buf != VK_NULL_HANDLE;
     }
     VkBuffer arena = VK_NULL_HANDLE;
@@ -3467,15 +3491,15 @@ bool LLGLSLShader::vkResolvePerProgramForDraw(VkBuffer& out_buf, U32& out_offset
     void*    aptr  = nullptr;
     if (LLVKLoader::allocPerDrawUBOSlice(mVkPerProgramUBOSize, arena, aoff, aptr))
     {
-        std::memcpy(aptr, mVkPerProgramShadow.data(), mVkPerProgramUBOSize);
+        std::memcpy(aptr, ln.shadow.data(), mVkPerProgramUBOSize);
         out_buf    = arena;
         out_offset = aoff;
         return true;
     }
     LLVKContract::causeNamed(LLVKContract::C_PP_FALLBACK_LOSSY, mName);
-    if (mVkPerProgramUBOBaseMapped != nullptr)
+    if (mVkPerProgramUBOMapped != nullptr)
     {
-        std::memcpy(mVkPerProgramUBOBaseMapped, mVkPerProgramShadow.data(), mVkPerProgramUBOSize);
+        std::memcpy(mVkPerProgramUBOMapped, ln.shadow.data(), mVkPerProgramUBOSize);
     }
     out_buf = mVkPerProgramUBO;
     return true;

@@ -904,7 +904,7 @@ void writeAlphaPerProgramUBO(bool reset_minimum_alpha)
         const F32 cur_min_alpha = reset_minimum_alpha ? 0.f : MINIMUM_ALPHA;
 
         current_shader->rotatePerProgramUBOSlot();
-        char* base = (char*)current_shader->mVkActivePerProgramUBOMapped;
+        char* base = (char*)current_shader->vkPerProgramActiveWritePtr();
 
         memcpy(base + 0, &cur_min_alpha, sizeof(F32));
 
@@ -1324,7 +1324,7 @@ void LLDrawPoolAlpha::renderAlpha(U32 mask, bool depth_only, bool rigged, bool u
                         && target_shader->mVkPerProgramUBOMapped != nullptr)
                     {
                         target_shader->rotatePerProgramUBOSlot();
-                        char* base = (char*)target_shader->mVkActivePerProgramUBOMapped;
+                        char* base = (char*)target_shader->vkPerProgramActiveWritePtr();
                         LLGLTFMaterial* gm = params.mGLTFMaterial;
                         F32 emissive_packed[4] = {
                             gm->mEmissiveColor.mV[0], gm->mEmissiveColor.mV[1], gm->mEmissiveColor.mV[2], 0.f,
@@ -1338,7 +1338,7 @@ void LLDrawPoolAlpha::renderAlpha(U32 mask, bool depth_only, bool rigged, bool u
                         && target_shader->mVkPerProgramUBOSize >= 32)
                     {
                         target_shader->rotatePerProgramUBOSlot();
-                        char* base = (char*)target_shader->mVkActivePerProgramUBOMapped;
+                        char* base = (char*)target_shader->vkPerProgramActiveWritePtr();
                         LLGLTFMaterial* gm = params.mGLTFMaterial;
 
                         F32 mr_packed[8] = {
