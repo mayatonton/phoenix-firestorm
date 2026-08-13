@@ -42,13 +42,22 @@ test -f "$APP/Contents/Resources/vulkan/icd.d/MoltenVK_icd.json"
 用いてはならない。
 
 ```bash
-export AYA_DEV_PROFILE="$HOME/Library/Application Support/AYAstorm-dev"
-rm -rf "$AYA_DEV_PROFILE/cache/shader_cache"
-rm -f "$AYA_DEV_PROFILE/cache/pipeline_cache.bin"
+export AYA_VK_CACHE="$HOME/Library/Caches/AYAstorm-devOS_x64"
+rm -rf "$AYA_VK_CACHE/shader_cache"
+rm -f "$AYA_VK_CACHE/pipeline_cache.bin"
 ```
 
-削除対象は上記 2 項目だけである。`AYAstorm-dev` profile 全体、通常版の
-`AYAstorm` profile、または他の cache を削除しない。
+開発 app の既定 cache は `AYAstorm-devOS_x64` であり、`AYAstorm-dev` profile と同じく通常版から
+分離されるべきである。`~/Library/Application Support/AYAstorm-dev/cache/` は本検証の shader /
+pipeline cache 削除先ではない。削除対象は上記 2 項目だけである。
+
+> **VERIFIED（2026-08-11）**: `lldir_mac.cpp` は
+> profile 別に作成した cache root を `mDefaultCacheDir` に設定する。これにより開発 app の
+> `LL_PATH_CACHE` は `AYAstorm-devOS_x64`、通常版は `AYAstormOS_x64` になる。arm64 Release build は
+> 成功している。修正済み開発 app を起動し、`AYAstorm.log` の `setSoundCacheDir` が
+> `~/Library/Caches/AYAstorm-devOS_x64` を出力したこと、shader cache 初期化、Vulkan login screen
+> の成立を確認した。以後の cache-cold run はこの開発用 root の `shader_cache` と
+> `pipeline_cache.bin` を削除して開始する。
 
 ## 3. 診断起動とログ採取
 
@@ -60,7 +69,7 @@ export REPO="/path/to/phoenix-firestorm-mayatonton"
 export APP="$REPO/build-darwin-universal/newview/Release/AYAstorm.app"
 export AYA_DEV_PROFILE="$HOME/Library/Application Support/AYAstorm-dev"
 
-AYASTORM_PERF_LOG=5 "$APP/Contents/MacOS/AYAstorm"
+AYASTORM_VKC=1 AYASTORM_PERF_LOG=5 "$APP/Contents/MacOS/AYAstorm"
 ```
 
 ログは次に出力される。
@@ -72,6 +81,30 @@ rg '#VkPerf#|FRAMETIME ms:|recreateSwapchain|WARNING|ERROR|VUID|device lost' "$L
 
 `AYASTORM_PERF_LOG=5` は `#VkPerf#` を約 5 秒周期で出す。P0 の `FRAMETIME ms:`
 は 10 秒周期で、平均値・p95・p99・最大値を記録する。
+
+### Viewer 処理 cadence と present cadence の比較
+
+`#VkPerf#` の `fps` は Vulkan frame を開始した回数であり、実際に画面へ出た回数そのものではない。
+同じ行の `cadence` 欄を必ず残す。
+
+```text
+cadence acq_fps=... present_call_fps=... present_ok_fps=...
+present_done_fps=... present_wait_avail=0|1 present_wait_used=0|1
+wait_attempts=... wait_timeout=... wait_error=...
+```
+
+- `acq_fps`: main swapchain image を取得できた回数。compositor が image を再利用可能にした cadence の近似値。
+- `present_call_fps`: `vkQueuePresentKHR()` 呼び出し回数。
+- `present_ok_fps`: WSI が present を受理した回数。
+- `present_wait_avail`: `VK_KHR_present_wait` を利用可能として初期化できたか。
+- `present_wait_used` と `wait_attempts`: この観測区間で実際に `vkWaitForPresentKHR()` を呼んだか・呼んだ回数。
+- `present_done_fps`: 呼び出しを行った区間（`present_wait_used=1`）だけで有効な present 完了回数。
+- `present_wait_avail=0` または `present_wait_used=0` かつ `present_done_fps=n/a`: 物理的な走査線への表示回数は
+  Vulkan ログだけでは確定できない。`acq_fps` と `present_ok_fps` を WSI 側の近似値として扱う。
+
+`fps` が `acq_fps` / `present_ok_fps` より継続して高い場合、Viewer が作成する frame と
+表示系の cadence が乖離している。UI scene async が有効な run では、併せて
+`uiscene consumer_fps` / `producer_fps` も記録する。
 
 ## 4. `shsite` による shadow 経路判定
 
@@ -570,3 +603,57 @@ AYASTORM_VKC=1 AYASTORM_PERF_LOG=5 "$APP/Contents/MacOS/AYAstorm"
    `FRAMETIME ms:`、`recreateSwapchain` を記録する。
 4. macOS の結果を Linux / Windows の実行証拠とみなさず、共有 Vulkan TU に触れる本修正は各
    プラットフォーム担当者が build と Vulkan run を別途確認する。
+
+## 13. 未受入 run — 開発用 cache 分離不成立（2026-08-10）
+
+### 実行条件
+
+本 run の起動前に、次の 2 項目が存在することを確認した後、両方を削除し、削除後に不在であることを
+確認した。
+
+```text
+~/Library/Caches/AYAstormOS_x64/shader_cache/
+~/Library/Caches/AYAstormOS_x64/pipeline_cache.bin
+```
+
+開発 app は次の環境変数で起動した。Vulkan Loader / ICD / DYLD 系の追加 override は使用していない。
+
+```bash
+AYASTORM_VKC=1 AYASTORM_PERF_LOG=5 "$APP/Contents/MacOS/AYAstorm"
+```
+
+原本は次のログである。
+
+```text
+~/Library/Application Support/AYAstorm-dev/logs/AYAstorm.log
+```
+
+### 観測結果と無効化理由
+
+削除した `AYAstormOS_x64` は、この build が実際に使用した `LL_PATH_CACHE` である。従って shader /
+pipeline cache は実使用先から cold start した。しかし同じ実行で user settings / logs は
+`~/Library/Application Support/AYAstorm-dev/` を使う一方、texturecache、shader cache、pipeline cache
+は通常版側の `AYAstormOS_x64` を使った。開発 app の cache 分離が成立していないため、下表の runtime
+観測は残すが、この run を **cache-cold 受入走行 1/3 として数えない**。
+
+| 確認項目 | 実測結果 | 判定 |
+| --- | --- | --- |
+| cache root | `AYAstorm-devOS_x64` ではなく `AYAstormOS_x64` を使用。 | FAIL: 開発 profile 分離不成立 |
+| 起動 | `initialized device=Apple M2 Pro` (15:41:27Z)、`Vulkan presentation surface initialized` (15:41:29Z)、`Initializing Login Screen` (15:41:40Z) を順に確認。 | VERIFIED |
+| 実行時間 | `Run time: 675.428 seconds`（約 11 分 15 秒）。ユーザー操作による終了後に `status: stopped`。 | VERIFIED |
+| device lost / VUID / ERROR | `device lost`、`VK_ERROR_DEVICE_LOST`、`VUID`、ログレベル `ERROR` はいずれも 0 件。 | VERIFIED |
+| swapchain | `recreateSwapchain` は 0 件。 | VERIFIED |
+| shadow 経路 | `#VkPerf#` 266 行中、`shsite` を含む 82 行すべてで `mv.am` を確認。`rest.am` 非ゼロ、`fb.*`、`fb_view_aux` は 0 件。 | VERIFIED: multiview フル経路 |
+| P0 | `FRAMETIME ms:` は 41 行。各 10 秒窓の p95 は 146.74--239.72 ms（平均 207.83 ms）、p99 は 154.10--257.42 ms（平均 219.42 ms）。終了直前は 9--13 fps であり、性能受入は未達。 | VERIFIED: 安定性と性能を分離 |
+
+WARNING は 997 件ある。HTTP 403 等の asset / network 系警告は継続している。加えて UUID
+`21dba3bc-4afa-2856-afa6-d312a7af56b5` は 6 回、`LLImageBase::allocateData called with bad
+dimensions: 4x4x0` に続いて decode failed となった。表示上の
+`# textures discarded due to insufficient memory` はこの allocation-error カウンタによるもので、
+本ログから物理メモリ枯渇は確認できない。対象は当該 UUID の decoded texture data と texturecache
+entry であり、ログだけではオブジェクトまたは face は特定できない。
+
+次の受入 run は、開発 app が `AYAstorm-devOS_x64` を使用する修正後に、shader cache と
+`pipeline_cache.bin` を同 root から消去して行う。10--30 分以上、login、teleport、texture streaming、
+カメラ回転を含め、視覚チェックリストも同一 run の証拠として記録する。3 走行完了までは最終受入を
+**OPEN** とする。
