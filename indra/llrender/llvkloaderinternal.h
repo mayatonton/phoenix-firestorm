@@ -450,6 +450,27 @@ void dumpDeviceFaultOnDeviceLost();
         VkSwapchainKHR swapchain      = VK_NULL_HANDLE;
         U32            image_index    = 0;
         VkSemaphore    wait_semaphore = VK_NULL_HANDLE;
+        // Captured when the consumer command buffer is queued, rather than
+        // when the PE thread eventually calls vkQueuePresentKHR.
+        U64            scene_id       = 0;
+    };
+
+    struct DisplayTimingIntervalStats
+    {
+        bool enabled = false;
+        U64 actual_count = 0;
+        U64 actual_interval_count = 0;
+        U64 actual_interval_ns = 0;
+        U64 fresh_count = 0;
+        U64 fresh_interval_count = 0;
+        U64 fresh_interval_ns = 0;
+        U64 duplicate_count = 0;
+        U64 unknown_scene_count = 0;
+        U64 mapping_dropped = 0;
+        U64 history_query_errors = 0;
+        S32 last_history_query_result = VK_SUCCESS;
+        U32 pending_mappings = 0;
+        std::vector<U64> present_margin_ns;
     };
 
     struct PESyncPoint
@@ -501,6 +522,16 @@ extern std::atomic<U64> sPEPrsAuxUs;
 extern std::atomic<U64> sPEPrsLockUs;
 extern std::atomic<U64> sPEPwMainUs;
 extern std::atomic<U64> sPEPwAuxUs;
+// Per AYASTORM_PERF_LOG interval. `done` is meaningful only while
+// VK_KHR_present_wait is enabled; otherwise Vulkan cannot report scanout.
+extern std::atomic<U64> sMainSwapchainAcquireCount;
+extern std::atomic<U64> sMainPresentCallCount;
+extern std::atomic<U64> sMainPresentAcceptedCount;
+// Present-wait availability is negotiated separately. These count actual calls.
+extern std::atomic<U64> sMainPresentWaitAttemptCount;
+extern std::atomic<U64> sMainPresentDoneCount;
+extern std::atomic<U64> sMainPresentWaitTimeoutCount;
+extern std::atomic<U64> sMainPresentWaitErrorCount;
 extern std::atomic<U64> sAuxBeginFenceUs;
 extern std::atomic<U64> sAuxBeginAcqUs;
 extern std::atomic<U64> sProdEnqToSubUs;
@@ -508,8 +539,14 @@ extern std::atomic<U32> sProdSubCount;
 extern std::atomic<U64> sProdEnqMonoUs;
 U64 vkMonoUs();
 extern bool sPresentWaitEnabled;
+extern bool sDisplayTimingRequested;
+extern bool sDisplayTimingEnabled;
 extern VkPresentModeKHR sActivePresentMode;
 extern std::atomic<bool> sVsyncEnabled;
+U64 currentDisplayTimingSceneId();
+void advanceDisplayTimingSceneId();
+void resetDisplayTimingHistory();
+DisplayTimingIntervalStats collectDisplayTimingIntervalStats();
 uint64_t gpuTimelineValue();
 void waitTimeline(uint64_t v);
 uint64_t peEnqueue(PEJob&& job);

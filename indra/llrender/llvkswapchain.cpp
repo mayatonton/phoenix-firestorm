@@ -428,6 +428,7 @@ namespace LLVKLoaderInternal
 
     void destroySwapchain()
     {
+        resetDisplayTimingHistory();
         if (sDevice == VK_NULL_HANDLE)
         {
             sSwapchainImageViews.clear();
@@ -489,6 +490,9 @@ namespace LLVKLoaderInternal
         const auto drain_t1 = std::chrono::steady_clock::now();
         vkDeviceWaitIdle(sDevice);
         const auto drain_t2 = std::chrono::steady_clock::now();
+        // History entries are swapchain-scoped. Do not carry delayed old
+        // entries across this handle change.
+        resetDisplayTimingHistory();
         for (VkImageView& view : sSwapchainImageViews)
         {
             if (view != VK_NULL_HANDLE)
