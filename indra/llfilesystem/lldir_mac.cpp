@@ -153,6 +153,8 @@ LLDir_Mac::LLDir_Mac()
   #endif
 #endif // OPENSIM
             CreateDirectory(mOSCacheDir, FSCacheDirName, NULL);
+            // Keep LL_PATH_CACHE on the same profile-specific root.
+            mDefaultCacheDir = add(mOSCacheDir, FSCacheDirName);
             //</FS:TS>
         }
 

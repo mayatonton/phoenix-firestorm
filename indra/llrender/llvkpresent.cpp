@@ -39,6 +39,7 @@
 #include <cstdlib>
 #include <fstream>
 #include <list>
+#include <limits>
 #include <memory>
 #include <unordered_map>
 #include <unordered_set>
@@ -112,6 +113,185 @@ namespace LLVKLoaderInternal
 namespace
 {
     std::atomic<U64>        sPresentIdCounter{0};
+
+    constexpr size_t DISPLAY_TIMING_MAPPING_LIMIT = 4096;
+
+    struct DisplayTimingPresentMapping
+    {
+        U64 scene_id = 0;
+    };
+
+    std::mutex sDisplayTimingMutex;
+    std::unordered_map<U32, DisplayTimingPresentMapping> sDisplayTimingMappings;
+    std::unordered_set<U32> sDisplayTimingCompletedIds;
+    U64 sDisplayTimingLastActualTime = 0;
+    U64 sDisplayTimingLastFreshTime = 0;
+    U64 sDisplayTimingLastSceneId = 0;
+    bool sDisplayTimingLastSceneValid = false;
+    bool sDisplayTimingIdExhausted = false;
+    LLVKLoaderInternal::DisplayTimingIntervalStats sDisplayTimingIntervalStats;
+
+    U32 nextDisplayTimingPresentId()
+    {
+        // `0` is reserved by VK_GOOGLE_display_timing. Do not recycle a
+        // 32-bit wire ID: on wrap, stop tagging rather than risk mapping a
+        // delayed completion to a different scene.
+        if (sDisplayTimingIdExhausted)
+        {
+            return 0;
+        }
+        const U64 serial = sPresentIdCounter.fetch_add(1, std::memory_order_relaxed) + 1;
+        if (serial > (U64)std::numeric_limits<U32>::max())
+        {
+            sDisplayTimingIdExhausted = true;
+            return 0;
+        }
+        return (U32)serial;
+    }
+
+    void rememberDisplayTimingPresent(U32 present_id, U64 scene_id)
+    {
+        std::lock_guard<std::mutex> guard(sDisplayTimingMutex);
+        if (sDisplayTimingMappings.size() >= DISPLAY_TIMING_MAPPING_LIMIT ||
+            sDisplayTimingMappings.find(present_id) != sDisplayTimingMappings.end())
+        {
+            ++sDisplayTimingIntervalStats.mapping_dropped;
+            return;
+        }
+        sDisplayTimingMappings.emplace(present_id, DisplayTimingPresentMapping{scene_id});
+    }
+
+    void forgetDisplayTimingPresent(U32 present_id)
+    {
+        std::lock_guard<std::mutex> guard(sDisplayTimingMutex);
+        sDisplayTimingMappings.erase(present_id);
+    }
+
+    void noteDisplayTimingQueryError(VkResult result)
+    {
+        std::lock_guard<std::mutex> guard(sDisplayTimingMutex);
+        ++sDisplayTimingIntervalStats.history_query_errors;
+        sDisplayTimingIntervalStats.last_history_query_result = (S32)result;
+    }
+
+    void pollDisplayTimingLocked(VkSwapchainKHR swapchain)
+    {
+        if (!sDisplayTimingEnabled || vkGetPastPresentationTimingGOOGLE == nullptr ||
+            swapchain == VK_NULL_HANDLE)
+        {
+            return;
+        }
+        U32 count = 0;
+        VkResult result = vkGetPastPresentationTimingGOOGLE(sDevice, swapchain, &count, nullptr);
+        if (result != VK_SUCCESS)
+        {
+            noteDisplayTimingQueryError(result);
+            return;
+        }
+        if (count == 0)
+        {
+            return;
+        }
+        std::vector<VkPastPresentationTimingGOOGLE> timings(count);
+        result = vkGetPastPresentationTimingGOOGLE(sDevice, swapchain, &count, timings.data());
+        if (result != VK_SUCCESS)
+        {
+            noteDisplayTimingQueryError(result);
+            return;
+        }
+        std::lock_guard<std::mutex> guard(sDisplayTimingMutex);
+        for (U32 i = 0; i < count; ++i)
+        {
+            const VkPastPresentationTimingGOOGLE& timing = timings[i];
+            if (timing.presentID == 0 || timing.actualPresentTime == 0 ||
+                !sDisplayTimingCompletedIds.insert(timing.presentID).second)
+            {
+                continue;
+            }
+            if (sDisplayTimingCompletedIds.size() > DISPLAY_TIMING_MAPPING_LIMIT)
+            {
+                // This set only suppresses duplicate history delivery. If an
+                // old entry is seen again after reset it has no mapping and is
+                // therefore counted as unknown, never as fresh/duplicate.
+                sDisplayTimingCompletedIds.clear();
+            }
+
+            ++sDisplayTimingIntervalStats.actual_count;
+            sDisplayTimingIntervalStats.present_margin_ns.push_back(timing.presentMargin);
+            if (sDisplayTimingLastActualTime != 0 && timing.actualPresentTime > sDisplayTimingLastActualTime)
+            {
+                ++sDisplayTimingIntervalStats.actual_interval_count;
+                sDisplayTimingIntervalStats.actual_interval_ns += timing.actualPresentTime - sDisplayTimingLastActualTime;
+            }
+            if (timing.actualPresentTime > sDisplayTimingLastActualTime)
+            {
+                sDisplayTimingLastActualTime = timing.actualPresentTime;
+            }
+
+            const auto it = sDisplayTimingMappings.find(timing.presentID);
+            if (it == sDisplayTimingMappings.end())
+            {
+                ++sDisplayTimingIntervalStats.unknown_scene_count;
+                sDisplayTimingLastSceneValid = false;
+                continue;
+            }
+            const U64 scene_id = it->second.scene_id;
+            sDisplayTimingMappings.erase(it);
+            if (!sDisplayTimingLastSceneValid)
+            {
+                ++sDisplayTimingIntervalStats.unknown_scene_count;
+                sDisplayTimingLastSceneId = scene_id;
+                sDisplayTimingLastSceneValid = true;
+                continue;
+            }
+            if (scene_id == sDisplayTimingLastSceneId)
+            {
+                ++sDisplayTimingIntervalStats.duplicate_count;
+                continue;
+            }
+            ++sDisplayTimingIntervalStats.fresh_count;
+            if (sDisplayTimingLastFreshTime != 0 && timing.actualPresentTime > sDisplayTimingLastFreshTime)
+            {
+                ++sDisplayTimingIntervalStats.fresh_interval_count;
+                sDisplayTimingIntervalStats.fresh_interval_ns += timing.actualPresentTime - sDisplayTimingLastFreshTime;
+            }
+            if (timing.actualPresentTime > sDisplayTimingLastFreshTime)
+            {
+                sDisplayTimingLastFreshTime = timing.actualPresentTime;
+            }
+            sDisplayTimingLastSceneId = scene_id;
+        }
+    }
+
+} // namespace
+
+namespace LLVKLoaderInternal
+{
+    void resetDisplayTimingHistory()
+    {
+        std::lock_guard<std::mutex> guard(sDisplayTimingMutex);
+        sDisplayTimingMappings.clear();
+        sDisplayTimingCompletedIds.clear();
+        sDisplayTimingLastActualTime = 0;
+        sDisplayTimingLastFreshTime = 0;
+        sDisplayTimingLastSceneId = 0;
+        sDisplayTimingLastSceneValid = false;
+        sDisplayTimingIntervalStats = DisplayTimingIntervalStats{};
+    }
+
+    DisplayTimingIntervalStats collectDisplayTimingIntervalStats()
+    {
+        std::lock_guard<std::mutex> guard(sDisplayTimingMutex);
+        DisplayTimingIntervalStats stats = std::move(sDisplayTimingIntervalStats);
+        stats.enabled = sDisplayTimingEnabled;
+        stats.pending_mappings = (U32)sDisplayTimingMappings.size();
+        sDisplayTimingIntervalStats = DisplayTimingIntervalStats{};
+        return stats;
+    }
+} // namespace LLVKLoaderInternal
+
+namespace
+{
 
     struct PEJobReleaser
     {
@@ -325,18 +505,47 @@ namespace
                 //     macOS does not busy-wait either.
                 // Do NOT ship a platform that busy-waits vsync — return the core.
                 // ============================================================================
+                const bool prs_aux = (t.swapchain != sSwapchain);
                 VkPresentIdKHR present_id_info = {};
+                VkPresentTimeGOOGLE present_time = {};
+                VkPresentTimesInfoGOOGLE display_timing_info = {};
                 uint64_t this_present_id = 0;
-                if (sPresentWaitEnabled && sActivePresentMode == VK_PRESENT_MODE_FIFO_KHR)
+                U32 display_timing_present_id = 0;
+                const bool present_wait_active = sPresentWaitEnabled &&
+                                                 sActivePresentMode == VK_PRESENT_MODE_FIFO_KHR;
+                if (!prs_aux && sDisplayTimingEnabled)
+                {
+                    display_timing_present_id = nextDisplayTimingPresentId();
+                    if (present_wait_active)
+                    {
+                        this_present_id = display_timing_present_id;
+                    }
+                    if (display_timing_present_id != 0)
+                    {
+                        present_time.presentID = display_timing_present_id;
+                        // Zero asks the implementation to choose its normal
+                        // presentation time. The returned actualPresentTime is
+                        // the only signal counted as display completion.
+                        present_time.desiredPresentTime = 0;
+                        display_timing_info.sType = VK_STRUCTURE_TYPE_PRESENT_TIMES_INFO_GOOGLE;
+                        display_timing_info.swapchainCount = 1;
+                        display_timing_info.pTimes = &present_time;
+                        display_timing_info.pNext = present_info.pNext;
+                        present_info.pNext = &display_timing_info;
+                    }
+                }
+                if (this_present_id == 0 && present_wait_active)
                 {
                     this_present_id = sPresentIdCounter.fetch_add(1, std::memory_order_relaxed) + 1;
+                }
+                if (present_wait_active && this_present_id != 0)
+                {
                     present_id_info.sType          = VK_STRUCTURE_TYPE_PRESENT_ID_KHR;
                     present_id_info.swapchainCount = 1;
                     present_id_info.pPresentIds    = &this_present_id;
                     present_id_info.pNext          = present_info.pNext;
                     present_info.pNext             = &present_id_info;
                 }
-                const bool prs_aux = (t.swapchain != sSwapchain);
                 const auto p0 = std::chrono::steady_clock::now();
                 VkResult pr;
                 {
@@ -344,12 +553,36 @@ namespace
                     const auto p1 = std::chrono::steady_clock::now();
                     sPEPrsLockUs += (U64)std::chrono::duration_cast<std::chrono::microseconds>(p1 - p0).count();
                     pr = vkQueuePresentKHR(sGraphicsQueue, &present_info);
+                    if (!prs_aux && display_timing_present_id != 0 &&
+                        (pr == VK_SUCCESS || pr == VK_SUBOPTIMAL_KHR))
+                    {
+                        rememberDisplayTimingPresent(display_timing_present_id, t.scene_id);
+                    }
+                    else if (!prs_aux && display_timing_present_id != 0)
+                    {
+                        forgetDisplayTimingPresent(display_timing_present_id);
+                    }
+                    if (!prs_aux && sDisplayTimingEnabled)
+                    {
+                        // Keep this query under the same main-swapchain lock
+                        // as vkQueuePresentKHR so recreate cannot invalidate
+                        // the handle while MoltenVK returns delayed history.
+                        pollDisplayTimingLocked(t.swapchain);
+                    }
                     (prs_aux ? sPEPrsAuxUs : sPEPrsMainUs) +=
                         (U64)std::chrono::duration_cast<std::chrono::microseconds>(
                             std::chrono::steady_clock::now() - p1).count();
                 }
                 sPEPresentUs += (U64)std::chrono::duration_cast<std::chrono::microseconds>(
                     std::chrono::steady_clock::now() - p0).count();
+                if (!prs_aux)
+                {
+                    sMainPresentCallCount.fetch_add(1, std::memory_order_relaxed);
+                    if (pr == VK_SUCCESS || pr == VK_SUBOPTIMAL_KHR)
+                    {
+                        sMainPresentAcceptedCount.fetch_add(1, std::memory_order_relaxed);
+                    }
+                }
                 if (pr == VK_ERROR_OUT_OF_DATE_KHR || pr == VK_SUBOPTIMAL_KHR)
                 {
                     sRecreateReasonMask.fetch_or((pr == VK_SUBOPTIMAL_KHR)
@@ -364,13 +597,29 @@ namespace
 #endif
                     sVkDeviceLost.store(true, std::memory_order_release);
                 }
-                else if (sPresentWaitEnabled && pr == VK_SUCCESS && this_present_id != 0)
+                else if (present_wait_active && pr == VK_SUCCESS && this_present_id != 0)
                 {
+                    sMainPresentWaitAttemptCount.fetch_add(1, std::memory_order_relaxed);
                     const auto w0 = std::chrono::steady_clock::now();
                     VkResult wr = vkWaitForPresentKHR(sDevice, t.swapchain, this_present_id, 100000000ull);
                     (prs_aux ? sPEPwAuxUs : sPEPwMainUs) +=
                         (U64)std::chrono::duration_cast<std::chrono::microseconds>(
                             std::chrono::steady_clock::now() - w0).count();
+                    if (!prs_aux)
+                    {
+                        if (wr == VK_SUCCESS)
+                        {
+                            sMainPresentDoneCount.fetch_add(1, std::memory_order_relaxed);
+                        }
+                        else if (wr == VK_TIMEOUT)
+                        {
+                            sMainPresentWaitTimeoutCount.fetch_add(1, std::memory_order_relaxed);
+                        }
+                        else
+                        {
+                            sMainPresentWaitErrorCount.fetch_add(1, std::memory_order_relaxed);
+                        }
+                    }
                     if (wr == VK_ERROR_DEVICE_LOST)
                     {
 #if LL_DARWIN

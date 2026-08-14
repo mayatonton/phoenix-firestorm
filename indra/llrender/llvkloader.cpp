@@ -384,6 +384,13 @@ namespace LLVKLoaderInternal
     std::atomic<U64>        sPEPrsLockUs{0};
     std::atomic<U64>        sPEPwMainUs{0};
     std::atomic<U64>        sPEPwAuxUs{0};
+    std::atomic<U64>        sMainSwapchainAcquireCount{0};
+    std::atomic<U64>        sMainPresentCallCount{0};
+    std::atomic<U64>        sMainPresentAcceptedCount{0};
+    std::atomic<U64>        sMainPresentWaitAttemptCount{0};
+    std::atomic<U64>        sMainPresentDoneCount{0};
+    std::atomic<U64>        sMainPresentWaitTimeoutCount{0};
+    std::atomic<U64>        sMainPresentWaitErrorCount{0};
     std::atomic<U64>        sAuxBeginFenceUs{0};
     std::atomic<U64>        sAuxBeginAcqUs{0};
     std::atomic<U64>        sProdEnqToSubUs{0};
@@ -396,14 +403,29 @@ namespace
     std::atomic<U32>        sProdCheckFirstReady{0};
     std::atomic<U32>        sProdCheckTotalReady{0};
     std::atomic<U32>        sProdChecksSinceSubmit{0};
+    // Starts at one so the initial scene has a stable tag before the first
+    // asynchronous front flip. This tag is read by the PE thread.
+    std::atomic<U64>        sDisplayTimingSceneId{1};
 } // namespace
 
 namespace LLVKLoaderInternal
 {
     bool                    sPresentWaitEnabled = false;
+    bool                    sDisplayTimingRequested = false;
+    bool                    sDisplayTimingEnabled = false;
     VkPresentModeKHR        sActivePresentMode = VK_PRESENT_MODE_FIFO_KHR;
     std::atomic<bool>       sVsyncEnabled{true};
     std::unordered_map<U64, ViewDeathInfo> sViewDeathLedger;
+
+    U64 currentDisplayTimingSceneId()
+    {
+        return sDisplayTimingSceneId.load(std::memory_order_relaxed);
+    }
+
+    void advanceDisplayTimingSceneId()
+    {
+        sDisplayTimingSceneId.fetch_add(1, std::memory_order_relaxed);
+    }
 } // namespace LLVKLoaderInternal
 
 static void           endSwapchainRendering();
@@ -1174,6 +1196,14 @@ bool asyncFrameEngaged()
     return sAsyncFrameEngaged;
 }
 
+void noteAsyncSceneFrontPresented()
+{
+    if (sDisplayTimingEnabled)
+    {
+        advanceDisplayTimingSceneId();
+    }
+}
+
 bool isSwapchainImageAcquired()
 {
     return sImageAcquired;
@@ -1333,6 +1363,7 @@ bool beginFrame(bool acquire_swapchain)
         if (acquire_res == VK_SUCCESS || acquire_res == VK_SUBOPTIMAL_KHR)
         {
             sImageAcquired = true;
+            sMainSwapchainAcquireCount.fetch_add(1, std::memory_order_relaxed);
             if (acquire_res == VK_SUBOPTIMAL_KHR)
             {
                 sRecreateReasonMask.fetch_or(RECREATE_REASON_ACQ_SUBOPTIMAL);
@@ -1447,6 +1478,19 @@ bool endFrame()
             const U32 frames = sMonotonicFrameCount - s_last_frame;
             if (frames > 0)
             {
+                // `frames` is the Vulkan frame cadence, whereas acquire/present show
+                // the WSI cadence. `present_done` is reported only when the driver
+                // exposes VK_KHR_present_wait; Vulkan otherwise has no scanout signal.
+                const U64 acquire_count = sMainSwapchainAcquireCount.exchange(0);
+                const U64 present_calls = sMainPresentCallCount.exchange(0);
+                const U64 present_ok    = sMainPresentAcceptedCount.exchange(0);
+                const U64 wait_attempt  = sMainPresentWaitAttemptCount.exchange(0);
+                const U64 present_done  = sMainPresentDoneCount.exchange(0);
+                const U64 wait_timeout  = sMainPresentWaitTimeoutCount.exchange(0);
+                const U64 wait_error    = sMainPresentWaitErrorCount.exchange(0);
+                const std::string present_done_fps = wait_attempt > 0
+                    ? llformat("%.2f", (F64)present_done / elapsed)
+                    : "n/a";
                 if (isUISceneAsync())
                 {
                     static U32 s_last_prod = 0;
@@ -1471,6 +1515,15 @@ bool endFrame()
                 LL_INFOS("VkPerf") << "frames=" << frames
                                    << " fps=" << ((F64)frames / elapsed)
                                    << " avg_ms=" << (elapsed * 1000.0 / (F64)frames)
+                                   << " | cadence acq_fps=" << ((F64)acquire_count / elapsed)
+                                   << " present_call_fps=" << ((F64)present_calls / elapsed)
+                                   << " present_ok_fps=" << ((F64)present_ok / elapsed)
+                                   << " present_done_fps=" << present_done_fps
+                                   << " present_wait_avail=" << (sPresentWaitEnabled ? 1 : 0)
+                                   << " present_wait_used=" << (wait_attempt > 0 ? 1 : 0)
+                                   << " wait_attempts=" << wait_attempt
+                                   << " wait_timeout=" << wait_timeout
+                                   << " wait_error=" << wait_error
                                    << " draws/f=" << (draws / frames)
                                    << " | emit/skip: pipe " << gVkPerf.pipe_bind.load() << "/" << gVkPerf.pipe_skip.load()
                                    << " desc " << gVkPerf.desc_bind.load() << "/" << gVkPerf.desc_skip.load()
@@ -1788,6 +1841,57 @@ bool endFrame()
                                    << " mt=" << (sPEThreaded ? 1 : 0)
                                    << " rw=" << recordWorkerCount()
                                    << LL_ENDL;
+                if (sDisplayTimingRequested)
+                {
+                    DisplayTimingIntervalStats display_timing = collectDisplayTimingIntervalStats();
+                    const std::string actual_display_fps = display_timing.actual_interval_count > 0 &&
+                                                           display_timing.actual_interval_ns > 0
+                        ? llformat("%.2f", (F64)display_timing.actual_interval_count * 1.0e9 /
+                                             (F64)display_timing.actual_interval_ns)
+                        : "n/a";
+                    const std::string fresh_scene_display_fps = display_timing.fresh_interval_count > 0 &&
+                                                                display_timing.fresh_interval_ns > 0
+                        ? llformat("%.2f", (F64)display_timing.fresh_interval_count * 1.0e9 /
+                                             (F64)display_timing.fresh_interval_ns)
+                        : "n/a";
+                    std::string margin_p50 = "n/a";
+                    std::string margin_p95 = "n/a";
+                    std::string margin_max = "n/a";
+                    if (!display_timing.present_margin_ns.empty())
+                    {
+                        std::sort(display_timing.present_margin_ns.begin(), display_timing.present_margin_ns.end());
+                        const size_t n = display_timing.present_margin_ns.size();
+                        const auto percentile = [&](F64 q) -> U64 {
+                            return display_timing.present_margin_ns[(size_t)(q * (F64)(n - 1) + 0.5)];
+                        };
+                        margin_p50 = llformat("%.3f", (F64)percentile(0.50) / 1.0e6);
+                        margin_p95 = llformat("%.3f", (F64)percentile(0.95) / 1.0e6);
+                        margin_max = llformat("%.3f", (F64)display_timing.present_margin_ns.back() / 1.0e6);
+                    }
+                    const std::string duplicate_ratio =
+                        (display_timing.fresh_count + display_timing.duplicate_count) > 0
+                        ? llformat("%.1f%%", 100.0 * (F64)display_timing.duplicate_count /
+                                                (F64)(display_timing.fresh_count + display_timing.duplicate_count))
+                        : "n/a";
+                    LL_INFOS("VkPerf") << "display_timing_available=" << (display_timing.enabled ? 1 : 0)
+                                       << " display_timing_source=" << (display_timing.enabled
+                                           ? "VK_GOOGLE_display_timing" : "n/a")
+                                       << " actual_display_count=" << display_timing.actual_count
+                                       << " actual_display_fps=" << actual_display_fps
+                                       << " fresh_scene_display_count=" << display_timing.fresh_count
+                                       << " fresh_scene_display_fps=" << fresh_scene_display_fps
+                                       << " duplicate_scene_count=" << display_timing.duplicate_count
+                                       << " unknown_present_count=" << display_timing.unknown_scene_count
+                                       << " duplicate_ratio=" << duplicate_ratio
+                                       << " present_margin_ms_p50=" << margin_p50
+                                       << " present_margin_ms_p95=" << margin_p95
+                                       << " present_margin_ms_max=" << margin_max
+                                       << " timing_map_pending=" << display_timing.pending_mappings
+                                       << " timing_map_drop=" << display_timing.mapping_dropped
+                                       << " display_timing_history_query_errors=" << display_timing.history_query_errors
+                                       << " display_timing_history_last_result=" << display_timing.last_history_query_result
+                                       << LL_ENDL;
+                }
             }
             gVkPerf.reset();
 #if LL_LINUX
@@ -1909,6 +2013,10 @@ bool endFrame()
                 target.swapchain      = sSwapchain;
                 target.image_index    = sAcquiredImageIndex;
                 target.wait_semaphore = sRenderFinishedSemaphores[sFrameIndex];
+                if (sDisplayTimingEnabled)
+                {
+                    target.scene_id = currentDisplayTimingSceneId();
+                }
                 cjob.presents.push_back(target);
             }
         }
@@ -1955,6 +2063,10 @@ bool endFrame()
                 target.swapchain      = sSwapchain;
                 target.image_index    = sAcquiredImageIndex;
                 target.wait_semaphore = sRenderFinishedSemaphores[sFrameIndex];
+                if (sDisplayTimingEnabled)
+                {
+                    target.scene_id = currentDisplayTimingSceneId();
+                }
                 job.presents.push_back(target);
             }
         }
