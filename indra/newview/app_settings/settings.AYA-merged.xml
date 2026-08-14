@@ -14070,7 +14070,7 @@ fdf83015-1f61-6862-f465-131be3ac31ed
   <key>RenderResolutionDivisor</key>
   <map>
     <key>Comment</key>
-    <string>Divisor for rendering 3D scene at reduced resolution.</string>
+    <string>Debug divisor for rendering 3D scene at reduced resolution. Use 1 for native, or 2, 4, 8 for the validation matrix.</string>
     <key>Persist</key>
     <integer>1</integer>
     <key>Type</key>

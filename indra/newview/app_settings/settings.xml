@@ -14001,7 +14001,7 @@ Change of this parameter will affect the layout of buttons in notification toast
   <key>RenderResolutionDivisor</key>
   <map>
     <key>Comment</key>
-    <string>Divisor for rendering 3D scene at reduced resolution.</string>
+    <string>Debug divisor for rendering 3D scene at reduced resolution. Use 1 for native, or 2, 4, 8 for the validation matrix.</string>
     <key>Persist</key>
     <integer>1</integer>
     <key>Type</key>

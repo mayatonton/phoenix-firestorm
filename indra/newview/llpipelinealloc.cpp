@@ -147,6 +147,28 @@
 #include "llerror.h"
 #include "llpipelineinternal.h"
 
+namespace
+{
+// Keep resize detection and target allocation on the same divisor, including
+// tiny world-view extents during startup/resize.
+U32 effectiveRenderResolutionDivisor(U32 divisor, U32 width, U32 height)
+{
+    if (width <= 1 || height <= 1)
+    {
+        return 1;
+    }
+    if (divisor >= width)
+    {
+        divisor = width - 1;
+    }
+    if (divisor >= height)
+    {
+        divisor = height - 1;
+    }
+    return divisor;
+}
+}
+
 void LLPipeline::connectRefreshCachedSettingsSafe(const std::string name)
 {
     LLPointer<LLControlVariable> cntrl_ptr = gSavedSettings.getControl(name);
@@ -553,12 +575,13 @@ bool LLPipeline::resizeScreenTexture()
         GLuint resY = gViewerWindow->getWorldViewHeightRaw();
 
 // [SL:KB] - Patch: Settings-RenderResolutionMultiplier | Checked: Catznip-5.4
+        const U32 res_mod = effectiveRenderResolutionDivisor(RenderResolutionDivisor, resX, resY);
         GLuint scaledResX = resX;
         GLuint scaledResY = resY;
-        if ( (RenderResolutionDivisor > 1) && (RenderResolutionDivisor < resX) && (RenderResolutionDivisor < resY) )
+        if (res_mod > 1)
         {
-            scaledResX /= RenderResolutionDivisor;
-            scaledResY /= RenderResolutionDivisor;
+            scaledResX /= res_mod;
+            scaledResY /= res_mod;
         }
         else if (RenderResolutionMultiplier > 0.f && RenderResolutionMultiplier < 1.f)
         {
@@ -605,6 +628,8 @@ LLPipeline::eFBOStatus LLPipeline::doAllocateScreenBuffer(U32 resX, U32 resY)
     // refresh cached settings here to protect against inconsistent event handling order
     refreshCachedSettings();
 
+    const U32 requested_resX = resX;
+    const U32 requested_resY = resY;
     eFBOStatus ret = FBO_SUCCESS_FULLRES;
     if (!allocateScreenBufferInternal(resX, resY))
     {
@@ -631,6 +656,23 @@ LLPipeline::eFBOStatus LLPipeline::doAllocateScreenBuffer(U32 resX, U32 resY)
             releaseScreenBuffers();
         }
 
+        if (LLVKLoader::perfLogEnabled() && getFrameRT() == &mMainRT && !gCubeSnapshot)
+        {
+            const U32 effective_divisor = effectiveRenderResolutionDivisor(
+                RenderResolutionDivisor, requested_resX, requested_resY);
+            const bool divisor_active = effective_divisor > 1;
+            const bool multiplier_active = !divisor_active &&
+                RenderResolutionMultiplier > 0.f && RenderResolutionMultiplier < 1.f;
+            LL_WARNS("RenderResolution")
+                << "#RenderResolution# active_source="
+                << (divisor_active ? "RenderResolutionDivisor" :
+                    (multiplier_active ? "RenderResolutionMultiplier" : "native"))
+                << " requested_divisor=" << RenderResolutionDivisor
+                << " effective_divisor=" << effective_divisor
+                << " requested_multiplier=" << RenderResolutionMultiplier
+                << " raw_request=" << requested_resX << "x" << requested_resY
+                << " result=failure" << LL_ENDL;
+        }
         LL_WARNS() << "Unable to allocate screen buffer at any resolution!" << LL_ENDL;
     }
 
@@ -714,19 +756,7 @@ bool LLPipeline::allocateScreenBufferInternal(U32 resX, U32 resY)
     getFrameRT()->width = resX;
     getFrameRT()->height = resY;
 
-    U32 res_mod = RenderResolutionDivisor;
-
-    //<FS:TS> FIRE-7066: RenderResolutionDivisor broken if higher than
-    //      smallest screen dimension
-    if (res_mod >= resX)
-    {
-        res_mod = resX - 1;
-    }
-    if (res_mod >= resY)
-    {
-        res_mod = resY - 1;
-    }
-    //</FS:TS> FIRE-7066
+    U32 res_mod = effectiveRenderResolutionDivisor(RenderResolutionDivisor, resX, resY);
 
     if (res_mod > 1 && res_mod < resX && res_mod < resY)
     {
@@ -774,7 +804,9 @@ bool LLPipeline::allocateScreenBufferInternal(U32 resX, U32 resY)
         if (RenderUIBuffer)
         {
             LL_PROFILE_ZONE_NAMED_CATEGORY_DISPLAY("UIBuffer"); // <FS:Beq/> improve Tracy scoping
-            if (!mUIScreen.allocate(resX, resY, GL_RGBA))
+            // Keep cached 2D UI at the native world/window extent; only the
+            // scene/deferred targets below participate in the debug scale.
+            if (!mUIScreen.allocate(getFrameRT()->width, getFrameRT()->height, GL_RGBA))
             {
                 return false;
             }
@@ -923,6 +955,29 @@ bool LLPipeline::allocateScreenBufferInternal(U32 resX, U32 resY)
     if (gSavedSettings.getBOOL("SimulateFBOFailure"))
     {
         return false;
+    }
+
+    if (LLVKLoader::perfLogEnabled() && getFrameRT() == &mMainRT && !gCubeSnapshot)
+    {
+        const U32 effective_divisor = effectiveRenderResolutionDivisor(
+            RenderResolutionDivisor, getFrameRT()->width, getFrameRT()->height);
+        const bool divisor_active = effective_divisor > 1;
+        const bool multiplier_active = !divisor_active &&
+            RenderResolutionMultiplier > 0.f && RenderResolutionMultiplier < 1.f;
+        LL_INFOS("RenderResolution")
+            << "#RenderResolution# active_source="
+            << (divisor_active ? "RenderResolutionDivisor" :
+                (multiplier_active ? "RenderResolutionMultiplier" : "native"))
+            << " requested_divisor=" << RenderResolutionDivisor
+            << " effective_divisor=" << effective_divisor
+            << " requested_multiplier=" << RenderResolutionMultiplier
+            << " world_raw=" << getFrameRT()->width << "x" << getFrameRT()->height
+            << " deferred=" << getFrameRT()->deferredScreen.getWidth() << "x" << getFrameRT()->deferredScreen.getHeight()
+            << " scene=" << getFrameRT()->screen.getWidth() << "x" << getFrameRT()->screen.getHeight()
+            << " object_id=" << mObjectIDBuffer.getWidth() << "x" << mObjectIDBuffer.getHeight()
+            << " scene_present=" << mScenePresentRT[0].getWidth() << "x" << mScenePresentRT[0].getHeight()
+            << " ui_buffer=" << mUIScreen.getWidth() << "x" << mUIScreen.getHeight()
+            << " result=success" << LL_ENDL;
     }
 
     gGL.getTexUnit(0)->disable();
@@ -1657,4 +1712,3 @@ void LLPipeline::initDeferredVB()
         LL_WARNS() << "Failed to allocate Vertex Buffer for deferred rendering" << LL_ENDL;
     }
 }
-
