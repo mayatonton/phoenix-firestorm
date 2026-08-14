@@ -5,7 +5,7 @@
 `feature/ayastorm-r42-phase2` を起点にした開発用 app で、MoltenVK の shadow
 multiview 経路、描画品質、および P0 の性能・安定性計器を再現可能な形で確認する。
 
-- 対象 app: `build-darwin-universal/newview/Release/AYAstorm.app`
+- 対象 app: `build-darwin-dev/newview/Release/AYAstorm.app`
 - 対象環境: Apple Silicon（arm64）の macOS
 - 開発用 profile: `~/Library/Application Support/AYAstorm-dev/`
 - 対象外: DMG 配布物、Intel Mac、OpenGL fallback
@@ -22,7 +22,8 @@ multiview 経路、描画品質、および P0 の性能・安定性計器を再
 
 ```bash
 export REPO="/path/to/phoenix-firestorm-mayatonton"
-export APP="$REPO/build-darwin-universal/newview/Release/AYAstorm.app"
+export DEV_BUILD_DIR="$REPO/build-darwin-dev"
+export APP="$DEV_BUILD_DIR/newview/Release/AYAstorm.app"
 
 test -x "$APP/Contents/MacOS/AYAstorm"
 lipo -archs "$APP/Contents/MacOS/AYAstorm"
@@ -66,7 +67,8 @@ pipeline cache 削除先ではない。削除対象は上記 2 項目だけで�
 
 ```bash
 export REPO="/path/to/phoenix-firestorm-mayatonton"
-export APP="$REPO/build-darwin-universal/newview/Release/AYAstorm.app"
+export DEV_BUILD_DIR="$REPO/build-darwin-dev"
+export APP="$DEV_BUILD_DIR/newview/Release/AYAstorm.app"
 export AYA_DEV_PROFILE="$HOME/Library/Application Support/AYAstorm-dev"
 
 AYASTORM_VKC=1 AYASTORM_PERF_LOG=5 "$APP/Contents/MacOS/AYAstorm"
@@ -399,15 +401,20 @@ PresentEngine: device lost — all further submits skipped (first skipped: is_fr
 GPU device lost (VK_ERROR_DEVICE_LOST) — requesting graceful shutdown.
 ```
 
-### shader / pipeline cache が空の状態での再現 — 2026-08-09
+### shader / pipeline cache が空と判断した再現（後日無効化）— 2026-08-09
 
-同じ開発用 profile で、起動前に次の 2 項目を確認した。両方とも既に存在せず、profile 内に
-別位置の同名項目もなかったため、cache が空の状態であることを確認してから起動した。
+同じ開発用 profile で、起動前に当時の手順が示していた次の 2 項目を確認した。両方とも既に
+存在せず、profile 内に別位置の同名項目もなかったため、当時は cache が空の状態と判断した。
 
 ```text
 ~/Library/Application Support/AYAstorm-dev/cache/shader_cache/
 ~/Library/Application Support/AYAstorm-dev/cache/pipeline_cache.bin
 ```
+
+後日の cache root 調査により、この場所は `LL_PATH_CACHE` の既定値ではないことが判明した。
+この run では実使用 cache root の削除を証明できないため、cache-cold の証拠としては無効である。
+device lost の再現記録としてだけ扱う。現在の開発 app で削除する正しい場所は
+`~/Library/Caches/AYAstorm-devOS_x64/` である。
 
 起動には再び `AYASTORM_VKC=1 AYASTORM_PERF_LOG=5` を用いた。`15:12:02Z` に Vulkan
 presentation surface / `2560x1387` swapchain の成立を確認したが、run time 約 68 秒後の
@@ -419,9 +426,9 @@ presentation surface / `2560x1387` swapchain の成立を確認したが、run t
   max 310.23, n 75`。
 - この場合も `requestQuit` を経由して `status: stopped` まで cleanup した。
 
-したがって shader cache / pipeline cache の残存は、この device lost の必要条件ではない。
-ただし cache を消しても device lost を防げないことを示すだけで、one-shot command buffer 内の
-どの操作が GPU 異常を引き起こしたかは未確定である。
+この再現から確認できるのは device lost が再発したことまでであり、shader cache / pipeline cache
+の残存との関係は判定できない。一方、失敗した one-shot submit と直前履歴の診断は cache-cold
+判定に依存しないため、one-shot command buffer 内の操作を追跡する根拠として残す。
 
 ### 現時点の切り分け
 
