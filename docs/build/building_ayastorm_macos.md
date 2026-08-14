@@ -170,6 +170,9 @@ FMOD、Vulkan SDK などのローカル installable を `my_autobuild.xml` に�
 ```bash
 cd "$REPO"
 
+test -f "$BASE_AUTOBUILD_CONFIG"
+test "$DEV_BUILD_DIR" != "$RELEASE_BUILD_DIR"
+
 cp "$BASE_AUTOBUILD_CONFIG" "$DEV_AUTOBUILD_CONFIG"
 cp "$BASE_AUTOBUILD_CONFIG" "$RELEASE_AUTOBUILD_CONFIG"
 
@@ -221,6 +224,7 @@ export AUTOBUILD_VARIABLES_FILE="$FS_BUILD_VARIABLES"
 export AUTOBUILD_CONFIG_FILE="$DEV_AUTOBUILD_CONFIG"
 export CLANG_MODULE_CACHE_PATH="$DEV_BUILD_DIR/ModuleCache"
 
+test "$DEV_BUILD_DIR" = "$REPO/build-darwin-dev"
 rm -rf "$DEV_BUILD_DIR"
 
 autobuild configure -A 64 -c ReleaseFS_open -- \
@@ -300,6 +304,7 @@ export CLANG_MODULE_CACHE_PATH="$RELEASE_BUILD_DIR/ModuleCache"
 
 ```bash
 cd "$REPO"
+test "$RELEASE_BUILD_DIR" = "$REPO/build-darwin-release"
 rm -rf "$RELEASE_BUILD_DIR"
 ```
 
