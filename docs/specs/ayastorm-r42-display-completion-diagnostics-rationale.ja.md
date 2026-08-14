@@ -215,7 +215,6 @@ Present pacing のどこを修正対象にするか決める。
 - 計測前の実際の `actual_display_fps` と `fresh_scene_display_fps`
 - Producer が次の consumer frame までに完成しない内部ボトルネック
 - shadow per-layer record 並列化が Producer FPS を改善する量
-- ディスプレイパネルの発光を外部センサーで測る物理計測
 
 ## 12. 非目標
 
