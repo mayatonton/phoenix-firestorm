@@ -45,6 +45,6 @@ if (NOT Vulkan_FOUND)
     find_package(Vulkan REQUIRED)
 endif()
 
-add_library( ll::vulkan INTERFACE IMPORTED )
+add_library( ll::vulkan INTERFACE IMPORTED GLOBAL )
 
 target_include_directories( ll::vulkan SYSTEM INTERFACE ${Vulkan_INCLUDE_DIRS})

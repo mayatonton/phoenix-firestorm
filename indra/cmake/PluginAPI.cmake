@@ -17,4 +17,9 @@ endif (WINDOWS)
 
 target_link_libraries( ll::pluginlibraries INTERFACE OpenGL::GL)
 
+# llgltypes.h exposes Vulkan types to media plugins.
+if (TARGET ll::vulkan)
+  target_link_libraries( ll::pluginlibraries INTERFACE ll::vulkan)
+endif ()
+
 target_include_directories( ll::pluginlibraries INTERFACE ${CMAKE_SOURCE_DIR}/llimage ${CMAKE_SOURCE_DIR}/llrender)

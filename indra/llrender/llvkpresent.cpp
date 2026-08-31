@@ -51,8 +51,8 @@
 #include <condition_variable>
 #include <deque>
 #include <thread>
-#include <pthread.h>
 #if LL_LINUX
+#include <pthread.h>
 #include <cstdio>
 #include <sys/resource.h>
 #endif

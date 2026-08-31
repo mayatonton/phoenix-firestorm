@@ -51,8 +51,11 @@
 #include <condition_variable>
 #include <deque>
 #include <thread>
-#include <pthread.h>
+#if LL_WINDOWS
+#include <intrin.h>
+#endif
 #if LL_LINUX
+#include <pthread.h>
 #include <cstdio>
 #include <sys/resource.h>
 #endif
@@ -1238,7 +1241,11 @@ void destroyImageVk(VkImage image, VkImageView view, void* allocation)
         std::lock_guard<std::mutex> lk(sSet1BirthMutex);
         ViewDeathInfo& di  = sViewDeathLedger[(U64)view];
         di.enqueue_frame   = sMonotonicFrameCount;
+#if LL_WINDOWS
+        di.enqueue_retaddr = (U64)(uintptr_t)_ReturnAddress();
+#else
         di.enqueue_retaddr = (U64)(uintptr_t)__builtin_return_address(0);
+#endif
     }
 }
 
