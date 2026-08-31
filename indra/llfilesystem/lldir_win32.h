@@ -50,10 +50,10 @@ public:
     /*virtual*/ std::string getLLPluginFilename(std::string base_name);
 
 private:
+    bool mRunningFromDevTree{ false };
     void* mDirSearch_h{ nullptr };
     std::wstring mCurrentDir;
 };
 
 #endif // LL_LLDIR_WIN32_H
-
 

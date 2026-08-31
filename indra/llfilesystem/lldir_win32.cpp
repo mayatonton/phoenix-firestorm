@@ -31,6 +31,7 @@
 #include "lldir_win32.h"
 #include "llerror.h"
 #include "llstring.h"
+#include "indra_constants.h"
 #include "stringize.h"
 #include "llfile.h"
 #include <shlobj.h>
@@ -87,6 +88,13 @@ namespace
             // either PRELOG isn't set, or we failed to open that pathname
             break;
         }
+    }
+
+    bool isDevTreeExecutableDir(std::string executable_dir)
+    {
+        LLStringUtil::toLower(executable_dir);
+        return executable_dir.find("\\build-vc") != std::string::npos ||
+               executable_dir.find("/build-vc") != std::string::npos;
     }
 } // anonymous namespace
 
@@ -280,8 +288,29 @@ LLDir_Win32::LLDir_Win32()
 
     mSkinBaseDir = add(mAppRODataDir, "skins");
 
+    mRunningFromDevTree = isDevTreeExecutableDir(mExecutableDir);
+
     // Build the default cache directory
-    mDefaultCacheDir = buildSLOSCacheDir();
+    if (mRunningFromDevTree)
+    {
+#ifdef OPENSIM
+#if ADDRESS_SIZE == 64
+        mDefaultCacheDir = add(mOSCacheDir, APP_NAME + "-devOS_x64");
+#else
+        mDefaultCacheDir = add(mOSCacheDir, APP_NAME + "-devOS");
+#endif
+#else
+#if ADDRESS_SIZE == 64
+        mDefaultCacheDir = add(mOSCacheDir, APP_NAME + "-dev_x64");
+#else
+        mDefaultCacheDir = add(mOSCacheDir, APP_NAME + "-dev");
+#endif
+#endif
+    }
+    else
+    {
+        mDefaultCacheDir = buildSLOSCacheDir();
+    }
 
     // Make sure it exists
     int res = LLFile::mkdir(mDefaultCacheDir);
@@ -308,8 +337,19 @@ void LLDir_Win32::initAppDirs(const std::string &app_name,
         mAppRODataDir = app_read_only_data_dir;
         mSkinBaseDir = add(mAppRODataDir, "skins");
     }
-    mAppName = app_name;
-    mOSUserAppDir = add(mOSUserDir, app_name);
+    std::string profile_name = app_name;
+    if (mRunningFromDevTree &&
+        (app_name == APP_NAME || app_name == APP_NAME + "_x64"))
+    {
+#if ADDRESS_SIZE == 64
+        profile_name = APP_NAME + "-dev_x64";
+#else
+        profile_name = APP_NAME + "-dev";
+#endif
+    }
+
+    mAppName = profile_name;
+    mOSUserAppDir = add(mOSUserDir, profile_name);
 
     int res = LLFile::mkdir(mOSUserAppDir);
     if (res == -1)
@@ -516,5 +556,4 @@ DWORD GetDllVersion(LPCTSTR lpszDllName)
 #endif
 
 #endif
-
 
