@@ -1,0 +1,18 @@
+diff --git a/build-cmd.sh b/build-cmd.sh
+--- a/build-cmd.sh
++++ b/build-cmd.sh
+@@ -52,12 +52,12 @@ case "$FMOD_ARCHIVE" in
+         # so we do this part manually and put the whole lot
+         # into the repo instead.
+         #
+         bash_install_dir="$(pwd)/$FMOD_ROOT_NAME$FMOD_VERSION$FMOD_PLATFORM"
+-        win_install_dir=`cygpath -w "$bash_install_dir"`
++        mkdir -p "$bash_install_dir"
++        win_install_dir=$(cygpath -w "$bash_install_dir/")
+         if [ -f "$bash_install_dir/api/core/inc/fmod.h" ]; then
+             echo "FMOD SDK already extracted at $bash_install_dir, skipping installer"
+         else
+-            mkdir -p $bash_install_dir
+             #
+             # This will invoke the UAC dialog to confirm permission before
+             # proceeding.  You can run the build on a 'modified' system with

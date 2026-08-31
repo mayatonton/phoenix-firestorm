@@ -1,0 +1,19 @@
+diff --git a/build-cmd.sh b/build-cmd.sh
+index ed7674e..1757fef 100644
+--- a/build-cmd.sh
++++ b/build-cmd.sh
+@@ -127,7 +127,13 @@ pushd "$FMOD_SOURCE_DIR"
+             # FMOD's Windows SDK ships opus.dll without an import library, so
+             # generate opus.lib from the DLL's export table using MSVC tools.
+             VSWHERE="/cygdrive/c/Program Files (x86)/Microsoft Visual Studio/Installer/vswhere.exe"
+-            VS_INSTALL_WIN=$("$VSWHERE" -latest -property installationPath | tr -d '\r')
++            VS_INSTALL_WIN=$("$VSWHERE" -latest -products '*' \
++                -requires Microsoft.VisualStudio.Component.VC.Tools.x86.x64 \
++                -property installationPath | tr -d '\r')
++            if [ -z "$VS_INSTALL_WIN" ]; then
++                echo "Visual Studio 2022 C++ x64 tools were not found"
++                exit 1
++            fi
+             VS_INSTALL=$(cygpath -u "$VS_INSTALL_WIN")
+             MSVC_DIR=$(ls -d "$VS_INSTALL/VC/Tools/MSVC/"*/ | sort -V | tail -1)
+             DUMPBIN="${MSVC_DIR}bin/Hostx64/x64/dumpbin.exe"

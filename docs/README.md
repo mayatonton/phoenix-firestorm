@@ -9,7 +9,7 @@ AYAstorm 専用のドキュメント置き場。Firestorm/LL upstream の標準�
 | `release/` | 各 release の release-note と GitHub Release ページ貼り付け用テキスト (en/ja/zh) | `ayastorm-r25-release-note.ja.md`, `ayastorm-r24-github-release-page.en.md` |
 | `specs/` | 仕様書・設計参照 (公開向け / 内部向け区別なし)。機能名で参照される永続版と、release 番号で紐づけた版が同居 | `3dstream-user-guide.{ja,en,zh}.md`, `spec_binaural_venue_reverb.md`, `ayastorm-r31-3dstream-unified-tag.md` |
 | `guides/` | ユーザー (配信者/スクリプター) 向けガイドと配布する LSL | `3dstream-tag-guide.{ja,en,zh}.md`, `lsl/aya_3dstream_setup.lsl` |
-| `build/` | AYAstorm 独自のビルド手順 (3 OS) | `building_ayastorm.md`, `building_ayastorm_macos.md` |
+| `build/` | AYAstorm 独自のビルド手順 (3 OS) と再現用 patch | `building_ayastorm_windows_avx2_vulkan.md`, `patches/3p-fmodstudio-windows-*.patch.txt` |
 | `archive/r{num}/` | 過去 release の作業ログ (survey, progress, 一回限りスクリプト)。resolve 済み、参照優先度は低い | `archive/r11/fetch_venue_irs.sh`, `archive/r17/color_temperature_survey.md` |
 | `testplans/` | release 前確認手順 | |
 | `images/` | release notes / guides から参照される画像素材 | |

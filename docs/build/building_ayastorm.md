@@ -112,6 +112,13 @@ rm -rf ~/.ayastorm_x64/cache/
 
 ## Windows版ビルド手順
 
+> **現行 r42 Vulkan branch:** `feature/ayastorm-r42-phase2` の Windows x64 AVX2 build は、
+> Vulkan SDK / glslang を含む追加要件とローカル環境点検をまとめた
+> [Windows x64 AVX2 / Vulkan ビルド手順](building_ayastorm_windows_avx2_vulkan.md)を先に参照してください。
+> 以下は履歴保存用の旧手順です。**現行 r42 では、この節の checkout、`rmdir /s /q`、configure、build
+> command を実行しないでください。** Vulkan 移行前の内容を基礎としており、単独では現行 branch の
+> 要件を満たしません。
+
 ### 1. 必要ツールのインストール（一度だけ）
 
 > **重要：** すべての作業はPowerShellではなく **cmd.exe（コマンドプロンプト）管理者モード** で行う。
@@ -212,7 +219,7 @@ autobuild installables edit fmodstudio platform=windows64 ^
 ```cmd
 cd c:\work_ayastorm\phoenix-firestorm
 rmdir /s /q build-vc170-64
-autobuild configure -A 64 -c ReleaseFS_open -- --fmodstudio -DLL_TESTS:BOOL=FALSE --package --chan AYAstorm-release
+autobuild configure -A 64 -c ReleaseFS_open -- --fmodstudio --openal -DLL_DULLAHAN_AUDIO_CALLBACK:BOOL=TRUE -DLL_TESTS:BOOL=FALSE --package --chan AYAstorm-release
 ```
 
 ### 7. ビルド (Legacy)
@@ -235,7 +242,7 @@ Phoenix-FirestormOS-Ayastorm-release_LEGACY-7-2-4-80621_Setup.exe
 ```cmd
 cd c:\work_ayastorm\phoenix-firestorm
 rmdir /s /q build-vc170-64
-autobuild configure -A 64 -c ReleaseFS_open -- --fmodstudio --avx2 -DLL_TESTS:BOOL=FALSE --package --chan AYAstorm-release
+autobuild configure -A 64 -c ReleaseFS_open -- --fmodstudio --openal --avx2 -DLL_DULLAHAN_AUDIO_CALLBACK:BOOL=TRUE -DLL_TESTS:BOOL=FALSE --package --chan AYAstorm-release
 ```
 
 ### 10. ビルド (AVX2)
@@ -250,4 +257,3 @@ autobuild build -A 64 -c ReleaseFS_AVX2 --no-configure
 c:\work_ayastorm\phoenix-firestorm\build-vc170-64\newview\Release\
 Phoenix-FirestormOS-AYAstorm-release_AVX2-7-2-4-80621_Setup.exe
 ```
-

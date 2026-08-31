@@ -1,0 +1,20 @@
+diff --git a/build-cmd.sh b/build-cmd.sh
+--- a/build-cmd.sh
++++ b/build-cmd.sh
+@@ -104,6 +104,6 @@ pushd "$FMOD_SOURCE_DIR"
+     case "$AUTOBUILD_PLATFORM" in
+         "windows")
+-        COPYFLAGS="-dR --preserve=mode,timestamps"
++        COPYFLAGS="-R"
+             cp $COPYFLAGS "api/core/lib/x86/fmodL_vc.lib" "$stage_debug"
+             cp $COPYFLAGS "api/core/lib/x86/fmod_vc.lib" "$stage_release"
+             cp $COPYFLAGS "api/core/lib/x86/fmodL.dll" "$stage_debug"
+@@ -112,7 +112,7 @@ pushd "$FMOD_SOURCE_DIR"
+         ;;
+
+         "windows64")
+-        COPYFLAGS="-dR --preserve=mode,timestamps"
++        COPYFLAGS="-R"
+             cp $COPYFLAGS "api/core/lib/x64/fmodL_vc.lib" "$stage_debug"
+             cp $COPYFLAGS "api/core/lib/x64/fmod_vc.lib" "$stage_release"
+             cp $COPYFLAGS "api/core/lib/x64/fmodL.dll" "$stage_debug"
