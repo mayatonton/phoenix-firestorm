@@ -6,6 +6,8 @@
         <!-- ============ Tab 1: General ============ -->
         <panel label="基本" name="tab_general">
             <text name="T_GeneralMaster">マスタースイッチ (AYAstorm 推奨値)</text>
+            <button name="aya_update_check_btn" label="更新を確認"
+                    tool_tip="GitHub Releases から AYAstorm の最新版を確認します"/>
 
             <check_box name="cb_DeferredSSAO" label="スクリーンスペース AO (SSAO)"
                        tool_tip="接触影 / 環境光の暗がりを近似計算で再現します。"/>

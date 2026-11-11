@@ -859,6 +859,8 @@ void LLPipeline::cleanup()
 {
     assertInitialized();
 
+    clearOtherRiggedObjectIDBuffer();
+
     mGroupQ1.clear() ;
 
     for(pool_set_t::iterator iter = mPools.begin();
@@ -11018,9 +11020,14 @@ void LLPipeline::armOtherRiggedObjectIDBuffer(LLVOAvatar* avatar, F32 seconds)
 
 bool LLPipeline::isOtherRiggedObjectIDBufferArmed() const
 {
-    if (sFSOtherRiggedPickerArmSeconds <= 0.f ||
-        sFSOtherRiggedPickerArmTimer.getElapsedTimeF32() > sFSOtherRiggedPickerArmSeconds)
+    if (sFSOtherRiggedPickerArmSeconds <= 0.f)
     {
+        return false;
+    }
+    if (sFSOtherRiggedPickerArmTimer.getElapsedTimeF32() > sFSOtherRiggedPickerArmSeconds)
+    {
+        sFSOtherRiggedPickerAvatar = nullptr;
+        sFSOtherRiggedPickerAvatarID.setNull();
         return false;
     }
     return sFSOtherRiggedPickerAvatar.notNull() &&

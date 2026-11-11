@@ -204,6 +204,7 @@ set(viewer_SOURCE_FILES
     llpanelopenregionsettings.cpp
     # <FS:Ansariel> [Legacy Bake]
     llagentwearablesfetch.cpp
+    llayaupdatechecker.cpp
     vjlocalmesh.cpp
     vjfloaterlocalmesh.cpp
     fslocalmeshimportbase.cpp
@@ -1076,6 +1077,7 @@ set(viewer_HEADER_FILES
     fsfloaterprimfeed.h
     # <FS:Ansariel> [Legacy Bake]
     llagentwearablesfetch.h
+    llayaupdatechecker.h
     omnifilter.h
     omnifilterengine.h
     vjlocalmesh.h
@@ -1850,6 +1852,35 @@ LIST(APPEND viewer_SOURCE_FILES fsfloaterdiscord.cpp fsdiscordconnect.cpp)
 #</FS:LO>
 
 # <FS:TS> Generate the version information header file.
+set(AYASTORM_RELEASE_TAG_DEFAULT "dev")
+set(AYASTORM_SOURCE_BRANCH "dev")
+find_program(AYASTORM_GIT_EXECUTABLE git)
+if(AYASTORM_GIT_EXECUTABLE)
+  execute_process(
+    COMMAND ${AYASTORM_GIT_EXECUTABLE} describe --tags --exact-match --match "v*-ayastorm-r*"
+    WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}/../..
+    OUTPUT_VARIABLE AYASTORM_GIT_RELEASE_TAG
+    RESULT_VARIABLE AYASTORM_GIT_RELEASE_TAG_RESULT
+    OUTPUT_STRIP_TRAILING_WHITESPACE
+    ERROR_QUIET
+  )
+  if(AYASTORM_GIT_RELEASE_TAG_RESULT EQUAL 0 AND NOT "${AYASTORM_GIT_RELEASE_TAG}" STREQUAL "")
+    set(AYASTORM_RELEASE_TAG_DEFAULT "${AYASTORM_GIT_RELEASE_TAG}")
+  endif()
+  execute_process(
+    COMMAND ${AYASTORM_GIT_EXECUTABLE} rev-parse --abbrev-ref HEAD
+    WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}/../..
+    OUTPUT_VARIABLE AYASTORM_GIT_SOURCE_BRANCH
+    RESULT_VARIABLE AYASTORM_GIT_SOURCE_BRANCH_RESULT
+    OUTPUT_STRIP_TRAILING_WHITESPACE
+    ERROR_QUIET
+  )
+  if(AYASTORM_GIT_SOURCE_BRANCH_RESULT EQUAL 0 AND NOT "${AYASTORM_GIT_SOURCE_BRANCH}" STREQUAL "HEAD" AND NOT "${AYASTORM_GIT_SOURCE_BRANCH}" STREQUAL "")
+    set(AYASTORM_SOURCE_BRANCH "${AYASTORM_GIT_SOURCE_BRANCH}")
+  endif()
+endif()
+set(AYASTORM_RELEASE_TAG "${AYASTORM_RELEASE_TAG_DEFAULT}" CACHE STRING "AYAstorm release tag embedded into the viewer")
+set(AYASTORM_RELEASE_FAMILY "classic" CACHE STRING "AYAstorm release family embedded into the viewer")
 configure_file(
     ${CMAKE_CURRENT_SOURCE_DIR}/fsversionvalues.h.in
     ${CMAKE_CURRENT_BINARY_DIR}/fsversionvalues.h

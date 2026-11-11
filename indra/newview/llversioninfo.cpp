@@ -138,6 +138,50 @@ std::string LLVersionInfo::getLLViewerVersion() const
 }
 // </FS:PP>
 
+std::string LLVersionInfo::getAYAstormReleaseTag() const
+{
+    return AYASTORM_RELEASE_TAG;
+}
+
+std::string LLVersionInfo::getAYAstormReleaseFamily() const
+{
+    return AYASTORM_RELEASE_FAMILY;
+}
+
+std::string LLVersionInfo::getAYAstormSourceBranch() const
+{
+    return AYASTORM_SOURCE_BRANCH;
+}
+
+std::string LLVersionInfo::getAYAstormDisplayVersion() const
+{
+    const std::string tag = getAYAstormReleaseTag();
+    static const boost::regex classic_tag_re("^v[0-9]+\\.[0-9]+\\.[0-9]+-ayastorm-r([^+-]+)(?:-bugfix-([0-9]+))?.*$");
+    boost::smatch match;
+    if (boost::regex_match(tag, match, classic_tag_re))
+    {
+        std::string release = match[1].str();
+        if (match[2].matched)
+        {
+            release += ".";
+            release += match[2].str();
+        }
+        return "AYAstorm r" + release;
+    }
+
+    if (tag.empty() || tag == "dev")
+    {
+        return "AYAstorm dev";
+    }
+
+    return "AYAstorm " + tag;
+}
+
+std::string LLVersionInfo::getAYAstormBaseVersionLabel() const
+{
+    return "based on FS " + getShortVersion();
+}
+
 std::string LLVersionInfo::getChannelAndVersion()
 {
     if (mVersionChannel.empty())

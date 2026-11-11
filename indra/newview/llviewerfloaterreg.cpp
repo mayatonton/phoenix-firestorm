@@ -701,6 +701,7 @@ void LLViewerFloaterReg::registerFloaters()
     // (BD DoF chain + future P5/P6 Cinematic post-processing).
     // Reuses generic FloaterQuickPrefs class — controls bind via XML control_name.
     LLFloaterReg::add("aya_cinematic", "floater_aya_cinematic.xml", (LLFloaterBuildFunc)&LLFloaterReg::build<FloaterQuickPrefs>);
+    LLFloaterReg::add("aya_update", "floater_aya_update.xml", (LLFloaterBuildFunc)&LLFloaterReg::build<LLFloater>);
     // </AYAstorm r30 P4 step 4a>
     LLFloaterReg::add("quickprefs", "floater_quickprefs.xml", (LLFloaterBuildFunc)&LLFloaterReg::build<FloaterQuickPrefs>);
     LLFloaterReg::add("region_tracker", "floater_region_tracker.xml", (LLFloaterBuildFunc)&LLFloaterReg::build<ALFloaterRegionTracker>);

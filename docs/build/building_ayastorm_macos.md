@@ -26,6 +26,7 @@ export FS_BUILD_VARIABLES="$WORK/fs-build-variables/variables"
 export FMOD_REPO="$WORK/3p-fmodstudio"
 export TARGET_REF="feature/macos-arm64-build-on-latest"
 export AYA_BUILD_ID="80834"
+export AYA_RELEASE_TAG=""
 ```
 
 `AYA_BUILD_ID` は Release ページの成果物名に含める autobuild build id です。Release 配布物では、git commit count ではなく CI / autobuild 側の build id を明示して揃えます。
@@ -45,6 +46,27 @@ git status --short
 ```
 
 既存 worktree を使う場合は `REPO` にその path を指定し、ビルド前に `git status --short` で差分を確認します。不要な差分を含めたまま Release ビルドしないようにしてください。
+
+## Release tag の埋め込み
+
+AYAstorm r32 以降の update notification は、build に埋め込まれた `AYASTORM_RELEASE_TAG` と GitHub Releases の tag を比較します。Release 配布物を作る場合は、必ず release tag を埋め込んでください。
+
+tag が付いた commit から configure する場合は、CMake が自動検出します。
+
+```bash
+git checkout REPLACE_WITH_RELEASE_TAG
+```
+
+tag checkout ではない CI / source archive から build する場合は、configure 時に明示します。
+
+```bash
+export AYA_RELEASE_TAG="REPLACE_WITH_RELEASE_TAG"
+-DAYASTORM_RELEASE_TAG="$AYA_RELEASE_TAG"
+```
+
+`-bugfix-N` 形式も対応しています。例えば `v7.2.4-ayastorm-r32-bugfix-2` は viewer 内では `AYAstorm r32.2` として扱われます。これは形式例であり、実際の release build ではその release に対応する tag を `AYA_RELEASE_TAG` に入れてください。開発ビルドでは `AYA_RELEASE_TAG` は空のままで構いません。
+
+build tree を再利用する場合、既存の CMake cache が `dev` のままだと、コンパイル / リンク / パッケージングだけを再実行しても release tag は更新されません。tag を変更した場合、または `-DAYASTORM_RELEASE_TAG=...` を変更した場合は configure を再実行してください。
 
 ## Python / autobuild
 
@@ -160,14 +182,18 @@ autobuild configure -A 64 -c ReleaseFS_open -- \
   --package \
   --chan AYAstorm-release \
   -DLL_TESTS:BOOL=FALSE \
-  -DLL_DULLAHAN_AUDIO_CALLBACK:BOOL=TRUE
+  -DLL_DULLAHAN_AUDIO_CALLBACK:BOOL=TRUE \
+  ${AYA_RELEASE_TAG:+-DAYASTORM_RELEASE_TAG="$AYA_RELEASE_TAG"}
 ```
 
 configure 後に主要な設定を確認します。
 
 ```bash
-rg -n 'CMAKE_BUILD_TYPE|ADDRESS_SIZE|CMAKE_OSX_ARCHITECTURES|VIEWER_CHANNEL|USE_FMODSTUDIO|USE_OPENAL|OPENSIM|PACKAGE|VIEWER_BINARY_NAME|LL_DULLAHAN_AUDIO_CALLBACK' \
+rg -n 'CMAKE_BUILD_TYPE|ADDRESS_SIZE|CMAKE_OSX_ARCHITECTURES|VIEWER_CHANNEL|USE_FMODSTUDIO|USE_OPENAL|OPENSIM|PACKAGE|VIEWER_BINARY_NAME|LL_DULLAHAN_AUDIO_CALLBACK|AYASTORM_RELEASE_TAG' \
   build-darwin-universal/CMakeCache.txt
+
+rg -n 'AYASTORM_RELEASE_TAG|AYASTORM_SOURCE_BRANCH' \
+  build-darwin-universal/newview/fsversionvalues.h
 ```
 
 期待値の例:
@@ -183,11 +209,19 @@ USE_OPENAL:BOOL=ON
 VIEWER_BINARY_NAME:STRING=ayastorm-bin
 VIEWER_CHANNEL:STRING=Firestorm-AYAstorm-release
 LL_DULLAHAN_AUDIO_CALLBACK:BOOL=TRUE
+AYASTORM_RELEASE_TAG:STRING=REPLACE_WITH_RELEASE_TAG
+const std::string AYASTORM_RELEASE_TAG{"REPLACE_WITH_RELEASE_TAG"};
 ```
+
+`AYASTORM_RELEASE_TAG{"dev"}` のままなら、その build は release tag 入り build ではありません。About の AYAstorm 表示、Release Notes link、update 判定が release build として正しく機能しないため、configure からやり直してください。
 
 ## Build / Package
 
 `llpackage` scheme を Release で実行します。
+
+macOS の CMake / autobuild 設定では Xcode project 名は `SecondLife.xcodeproj` になります。古い build tree に `Firestorm.xcodeproj` が残っていても、そちらは使わないでください。古い project を叩くと、追加した source / target が反映されておらず、link error の原因になります。
+
+この注意は macOS の Xcode project に限定したものです。Windows / Linux の build 手順を同じ理由で変更する必要はありません。
 
 ```bash
 cd "$REPO/build-darwin-universal"
@@ -199,7 +233,7 @@ AUTOBUILD_VARIABLES_FILE="$FS_BUILD_VARIABLES" \
 AUTOBUILD_CONFIG_FILE="$AUTOBUILD_CONFIG_FILE" \
 CLANG_MODULE_CACHE_PATH="$CLANG_MODULE_CACHE_PATH" \
 xcodebuild \
-  -project Firestorm.xcodeproj \
+  -project SecondLife.xcodeproj \
   -scheme llpackage \
   -configuration Release \
   -derivedDataPath "$REPO/build-darwin-universal/DerivedData" \

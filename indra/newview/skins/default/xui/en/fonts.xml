@@ -167,13 +167,13 @@
 	     size="8.0"
 	     />
   <font_size name="Huge"
-	     comment="Size of huge font (points, or 1/72 of an inch)"
-	     size="16.0"
-	     />
+         comment="Size of huge font (points, or 1/72 of an inch)"
+         size="16.0"
+         />
   <font_size name="Large"
-	     comment="Size of large font (points, or 1/72 of an inch)"
-	     size="10.6"
-	     />
+         comment="Size of large font (points, or 1/72 of an inch)"
+         size="10.6"
+         />
   <font_size name="Medium"
 	     comment="Size of medium font (points, or 1/72 of an inch)"
 	     size="8.6"

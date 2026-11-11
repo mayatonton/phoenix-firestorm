@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="utf-8" standalone="yes" ?>
+<floater name="aya_update" title="AYAstorm アップデート">
+    <panel name="aya_update_panel">
+        <text name="aya_update_title">AYAstorm update available</text>
+        <button name="aya_update_ok_btn" label="OK"/>
+        <button name="aya_update_open_btn" label="更新を見る"/>
+        <button name="aya_update_later_btn" label="あとで"/>
+        <button name="aya_update_skip_btn" label="この版をスキップ"/>
+    </panel>
+</floater>

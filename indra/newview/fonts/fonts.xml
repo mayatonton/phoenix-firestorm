@@ -196,6 +196,18 @@
 	     comment="Size of huge font (points, or 1/72 of an inch)"
 	     size="16.0"
 	     />
+  <font_size name="AYAUpdateTitle"
+	     comment="Size of the AYAstorm update login banner title"
+	     size="26.0"
+	     />
+  <font_size name="AYAUpdateBody"
+	     comment="Size of the AYAstorm update login banner body"
+	     size="15.0"
+	     />
+  <font_size name="AYAUpdateButton"
+	     comment="Size of the AYAstorm update login banner buttons"
+	     size="12.5"
+	     />
   <font_size name="Large"
 	     comment="Size of large font (points, or 1/72 of an inch)"
 	     size="10.6"
