@@ -61,6 +61,18 @@ namespace LLCinematicOverlay
     // 既存ユーザーが live A/B 期間中 false 持ちで放置していたケースを救済する。
     void applyR15GodraysCinematicMigrationIfNeeded();
     // </FS:AYAstorm>
+
+    // <FS:AYAstorm> r31.2 Cinematic overlay RenderGlowMinLuminance bugfix.
+    // Pre: 0.0 (BD parity port から持ち込み、blank texture + 色付きプリムで
+    //            意図しない bloom 発火が起きる)
+    // Post: 0.5 (HDR linear 空間で中間 lit を切る現実的な threshold)
+    // Runs once per Cinematic-mode startup: when AYAR31GlowMinLuminanceMigrationVersion < 1
+    // AND AYAVisualRealismEnabled == 2, forces the cvar to 0.5 regardless of
+    // persisted value, then bumps the version. Firestorm mode 起動時はスキップし
+    // 次回 Cinematic 起動まで持ち越し (Firestorm mode のみ使うユーザーは LL default
+    // 1.0 のままで影響を受けない)。
+    void applyR31GlowMinLuminanceMigrationIfNeeded();
+    // </FS:AYAstorm>
 }
 
 #endif // LL_CINEMATIC_OVERLAY_H

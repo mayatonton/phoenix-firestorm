@@ -72,6 +72,7 @@ namespace
         while (p < v) p <<= 1;
         return p;
     }
+
 }
 
 // ---------------------------------------------------------------------------
@@ -366,6 +367,9 @@ bool LLPositionalStreamMulti::start(const std::string& url,
     mReadFailStreak = 0;
     mLastReadFailLogTime = 0.0;
     mZeroFillStreakStart = 0.0;
+    mZeroFillStartUnderrunCallbacks = 0;
+    mNotReadyStreakStart = 0.0;
+    mNotReadyStartUnderrunCallbacks = 0;
     mFailReason.store(FailReason::Ok, std::memory_order_relaxed);
     mFailDetail.clear();
 
@@ -504,6 +508,9 @@ bool LLPositionalStreamMulti::openSourceStream(const std::string& url)
     const FMOD_MODE source_mode = FMOD_2D
                                 | FMOD_NONBLOCKING
                                 | FMOD_IGNORETAGS;
+
+    checkFmod(system->setStreamBufferSize(kFmodStreamBufferBytes, FMOD_TIMEUNIT_RAWBYTES),
+              "System::setStreamBufferSize(Stream3D URL source)");
 
     if (checkFmod(system->createStream(url.c_str(), source_mode, nullptr, &mSourceSound),
                   "createStream(source)"))
@@ -764,6 +771,10 @@ void LLPositionalStreamMulti::resetMediaRuntimeForReopen()
     mMediaFormatSerial = 0;
     mMediaRingChannels = 0;
     mRing.clear();
+    mZeroFillStreakStart = 0.0;
+    mZeroFillStartUnderrunCallbacks = 0;
+    mNotReadyStreakStart = 0.0;
+    mNotReadyStartUnderrunCallbacks = 0;
     mSampleRate = 0;
     mSourceChannels = 0;
     mSourceBytesPerSample = 0;
@@ -791,6 +802,10 @@ void LLPositionalStreamMulti::releaseAll()
     mMediaLogicalChannels = 0;
     mMediaReopenRequested.store(false, std::memory_order_release);
     mRing.clear();
+    mZeroFillStreakStart = 0.0;
+    mZeroFillStartUnderrunCallbacks = 0;
+    mNotReadyStreakStart = 0.0;
+    mNotReadyStartUnderrunCallbacks = 0;
     mSampleRate = 0;
     mSourceChannels = 0;
     mSourceBytesPerSample = 0;
@@ -908,6 +923,103 @@ LLPositionalStreamMulti::pcmReadCallback(FMOD_SOUND* sound, void* data, U32 data
     }
     LLPositionalStreamMulti* self = cb->self;
 
+    auto addCatchup = [&](size_t frames)
+    {
+        const size_t max_size = static_cast<size_t>(-1);
+        cb->catchup_frames = (cb->catchup_frames > max_size - frames)
+            ? max_size
+            : cb->catchup_frames + frames;
+    };
+
+    auto refreshUpmixParams = [&]()
+    {
+        if (cb->op_kind != SpeakerCallback::OpKind::Upmix)
+        {
+            return;
+        }
+
+        // r12 P6: refresh the live-tunable knobs (LfeCutoff / CenterBleed /
+        // RearDelayMs) from the per-stream atomic snapshot. A relaxed load is
+        // sufficient because each parameter is independently consumed.
+        const F32 lfe_fc = self->mUpmixLfeCutoffHz.load(std::memory_order_relaxed);
+        const F32 bleed  = self->mUpmixCenterBleed.load(std::memory_order_relaxed);
+        const F32 base   = self->mUpmixRearDelayBaseMs.load(std::memory_order_relaxed);
+        F32 l_ms = 0.f, r_ms = 0.f;
+        LLStereoUpmix::splitRearDelay(base, kRearDelayJitterMs, &l_ms, &r_ms);
+        cb->upmix_params.lfe_cutoff_hz   = lfe_fc;
+        cb->upmix_params.center_bleed    = bleed;
+        cb->upmix_params.rear_delay_ms_l = l_ms;
+        cb->upmix_params.rear_delay_ms_r = r_ms;
+        // r12.1: same per-callback refresh for the LFE gain.
+        cb->upmix_params.lfe_gain        = self->mLfeGain.load(std::memory_order_relaxed);
+    };
+
+    auto advanceUpmixSilence = [&](F32* dst, size_t frames)
+    {
+        if (cb->op_kind != SpeakerCallback::OpKind::Upmix || frames == 0)
+        {
+            return;
+        }
+
+        refreshUpmixParams();
+        const size_t chunk_cap =
+            std::min(kReaderChunkFrames, cb->raw_scratch.size() / 2);
+        if (chunk_cap == 0)
+        {
+            return;
+        }
+
+        F32* raw = cb->raw_scratch.data();
+        size_t advanced = 0;
+        while (advanced < frames)
+        {
+            const size_t this_chunk = std::min(frames - advanced, chunk_cap);
+            std::memset(raw, 0, this_chunk * 2 * sizeof(F32));
+            self->mUpmix.upmix2chToSpeaker(raw, dst + advanced, this_chunk,
+                                           cb->op_role_upmix,
+                                           cb->upmix_state, cb->upmix_params);
+            advanced += this_chunk;
+        }
+    };
+
+    auto accountUnderrun = [&](size_t missing_frames)
+    {
+        if (missing_frames == 0)
+        {
+            return;
+        }
+
+        // r8 F6 acceptance: count the underrun for the dropout metric. Done
+        // here, not in the ring methods, so a speaker whose tail reads short
+        // still registers even if the ring isn't globally empty.
+        self->mUnderrunFrames.fetch_add(static_cast<U64>(missing_frames),
+                                        std::memory_order_relaxed);
+        self->mUnderrunCallbacks.fetch_add(1, std::memory_order_relaxed);
+    };
+
+    auto drainCatchup = [&]() -> bool
+    {
+        if (cb->catchup_frames == 0)
+        {
+            return true;
+        }
+
+        const size_t skipped =
+            self->mRing.skipFrames(cb->speaker_idx, cb->catchup_frames);
+        cb->catchup_frames -= skipped;
+
+        if (cb->catchup_frames > 0)
+        {
+            advanceUpmixSilence(out, n);
+            std::memset(out, 0, n * sizeof(F32));
+            addCatchup(n);
+            accountUnderrun(n);
+            return false;
+        }
+
+        return true;
+    };
+
     // r10 P4: dispatch the §4.2 compatibility-matrix routing pre-computed
     // for this speaker at createUserSounds(). All three of mSpeakers,
     // mSourceChannels, mDownmix are settled before the FMOD sound (and
@@ -923,21 +1035,43 @@ LLPositionalStreamMulti::pcmReadCallback(FMOD_SOUND* sound, void* data, U32 data
         // readers — otherwise the writer's lagging-reader bound would stall
         // the whole stream on this one speaker. No underrun is counted
         // (intentional silence is not a dropout).
-        self->mRing.skipFrames(cb->speaker_idx, n);
+        {
+            if (!drainCatchup())
+            {
+                return FMOD_OK;
+            }
+            const size_t skipped = self->mRing.skipFrames(cb->speaker_idx, n);
+            if (skipped < n)
+            {
+                addCatchup(n - skipped);
+            }
+        }
         std::memset(out, 0, n * sizeof(F32));
         return FMOD_OK;
 
     case SpeakerCallback::OpKind::Track:
+        if (!drainCatchup())
+        {
+            return FMOD_OK;
+        }
         got = self->mRing.readFramesTrack(cb->speaker_idx, out, n,
                                           static_cast<size_t>(cb->op_track));
         break;
 
     case SpeakerCallback::OpKind::StereoSum:
+        if (!drainCatchup())
+        {
+            return FMOD_OK;
+        }
         got = self->mRing.readFramesMonoSum(cb->speaker_idx, out, n);
         break;
 
     case SpeakerCallback::OpKind::Bs775:
     {
+        if (!drainCatchup())
+        {
+            return FMOD_OK;
+        }
         // raw_scratch is sized at createUserSounds() to kReaderChunkFrames
         // × 6 floats; loop covers the rare case of a callback datalen
         // that exceeds one chunk.
@@ -960,35 +1094,17 @@ LLPositionalStreamMulti::pcmReadCallback(FMOD_SOUND* sound, void* data, U32 data
 
     case SpeakerCallback::OpKind::Upmix:
     {
+        if (!drainCatchup())
+        {
+            return FMOD_OK;
+        }
         // r12 P2: parallel to Bs775 but with a 2-track raw read (ring is
         // 2-track for stereo source) and the LLStereoUpmix transform that
         // produces this speaker's role-specific 1ch output. Per-speaker
         // upmix_state carries the SL/SR delay line and the LFE biquad
         // taps; upmix_params carries the bleed / delay / LFE-cutoff tuning.
         //
-        // r12 P6: refresh the live-tunable knobs (LfeCutoff / CenterBleed /
-        // RearDelayMs) from the per-stream atomic snapshot. A relaxed load
-        // is sufficient because each parameter is independently consumed
-        // (no inter-knob ordering invariant); a value the main thread
-        // racingly stores during the load is materialised on the next
-        // chunk boundary, which the user perceives as a smooth ~20 ms
-        // ramp rather than a tearing artefact. sample_rate stays as
-        // stamped at createUserSounds() time.
-        const F32 lfe_fc = self->mUpmixLfeCutoffHz.load(std::memory_order_relaxed);
-        const F32 bleed  = self->mUpmixCenterBleed.load(std::memory_order_relaxed);
-        const F32 base   = self->mUpmixRearDelayBaseMs.load(std::memory_order_relaxed);
-        F32 l_ms = 0.f, r_ms = 0.f;
-        LLStereoUpmix::splitRearDelay(base, kRearDelayJitterMs, &l_ms, &r_ms);
-        cb->upmix_params.lfe_cutoff_hz   = lfe_fc;
-        cb->upmix_params.center_bleed    = bleed;
-        cb->upmix_params.rear_delay_ms_l = l_ms;
-        cb->upmix_params.rear_delay_ms_r = r_ms;
-        // r12.1: same per-callback refresh for the LFE gain. Read every
-        // chunk so a mid-stream {lfegain:N} edit shows up on the next
-        // chunk boundary without rebuilding the stream. Only the LFE
-        // role consumes lfe_gain in upmix2chToSpeaker(); other roles
-        // ignore it so this store is harmless on FL/FR/C/SL/SR cb's.
-        cb->upmix_params.lfe_gain        = self->mLfeGain.load(std::memory_order_relaxed);
+        refreshUpmixParams();
 
         const size_t chunk_cap = kReaderChunkFrames;
         F32* raw = cb->raw_scratch.data();
@@ -1027,13 +1143,11 @@ LLPositionalStreamMulti::pcmReadCallback(FMOD_SOUND* sound, void* data, U32 data
 
     if (got < n)
     {
-        std::memset(out + got, 0, (n - got) * sizeof(F32));
-        // r8 F6 acceptance: count the underrun for the dropout metric. Done
-        // here, not in the ring methods, so a speaker whose tail reads
-        // short still registers even if the ring isn't globally empty.
-        self->mUnderrunFrames.fetch_add(static_cast<U64>(n - got),
-                                        std::memory_order_relaxed);
-        self->mUnderrunCallbacks.fetch_add(1, std::memory_order_relaxed);
+        const size_t missing = n - got;
+        advanceUpmixSilence(out + got, missing);
+        std::memset(out + got, 0, missing * sizeof(F32));
+        addCatchup(missing);
+        accountUnderrun(missing);
     }
     return FMOD_OK;
 }
@@ -1380,24 +1494,30 @@ bool LLPositionalStreamMulti::startUserChannels()
     if (!mSpeakerRuntime.empty() && mSpeakerRuntime[0].channel)
     {
         unsigned long long parent_now = 0;
-        checkFmod(mSpeakerRuntime[0].channel->getDSPClock(nullptr, &parent_now),
-                  "Channel::getDSPClock");
+        const FMOD_RESULT clock_result =
+            mSpeakerRuntime[0].channel->getDSPClock(nullptr, &parent_now);
+        checkFmod(clock_result, "Channel::getDSPClock");
         const unsigned long long lead = static_cast<unsigned long long>(mSampleRate) / 50;
         const unsigned long long start_at = parent_now + lead;
-        for (auto& sr : mSpeakerRuntime)
+        for (size_t i = 0; i < mSpeakerRuntime.size(); ++i)
         {
+            auto& sr = mSpeakerRuntime[i];
             if (sr.channel)
             {
-                checkFmod(sr.channel->setDelay(start_at, 0, false), "Channel::setDelay");
+                const FMOD_RESULT delay_result =
+                    sr.channel->setDelay(start_at, 0, false);
+                checkFmod(delay_result, "Channel::setDelay");
             }
         }
     }
 
-    for (auto& sr : mSpeakerRuntime)
+    for (size_t i = 0; i < mSpeakerRuntime.size(); ++i)
     {
+        auto& sr = mSpeakerRuntime[i];
         if (sr.channel)
         {
-            checkFmod(sr.channel->setPaused(false), "Channel::setPaused");
+            const FMOD_RESULT paused_result = sr.channel->setPaused(false);
+            checkFmod(paused_result, "Channel::setPaused");
         }
     }
     return true;
@@ -1418,8 +1538,15 @@ size_t LLPositionalStreamMulti::pumpSource()
     constexpr size_t kMaxFramesPerPump = 8192;
 
     const size_t free_frames = mRing.writeAvailable();
-    const size_t want_frames = std::min(free_frames, kMaxFramesPerPump);
-    if (want_frames == 0) return 0;
+    const size_t buffered_frames = mRing.readAvailable(0);
+    const size_t target_room = (buffered_frames < kTargetBufferedFrames)
+                             ? (kTargetBufferedFrames - buffered_frames)
+                             : 0;
+    const size_t want_frames = std::min({ free_frames, target_room, kMaxFramesPerPump });
+    if (want_frames == 0 || want_frames < kMaxFramesPerPump)
+    {
+        return 0;
+    }
 
     const size_t bytes_per_frame = static_cast<size_t>(mSourceBytesPerSample)
                                  * static_cast<size_t>(mSourceChannels);
@@ -1433,11 +1560,45 @@ size_t LLPositionalStreamMulti::pumpSource()
     FMOD_RESULT rr = mSourceSound->readData(mReadScratch.data(),
                                             static_cast<U32>(want_bytes),
                                             &read_bytes);
+
     if (rr != FMOD_OK && rr != FMOD_ERR_FILE_EOF)
     {
-        // FMOD_ERR_NOTREADY just means "decoder hasn't fed us yet" — not a
-        // fault. Real socket / EOF cascades return other codes; those count
-        // toward kMaxReadFailStreak so the manager can rebuild this stream.
+        if (rr == FMOD_ERR_NOTREADY)
+        {
+            // VBR silence can legitimately leave the custom Ogg codec waiting
+            // for the next compressed page. That is not EOF. Only reconnect if
+            // it becomes a sustained no-progress stall after the playback ring
+            // has drained and listeners are underrunning.
+            const F64 now = LLTimer::getElapsedSeconds();
+            const U64 underrun_callbacks =
+                mUnderrunCallbacks.load(std::memory_order_relaxed);
+            if (mNotReadyStreakStart == 0.0)
+            {
+                mNotReadyStreakStart = now;
+                mNotReadyStartUnderrunCallbacks = underrun_callbacks;
+            }
+
+            const F64 notready_elapsed = now - mNotReadyStreakStart;
+            const size_t buffered_frames = mRing.readAvailable(0);
+            const F64 buffered_sec = (mSampleRate > 0)
+                                   ? static_cast<F64>(buffered_frames) / static_cast<F64>(mSampleRate)
+                                   : 0.0;
+            const U64 underrun_delta =
+                (underrun_callbacks >= mNotReadyStartUnderrunCallbacks)
+                    ? (underrun_callbacks - mNotReadyStartUnderrunCallbacks)
+                    : 0;
+
+            if (buffered_sec <= kZeroFillMinBufferedSec &&
+                underrun_delta > 0 &&
+                notready_elapsed >= kNotReadyEmptyRingGraceSec)
+            {
+                setFailed(FailReason::Network, "notready empty ring");
+            }
+            return 0;
+        }
+
+        mNotReadyStreakStart = 0.0;
+        mNotReadyStartUnderrunCallbacks = 0;
         if (rr != FMOD_ERR_NOTREADY)
         {
             ++mReadFailStreak;
@@ -1460,22 +1621,47 @@ size_t LLPositionalStreamMulti::pumpSource()
     }
     if (read_bytes == 0)
     {
-        // r10.x: FMOD's HTTP source can return OK with 0 bytes when the
-        // upstream Icecast source has died — there's no error to count
-        // toward mReadFailStreak, so without this branch we'd zero-fill
-        // forever. Time-stamp the streak start; if it persists past the
-        // threshold, flip to Failed so the manager's reconnect cascade
-        // rebuilds us. Reset below on any non-zero read.
+        mNotReadyStreakStart = 0.0;
+        mNotReadyStartUnderrunCallbacks = 0;
+
+        // r10.x/r34: FMOD's HTTP source can return OK/EOF with 0 bytes when no
+        // decoded PCM is available. Do not reconnect solely from that signal:
+        // the speaker callbacks may still have buffered PCM in mRing. Rebuild
+        // only once the ring is nearly empty and listeners are actually seeing
+        // underruns, with the old 10s limit kept as a final safety valve.
         const F64 now0 = LLTimer::getElapsedSeconds();
+        const U64 underrun_callbacks =
+            mUnderrunCallbacks.load(std::memory_order_relaxed);
         if (mZeroFillStreakStart == 0.0)
         {
             mZeroFillStreakStart = now0;
+            mZeroFillStartUnderrunCallbacks = underrun_callbacks;
         }
-        else if (now0 - mZeroFillStreakStart >= kZeroFillStreakLimit)
+
+        const F64 zero_elapsed = now0 - mZeroFillStreakStart;
+        const size_t buffered_frames = mRing.readAvailable(0);
+        const F64 buffered_sec = (mSampleRate > 0)
+                               ? static_cast<F64>(buffered_frames) / static_cast<F64>(mSampleRate)
+                               : 0.0;
+        const U64 underrun_delta =
+            (underrun_callbacks >= mZeroFillStartUnderrunCallbacks)
+                ? (underrun_callbacks - mZeroFillStartUnderrunCallbacks)
+                : 0;
+        const bool eof_zero = (rr == FMOD_ERR_FILE_EOF);
+        const bool ring_nearly_empty = (buffered_sec <= kZeroFillMinBufferedSec);
+        const bool underrun_seen = (underrun_delta > 0);
+
+        if (eof_zero && ring_nearly_empty)
         {
-            LL_WARNS("Stream3D") << "Multi source returned 0 bytes for "
-                                  << (now0 - mZeroFillStreakStart) << "s for " << mUrl
-                                  << "; transitioning to Failed for reconnect" << LL_ENDL;
+            setFailed(FailReason::Network, "eof zero empty ring");
+        }
+        else if (ring_nearly_empty && underrun_seen &&
+                 zero_elapsed >= kZeroFillEmptyRingGraceSec)
+        {
+            setFailed(FailReason::Network, "zero read underrun");
+        }
+        else if (zero_elapsed >= kZeroFillStreakLimit)
+        {
             setFailed(FailReason::Network, "zero-fill streak");
         }
         return 0;
@@ -1484,6 +1670,9 @@ size_t LLPositionalStreamMulti::pumpSource()
     // outage gets its own full budget rather than inheriting old strikes.
     mReadFailStreak = 0;
     mZeroFillStreakStart = 0.0;
+    mZeroFillStartUnderrunCallbacks = 0;
+    mNotReadyStreakStart = 0.0;
+    mNotReadyStartUnderrunCallbacks = 0;
 
     const size_t frames_read = read_bytes / bytes_per_frame;
     const size_t n_tracks = mRing.numTracks();

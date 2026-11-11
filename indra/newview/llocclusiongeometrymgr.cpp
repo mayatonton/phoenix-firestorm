@@ -136,7 +136,7 @@ namespace
         {
             size_t consumed = 0;
             const F32 v = std::stof(s, &consumed);
-            if (consumed == 0) return false;
+            if (consumed != s.size() || !std::isfinite(v)) return false;
             out = v;
             return true;
         }

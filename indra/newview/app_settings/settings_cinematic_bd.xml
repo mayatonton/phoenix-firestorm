@@ -75,7 +75,7 @@
     <real>0.03</real>
 
     <key>RenderGlowMinLuminance</key>
-    <real>0.0</real>
+    <real>0.5</real>
 
     <key>RenderGlowLumWeights</key>
     <array>

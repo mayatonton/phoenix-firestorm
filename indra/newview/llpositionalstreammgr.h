@@ -108,6 +108,7 @@ public:
     void startDebug(const std::string& url, const LLVector3& world_pos);
     void stopDebug();
     bool isAnyStreamPlaying() const;
+    bool isAnyStreamStarting() const;
 
     // Stereo debug stream (driven by Stream3DDebugStereoPlay, M5-a spike).
     // Pulls PCM from a source HTTP stream and feeds two OPENUSER 3D mono
@@ -598,9 +599,11 @@ private:
     // detail carries the raw bad value (e.g. "X" for {ch:X}, "1.5" for
     // {volume:1.5}) or an over-limit count, depending on kind. Empty for
     // kinds that don't have a useful payload (NoSpeakers).
+    static DistErrorKind distParseErrorToNotifyKind(DistParseError error);
     void notifyDistributedError(const LLUUID& prim_id, DistErrorKind kind,
                                 const std::string& detail);
 
+    void safeEvaluateBinding(const LLUUID& id);
     void evaluateBinding(const LLUUID& id);
     void evaluateMonoBinding(const LLUUID& id, const TagData& tag);
 
