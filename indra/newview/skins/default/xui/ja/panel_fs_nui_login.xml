@@ -9,7 +9,7 @@
 			<layout_stack name="vert_stack_left">
 				<layout_panel name="1st_row">
 					<layout_stack name="1st_row_stack">
-						<layout_panel name="login">
+						<layout_panel name="login" min_width="206">
 							<combo_box label="ユーザ名" tool_tip="登録時に自分で選んだユーザ名（例：bobsmith12、Steller Sunshineなど）" name="username_combo"/>
 							<check_box label="ユーザ名を記憶" name="remember_username_check"/>
 						</layout_panel>
@@ -18,7 +18,7 @@
 							<button tool_tip="このユーザ名を削除" name="remove_user_btn"/>
 						</layout_panel>
 						<!-- delete_container -->
-						<layout_panel name="password_container">
+						<layout_panel name="password_container" min_width="206">
 							<!-- The max length might be changed in FSPanelLogin.cpp for Opensim! -->
 							<line_editor name="password_edit" label="パスワード"/>
 							<check_box label="パスワードを記憶" name="remember_check"/>

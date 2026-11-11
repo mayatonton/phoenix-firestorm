@@ -623,7 +623,7 @@
       <key>Type</key>
       <string>Boolean</string>
       <key>Value</key>
-      <integer>1</integer>
+      <integer>0</integer>
     </map>
 
   <key>RadarNameFormat</key>
@@ -1781,7 +1781,7 @@
     <key>AYALoadingFPSGuardEnabled</key>
     <map>
       <key>Comment</key>
-      <string>Enable AYAstorm FPS stabilization during loading. This controls render relief such as dynamic 3D resolution, dense-world LOD, and low-FPS render maintenance throttles. Default OFF.</string>
+      <string>Enable AYAstorm render relief in world. This is the master switch for fixed-profile 3D resolution relief and dense-world LOD. Frame rate, teleport, and texture backlog are logged for diagnosis but do not gate activation. Default OFF.</string>
       <key>Persist</key>
       <integer>1</integer>
       <key>Type</key>
@@ -1792,7 +1792,7 @@
     <key>AYALoadingPriorityControlEnabled</key>
     <map>
       <key>Comment</key>
-      <string>Enable AYAstorm loading priority control. When enabled, nearby, visible, avatar, and protected texture creates are prioritized ahead of far, offscreen, or stale pending creates, and distance/offscreen texture caps may apply. Default OFF.</string>
+      <string>Deprecated compatibility setting. AYAstorm texture priority is now controlled by AYALoadingTextureManagementEnabled plus internal texture priority kill switches.</string>
       <key>Persist</key>
       <integer>1</integer>
       <key>Type</key>
@@ -1803,7 +1803,7 @@
     <key>AYALoadingTextureMemoryReliefEnabled</key>
     <map>
       <key>Comment</key>
-      <string>Enable AYAstorm texture memory cleanup. When enabled, teleport sweep and memory sweep may downscale or release stale unreferenced textures under their own safeguards. Default OFF.</string>
+      <string>Deprecated compatibility setting. AYAstorm texture memory cleanup is now controlled by AYALoadingTextureManagementEnabled plus internal memory sweep kill switches.</string>
       <key>Persist</key>
       <integer>1</integer>
       <key>Type</key>
@@ -1811,10 +1811,75 @@
       <key>Value</key>
       <integer>0</integer>
     </map>
+    <key>AYALoadingTextureManagementEnabled</key>
+    <map>
+      <key>Comment</key>
+      <string>Enable AYAstorm texture loading and memory management. When enabled, nearby, visible, avatar, HUD, and protected texture work is prioritized, distant/offscreen texture resolution caps may apply, and stale texture memory cleanup may run under safeguards. Default OFF.</string>
+      <key>Persist</key>
+      <integer>1</integer>
+      <key>Type</key>
+      <string>Boolean</string>
+      <key>Value</key>
+      <integer>0</integer>
+    </map>
+    <key>AYALoadingTextureDownscaleStrength</key>
+    <map>
+      <key>Comment</key>
+      <string>AYAstorm texture downscale strength for distance/offscreen texture caps and memory cleanup. 0 means normal texture resolution; 1 halves capped texture caps; 2 quarters them; 3 applies one-eighth caps; 4 applies one-sixteenth caps; 5 forces capped non-protected textures to the strongest safe discard floor. Enabling texture management or increasing this value requests a bounded strength sweep when a cap kill switch is enabled.</string>
+      <key>Persist</key>
+      <integer>1</integer>
+      <key>Type</key>
+      <string>F32</string>
+      <key>Value</key>
+      <real>0.0</real>
+      <key>SanityCheckType</key>
+      <string>Between</string>
+      <key>SanityValue</key>
+      <array>
+        <real>0.0</real>
+        <real>5.0</real>
+      </array>
+    </map>
+    <key>AYALoadingResolutionReliefStrength</key>
+    <map>
+      <key>Comment</key>
+      <string>AYAstorm FPS stabilization strength for fixed in-world dynamic 3D resolution reduction. 0 disables this path; 1 is mild; 5 allows severe quality loss by pushing the active profile to the minimum internal render multiplier. Frame rate, teleport, and backlog are telemetry only and do not gate activation.</string>
+      <key>Persist</key>
+      <integer>1</integer>
+      <key>Type</key>
+      <string>F32</string>
+      <key>Value</key>
+      <real>3.0</real>
+      <key>SanityCheckType</key>
+      <string>Between</string>
+      <key>SanityValue</key>
+      <array>
+        <real>0.0</real>
+        <real>5.0</real>
+      </array>
+    </map>
+    <key>AYALoadingLODReliefStrength</key>
+    <map>
+      <key>Comment</key>
+      <string>AYAstorm FPS stabilization strength for dense-world LOD reduction. 0 disables this path; 1 is mild; 5 allows severe world object quality loss. This path does not own non-avatar idle throttling or avatar impostor refresh throttling. Avatar meshes, attachments, HUD attachments, and selected objects remain excluded from world-object LOD reduction.</string>
+      <key>Persist</key>
+      <integer>1</integer>
+      <key>Type</key>
+      <string>F32</string>
+      <key>Value</key>
+      <real>3.0</real>
+      <key>SanityCheckType</key>
+      <string>Between</string>
+      <key>SanityValue</key>
+      <array>
+        <real>0.0</real>
+        <real>5.0</real>
+      </array>
+    </map>
     <key>AYALoadingFPSGuardMinFPS</key>
     <map>
       <key>Comment</key>
-      <string>FPS hint for AYAstorm loading optimization. FPS stabilization and adaptive texture caps use this value as a pressure threshold; disable their user-facing masters to bypass them.</string>
+      <string>Deprecated compatibility FPS hint for older AYAstorm loading optimization builds. The user-facing render relief UI now uses fixed strength profiles: AYALoadingResolutionReliefStrength and AYALoadingLODReliefStrength. Texture memory management must not use this as a control input.</string>
       <key>Persist</key>
       <integer>1</integer>
       <key>Type</key>
@@ -1832,7 +1897,7 @@
     <key>AYALoadingDynamicResolutionEnabled</key>
     <map>
       <key>Comment</key>
-      <string>Enable AYAstorm's loading-only 3D resolution reduction while the loading FPS guard is active. This uses the existing RenderResolutionMultiplier cached pipeline path without changing the user's saved setting.</string>
+      <string>Enable AYAstorm's fixed in-world 3D resolution profile while the render relief master is active. This uses the existing RenderResolutionMultiplier cached pipeline path without changing the user's saved setting.</string>
       <key>Persist</key>
       <integer>1</integer>
       <key>Type</key>
@@ -1843,7 +1908,7 @@
     <key>AYALoadingDynamicResolutionLowFPSEnabled</key>
     <map>
       <key>Comment</key>
-      <string>Allow loading dynamic resolution to enter from low FPS alone outside startup or teleport loading windows. Disabled by default because sudden RenderResolutionMultiplier resize during normal camera control can feel like camera drift.</string>
+      <string>Deprecated compatibility setting for older adaptive AYAstorm builds. The user-facing render relief path no longer enters or exits from low FPS alone.</string>
       <key>Persist</key>
       <integer>1</integer>
       <key>Type</key>
@@ -1854,7 +1919,7 @@
     <key>AYALoadingDynamicResolutionMultiplier</key>
     <map>
       <key>Comment</key>
-      <string>Legacy fixed 3D render target multiplier kept for compatibility with older AYAstorm test builds. The adaptive loading FPS guard no longer reads this value.</string>
+      <string>Legacy fixed 3D render target multiplier kept for compatibility with older AYAstorm test builds. The fixed profile render relief path no longer reads this value.</string>
       <key>Persist</key>
       <integer>1</integer>
       <key>Type</key>
@@ -1872,7 +1937,7 @@
     <key>AYALoadingDynamicResolutionMinMultiplier</key>
     <map>
       <key>Comment</key>
-      <string>Minimum adaptive 3D render target multiplier used by the AYAstorm loading FPS guard through the existing RenderResolutionMultiplier pipeline path. The live multiplier is derived from current FPS divided by target FPS, then clamped to this floor and 1.0.</string>
+      <string>Minimum live 3D render target multiplier allowed for AYAstorm's fixed in-world render relief profile through the existing RenderResolutionMultiplier pipeline path.</string>
       <key>Persist</key>
       <integer>1</integer>
       <key>Type</key>
@@ -1890,7 +1955,7 @@
     <key>AYALoadingDynamicResolutionRestoreFPS</key>
     <map>
       <key>Comment</key>
-      <string>Restore native internal 3D resolution after the loading window closes and smoothed FPS is at least this value. 0 disables the FPS recovery requirement.</string>
+      <string>Deprecated compatibility setting for older adaptive AYAstorm builds. The user-facing fixed profile path restores only on disable, profile 0, world exit, or safety exclusion.</string>
       <key>Persist</key>
       <integer>1</integer>
       <key>Type</key>
@@ -1908,7 +1973,7 @@
     <key>AYALoadingDynamicResolutionStartupWindowSeconds</key>
     <map>
       <key>Comment</key>
-      <string>Keep AYAstorm dynamic internal resolution eligible for this many seconds after startup reaches the started state.</string>
+      <string>Deprecated compatibility setting for older loading-window AYAstorm builds. Startup windows are no longer dynamic resolution activation gates.</string>
       <key>Persist</key>
       <integer>1</integer>
       <key>Type</key>
@@ -1926,7 +1991,7 @@
     <key>AYALoadingDynamicResolutionTeleportWindowSeconds</key>
     <map>
       <key>Comment</key>
-      <string>Keep AYAstorm dynamic internal resolution eligible for this many seconds after teleport completes.</string>
+      <string>Deprecated compatibility setting for older loading-window AYAstorm builds. Teleport windows are no longer dynamic resolution activation gates.</string>
       <key>Persist</key>
       <integer>1</integer>
       <key>Type</key>
@@ -1944,7 +2009,7 @@
     <key>AYALoadingDynamicResolutionMinHoldSeconds</key>
     <map>
       <key>Comment</key>
-      <string>Minimum time to hold AYAstorm dynamic internal resolution after activation to avoid resize thrash.</string>
+      <string>Deprecated compatibility setting for older adaptive AYAstorm builds. Fixed profile changes are applied only on explicit profile/safety transitions.</string>
       <key>Persist</key>
       <integer>1</integer>
       <key>Type</key>
@@ -1973,7 +2038,7 @@
     <key>AYALoadingDynamicResolutionTextureCreateBacklogThreshold</key>
     <map>
       <key>Comment</key>
-      <string>Keep AYAstorm dynamic internal resolution eligible while decoded texture create/downscale backlog is at least this many items. 0 disables this loading backlog trigger.</string>
+      <string>Decoded texture create/downscale backlog threshold used by AYAstorm texture work backpressure diagnostics. This does not trigger dynamic 3D resolution.</string>
       <key>Persist</key>
       <integer>1</integer>
       <key>Type</key>
@@ -1984,7 +2049,7 @@
     <key>AYALoadingDynamicResolutionTextureCallbackBacklogThreshold</key>
     <map>
       <key>Comment</key>
-      <string>Keep AYAstorm dynamic internal resolution eligible while texture callback backlog is at least this many items. 0 disables this loading backlog trigger.</string>
+      <string>Texture callback backlog threshold used by AYAstorm texture callback backpressure diagnostics. This does not trigger dynamic 3D resolution.</string>
       <key>Persist</key>
       <integer>1</integer>
       <key>Type</key>
@@ -1995,7 +2060,7 @@
     <key>AYALoadingDenseWorldLODEnabled</key>
     <map>
       <key>Comment</key>
-      <string>Internal kill switch for AYAstorm dense-world LOD bias while the loading FPS guard is enabled and FPS is below target. The user-facing master switch remains AYALoadingFPSGuardEnabled; this affects only low-priority world volumes and excludes avatars, attachments, HUD attachments, and selected objects.</string>
+      <string>Internal kill switch for AYAstorm dense-world LOD bias while the render relief master is enabled. It uses the fixed AYALoadingLODReliefStrength profile in world and does not use frame rate or mouselook as activation gates. This affects only low-priority world volumes and excludes avatars, attachments, HUD attachments, and selected objects.</string>
       <key>Persist</key>
       <integer>1</integer>
       <key>Type</key>
@@ -2244,13 +2309,13 @@
     <key>AYADisableAvatarLoadingCloudParticles</key>
     <map>
       <key>Comment</key>
-      <string>Disable avatar loading cloud particles while AYAstorm's loading FPS guard is enabled. When the guard checkbox is OFF, avatar loading particles follow the normal viewer path.</string>
+      <string>Disable avatar loading cloud particles. This is independent from AYAstorm texture loading and memory management.</string>
       <key>Persist</key>
-      <integer>1</integer>
+      <integer>0</integer>
       <key>Type</key>
       <string>Boolean</string>
       <key>Value</key>
-      <integer>1</integer>
+      <integer>0</integer>
     </map>
     <key>AYATextureDistanceCapEnabled</key>
     <map>
@@ -2714,7 +2779,7 @@
     <key>AYATextureMemorySweepEnabled</key>
     <map>
       <key>Comment</key>
-      <string>Internal kill switch for stale GL texture and saved raw image cleanup. The user-facing master is AYALoadingTextureMemoryReliefEnabled; when both are enabled, sweep may run under FPS or memory pressure.</string>
+      <string>Internal kill switch for stale GL texture and saved raw image cleanup. The user-facing master is AYALoadingTextureManagementEnabled; when both are enabled, sweep may run under memory pressure, queue pressure, stale/unreferenced/teleport conditions, texture-management enable pressure, or downscale-strength increase pressure. FPS is telemetry, not a sweep control input.</string>
       <key>Persist</key>
       <integer>1</integer>
       <key>Type</key>
@@ -2779,7 +2844,7 @@
     <key>AYATextureMemorySweepScaleDownPerFrame</key>
     <map>
       <key>Comment</key>
-      <string>Maximum far or offscreen GL textures AYAstorm may schedule for downscale per frame during the memory sweep.</string>
+      <string>Maximum far, offscreen, or cap-candidate GL textures AYAstorm may schedule for downscale per frame during the memory sweep.</string>
       <key>Persist</key>
       <integer>1</integer>
       <key>Type</key>
@@ -2844,7 +2909,7 @@
     <key>AYATextureMemorySweepFPSRatio</key>
     <map>
       <key>Comment</key>
-      <string>Run AYAstorm texture memory sweep under texture memory cleanup when current FPS is at or below this fraction of the FPS hint.</string>
+      <string>Deprecated compatibility setting for older FPS-pressure texture sweep builds. Texture memory sweep no longer uses FPS as a control input.</string>
       <key>Persist</key>
       <integer>1</integer>
       <key>Type</key>
@@ -2891,7 +2956,7 @@
     <key>AYATextureCreatePriorityEnabled</key>
     <map>
       <key>Comment</key>
-      <string>Prioritize nearby, visible, avatar bake, and protected texture creates ahead of far, offscreen, or unreferenced pending creates during loading.</string>
+      <string>Prioritize nearby, visible, avatar bake, and protected texture creates ahead of far, offscreen, or unreferenced pending creates while AYAstorm texture loading and memory management is active.</string>
       <key>Persist</key>
       <integer>1</integer>
       <key>Type</key>
@@ -3016,6 +3081,42 @@
       <array>
         <integer>1</integer>
         <integer>8</integer>
+      </array>
+    </map>
+    <key>AYATextureCreateSceneMinCreatesPerFrame</key>
+    <map>
+      <key>Comment</key>
+      <string>Minimum non-avatar scene/world GL texture creates to reserve per frame while AYAstorm texture management is active, preventing avatar texture work from starving scene textures.</string>
+      <key>Persist</key>
+      <integer>1</integer>
+      <key>Type</key>
+      <string>U32</string>
+      <key>Value</key>
+      <integer>1</integer>
+      <key>SanityCheckType</key>
+      <string>Between</string>
+      <key>SanityValue</key>
+      <array>
+        <integer>0</integer>
+        <integer>16</integer>
+      </array>
+    </map>
+    <key>AYATextureCreateSceneScanAhead</key>
+    <map>
+      <key>Comment</key>
+      <string>Maximum pending GL texture create entries to scan ahead when AYAstorm reserves a frame slot for scene/world textures.</string>
+      <key>Persist</key>
+      <integer>1</integer>
+      <key>Type</key>
+      <string>U32</string>
+      <key>Value</key>
+      <integer>128</integer>
+      <key>SanityCheckType</key>
+      <string>Between</string>
+      <key>SanityValue</key>
+      <array>
+        <integer>1</integer>
+        <integer>1024</integer>
       </array>
     </map>
     <key>AYATextureCreatePriorityLog</key>
@@ -13445,7 +13546,7 @@ Change of this parameter will affect the layout of buttons in notification toast
     <key>RenderTextureGuardCreateTimeSliceMs</key>
     <map>
       <key>Comment</key>
-      <string>Maximum main-thread time budget for GL texture creation per frame while AYALoadingFPSGuard is active.</string>
+      <string>Maximum main-thread time budget for GL texture creation per frame while AYAstorm texture loading and memory management is active.</string>
       <key>Persist</key>
       <integer>1</integer>
       <key>Type</key>
@@ -13463,7 +13564,7 @@ Change of this parameter will affect the layout of buttons in notification toast
     <key>RenderTextureGuardDownscaleTimeSliceMs</key>
     <map>
       <key>Comment</key>
-      <string>Maximum main-thread time budget for GL texture downscaling per frame while AYALoadingFPSGuard is active.</string>
+      <string>Maximum main-thread time budget for GL texture downscaling per frame while AYAstorm texture loading and memory management is active.</string>
       <key>Persist</key>
       <integer>1</integer>
       <key>Type</key>
@@ -13481,7 +13582,7 @@ Change of this parameter will affect the layout of buttons in notification toast
     <key>RenderTextureGuardMaxCreatesPerFrame</key>
     <map>
       <key>Comment</key>
-      <string>Maximum number of GL textures to create on the main thread in one frame while AYALoadingFPSGuard is active. 0 pauses creation.</string>
+      <string>Maximum number of GL textures to create on the main thread in one frame while AYAstorm texture loading and memory management is active. 0 pauses creation.</string>
       <key>Persist</key>
       <integer>1</integer>
       <key>Type</key>
@@ -13499,7 +13600,7 @@ Change of this parameter will affect the layout of buttons in notification toast
     <key>RenderTextureGuardMaxDownscalesPerFrame</key>
     <map>
       <key>Comment</key>
-      <string>Maximum number of GL texture downscale operations in one frame while AYALoadingFPSGuard is active. Keep nonzero to avoid swap pressure.</string>
+      <string>Maximum number of GL texture downscale operations in one frame while AYAstorm texture loading and memory management is active. 0 pauses downscaling.</string>
       <key>Persist</key>
       <integer>1</integer>
       <key>Type</key>
@@ -13535,7 +13636,7 @@ Change of this parameter will affect the layout of buttons in notification toast
     <key>RenderTextureGuardCallbackTimeSliceMs</key>
     <map>
       <key>Comment</key>
-      <string>Maximum main-thread time budget for texture loaded callbacks per frame while AYALoadingFPSGuard is active.</string>
+      <string>Maximum main-thread time budget for texture loaded callbacks per frame while AYAstorm texture loading and memory management is active.</string>
       <key>Persist</key>
       <integer>1</integer>
       <key>Type</key>
@@ -13571,7 +13672,7 @@ Change of this parameter will affect the layout of buttons in notification toast
     <key>RenderTextureGuardMaxCallbacksPerFrame</key>
     <map>
       <key>Comment</key>
-      <string>Maximum number of texture loaded callbacks to run in one frame while AYALoadingFPSGuard is active. 0 pauses callbacks.</string>
+      <string>Maximum number of texture loaded callbacks to run in one frame while AYAstorm texture loading and memory management is active. 0 pauses callbacks.</string>
       <key>Persist</key>
       <integer>1</integer>
       <key>Type</key>
@@ -13643,7 +13744,7 @@ Change of this parameter will affect the layout of buttons in notification toast
     <key>RenderObjectIdleGuardTimeSliceMs</key>
     <map>
       <key>Comment</key>
-      <string>Maximum main-thread time budget for non-avatar active object idle updates per frame while AYALoadingFPSGuard is active.</string>
+      <string>Maximum main-thread time budget for non-avatar active object idle updates per frame while the explicit RenderObjectIdleMinFPS low-FPS throttle is active.</string>
       <key>Persist</key>
       <integer>1</integer>
       <key>Type</key>
@@ -13661,7 +13762,7 @@ Change of this parameter will affect the layout of buttons in notification toast
     <key>RenderObjectIdleGuardMinUpdatesPerFrame</key>
     <map>
       <key>Comment</key>
-      <string>Minimum number of non-avatar active objects to idle update per frame while AYALoadingFPSGuard is active.</string>
+      <string>Minimum number of non-avatar active objects to idle update per frame while the explicit RenderObjectIdleMinFPS low-FPS throttle is active.</string>
       <key>Persist</key>
       <integer>1</integer>
       <key>Type</key>
@@ -13712,10 +13813,21 @@ Change of this parameter will affect the layout of buttons in notification toast
         <integer>60</integer>
       </array>
     </map>
+    <key>AYALoadingSunShadowThrottleEnabled</key>
+    <map>
+      <key>Comment</key>
+      <string>Allow AYAstorm FPS stabilization to throttle sun shadow map regeneration. Default OFF because delayed shadows are visually distracting; the generic low-FPS shadow throttle remains controlled by RenderSunShadowMinUpdateFPS.</string>
+      <key>Persist</key>
+      <integer>1</integer>
+      <key>Type</key>
+      <string>Boolean</string>
+      <key>Value</key>
+      <integer>0</integer>
+    </map>
     <key>RenderSunShadowGuardFrameInterval</key>
     <map>
       <key>Comment</key>
-      <string>Generate one sun shadow frame per this many frames while AYALoadingFPSGuard is active.</string>
+      <string>Generate one sun shadow frame per this many frames while AYALoadingSunShadowThrottleEnabled and AYALoadingFPSGuard are active.</string>
       <key>Persist</key>
       <integer>1</integer>
       <key>Type</key>

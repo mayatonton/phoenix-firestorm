@@ -82,6 +82,7 @@
 #include "llresmgr.h"
 #include "llselectmgr.h"
 #include "llsprite.h"
+#include "llstartup.h"
 #include "lltargetingmotion.h"
 #include "lltoolmgr.h"
 #include "lltoolmorph.h"
@@ -232,6 +233,69 @@ const F64 HUD_OVERSIZED_TEXTURE_DATA_SIZE = 1024 * 1024;
 
 const F32 MAX_TEXTURE_WAIT_TIME_SEC = 60.f;
 const F32 MAX_ATTACHMENT_WAIT_TIME_SEC = 60;
+
+bool aya_texture_management_runtime_enabled()
+{
+    static LLCachedControl<bool> texture_management_enabled(gSavedSettings, "AYALoadingTextureManagementEnabled", false);
+    return texture_management_enabled() &&
+        LLStartUp::getStartupState() >= STATE_STARTED;
+}
+
+bool aya_texture_management_keeps_avatar_callbacks_active(const LLVOAvatar* avatarp)
+{
+    if (!avatarp || avatarp->isSelf() || avatarp->isDead())
+    {
+        return false;
+    }
+
+    if (!aya_texture_management_runtime_enabled())
+    {
+        return false;
+    }
+
+    static LLCachedControl<bool> friends_only(gSavedSettings, "RenderAvatarFriendsOnly", false);
+    if (friends_only() &&
+        !avatarp->isUIAvatar() &&
+        !avatarp->isControlAvatar() &&
+        !avatarp->isBuddy())
+    {
+        return false;
+    }
+
+    static LLCachedControl<F32> near_distance_m(gSavedSettings, "AYATextureDistanceCapNearMeters", 10.f);
+    const F32 distance = (avatarp->getPositionAgent() - LLViewerCamera::getInstance()->getOrigin()).magVec();
+    const bool needs_loading = !avatarp->isFullyLoaded() || avatarp->getRezzedStatus() < 3;
+    return needs_loading &&
+        (avatarp->isVisible() || distance <= llmax(0.f, near_distance_m()));
+}
+
+static void aya_log_avatar_render_skip(LLVOAvatar* avatarp, const char* event)
+{
+    if (!avatarp ||
+        avatarp->isSelf() ||
+        !aya_texture_management_runtime_enabled() ||
+        (gFrameCount % 300) != 0)
+    {
+        return;
+    }
+
+    LL_INFOS("Avatar")
+        << "AYA avatar_render_skip"
+        << " event=" << event
+        << " id=" << avatarp->getID()
+        << " name=\"" << avatarp->getFullname() << "\""
+        << " overall=" << (S32)avatarp->getOverallAppearance()
+        << " rez_status=" << avatarp->getRezzedStatus()
+        << " fully_loaded=" << (avatarp->isFullyLoaded() ? "true" : "false")
+        << " visible=" << (avatarp->isVisible() ? "true" : "false")
+        << " too_complex=" << (avatarp->isTooComplex() ? "true" : "false")
+        << " too_slow_no_shadows=" << (avatarp->isTooSlowWithoutShadows() ? "true" : "false")
+        << " aya_simple_fallback=" << (avatarp->ayaShouldUseSimpleAvatarFallback() ? "true" : "false")
+        << " impostor=" << (avatarp->isImpostor() ? "true" : "false")
+        << " impostor_complete=" << (avatarp->mImpostor.isComplete() ? "true" : "false")
+        << " needs_impostor_update=" << (avatarp->needsImpostorUpdate() ? "true" : "false")
+        << LL_ENDL;
+}
 
 const S32 MIN_NONTUNED_AVS = 5;
 
@@ -734,7 +798,6 @@ LLVOAvatar::LLVOAvatar(const LLUUID& id,
     mVisualComplexity(VISUAL_COMPLEXITY_UNKNOWN),
     mLoadedCallbacksPaused(false),
     mLoadedCallbackTextures(0),
-    mRenderUnloadedAvatar(LLCachedControl<bool>(gSavedSettings, "RenderUnloadedAvatar", false)),
     mLastRezzedStatus(-1),
     mIsEditingAppearance(false),
     mUseLocalAppearance(false),
@@ -3009,9 +3072,12 @@ LLViewerFetchedTexture *LLVOAvatar::getBakedTextureImage(const U8 te, const LLUU
                 uuid, FTT_HOST_BAKE, true, LLGLTexture::BOOST_NONE, LLViewerTexture::LOD_TEXTURE, 0, 0, host);
             // </FS:Ansariel> [Legacy Bake]
         }
-        LL_DEBUGS("Avatar") << avString() << "get server-bake image from URL " << url << LL_ENDL;
-        result = LLViewerTextureManager::getFetchedTextureFromUrl(
-            url, FTT_SERVER_BAKE, true, LLGLTexture::BOOST_NONE, LLViewerTexture::LOD_TEXTURE, 0, 0, uuid);
+        else
+        {
+            LL_DEBUGS("Avatar") << avString() << "get server-bake image from URL " << url << LL_ENDL;
+            result = LLViewerTextureManager::getFetchedTextureFromUrl(
+                url, FTT_SERVER_BAKE, true, LLGLTexture::BOOST_NONE, LLViewerTexture::LOD_TEXTURE, 0, 0, uuid);
+        }
         if (result->isMissingAsset())
         {
             result->setIsMissingAsset(false);
@@ -3730,9 +3796,8 @@ void LLVOAvatar::idleUpdateLoadingEffect()
 
             // Firestorm Clouds
             // do not generate particles for dummy or overly-complex avatars
-            static LLCachedControl<bool> loading_fps_guard_enabled(gSavedSettings, "AYALoadingFPSGuardEnabled", false);
-            static LLCachedControl<bool> disable_avatar_loading_cloud_particles(gSavedSettings, "AYADisableAvatarLoadingCloudParticles", true);
-            if (loading_fps_guard_enabled && disable_avatar_loading_cloud_particles)
+            static LLCachedControl<bool> disable_avatar_loading_cloud_particles(gSavedSettings, "AYADisableAvatarLoadingCloudParticles", false);
+            if (disable_avatar_loading_cloud_particles)
             {
                 deleteParticleSource();
             }
@@ -5173,7 +5238,7 @@ void LLVOAvatar::updateFootstepSounds()
 void LLVOAvatar::computeUpdatePeriod()
 {
     bool visually_muted = isVisuallyMuted();
-    bool slow = isTooSlowWithoutShadows();// <FS:Beq/> the geometry alone is forcing this to be slow so we must imposter
+    bool slow = isTooSlowWithoutShadows() && !ayaShouldDeferSlowImpostor();// <FS:Beq/> the geometry alone is forcing this to be slow so we must imposter
     if (mDrawable.notNull()
         && isVisible()
         && (!isSelf() || visually_muted)
@@ -6057,11 +6122,13 @@ U32 LLVOAvatar::renderSkinned()
 
     if (!mIsBuilt)
     {
+        aya_log_avatar_render_skip(this, "skinned_not_built_initial");
         return num_indices;
     }
 
     if (mDrawable.isNull())
     {
+        aya_log_avatar_render_skip(this, "skinned_drawable_null");
         return num_indices;
     }
 
@@ -6170,6 +6237,7 @@ U32 LLVOAvatar::renderSkinned()
 
     if (!mIsBuilt)
     {
+        aya_log_avatar_render_skip(this, "skinned_not_built_after_update");
         return num_indices;
     }
 
@@ -6297,6 +6365,7 @@ U32 LLVOAvatar::renderRigid()
 
     if (!mIsBuilt)
     {
+        aya_log_avatar_render_skip(this, "rigid_not_built");
         return 0;
     }
 
@@ -6693,7 +6762,7 @@ void LLVOAvatar::checkTextureLoading()
 {
     static const F32 MAX_INVISIBLE_WAITING_TIME = 15.f ; //seconds
 
-    bool pause = !isVisible() ;
+    bool pause = !isVisible() && !aya_texture_management_keeps_avatar_callbacks_active(this);
     if(!pause)
     {
         mInvisibleTimer.reset() ;
@@ -9590,19 +9659,133 @@ bool LLVOAvatar::updateIsFullyLoaded()
     bool loading = rez_status == 0;
     if (mFirstFullyVisible && !mIsControlAvatar)
     {
+        const bool waiting_for_texture_callbacks =
+            mLoadedCallbackTextures < mCallbackTextureList.size() &&
+            mLastTexCallbackAddedTime.getElapsedTimeF32() < MAX_TEXTURE_WAIT_TIME_SEC;
+        const bool callback_wait_timed_out =
+            mLoadedCallbackTextures < mCallbackTextureList.size() &&
+            mLastTexCallbackAddedTime.getElapsedTimeF32() >= MAX_TEXTURE_WAIT_TIME_SEC;
+        const bool waiting_for_baked_definition =
+            rez_status < 3 && !isFullyBaked();
+        const bool loading_rez_status = rez_status < 2;
         loading = ((rez_status < 2)
                    // Wait at least 60s for unfinished textures to finish on first load,
                    // don't wait forever, it might fail. Even if it will eventually load by
                    // itself and update mLoadedCallbackTextures (or fail and clean the list),
                    // avatars are more time-sensitive than textures and can't wait that long.
-                   || (mLoadedCallbackTextures < mCallbackTextureList.size() && mLastTexCallbackAddedTime.getElapsedTimeF32() < MAX_TEXTURE_WAIT_TIME_SEC)
+                   || waiting_for_texture_callbacks
                    || !mPendingAttachment.empty()
-                   || (rez_status < 3 && !isFullyBaked())
+                   || waiting_for_baked_definition
                   );
         if (!loading)
         {
             mWaitingForMeshes = hasPendingAttachedMeshes();
             loading = mWaitingForMeshes;
+        }
+
+        if (!isSelf() &&
+            loading &&
+            mRuthTimer.getElapsedTimeF32() > 15.f &&
+            (gFrameCount % 300) == 0)
+        {
+            const bool all_baked_downloaded = allBakedTexturesCompletelyDownloaded();
+            const bool fully_textured = isFullyTextured();
+            std::string baked_fetch_state;
+            if (!all_baked_downloaded || !fully_textured || rez_status < 2)
+            {
+                for (U32 i = 0; i < mBakedTextureDatas.size(); ++i)
+                {
+                    const ETextureIndex texture_index = mBakedTextureDatas[i].mTextureIndex;
+                    U32 joint_meshes = 0;
+                    U32 joint_mesh_has_gl = 0;
+                    U32 joint_mesh_has_composite = 0;
+                    for (avatar_joint_mesh_list_t::iterator mesh_iter = mBakedTextureDatas[i].mJointMeshes.begin();
+                         mesh_iter != mBakedTextureDatas[i].mJointMeshes.end();
+                         ++mesh_iter)
+                    {
+                        LLAvatarJointMesh* meshp = *mesh_iter;
+                        if (!meshp)
+                        {
+                            continue;
+                        }
+                        ++joint_meshes;
+                        if (meshp->hasGLTexture())
+                        {
+                            ++joint_mesh_has_gl;
+                        }
+                        if (meshp->hasComposite())
+                        {
+                            ++joint_mesh_has_composite;
+                        }
+                    }
+
+                    LLViewerFetchedTexture* imagep =
+                        LLViewerTextureManager::staticCastToFetchedTexture(getImage(texture_index, 0), true);
+                    if (!imagep ||
+                        imagep->getID() == IMG_DEFAULT ||
+                        imagep->getID() == IMG_DEFAULT_AVATAR ||
+                        imagep->getID() == IMG_INVISIBLE)
+                    {
+                        baked_fetch_state += llformat(
+                            " [%u:te=%d loaded=%d used=%d meshes=%u mesh_gl=%u mesh_comp=%u default]",
+                            i,
+                            (S32)texture_index,
+                            mBakedTextureDatas[i].mIsLoaded ? 1 : 0,
+                            mBakedTextureDatas[i].mIsUsed ? 1 : 0,
+                            joint_meshes,
+                            joint_mesh_has_gl,
+                            joint_mesh_has_composite);
+                        continue;
+                    }
+
+                    baked_fetch_state += llformat(
+                        " [%u:te=%d loaded=%d used=%d meshes=%u mesh_gl=%u mesh_comp=%u id=%s d=%d desired=%d ft=%d boost=%d missing=%d fetching=%d callbacks=%d has_gl=%d gl_created=%d maxvs=%.0f url=%d host=%d]",
+                        i,
+                        (S32)texture_index,
+                        mBakedTextureDatas[i].mIsLoaded ? 1 : 0,
+                        mBakedTextureDatas[i].mIsUsed ? 1 : 0,
+                        joint_meshes,
+                        joint_mesh_has_gl,
+                        joint_mesh_has_composite,
+                        imagep->getID().asString().c_str(),
+                        imagep->getDiscardLevel(),
+                        imagep->getDesiredDiscardLevel(),
+                        (S32)imagep->getFTType(),
+                        imagep->getBoostLevel(),
+                        imagep->isMissingAsset() ? 1 : 0,
+                        imagep->isFetching() ? 1 : 0,
+                        imagep->hasCallbacks() ? 1 : 0,
+                        imagep->hasGLTexture() ? 1 : 0,
+                        imagep->isGLTextureCreated() ? 1 : 0,
+                        imagep->getMaxVirtualSize(),
+                        imagep->getUrl().empty() ? 0 : 1,
+                        imagep->getTargetHost().isOk() ? 1 : 0);
+                }
+            }
+
+            LL_INFOS("Avatar")
+                << "AYA avatar_loading_wait"
+                << " id=" << getID()
+                << " name=\"" << getFullname() << "\""
+                << " rez_status=" << rez_status
+                << " missing_parts=" << (getHasMissingParts() ? "true" : "false")
+                << " fully_textured=" << (fully_textured ? "true" : "false")
+                << " fully_baked=" << (isFullyBaked() ? "true" : "false")
+                << " all_baked_downloaded=" << (all_baked_downloaded ? "true" : "false")
+                << " callback_loaded=" << mLoadedCallbackTextures
+                << " callback_total=" << mCallbackTextureList.size()
+                << " waiting_callbacks=" << (waiting_for_texture_callbacks ? "true" : "false")
+                << " callback_wait_timed_out=" << (callback_wait_timed_out ? "true" : "false")
+                << " waiting_baked_definition=" << (waiting_for_baked_definition ? "true" : "false")
+                << " loading_rez_status=" << (loading_rez_status ? "true" : "false")
+                << " pending_attachments=" << mPendingAttachment.size()
+                << " sim_attachments=" << mSimAttachments.size()
+                << " attachment_count=" << getAttachmentCount()
+                << " waiting_meshes=" << (mWaitingForMeshes ? "true" : "false")
+                << " near_texture_callbacks=" << (aya_texture_management_keeps_avatar_callbacks_active(this) ? "true" : "false")
+                << " baked_origin=\"" << bakedTextureOriginInfo() << "\""
+                << " baked_fetch_state=\"" << baked_fetch_state << "\""
+                << LL_ENDL;
         }
 
         // compare amount of attachments to one reported by simulator
@@ -9630,6 +9813,9 @@ bool LLVOAvatar::updateIsFullyLoaded()
                 mLastCloudAttachmentCount = (S32)mSimAttachments.size();
             }
         }
+
+        // Texture QoS may change texture discard targets and request priority,
+        // but it must not override Firestorm's avatar loaded/cloud state.
     }
     updateRezzedStatusTimers(rez_status);
     updateRuthTimer(loading);
@@ -9741,9 +9927,8 @@ bool LLVOAvatar::processFullyLoadedChange(bool loading)
 bool LLVOAvatar::isFullyLoaded() const
 {
 // [SL:KB] - Appearance-Fixes
-    return (mRenderUnloadedAvatar && !isSelf()) || mFullyLoaded;
+    return (gSavedSettings.getBOOL("RenderUnloadedAvatar") && !isSelf()) || mFullyLoaded;
 // [/SL:KB]
-//    return (mRenderUnloadedAvatar || mFullyLoaded);
 }
 
 bool LLVOAvatar::hasFirstFullAttachmentData() const
@@ -9824,6 +10009,16 @@ bool LLVOAvatar::isTooSlow() const
     }
 
     return mTooSlow;
+}
+
+bool LLVOAvatar::ayaShouldDeferSlowImpostor() const
+{
+    return false;
+}
+
+bool LLVOAvatar::ayaShouldUseSimpleAvatarFallback() const
+{
+    return aya_texture_management_keeps_avatar_callbacks_active(this);
 }
 
 // Udpate Avatar state based on render time
@@ -10083,7 +10278,7 @@ void LLVOAvatar::updateMeshTextures()
     if(!isSelf())
     {
         src_callback_list = &mCallbackTextureList ;
-        paused = !isVisible();
+        paused = !isVisible() && !aya_texture_management_keeps_avatar_callbacks_active(this);
     }
 
     std::vector<bool> is_layer_baked;
@@ -10587,7 +10782,7 @@ void LLVOAvatar::onFirstTEMessageReceived()
         if(!isSelf())
         {
             src_callback_list = &mCallbackTextureList ;
-            paused = !isVisible();
+            paused = !isVisible() && !aya_texture_management_keeps_avatar_callbacks_active(this);
         }
 
         for (U32 i = 0; i < mBakedTextureDatas.size(); i++)
@@ -12012,7 +12207,10 @@ bool LLVOAvatar::updateLOD()
         return false;
     }
 
-    if (!LLPipeline::sImpostorRender && isImpostor() && 0 != mDrawable->getNumFaces() && mDrawable->getFace(0)->hasGeometry())
+    if (!LLPipeline::sImpostorRender &&
+        isImpostor() &&
+        0 != mDrawable->getNumFaces() &&
+        mDrawable->getFace(0)->hasGeometry())
     {
         return true;
     }
@@ -12197,16 +12395,12 @@ void LLVOAvatar::updateImpostors()
 
     static LLCachedControl<U32> max_updates_per_frame(gSavedSettings, "RenderAvatarMaxImpostorUpdatesPerFrame", 1);
     static LLCachedControl<F32> min_update_fps(gSavedSettings, "RenderAvatarImpostorMinUpdateFPS", 18.f);
-    static LLCachedControl<bool> loading_fps_guard_enabled(gSavedSettings, "AYALoadingFPSGuardEnabled", false);
-    static LLCachedControl<F32> loading_fps_guard_min_fps(gSavedSettings, "AYALoadingFPSGuardMinFPS", 30.f);
     const U32 update_budget = max_updates_per_frame();
     static std::vector<LLVOAvatar*> candidates;
     candidates.clear();
 
-    const F32 loading_fps_guard_target_fps = llclamp(loading_fps_guard_min_fps(), 30.f, 288.f);
     const bool throttle_existing_refresh =
-        (loading_fps_guard_enabled && gFPSClamped < loading_fps_guard_target_fps) ||
-        (min_update_fps > 0.f && gFPSClamped < min_update_fps);
+        min_update_fps > 0.f && gFPSClamped < min_update_fps;
 
     for (LLCharacter* character : LLCharacter::sInstances)
     {
@@ -12282,7 +12476,7 @@ bool LLVOAvatar::isImpostor()
             is_visual_muted || // Save from calling isVisuallyMuted a second time
             // </FS:minerjr> [FIRE-35735]
             isTooSlowWithoutShadows() ||
-            (sLimitNonImpostors && (mUpdatePeriod > 1) )
+            (sLimitNonImpostors && (mUpdatePeriod > 1))
     );
 // </FS:Beq>
 }

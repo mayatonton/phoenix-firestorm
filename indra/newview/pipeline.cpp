@@ -977,32 +977,21 @@ void LLPipeline::setAYADynamicRenderResolutionMultiplier(F32 multiplier)
     }
 
     sAYADynamicRenderResolutionMultiplier = clamped_multiplier;
-    LLPointer<LLControlVariable> control = gSavedSettings.getControl("RenderResolutionMultiplier");
-    if (!control)
+    if (sAYADynamicRenderResolutionMultiplier > 0.f &&
+        sAYADynamicRenderResolutionMultiplier < 1.f &&
+        !sAYADynamicRenderResolutionSettingActive)
     {
-        gResizeScreenTexture = true;
-        return;
+        sAYARestoreRenderResolutionMultiplier = gSavedSettings.getF32("RenderResolutionMultiplier");
+        sAYADynamicRenderResolutionSettingActive = true;
     }
-
-    if (sAYADynamicRenderResolutionMultiplier > 0.f && sAYADynamicRenderResolutionMultiplier < 1.f)
+    else if (sAYADynamicRenderResolutionMultiplier >= 1.f)
     {
-        if (!sAYADynamicRenderResolutionSettingActive)
-        {
-            sAYARestoreRenderResolutionMultiplier = gSavedSettings.getF32("RenderResolutionMultiplier");
-            sAYADynamicRenderResolutionSettingActive = true;
-        }
-
-        const F32 target_multiplier =
-            (sAYARestoreRenderResolutionMultiplier > 0.f && sAYARestoreRenderResolutionMultiplier < 1.f)
-                ? llmin(sAYARestoreRenderResolutionMultiplier, sAYADynamicRenderResolutionMultiplier)
-                : sAYADynamicRenderResolutionMultiplier;
-        control->setValue(LLSD::Real(target_multiplier), false);
-    }
-    else if (sAYADynamicRenderResolutionSettingActive)
-    {
-        control->setValue(LLSD::Real(sAYARestoreRenderResolutionMultiplier), false);
+        sAYARestoreRenderResolutionMultiplier = gSavedSettings.getF32("RenderResolutionMultiplier");
         sAYADynamicRenderResolutionSettingActive = false;
     }
+
+    refreshCachedSettings();
+    gResizeScreenTexture = true;
 }
 
 F32 LLPipeline::getAYADynamicRenderResolutionMultiplier()

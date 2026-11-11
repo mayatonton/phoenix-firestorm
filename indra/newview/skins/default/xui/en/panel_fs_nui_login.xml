@@ -1,14 +1,14 @@
 <?xml version="1.0" encoding="utf-8" standalone="yes" ?>
 <panel
   follows="all"
-  height="768"
+  height="700"
   layout="topleft"
   name="panel_login"
   focus_root="true"
   background_visible="true"
   bg_opaque_color="0.16 0.16 0.16 1"
   background_opaque="true"
-  width="1024">
+  width="1000">
   <panel.string
     name="forgot_password_url">
     http://secondlife.com/account/request.php
@@ -26,8 +26,8 @@
     name="login_html"
     start_url=""
     top="18"
-    height="598"
-    width="1024" />
+    height="500"
+    width="1000" />
   <layout_stack
   follows="left|right|bottom"
   height="152"
@@ -35,19 +35,19 @@
   name="ui_stack"
   orientation="horizontal"
   bottom="-1"
-  width="1024">
+  width="1000">
     <layout_panel
       height="152"
       auto_resize="true"
       name="ui_elastic_pad_left"
-      width="27" />
+      width="15" />
     <layout_panel
       auto_resize="false"
       follows="left|right|top"
       name="ui_container"
       layout="topleft"
-      width="970"
-      min_width="970"
+      width="940"
+      min_width="940"
       height="152">
   <!-- <FS:AYA> [r31 login branding] AYAstorm logo (4/5 of original 125px) + identifier text -->
   <icon
@@ -90,7 +90,7 @@ based on FS 7.2.4
       orientation="vertical"
       top="0"
       left_pad="10"
-      width="685"
+      width="675"
       height="152">
     <layout_panel
       auto_resize="false"
@@ -98,7 +98,7 @@ based on FS 7.2.4
       name="1st_row"
       layout="topleft"
       height="86"
-      width="685">
+      width="675">
     <layout_stack
       animate="false"
       clip="false"
@@ -108,7 +108,7 @@ based on FS 7.2.4
       orientation="horizontal"
       top="0"
       left="0"
-      width="685"
+      width="675"
       height="86">
     <layout_panel
         auto_resize="true"
@@ -116,6 +116,7 @@ based on FS 7.2.4
         name="login"
         layout="topleft"
         width="206"
+        min_width="206"
         height="86">
 
   <combo_box
@@ -178,6 +179,7 @@ based on FS 7.2.4
         name="password_container"
         layout="topleft"
         width="206"
+        min_width="206"
         height="86">
     <!-- The max length might be changed in FSPanelLogin.cpp for Opensim! -->
   <line_editor
@@ -280,7 +282,7 @@ based on FS 7.2.4
       layout="topleft"
       top_pad="0"
       height="66"
-      width="685">
+      width="675">
     <layout_stack
       animate="false"
       clip="false"
@@ -290,14 +292,14 @@ based on FS 7.2.4
       orientation="horizontal"
       top_pad="0"
       left="0"
-      width="685"
+      width="675"
       height="66">
     <layout_panel
       auto_resize="false"
       follows="left|top|right"
       name="grid_panel"
       layout="topleft"
-      width="342"
+      width="337"
       height="66"
       visible="true">
     <text
@@ -347,7 +349,7 @@ based on FS 7.2.4
     <layout_panel
       follows="left|top|right"
       name="mode_selection"
-      width="342"
+      width="337"
       height="66">
     <text
       follows="right|top"
@@ -440,6 +442,6 @@ based on FS 7.2.4
       height="152"
       auto_resize="true"
       name="ui_elastic_pad_right"
-      width="27" />
+      width="15" />
   </layout_stack>
 </panel>

@@ -67,6 +67,7 @@
 #include "llviewertextureanim.h"
 #include "llworld.h"
 #include "llselectmgr.h"
+#include "llstartup.h"
 #include "pipeline.h"
 #include "llsdutil.h"
 #include "llmatrix4a.h"
@@ -203,59 +204,76 @@ namespace
     std::unordered_map<U32, AYALoadingDenseLODCacheEntry> sAYALoadingDenseLODCache;
     AYALoadingDenseLODStats sAYALoadingDenseLODStats;
 
+    S32 aya_loading_lod_strength_level(F32 strength)
+    {
+        return llclamp((S32)llround(strength), 0, 5);
+    }
+
+    F32 aya_loading_lod_near_protect_scale(S32 strength_level)
+    {
+        static constexpr F32 SCALE_BY_STRENGTH[] = {1.f, 1.f, 0.75f, 0.50f, 0.25f, 0.f};
+        return SCALE_BY_STRENGTH[llclamp(strength_level, 0, 5)];
+    }
+
+    F32 aya_loading_lod_distance_scale(S32 strength_level)
+    {
+        static constexpr F32 SCALE_BY_STRENGTH[] = {1.f, 1.f, 1.5f, 2.f, 4.f, 8.f};
+        return SCALE_BY_STRENGTH[llclamp(strength_level, 0, 5)];
+    }
+
+    F32 aya_loading_lod_candidate_divisor(S32 strength_level)
+    {
+        static constexpr F32 DIVISOR_BY_STRENGTH[] = {1.f, 1.f, 2.f, 4.f, 8.f, 50.f};
+        return DIVISOR_BY_STRENGTH[llclamp(strength_level, 0, 5)];
+    }
+
+    F32 aya_loading_lod_screen_scale(S32 strength_level)
+    {
+        static constexpr F32 SCALE_BY_STRENGTH[] = {1.f, 1.f, 1.25f, 1.75f, 2.5f, 4.f};
+        return SCALE_BY_STRENGTH[llclamp(strength_level, 0, 5)];
+    }
+
     bool aya_loading_dense_world_lod_enabled()
     {
         static LLCachedControl<bool> lod_enabled(gSavedSettings, "AYALoadingDenseWorldLODEnabled", true);
         static LLCachedControl<bool> loading_fps_guard_enabled(gSavedSettings, "AYALoadingFPSGuardEnabled", false);
-        static LLCachedControl<F32> loading_fps_guard_min_fps(gSavedSettings, "AYALoadingFPSGuardMinFPS", 30.f);
-        static bool active_latched = false;
+        static LLCachedControl<F32> lod_relief_strength(gSavedSettings, "AYALoadingLODReliefStrength", 3.f);
         static bool state_logged = false;
         static bool last_active = false;
         static bool last_lod_enabled = false;
         static bool last_loading_fps_guard_enabled = false;
-        static bool last_mouselook = false;
+        static S32 last_strength_level = -1;
 
         const bool lod_setting = lod_enabled();
         const bool fps_guard_setting = loading_fps_guard_enabled();
-        const bool mouselook = gAgentCamera.cameraMouselook();
-        const F32 target_fps = llclamp(loading_fps_guard_min_fps(), 30.f, 288.f);
-        const F32 exit_fps = llclamp(target_fps * 1.05f, target_fps, 288.f);
-        if (!lod_setting || !fps_guard_setting)
-        {
-            active_latched = false;
-        }
-        else if (active_latched)
-        {
-            active_latched = gFPSClamped < exit_fps;
-        }
-        else
-        {
-            active_latched = gFPSClamped < target_fps;
-        }
-        const bool active = lod_setting && fps_guard_setting && (mouselook || active_latched);
+        const S32 strength_level = aya_loading_lod_strength_level(lod_relief_strength());
+        const bool startup_started = LLStartUp::getStartupState() >= STATE_STARTED;
+        const bool active = startup_started && lod_setting && fps_guard_setting && strength_level > 0;
 
         if (!state_logged ||
             active != last_active ||
             lod_setting != last_lod_enabled ||
             fps_guard_setting != last_loading_fps_guard_enabled ||
-            mouselook != last_mouselook)
+            strength_level != last_strength_level)
         {
             LL_INFOS("AYAPerf")
                 << "AYA Loading dense-world LOD "
                 << (active ? "active" : "inactive")
                 << " lod_enabled=" << lod_setting
                 << " fps_guard_enabled=" << fps_guard_setting
-                << " mouselook=" << mouselook
+                << " lod_strength=" << strength_level
+                << " lod_profile=" << strength_level
+                << " active_reason=" << (active ? "profile_active" : "disabled")
+                << " mouselook=" << gAgentCamera.cameraMouselook()
                 << " fps=" << gFPSClamped
-                << " target_fps=" << target_fps
-                << " exit_fps=" << exit_fps
+                << " in_world=" << startup_started
                 << LL_ENDL;
 
             state_logged = true;
             last_active = active;
             last_lod_enabled = lod_setting;
             last_loading_fps_guard_enabled = fps_guard_setting;
-            last_mouselook = mouselook;
+            last_strength_level = strength_level;
         }
 
         return active;
@@ -491,8 +509,14 @@ namespace
         static LLCachedControl<F32> very_small_screen_pct(gSavedSettings, "AYALoadingDenseWorldVerySmallScreenPct", 0.5f);
         static LLCachedControl<S32> decision_interval(gSavedSettings, "AYALoadingDenseWorldDecisionIntervalFrames", 4);
         static LLCachedControl<S32> hysteresis_frames(gSavedSettings, "AYALoadingDenseWorldHysteresisFrames", 8);
+        static LLCachedControl<F32> lod_relief_strength(gSavedSettings, "AYALoadingLODReliefStrength", 3.f);
 
         if (!aya_loading_dense_world_lod_enabled() || aya_loading_dense_world_excluded_object(objectp))
+        {
+            return 0;
+        }
+        const S32 strength_level = aya_loading_lod_strength_level(lod_relief_strength());
+        if (strength_level <= 0)
         {
             return 0;
         }
@@ -504,7 +528,8 @@ namespace
         const F32 root_distance = root_delta.magVec();
         const LLVector3 object_delta = objectp->getPositionAgent() - camera_pos;
         const F32 object_distance = object_delta.magVec();
-        const F32 protect_distance = llmax(0.f, static_cast<F32>(near_protect_distance));
+        const F32 protect_distance = llmax(0.f, static_cast<F32>(near_protect_distance)) *
+            aya_loading_lod_near_protect_scale(strength_level);
         if (protect_distance > 0.f &&
             (root_distance <= protect_distance || object_distance <= protect_distance))
         {
@@ -512,17 +537,20 @@ namespace
         }
 
         const S32 root_children = rootp->numChildren();
+        const F32 distance_scale = aya_loading_lod_distance_scale(strength_level);
+        const F32 candidate_divisor = aya_loading_lod_candidate_divisor(strength_level);
         const bool dense_root_candidate =
-            root_distance <= llmax(0.f, static_cast<F32>(max_distance)) &&
-            root_children >= llmax(0, static_cast<S32>(min_children));
+            root_distance <= llmax(0.f, static_cast<F32>(max_distance)) * distance_scale &&
+            root_children >= llmax(1, (S32)llceil((F32)llmax(1, static_cast<S32>(min_children)) / candidate_divisor));
 
         S32 vertex_count = 0;
         const F32 current_tris = static_cast<F32>(objectp->getTriangleCount(&vertex_count));
         const F32 estimated_max_tris = objectp->getEstTrianglesMax();
         const F32 cost_tris = llmax(current_tris, estimated_max_tris);
-        const bool heavy_mesh_seen = cost_tris >= static_cast<F32>(llmax(0, static_cast<S32>(heavy_min_tris)));
+        const bool heavy_mesh_seen = cost_tris >=
+            static_cast<F32>(llmax(1, (S32)llceil((F32)llmax(1, static_cast<S32>(heavy_min_tris)) / candidate_divisor)));
         const bool heavy_mesh_distance_rejected =
-            heavy_mesh_seen && root_distance > llmax(0.f, static_cast<F32>(heavy_max_distance));
+            heavy_mesh_seen && root_distance > llmax(0.f, static_cast<F32>(heavy_max_distance)) * distance_scale;
         const bool heavy_mesh_candidate =
             heavy_mesh_seen && !heavy_mesh_distance_rejected;
 
@@ -551,8 +579,9 @@ namespace
 
         const F32 projected_pct = aya_loading_dense_world_projected_height_pct(distance, radius);
         const F32 clamped_forward_dot = llclamp(static_cast<F32>(forward_dot), -1.f, 1.f);
-        const F32 small_pct = llmax(0.f, static_cast<F32>(small_screen_pct));
-        const F32 very_small_pct = llmax(0.f, static_cast<F32>(very_small_screen_pct));
+        const F32 screen_scale = aya_loading_lod_screen_scale(strength_level);
+        const F32 small_pct = llmax(0.f, static_cast<F32>(small_screen_pct)) * screen_scale;
+        const F32 very_small_pct = llmax(0.f, static_cast<F32>(very_small_screen_pct)) * screen_scale;
 
         S32 raw_band = 0;
         bool heavy_mesh_screen_forced = false;
@@ -589,7 +618,16 @@ namespace
             raw_band,
             llmax(1, static_cast<S32>(decision_interval)),
             llmax(0, static_cast<S32>(hysteresis_frames)));
-        const S32 bias = band == 1 ? 1 : (band >= 2 ? 2 : 0);
+        S32 bias = band == 1 ? 1 : (band >= 2 ? 2 : 0);
+        if (bias > 0 && strength_level >= 4)
+        {
+            bias += strength_level >= 5 ? 2 : 1;
+        }
+        if (bias == 0 && strength_level >= 5 && (dense_root_candidate || heavy_mesh_candidate))
+        {
+            bias = 1;
+        }
+        bias = llclamp(bias, 0, 4);
 
         aya_loading_dense_world_record_lod_stats(
             band,
@@ -628,8 +666,14 @@ bool aya_loading_dense_world_force_lod_update_candidate(LLVOVolume* objectp)
     static LLCachedControl<S32> heavy_min_tris(gSavedSettings, "AYALoadingDenseWorldHeavyMeshMinTriangles", 50000);
     static LLCachedControl<S32> force_interval(gSavedSettings, "AYALoadingDenseWorldForceLODRefreshIntervalFrames", 30);
     static LLCachedControl<U32> max_force_refreshes(gSavedSettings, "AYALoadingDenseWorldForceLODRefreshMaxPerFrame", 1);
+    static LLCachedControl<F32> lod_relief_strength(gSavedSettings, "AYALoadingLODReliefStrength", 3.f);
 
     if (!aya_loading_dense_world_lod_enabled() || aya_loading_dense_world_excluded_object(objectp))
+    {
+        return false;
+    }
+    const S32 strength_level = aya_loading_lod_strength_level(lod_relief_strength());
+    if (strength_level <= 0)
     {
         return false;
     }
@@ -638,23 +682,27 @@ bool aya_loading_dense_world_force_lod_update_candidate(LLVOVolume* objectp)
     const LLVector3& camera_pos = gAgentCamera.getCameraPositionAgent();
     const F32 root_distance = (rootp->getPositionAgent() - camera_pos).magVec();
     const F32 object_distance = (objectp->getPositionAgent() - camera_pos).magVec();
-    const F32 protect_distance = llmax(0.f, static_cast<F32>(near_protect_distance));
+    const F32 protect_distance = llmax(0.f, static_cast<F32>(near_protect_distance)) *
+        aya_loading_lod_near_protect_scale(strength_level);
     if (protect_distance > 0.f &&
         (root_distance <= protect_distance || object_distance <= protect_distance))
     {
         return false;
     }
 
+    const F32 distance_scale = aya_loading_lod_distance_scale(strength_level);
+    const F32 candidate_divisor = aya_loading_lod_candidate_divisor(strength_level);
     const bool dense_root_candidate =
-        root_distance <= llmax(0.f, static_cast<F32>(max_distance)) &&
-        rootp->numChildren() >= llmax(0, static_cast<S32>(min_children));
+        root_distance <= llmax(0.f, static_cast<F32>(max_distance)) * distance_scale &&
+        rootp->numChildren() >= llmax(1, (S32)llceil((F32)llmax(1, static_cast<S32>(min_children)) / candidate_divisor));
 
     S32 vertex_count = 0;
     const F32 current_tris = static_cast<F32>(objectp->getTriangleCount(&vertex_count));
     const F32 estimated_max_tris = objectp->getEstTrianglesMax();
     const bool heavy_mesh_candidate =
-        root_distance <= llmax(0.f, static_cast<F32>(heavy_max_distance)) &&
-        llmax(current_tris, estimated_max_tris) >= static_cast<F32>(llmax(0, static_cast<S32>(heavy_min_tris)));
+        root_distance <= llmax(0.f, static_cast<F32>(heavy_max_distance)) * distance_scale &&
+        llmax(current_tris, estimated_max_tris) >=
+            static_cast<F32>(llmax(1, (S32)llceil((F32)llmax(1, static_cast<S32>(heavy_min_tris)) / candidate_divisor)));
 
     if (!dense_root_candidate && !heavy_mesh_candidate)
     {

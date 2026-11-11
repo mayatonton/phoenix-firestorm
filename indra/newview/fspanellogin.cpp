@@ -199,9 +199,15 @@ FSPanelLogin::FSPanelLogin(const LLRect &rect,
     sInstance = this;
 
     LLView* login_holder = gViewerWindow->getLoginPanelHolder();
+    LLRect panel_rect = rect;
     if (login_holder)
     {
         login_holder->addChild(this);
+        const LLRect holder_rect = login_holder->getLocalRect();
+        if (holder_rect.getWidth() > 0 && holder_rect.getHeight() > 0)
+        {
+            panel_rect = holder_rect;
+        }
     }
 
     if (!gSavedSettings.getBOOL("FSUseLegacyLoginPanel"))
@@ -213,7 +219,7 @@ FSPanelLogin::FSPanelLogin(const LLRect &rect,
         buildFromFile( "panel_fs_login.xml");
     }
 
-    reshape(rect.getWidth(), rect.getHeight());
+    reshape(panel_rect.getWidth(), panel_rect.getHeight());
 
     LLUICtrl& mode_combo = getChildRef<LLUICtrl>("mode_combo");
     mode_combo.setValue(gSavedSettings.getString("SessionSettingsFile"));
@@ -513,6 +519,15 @@ void FSPanelLogin::reshapePanel()
     if (sInstance)
     {
         LLRect rect = sInstance->getRect();
+        LLView* login_holder = gViewerWindow->getLoginPanelHolder();
+        if (login_holder)
+        {
+            const LLRect holder_rect = login_holder->getLocalRect();
+            if (holder_rect.getWidth() > 0 && holder_rect.getHeight() > 0)
+            {
+                rect = holder_rect;
+            }
+        }
         sInstance->reshape(rect.getWidth(), rect.getHeight());
     }
 }

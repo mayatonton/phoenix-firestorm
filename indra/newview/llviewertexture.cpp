@@ -63,6 +63,7 @@
 #include "lltexturecache.h"
 #include "llviewerwindow.h"
 #include "llwindow.h"
+#include "llstartup.h"
 ///////////////////////////////////////////////////////////////////////////////
 
 // statics
@@ -78,6 +79,47 @@ LLPointer<LLViewerFetchedTexture> LLViewerFetchedTexture::sFlatNormalImagep = nu
 LLPointer<LLViewerFetchedTexture> LLViewerFetchedTexture::sDefaultIrradiancePBRp;
 // [SL:KB] - Patch: Render-TextureToggle (Catznip-4.0)
 LLPointer<LLViewerFetchedTexture> LLViewerFetchedTexture::sDefaultDiffuseImagep = nullptr;
+
+namespace
+{
+bool aya_texture_management_runtime_enabled()
+{
+    static LLCachedControl<bool> texture_management_enabled(gSavedSettings, "AYALoadingTextureManagementEnabled", false);
+    return texture_management_enabled() &&
+        LLStartUp::getStartupState() >= STATE_STARTED;
+}
+
+bool aya_is_avatar_baked_texture(LLViewerFetchedTexture* imagep)
+{
+    if (!imagep)
+    {
+        return false;
+    }
+
+    const FTType ft_type = imagep->getFTType();
+    return ft_type == FTT_SERVER_BAKE ||
+        ft_type == FTT_HOST_BAKE ||
+        imagep->getBoostLevel() == LLGLTexture::BOOST_AVATAR_BAKED ||
+        imagep->getBoostLevel() == LLGLTexture::BOOST_AVATAR_BAKED_SELF;
+}
+
+constexpr F32 AYA_AVATAR_BAKE_MIN_FETCH_AREA = 256.f * 256.f;
+constexpr F32 AYA_AVATAR_BAKE_CALLBACK_STALL_SECONDS = 2.f;
+
+bool aya_avatar_baked_callback_needs_fetch_floor(LLViewerFetchedTexture* imagep)
+{
+    if (!aya_texture_management_runtime_enabled() ||
+        !aya_is_avatar_baked_texture(imagep) ||
+        !imagep->hasCallbacks() ||
+        imagep->isMissingAsset())
+    {
+        return false;
+    }
+
+    return imagep->getMaxVirtualSize() <= 10.f &&
+        (imagep->getDiscardLevel() < 0 || !imagep->hasGLTexture());
+}
+}
 // [/SL:KB]
 LLViewerMediaTexture::media_map_t LLViewerMediaTexture::sMediaMap;
 LLTexturePipelineTester* LLViewerTextureManager::sTesterp = nullptr;
@@ -2852,11 +2894,40 @@ bool LLViewerFetchedTexture::doLoadedCallbacks()
     {
         gTextureList.mCallbackList.erase(this);
     }
-    else if(!res && mForceCallbackFetch && sCurrentTime - mLastCallBackActiveTime > MAX_IDLE_WAIT_TIME && !mIsFetching)
+    else if (!res)
     {
-        //wait for long enough but no fetching request issued, force one.
-        forceToRefetchTexture(mLoadedCallbackDesiredDiscardLevel, 5.f);
-        mForceCallbackFetch = false; //fire once.
+        const F32 callback_idle_time = sCurrentTime - mLastCallBackActiveTime;
+        const bool aya_avatar_bake_callback_stalled =
+            aya_avatar_baked_callback_needs_fetch_floor(this) &&
+            !mIsFetching &&
+            !mNeedsCreateTexture &&
+            mRawImage.isNull() &&
+            mSavedRawImage.isNull() &&
+            callback_idle_time > AYA_AVATAR_BAKE_CALLBACK_STALL_SECONDS;
+
+        if (aya_avatar_bake_callback_stalled)
+        {
+            addTextureStats(AYA_AVATAR_BAKE_MIN_FETCH_AREA);
+            forceToRefetchTexture(0, 5.f);
+            mForceCallbackFetch = false;
+            mLastCallBackActiveTime = sCurrentTime;
+
+            LL_INFOS("AYATextureCap") << "avatar_bake_callback_recovery"
+                << " id=" << getID()
+                << " ft_type=" << (S32)mFTType
+                << " callbacks=" << mLoadedCallbackList.size()
+                << " discard=" << getDiscardLevel()
+                << " desired=" << (S32)mLoadedCallbackDesiredDiscardLevel
+                << " max_virtual_size=" << mMaxVirtualSize
+                << " idle_seconds=" << callback_idle_time
+                << LL_ENDL;
+        }
+        else if (mForceCallbackFetch && callback_idle_time > MAX_IDLE_WAIT_TIME && !mIsFetching)
+        {
+            //wait for long enough but no fetching request issued, force one.
+            forceToRefetchTexture(mLoadedCallbackDesiredDiscardLevel, 5.f);
+            mForceCallbackFetch = false; //fire once.
+        }
     }
 
     return res;
@@ -3134,9 +3205,10 @@ void LLViewerLODTexture::processTextureStats()
     bool did_downscale = false;
 
     static LLCachedControl<bool> textures_fullres(gSavedSettings,"TextureLoadFullRes", false);
+    const bool aya_avatar_baked_texture = aya_is_avatar_baked_texture(this);
 
     F32 max_tex_res = MAX_IMAGE_SIZE_DEFAULT;
-    if (mBoostLevel < LLGLTexture::BOOST_HIGH)
+    if (mBoostLevel < LLGLTexture::BOOST_HIGH && !aya_avatar_baked_texture)
     {
         // restrict texture resolution to download based on RenderMaxTextureResolution
         static LLCachedControl<U32> max_texture_resolution(gSavedSettings, "RenderMaxTextureResolution", 2048);
@@ -3148,6 +3220,14 @@ void LLViewerLODTexture::processTextureStats()
     if (textures_fullres)
     {
         mDesiredDiscardLevel = 0;
+    }
+    else if (aya_avatar_baked_texture)
+    {
+        mDesiredDiscardLevel = 0;
+        if (aya_avatar_baked_callback_needs_fetch_floor(this))
+        {
+            addTextureStats(AYA_AVATAR_BAKE_MIN_FETCH_AREA);
+        }
     }
     // Generate the request priority and render priority
     else if (mDontDiscard || !mUseMipMaps)
@@ -3182,8 +3262,14 @@ void LLViewerLODTexture::processTextureStats()
             S32 draw_texels = mKnownDrawWidth * mKnownDrawHeight;
             draw_texels = llclamp(draw_texels, MIN_IMAGE_AREA, MAX_IMAGE_AREA);
 
+            static LLCachedControl<F32> texture_downscale_strength(gSavedSettings, "AYALoadingTextureDownscaleStrength", 0.f);
             static LLCachedControl<bool> distance_cap_enabled(gSavedSettings, "AYATextureDistanceCapEnabled", true);
-            if (distance_cap_enabled() && mMaxVirtualSize > 10.f)
+            const bool texture_cap_active =
+                aya_texture_management_runtime_enabled() &&
+                llclamp((S32)llroundf(texture_downscale_strength()), 0, 5) > 0 &&
+                distance_cap_enabled() &&
+                !aya_avatar_baked_texture;
+            if (texture_cap_active && mMaxVirtualSize > 10.f)
             {
                 draw_texels = llmin(draw_texels, (S32)llclamp(mMaxVirtualSize, (F32)MIN_IMAGE_AREA, (F32)MAX_IMAGE_AREA));
             }
@@ -3218,10 +3304,14 @@ void LLViewerLODTexture::processTextureStats()
         // proper action if we don't.
         //
 
+        mDesiredDiscardLevel = llmin(mDesiredDiscardLevel, (S32)mLoadedCallbackDesiredDiscardLevel);
+
         S32 current_discard = getDiscardLevel();
-        if (mBoostLevel < LLGLTexture::BOOST_AVATAR_BAKED)
+        if (mBoostLevel < LLGLTexture::BOOST_AVATAR_BAKED && !aya_avatar_baked_texture)
         {
-            if (current_discard < mDesiredDiscardLevel && !mForceToSaveRawImage)
+            if (current_discard < mDesiredDiscardLevel &&
+                !hasCallbacks() &&
+                !needsToSaveRawImage())
             { // should scale down
                 scaleDown();
             }
@@ -3229,12 +3319,12 @@ void LLViewerLODTexture::processTextureStats()
 
         if (isUpdateFrozen() // we are out of memory and nearing max allowed bias
             && mBoostLevel < LLGLTexture::BOOST_SCULPTED
+            && !aya_avatar_baked_texture
             && mDesiredDiscardLevel < current_discard)
         {
             // stop requesting more
             mDesiredDiscardLevel = current_discard;
         }
-        mDesiredDiscardLevel = llmin(mDesiredDiscardLevel, (S32)mLoadedCallbackDesiredDiscardLevel);
     }
 
     if(mForceToSaveRawImage && mDesiredSavedRawDiscardLevel >= 0)

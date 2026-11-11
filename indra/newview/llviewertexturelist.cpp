@@ -31,6 +31,7 @@
 #include "llviewertexturelist.h"
 
 #include <algorithm>
+#include <set>
 #include <vector>
 
 #include "llagent.h"
@@ -70,6 +71,7 @@
 #include "llviewerdisplay.h"
 #include "llviewerwindow.h"
 #include "llprogressview.h"
+#include "llstartup.h"
 
 ////////////////////////////////////////////////////////////////////////////
 
@@ -99,6 +101,13 @@ enum AYAQueuedTextureBucket
 
 S32 aya_texture_create_priority_score(LLViewerFetchedTexture* imagep, AYAQueuedTextureBucket* bucketp = nullptr);
 
+bool aya_texture_management_enabled()
+{
+    static LLCachedControl<bool> texture_management_enabled(gSavedSettings, "AYALoadingTextureManagementEnabled", false);
+    return texture_management_enabled() &&
+        LLStartUp::getStartupState() >= STATE_STARTED;
+}
+
 bool aya_texture_protected_fttype(LLViewerFetchedTexture* imagep)
 {
     if (!imagep)
@@ -122,6 +131,7 @@ bool aya_texture_protected_boost(LLViewerFetchedTexture* imagep)
 
     const S32 boost = imagep->getBoostLevel();
     return boost == LLGLTexture::BOOST_AVATAR_SELF ||
+        boost == LLGLTexture::BOOST_AVATAR_BAKED ||
         boost == LLGLTexture::BOOST_AVATAR_BAKED_SELF ||
         boost >= LLGLTexture::BOOST_HIGH;
 }
@@ -154,6 +164,28 @@ bool aya_texture_has_protected_work(LLViewerFetchedTexture* imagep)
          imagep->forSculpt());
 }
 
+bool aya_texture_has_strength_sweep_blocker(LLViewerFetchedTexture* imagep)
+{
+    return imagep &&
+        (imagep->hasCallbacks() ||
+         imagep->needsToSaveRawImage() ||
+         imagep->forSculpt());
+}
+
+bool aya_texture_strength_sweep_protected_fttype(LLViewerFetchedTexture* imagep)
+{
+    if (!imagep)
+    {
+        return false;
+    }
+
+    const FTType ft_type = imagep->getFTType();
+    return ft_type == FTT_LOCAL_FILE ||
+        ft_type == FTT_MAP_TILE ||
+        ft_type == FTT_SERVER_BAKE ||
+        ft_type == FTT_HOST_BAKE;
+}
+
 bool aya_object_is_avatar_related(LLViewerObject* objp)
 {
     return objp && (objp->isAvatar() || objp->getAvatar());
@@ -180,27 +212,167 @@ bool aya_object_is_protected_texture_owner(LLViewerObject* objp)
     return avatarp && avatarp->isSelf();
 }
 
-S32 aya_texture_adaptive_cap_shift(F32 current_fps, F32 target_fps)
+LLVOAvatar* aya_object_avatar_owner(LLViewerObject* objp)
 {
-    if (!(target_fps > 0.f))
+    if (!objp)
     {
-        return 0;
+        return nullptr;
     }
 
-    const F32 ratio = llclamp(current_fps / target_fps, 0.f, 1.f);
-    if (ratio >= 0.85f)
+    LLVOAvatar* avatarp = objp->asAvatar();
+    if (!avatarp)
     {
-        return 0;
+        avatarp = objp->getAvatar();
     }
-    if (ratio >= 0.50f)
+    return avatarp;
+}
+
+bool aya_texture_has_self_or_hud_face_owner(LLViewerFetchedTexture* imagep)
+{
+    if (!imagep)
     {
-        return 1;
+        return false;
     }
-    if (ratio >= 0.35f)
+
+    for (U32 channel = 0; channel < LLRender::NUM_TEXTURE_CHANNELS; ++channel)
     {
-        return 2;
+        const LLViewerTexture::ll_face_list_t* faces = imagep->getFaceList(channel);
+        const U32 face_count = llmin((U32)imagep->getNumFaces(channel), (U32)(faces ? faces->size() : 0));
+        if (!faces || face_count == 0)
+        {
+            continue;
+        }
+
+        for (U32 face_index = 0; face_index < face_count; ++face_index)
+        {
+            LLFace* facep = (*faces)[face_index];
+            LLViewerObject* objp = facep ? facep->getViewerObject() : nullptr;
+            if (aya_object_is_protected_texture_owner(objp))
+            {
+                return true;
+            }
+        }
     }
-    return 3;
+
+    return false;
+}
+
+bool aya_texture_has_unloaded_avatar_face_owner(
+    LLViewerFetchedTexture* imagep,
+    F32 near_distance_m,
+    bool require_visible_or_near)
+{
+    if (!imagep)
+    {
+        return false;
+    }
+
+    const LLVector3 camera_origin = LLViewerCamera::getInstance()->getOrigin();
+    for (U32 channel = 0; channel < LLRender::NUM_TEXTURE_CHANNELS; ++channel)
+    {
+        const LLViewerTexture::ll_face_list_t* faces = imagep->getFaceList(channel);
+        const U32 face_count = llmin((U32)imagep->getNumFaces(channel), (U32)(faces ? faces->size() : 0));
+        if (!faces || face_count == 0)
+        {
+            continue;
+        }
+
+        for (U32 face_index = 0; face_index < face_count; ++face_index)
+        {
+            LLFace* facep = (*faces)[face_index];
+            LLViewerObject* objp = facep ? facep->getViewerObject() : nullptr;
+            LLVOAvatar* avatarp = aya_object_avatar_owner(objp);
+            if (!avatarp || avatarp->isSelf())
+            {
+                continue;
+            }
+
+            const F32 distance = facep ? (facep->getPositionAgent() - camera_origin).magVec() : F32_MAX;
+            const bool visible_or_near = !require_visible_or_near || facep->mInFrustum || distance <= near_distance_m;
+            if (visible_or_near &&
+                (!avatarp->isFullyLoaded() || avatarp->getRezzedStatus() < 3))
+            {
+                return true;
+            }
+        }
+    }
+
+    return false;
+}
+
+bool aya_texture_is_avatar_callback_priority(LLViewerFetchedTexture* imagep)
+{
+    if (!imagep)
+    {
+        return false;
+    }
+
+    if (imagep->getBoostLevel() == LLGLTexture::BOOST_AVATAR_SELF ||
+        imagep->getBoostLevel() == LLGLTexture::BOOST_AVATAR_BAKED_SELF ||
+        aya_texture_has_self_or_hud_face_owner(imagep))
+    {
+        return true;
+    }
+
+    const bool avatar_baked_callback =
+        imagep->hasCallbacks() &&
+        (imagep->getFTType() == FTT_SERVER_BAKE ||
+            imagep->getFTType() == FTT_HOST_BAKE ||
+            imagep->getBoostLevel() == LLGLTexture::BOOST_AVATAR_BAKED);
+    if (avatar_baked_callback)
+    {
+        return true;
+    }
+
+    static LLCachedControl<F32> near_distance_m(gSavedSettings, "AYATextureDistanceCapNearMeters", 10.f);
+    const bool avatar_or_bake_texture =
+        imagep->getFTType() == FTT_SERVER_BAKE ||
+        imagep->getFTType() == FTT_HOST_BAKE ||
+        imagep->getBoostLevel() == LLGLTexture::BOOST_AVATAR ||
+        imagep->getBoostLevel() == LLGLTexture::BOOST_AVATAR_BAKED;
+    return avatar_or_bake_texture &&
+        aya_texture_has_unloaded_avatar_face_owner(imagep, near_distance_m(), true);
+}
+
+bool aya_texture_is_avatar_related_create_candidate(LLViewerFetchedTexture* imagep)
+{
+    if (!imagep)
+    {
+        return false;
+    }
+
+    const S32 boost = imagep->getBoostLevel();
+    if (boost == LLGLTexture::BOOST_AVATAR ||
+        boost == LLGLTexture::BOOST_AVATAR_BAKED ||
+        boost == LLGLTexture::BOOST_AVATAR_SELF ||
+        boost == LLGLTexture::BOOST_AVATAR_BAKED_SELF ||
+        imagep->getFTType() == FTT_SERVER_BAKE ||
+        imagep->getFTType() == FTT_HOST_BAKE)
+    {
+        return true;
+    }
+
+    for (U32 channel = 0; channel < LLRender::NUM_TEXTURE_CHANNELS; ++channel)
+    {
+        const LLViewerTexture::ll_face_list_t* faces = imagep->getFaceList(channel);
+        const U32 face_count = llmin((U32)imagep->getNumFaces(channel), (U32)(faces ? faces->size() : 0));
+        if (!faces || face_count == 0)
+        {
+            continue;
+        }
+
+        for (U32 face_index = 0; face_index < face_count; ++face_index)
+        {
+            LLFace* facep = (*faces)[face_index];
+            LLViewerObject* objp = facep ? facep->getViewerObject() : nullptr;
+            if (aya_object_is_avatar_related(objp))
+            {
+                return true;
+            }
+        }
+    }
+
+    return false;
 }
 
 U32 aya_shift_texture_cap(U32 cap_resolution, S32 shift, U32 floor_resolution)
@@ -211,6 +383,61 @@ U32 aya_shift_texture_cap(U32 cap_resolution, S32 shift, U32 floor_resolution)
         shifted = llmax((U32)1, shifted / 2);
     }
     return (U32)llclamp((S32)shifted, (S32)floor_resolution, LLGLTexture::MAX_IMAGE_SIZE_DEFAULT);
+}
+
+S32 aya_texture_downscale_strength_level(F32 strength)
+{
+    static constexpr S32 AYA_TEXTURE_DOWNSCALE_MAX_LEVEL = 5;
+    return llclamp((S32)llroundf(strength), 0, AYA_TEXTURE_DOWNSCALE_MAX_LEVEL);
+}
+
+U32 aya_apply_texture_downscale_strength(U32 cap_resolution, S32 strength_level)
+{
+    static constexpr S32 AYA_TEXTURE_DOWNSCALE_MAX_LEVEL = 5;
+    static constexpr U32 AYA_TEXTURE_CAP_MIN_REQUEST_PX = 16;
+    const S32 level = llclamp(strength_level, 0, AYA_TEXTURE_DOWNSCALE_MAX_LEVEL);
+    U32 cap = (U32)llclamp((S32)cap_resolution, (S32)AYA_TEXTURE_CAP_MIN_REQUEST_PX, LLGLTexture::MAX_IMAGE_SIZE_DEFAULT);
+    if (level <= 0)
+    {
+        return cap;
+    }
+    if (level >= AYA_TEXTURE_DOWNSCALE_MAX_LEVEL)
+    {
+        return AYA_TEXTURE_CAP_MIN_REQUEST_PX;
+    }
+
+    for (S32 i = 0; i < level; ++i)
+    {
+        cap = llmax(AYA_TEXTURE_CAP_MIN_REQUEST_PX, cap / 2);
+    }
+    return cap;
+}
+
+U32 aya_effective_texture_cap_resolution(LLViewerFetchedTexture* imagep, U32 requested_cap_resolution)
+{
+    static constexpr U32 AYA_TEXTURE_CAP_MIN_REQUEST_PX = 16;
+    const U32 requested_cap = (U32)llclamp((S32)requested_cap_resolution, (S32)AYA_TEXTURE_CAP_MIN_REQUEST_PX, LLGLTexture::MAX_IMAGE_SIZE_DEFAULT);
+    if (!imagep || imagep->getFullWidth() <= 0 || imagep->getFullHeight() <= 0)
+    {
+        return requested_cap;
+    }
+
+    const S32 max_discard = llclamp(imagep->getMaxDiscardLevel(), 0, MAX_DISCARD_LEVEL);
+    S32 effective_discard = 0;
+    for (S32 discard = 0; discard <= max_discard; ++discard)
+    {
+        const U32 width = llmax(1, imagep->getFullWidth() >> discard);
+        const U32 height = llmax(1, imagep->getFullHeight() >> discard);
+        effective_discard = discard;
+        if (llmax(width, height) <= requested_cap)
+        {
+            break;
+        }
+    }
+
+    const U32 effective_width = llmax(1, imagep->getFullWidth() >> effective_discard);
+    const U32 effective_height = llmax(1, imagep->getFullHeight() >> effective_discard);
+    return llmax(effective_width, effective_height);
 }
 
 enum AYAPendingCreateRelease
@@ -225,7 +452,8 @@ enum AYAMemorySweepBucket
     AYA_MEMORY_SWEEP_KEEP = 0,
     AYA_MEMORY_SWEEP_UNREFERENCED,
     AYA_MEMORY_SWEEP_OFFSCREEN,
-    AYA_MEMORY_SWEEP_FAR
+    AYA_MEMORY_SWEEP_FAR,
+    AYA_MEMORY_SWEEP_CAP_CANDIDATE
 };
 
 bool aya_texture_can_release_pending_create(
@@ -257,6 +485,12 @@ bool aya_texture_can_release_pending_create(
         return false;
     }
 
+    static LLCachedControl<F32> near_distance_m(gSavedSettings, "AYATextureDistanceCapNearMeters", 10.f);
+    if (aya_texture_has_unloaded_avatar_face_owner(imagep, near_distance_m(), true))
+    {
+        return false;
+    }
+
     const bool has_faces = imagep->getTotalNumFaces() > 0;
     const bool has_volume_refs = aya_texture_has_volume_ref(imagep);
     const bool old_enough =
@@ -273,6 +507,12 @@ bool aya_texture_can_release_pending_create(
             *bucketp = AYA_QUEUE_BUCKET_UNREFERENCED;
         }
         return true;
+    }
+
+    if (!imagep->hasGLTexture() ||
+        imagep->getDiscardLevel() < 0)
+    {
+        return false;
     }
 
     if (!allow_distance_defer)
@@ -316,6 +556,83 @@ bool aya_texture_can_enter_teleport_sweep(LLViewerFetchedTexture* imagep)
         imagep->hasGLTexture();
 }
 
+bool aya_texture_can_enter_strength_sweep(LLViewerFetchedTexture* imagep)
+{
+    const S32 boost = imagep ? imagep->getBoostLevel() : LLGLTexture::BOOST_NONE;
+    static LLCachedControl<F32> near_distance_m(gSavedSettings, "AYATextureDistanceCapNearMeters", 10.f);
+    return imagep &&
+        !imagep->isDeleted() &&
+        imagep->isInImageList() &&
+        imagep->getType() == LLViewerTexture::LOD_TEXTURE &&
+        !imagep->mCreatePending &&
+        !imagep->mDownScalePending &&
+        !aya_texture_strength_sweep_protected_fttype(imagep) &&
+        !imagep->hasCallbacks() &&
+        boost < LLGLTexture::BOOST_HIGH &&
+        boost != LLGLTexture::BOOST_AVATAR_SELF &&
+        boost != LLGLTexture::BOOST_AVATAR_BAKED &&
+        boost != LLGLTexture::BOOST_AVATAR_BAKED_SELF &&
+        boost != LLGLTexture::BOOST_HUD &&
+        boost != LLGLTexture::BOOST_UI &&
+        boost != LLGLTexture::BOOST_ICON &&
+        boost != LLGLTexture::BOOST_THUMBNAIL &&
+        boost != LLGLTexture::BOOST_PREVIEW &&
+        boost != LLGLTexture::BOOST_MAP &&
+        boost != LLGLTexture::BOOST_MAP_VISIBLE &&
+        boost != LLGLTexture::BOOST_SCULPTED &&
+        boost != LLGLTexture::BOOST_SELECTED &&
+        boost != LLGLTexture::BOOST_SUPER_HIGH &&
+        !aya_texture_has_strength_sweep_blocker(imagep) &&
+        !aya_texture_has_self_or_hud_face_owner(imagep) &&
+        !aya_texture_has_unloaded_avatar_face_owner(imagep, near_distance_m(), true) &&
+        !imagep->isFetching() &&
+        !imagep->isInFastCacheList() &&
+        imagep->hasGLTexture();
+}
+
+bool aya_texture_strength_sweep_should_retry_later(LLViewerFetchedTexture* imagep)
+{
+    if (!imagep ||
+        imagep->isDeleted() ||
+        !imagep->isInImageList() ||
+        imagep->getType() != LLViewerTexture::LOD_TEXTURE)
+    {
+        return false;
+    }
+
+    const S32 boost = imagep->getBoostLevel();
+    static LLCachedControl<F32> near_distance_m(gSavedSettings, "AYATextureDistanceCapNearMeters", 10.f);
+    if (aya_texture_strength_sweep_protected_fttype(imagep) ||
+        boost >= LLGLTexture::BOOST_HIGH ||
+        boost == LLGLTexture::BOOST_AVATAR_SELF ||
+        boost == LLGLTexture::BOOST_AVATAR_BAKED ||
+        boost == LLGLTexture::BOOST_AVATAR_BAKED_SELF ||
+        boost == LLGLTexture::BOOST_HUD ||
+        boost == LLGLTexture::BOOST_UI ||
+        boost == LLGLTexture::BOOST_ICON ||
+        boost == LLGLTexture::BOOST_THUMBNAIL ||
+        boost == LLGLTexture::BOOST_PREVIEW ||
+        boost == LLGLTexture::BOOST_MAP ||
+        boost == LLGLTexture::BOOST_MAP_VISIBLE ||
+        boost == LLGLTexture::BOOST_SCULPTED ||
+        boost == LLGLTexture::BOOST_SELECTED ||
+        boost == LLGLTexture::BOOST_SUPER_HIGH ||
+        imagep->needsToSaveRawImage() ||
+        imagep->forSculpt() ||
+        aya_texture_has_self_or_hud_face_owner(imagep) ||
+        aya_texture_has_unloaded_avatar_face_owner(imagep, near_distance_m(), true))
+    {
+        return false;
+    }
+
+    return imagep->mCreatePending ||
+        imagep->mDownScalePending ||
+        imagep->hasCallbacks() ||
+        imagep->isFetching() ||
+        imagep->isInFastCacheList() ||
+        !imagep->hasGLTexture();
+}
+
 S32 aya_texture_create_priority_score(LLViewerFetchedTexture* imagep, AYAQueuedTextureBucket* bucketp)
 {
     if (bucketp)
@@ -329,6 +646,7 @@ S32 aya_texture_create_priority_score(LLViewerFetchedTexture* imagep, AYAQueuedT
     }
 
     S32 score = 0;
+    static LLCachedControl<F32> near_distance_m(gSavedSettings, "AYATextureDistanceCapNearMeters", 10.f);
     if (aya_texture_protected_fttype(imagep) ||
         imagep->needsToSaveRawImage() ||
         imagep->forSculpt())
@@ -387,7 +705,6 @@ S32 aya_texture_create_priority_score(LLViewerFetchedTexture* imagep, AYAQueuedT
     F32 best_distance = F32_MAX;
     U32 checked_faces = 0;
     const U32 max_faces_to_check = 64;
-    static LLCachedControl<F32> near_distance_m(gSavedSettings, "AYATextureDistanceCapNearMeters", 10.f);
     static LLCachedControl<F32> mid_distance_m(gSavedSettings, "AYATextureDistanceCapMidMeters", 20.f);
     static LLCachedControl<F32> far_distance_m(gSavedSettings, "AYATextureDistanceCapFarMeters", 50.f);
 
@@ -527,6 +844,7 @@ S32 aya_texture_create_priority_score(LLViewerFetchedTexture* imagep, AYAQueuedT
 
 AYAMemorySweepBucket aya_texture_memory_sweep_bucket(
     LLViewerFetchedTexture* imagep,
+    F32 near_distance_m,
     F32 far_distance_m,
     F32 min_unreferenced_seconds)
 {
@@ -576,7 +894,9 @@ AYAMemorySweepBucket aya_texture_memory_sweep_bucket(
             }
 
             LLViewerObject* objp = facep->getViewerObject();
-            if (aya_object_is_protected_texture_owner(objp))
+            const F32 distance = (facep->getPositionAgent() - LLViewerCamera::getInstance()->getOrigin()).magVec();
+            if (aya_object_is_protected_texture_owner(objp) ||
+                (aya_object_is_avatar_related(objp) && distance <= near_distance_m))
             {
                 saw_protected_owner = true;
                 continue;
@@ -585,7 +905,6 @@ AYAMemorySweepBucket aya_texture_memory_sweep_bucket(
             saw_sweepable_face = true;
             any_in_frustum |= facep->mInFrustum;
 
-            const F32 distance = (facep->getPositionAgent() - LLViewerCamera::getInstance()->getOrigin()).magVec();
             if (distance <= far_distance_m)
             {
                 any_near = true;
@@ -899,9 +1218,27 @@ void LLViewerTextureList::shutdown()
     // Flush all of the references
     while (!mCreateTextureList.empty())
     {
-        mCreateTextureList.front()->mCreatePending = false;
+        LLPointer<LLViewerFetchedTexture> imagep = mCreateTextureList.front();
+        if (imagep.notNull())
+        {
+            imagep->mCreatePending = false;
+        }
         mCreateTextureList.pop();
     }
+    while (!mDownScaleQueue.empty())
+    {
+        LLPointer<LLViewerFetchedTexture> imagep = mDownScaleQueue.front();
+        if (imagep.notNull())
+        {
+            imagep->mDownScalePending = false;
+        }
+        mDownScaleQueue.pop();
+    }
+    while (!mAYATeleportSweepQueue.empty())
+    {
+        mAYATeleportSweepQueue.pop();
+    }
+    mAYATeleportSweepActive = false;
     mFastCacheList.clear();
 
     mUUIDMap.clear();
@@ -1428,19 +1765,66 @@ void LLViewerTextureList::updateImages(F32 max_time)
     static LLCachedControl<U32> guard_max_callbacks_per_frame(gSavedSettings, "RenderTextureGuardMaxCallbacksPerFrame", 3);
     static LLCachedControl<F32> callback_time_ms(gSavedSettings, "RenderTextureCallbackTimeSliceMs", 2.f);
     static LLCachedControl<F32> guard_callback_time_ms(gSavedSettings, "RenderTextureGuardCallbackTimeSliceMs", 0.75f);
-    static LLCachedControl<bool> loading_fps_guard_enabled(gSavedSettings, "AYALoadingFPSGuardEnabled", false);
-    static LLCachedControl<F32> loading_fps_guard_min_fps(gSavedSettings, "AYALoadingFPSGuardMinFPS", 30.f);
-
-    const F32 loading_fps_guard_target_fps = llclamp(loading_fps_guard_min_fps(), 30.f, 288.f);
-    const bool loading_fps_guard =
-        loading_fps_guard_enabled &&
-        gFPSClamped < loading_fps_guard_target_fps;
-    const U32 effective_max_callbacks = loading_fps_guard ? guard_max_callbacks_per_frame() : max_callbacks_per_frame();
-    const F32 effective_callback_budget = llmax(0.001f, (loading_fps_guard ? guard_callback_time_ms() : callback_time_ms()) * 0.001f);
+    static LLCachedControl<U32> callback_backlog_threshold(gSavedSettings, "AYALoadingDynamicResolutionTextureCallbackBacklogThreshold", 24);
+    const bool loading_texture_management = aya_texture_management_enabled();
+    const bool callback_guard_budget_active =
+        loading_texture_management &&
+        callback_backlog_threshold() > 0 &&
+        mCallbackList.size() >= callback_backlog_threshold();
+    const U32 effective_max_callbacks = callback_guard_budget_active ? guard_max_callbacks_per_frame() : max_callbacks_per_frame();
+    const F32 effective_callback_budget = llmax(0.001f, (callback_guard_budget_active ? guard_callback_time_ms() : callback_time_ms()) * 0.001f);
 
     LLTimer callback_timer;
     U32 callback_count = 0;
     bool didone = false;
+    std::set<LLViewerFetchedTexture*> priority_callbacks_processed;
+    if (loading_texture_management && !mCallbackList.empty())
+    {
+        std::vector<LLPointer<LLViewerFetchedTexture> > priority_callbacks;
+        priority_callbacks.reserve(llmin((U32)mCallbackList.size(), (U32)32));
+        for (image_list_t::iterator iter = mCallbackList.begin();
+             iter != mCallbackList.end(); ++iter)
+        {
+            LLViewerFetchedTexture* image = *iter;
+            if (aya_texture_is_avatar_callback_priority(image))
+            {
+                priority_callbacks.push_back(image);
+                if (priority_callbacks.size() >= 32)
+                {
+                    break;
+                }
+            }
+        }
+
+        const U32 priority_callback_limit = effective_max_callbacks;
+        const F32 priority_callback_budget = effective_callback_budget;
+        U32 priority_callback_count = 0;
+        for (std::vector<LLPointer<LLViewerFetchedTexture> >::iterator iter = priority_callbacks.begin();
+             iter != priority_callbacks.end(); ++iter)
+        {
+            if (priority_callback_count >= priority_callback_limit ||
+                (priority_callback_count > 0 && callback_timer.getElapsedTimeF32() > priority_callback_budget))
+            {
+                break;
+            }
+
+            LLViewerFetchedTexture* image = *iter;
+            if (!image)
+            {
+                continue;
+            }
+
+            const bool callback_ran = image->doLoadedCallbacks();
+            didone = callback_ran || didone;
+            priority_callbacks_processed.insert(image);
+            ++priority_callback_count;
+            if (callback_ran)
+            {
+                ++callback_count;
+            }
+        }
+    }
+
     for (image_list_t::iterator iter = mCallbackList.begin();
         iter != mCallbackList.end(); )
     {
@@ -1452,6 +1836,10 @@ void LLViewerTextureList::updateImages(F32 max_time)
 
         //trigger loaded callbacks on local textures immediately
         LLViewerFetchedTexture* image = *iter++;
+        if (priority_callbacks_processed.find(image) != priority_callbacks_processed.end())
+        {
+            continue;
+        }
         if (!image->getUrl().empty())
         {
             // Do stuff to handle callbacks, update priorities, etc.
@@ -1477,7 +1865,6 @@ void LLViewerTextureList::updateImages(F32 max_time)
 void LLViewerTextureList::startAYATeleportTextureSweep()
 {
     LL_PROFILE_ZONE_SCOPED_CATEGORY_TEXTURE;
-    static LLCachedControl<bool> memory_relief_enabled(gSavedSettings, "AYALoadingTextureMemoryReliefEnabled", false);
     static LLCachedControl<bool> sweep_enabled(gSavedSettings, "AYATeleportTextureSweepEnabled", true);
     static LLCachedControl<U32> max_queued(gSavedSettings, "AYATeleportTextureSweepMaxQueuedTextures", 2048);
     static LLCachedControl<bool> sweep_log(gSavedSettings, "AYATeleportTextureSweepLog", true);
@@ -1496,7 +1883,7 @@ void LLViewerTextureList::startAYATeleportTextureSweep()
         return;
     }
 
-    if (!memory_relief_enabled() || !sweep_enabled())
+    if (!aya_texture_management_enabled() || !sweep_enabled())
     {
         return;
     }
@@ -1573,7 +1960,6 @@ void LLViewerTextureList::startAYATeleportTextureSweep()
 void LLViewerTextureList::processAYATeleportTextureSweep()
 {
     LL_PROFILE_ZONE_SCOPED_CATEGORY_TEXTURE;
-    static LLCachedControl<bool> memory_relief_enabled(gSavedSettings, "AYALoadingTextureMemoryReliefEnabled", false);
     static LLCachedControl<bool> sweep_enabled(gSavedSettings, "AYATeleportTextureSweepEnabled", true);
     static LLCachedControl<F32> grace_seconds(gSavedSettings, "AYATeleportTextureSweepGraceSeconds", 20.f);
     static LLCachedControl<U32> max_per_frame(gSavedSettings, "AYATeleportTextureSweepMaxTexturesPerFrame", 128);
@@ -1585,7 +1971,7 @@ void LLViewerTextureList::processAYATeleportTextureSweep()
         return;
     }
 
-    if (!memory_relief_enabled() || !sweep_enabled())
+    if (!aya_texture_management_enabled() || !sweep_enabled())
     {
         while (!mAYATeleportSweepQueue.empty())
         {
@@ -1597,7 +1983,7 @@ void LLViewerTextureList::processAYATeleportTextureSweep()
             LL_INFOS("AYATextureCap")
                 << "teleport_texture_sweep event=cancel"
                 << " reason=disabled"
-                << " memory_relief_enabled=" << (memory_relief_enabled() ? "true" : "false")
+                << " texture_management_enabled=" << (aya_texture_management_enabled() ? "true" : "false")
                 << " sweep_enabled=" << (sweep_enabled() ? "true" : "false")
                 << LL_ENDL;
         }
@@ -1621,11 +2007,11 @@ void LLViewerTextureList::processAYATeleportTextureSweep()
 
     while (!mAYATeleportSweepQueue.empty() && scanned < budget)
     {
-        LLViewerFetchedTexture* imagep = mAYATeleportSweepQueue.front();
+        LLPointer<LLViewerFetchedTexture> imagep = mAYATeleportSweepQueue.front();
         mAYATeleportSweepQueue.pop();
         ++scanned;
 
-        if (!imagep || imagep->isDeleted() || !imagep->isInImageList())
+        if (imagep.isNull() || imagep->isDeleted() || !imagep->isInImageList())
         {
             continue;
         }
@@ -1743,7 +2129,7 @@ void LLViewerTextureList::clearFetchingRequests()
 
 extern bool gCubeSnapshot;
 
-void LLViewerTextureList::updateImageDecodePriority(LLViewerFetchedTexture* imagep, bool flush_images)
+void LLViewerTextureList::updateImageDecodePriority(LLViewerFetchedTexture* imagep, bool flush_images, bool flush_saved_raw_image)
 {
     llassert(!gCubeSnapshot);
 
@@ -1770,13 +2156,9 @@ void LLViewerTextureList::updateImageDecodePriority(LLViewerFetchedTexture* imag
         static LLCachedControl<bool> offscreen_cap_enabled(gSavedSettings, "AYATextureOffscreenCapEnabled", true);
         static LLCachedControl<U32> offscreen_resolution_px(gSavedSettings, "AYATextureOffscreenCapResolution", 256);
         static LLCachedControl<U32> aux_offscreen_resolution_px(gSavedSettings, "AYATextureOffscreenCapAuxResolution", 128);
-        static LLCachedControl<bool> priority_control_enabled(gSavedSettings, "AYALoadingPriorityControlEnabled", false);
-        static LLCachedControl<F32> loading_fps_guard_min_fps(gSavedSettings, "AYALoadingFPSGuardMinFPS", 30.f);
+        static LLCachedControl<F32> texture_downscale_strength(gSavedSettings, "AYALoadingTextureDownscaleStrength", 0.f);
         static LLCachedControl<bool> distance_cap_log(gSavedSettings, "AYATextureDistanceCapLog", true);
         static LLTimer distance_cap_log_timer;
-        static LLTimer adaptive_cap_recover_timer;
-        static S32 s_adaptive_cap_shift = 0;
-        static S32 s_pending_recover_shift = 0;
         static U32 s_cap_faces = 0;
         static U32 s_cap_clamped_faces = 0;
         static U32 s_cap_offscreen_faces = 0;
@@ -1795,43 +2177,13 @@ void LLViewerTextureList::updateImageDecodePriority(LLViewerFetchedTexture* imag
 
         U32 face_count = 0;
         U32 max_faces_to_check = 1024;
-        const F32 loading_fps_guard_target_fps = llclamp(loading_fps_guard_min_fps(), 30.f, 288.f);
-        const bool loading_priority_control = priority_control_enabled();
-        const bool distance_cap_active = loading_priority_control && distance_cap_enabled();
-        const bool offscreen_cap_active = loading_priority_control && offscreen_cap_enabled();
-        const bool adaptive_texture_cap_enabled =
-            loading_priority_control &&
-            distance_cap_enabled() &&
-            gFPSClamped < loading_fps_guard_target_fps;
-        const S32 desired_adaptive_cap_shift =
-            adaptive_texture_cap_enabled ?
-                aya_texture_adaptive_cap_shift(gFPSClamped, loading_fps_guard_target_fps) :
-                0;
-
-        if (desired_adaptive_cap_shift > s_adaptive_cap_shift)
-        {
-            s_adaptive_cap_shift = desired_adaptive_cap_shift;
-            s_pending_recover_shift = desired_adaptive_cap_shift;
-            adaptive_cap_recover_timer.reset();
-        }
-        else if (desired_adaptive_cap_shift < s_adaptive_cap_shift)
-        {
-            if (s_pending_recover_shift != desired_adaptive_cap_shift)
-            {
-                s_pending_recover_shift = desired_adaptive_cap_shift;
-                adaptive_cap_recover_timer.reset();
-            }
-            else if (adaptive_cap_recover_timer.getElapsedTimeF32() >= 5.f)
-            {
-                s_adaptive_cap_shift = desired_adaptive_cap_shift;
-                adaptive_cap_recover_timer.reset();
-            }
-        }
-        else
-        {
-            s_pending_recover_shift = desired_adaptive_cap_shift;
-            adaptive_cap_recover_timer.reset();
-        }
+        const bool loading_texture_management = aya_texture_management_enabled();
+        const S32 downscale_strength_level = aya_texture_downscale_strength_level(texture_downscale_strength());
+        const bool texture_downscale_active = loading_texture_management && downscale_strength_level > 0;
+        const bool distance_cap_active = texture_downscale_active && distance_cap_enabled();
+        const bool offscreen_cap_active = texture_downscale_active && offscreen_cap_enabled();
+        const bool texture_owner_protection_active = texture_downscale_active;
+        const bool cap_stats_log_active = texture_downscale_active && distance_cap_log();
 
         // get adjusted bias based on image resolution
         LLImageGL* img = imagep->getGLTexture();
@@ -1883,15 +2235,23 @@ void LLViewerTextureList::updateImageDecodePriority(LLViewerFetchedTexture* imag
                     F32 min_scale = te ? llmin(fabsf(te->getScaleS()), fabsf(te->getScaleT())) : 1.f;
                     min_scale = llclamp(min_scale * min_scale, texture_scale_min(), texture_scale_max());
                     vsize /= min_scale;
-                    const F32 distance = (face->getPositionAgent() - LLViewerCamera::getInstance()->getOrigin()).magVec();
-                    const bool avatar_related_owner = aya_object_is_avatar_related(objp);
+                    const F32 distance = texture_downscale_active ?
+                        (face->getPositionAgent() - LLViewerCamera::getInstance()->getOrigin()).magVec() :
+                        F32_MAX;
+                    LLVOAvatar* avatar_owner = texture_owner_protection_active ? aya_object_avatar_owner(objp) : nullptr;
+                    const bool avatar_loading_owner =
+                        texture_owner_protection_active &&
+                        avatar_owner &&
+                        !avatar_owner->isSelf() &&
+                        (!avatar_owner->isFullyLoaded() || avatar_owner->getRezzedStatus() < 3) &&
+                        (face->mInFrustum || distance <= near_distance_m());
                     const bool protected_owner =
-                        aya_object_is_protected_texture_owner(objp) ||
-                        (avatar_related_owner && distance <= near_distance_m());
-                    const bool hud_owner = objp->isHUDAttachment();
+                        texture_owner_protection_active &&
+                        (aya_object_is_protected_texture_owner(objp) || avatar_loading_owner);
+                    const bool hud_owner = texture_owner_protection_active && objp->isHUDAttachment();
                     has_protected_owner |= protected_owner;
                     has_hud_owner |= hud_owner;
-                    if (distance_cap_log() && protected_owner)
+                    if (cap_stats_log_active && protected_owner)
                     {
                         ++s_cap_protected_owner_faces;
                         if (hud_owner)
@@ -1962,11 +2322,13 @@ void LLViewerTextureList::updateImageDecodePriority(LLViewerFetchedTexture* imag
 
                         cap_resolution = aya_shift_texture_cap(
                             cap_resolution,
-                            s_adaptive_cap_shift,
-                            auxiliary_channel ? 16 : 32);
-                        const F32 cap = (F32)llclamp((S32)cap_resolution, auxiliary_channel ? 16 : 32, LLGLTexture::MAX_IMAGE_SIZE_DEFAULT);
+                            0,
+                            1);
+                        cap_resolution = aya_apply_texture_downscale_strength(cap_resolution, downscale_strength_level);
+                        cap_resolution = aya_effective_texture_cap_resolution(imagep, cap_resolution);
+                        const F32 cap = (F32)llclamp((S32)cap_resolution, 1, LLGLTexture::MAX_IMAGE_SIZE_DEFAULT);
                         const F32 cap_area = cap * cap;
-                        if (distance_cap_log())
+                        if (cap_stats_log_active)
                         {
                             ++s_cap_faces;
                             ++(*cap_bucket);
@@ -1987,11 +2349,13 @@ void LLViewerTextureList::updateImageDecodePriority(LLViewerFetchedTexture* imag
                         const U32 base_cap_resolution = auxiliary_channel ? aux_offscreen_resolution_px() : offscreen_resolution_px();
                         const U32 cap_resolution = aya_shift_texture_cap(
                             base_cap_resolution,
-                            s_adaptive_cap_shift + 1,
-                            16);
-                        const F32 cap = (F32)llclamp((S32)cap_resolution, 16, LLGLTexture::MAX_IMAGE_SIZE_DEFAULT);
+                            1,
+                            1);
+                        const U32 strengthened_cap_resolution = aya_apply_texture_downscale_strength(cap_resolution, downscale_strength_level);
+                        const U32 effective_cap_resolution = aya_effective_texture_cap_resolution(imagep, strengthened_cap_resolution);
+                        const F32 cap = (F32)llclamp((S32)effective_cap_resolution, 1, LLGLTexture::MAX_IMAGE_SIZE_DEFAULT);
                         const F32 cap_area = cap * cap;
-                        if (distance_cap_log())
+                        if (cap_stats_log_active)
                         {
                             ++s_cap_faces;
                             ++s_cap_offscreen_faces;
@@ -2061,7 +2425,7 @@ void LLViewerTextureList::updateImageDecodePriority(LLViewerFetchedTexture* imag
 
         imagep->addTextureStats(max_vsize);
 
-        if (distance_cap_log() && distance_cap_log_timer.getElapsedTimeF32() >= 10.f)
+        if (cap_stats_log_active && distance_cap_log_timer.getElapsedTimeF32() >= 10.f)
         {
             LL_INFOS("AYATextureCap")
                 << "distance_cap_stats faces=" << s_cap_faces
@@ -2074,10 +2438,9 @@ void LLViewerTextureList::updateImageDecodePriority(LLViewerFetchedTexture* imag
                 << " distant=" << s_cap_distant_faces
                 << " protected_owner_faces=" << s_cap_protected_owner_faces
                 << " hud_owner_faces=" << s_cap_hud_owner_faces
-                << " loading_priority_active=" << (loading_priority_control ? "true" : "false")
-                << " adaptive_shift=" << s_adaptive_cap_shift
-                << " adaptive_target_fps=" << loading_fps_guard_target_fps
-                << " adaptive_fps=" << gFPSClamped
+                << " texture_management_active=" << (loading_texture_management ? "true" : "false")
+                << " downscale_strength_level=" << downscale_strength_level
+                << " fps=" << gFPSClamped
                 << " downscale_queue=" << mDownScaleQueue.size()
                 << LL_ENDL;
             s_cap_faces = 0;
@@ -2134,7 +2497,8 @@ void LLViewerTextureList::updateImageDecodePriority(LLViewerFetchedTexture* imag
         // still referenced outside of image list, reset timer
         imagep->getLastReferencedTimer()->reset();
 
-        if (imagep->hasSavedRawImage())
+        if (flush_saved_raw_image &&
+            imagep->hasSavedRawImage())
         {
             if (imagep->getElapsedLastReferencedSavedRawImageTime() > max_inactive_time)
             {
@@ -2168,14 +2532,11 @@ F32 LLViewerTextureList::updateImagesCreateTextures(F32 max_time)
     static LLCachedControl<U32> max_downscale_per_frame(gSavedSettings, "RenderTextureMaxDownscalesPerFrame", 1);
     static LLCachedControl<F32> max_create_time_ms(gSavedSettings, "RenderTextureCreateTimeSliceMs", 4.f);
     static LLCachedControl<F32> max_downscale_time_ms(gSavedSettings, "RenderTextureDownscaleTimeSliceMs", 2.f);
-    static LLCachedControl<bool> loading_fps_guard_enabled(gSavedSettings, "AYALoadingFPSGuardEnabled", false);
-    static LLCachedControl<F32> loading_fps_guard_min_fps(gSavedSettings, "AYALoadingFPSGuardMinFPS", 30.f);
     static LLCachedControl<U32> guard_max_create_per_frame(gSavedSettings, "RenderTextureGuardMaxCreatesPerFrame", 2);
     static LLCachedControl<U32> guard_max_downscale_per_frame(gSavedSettings, "RenderTextureGuardMaxDownscalesPerFrame", 1);
     static LLCachedControl<F32> guard_max_create_time_ms(gSavedSettings, "RenderTextureGuardCreateTimeSliceMs", 1.5f);
     static LLCachedControl<F32> guard_max_downscale_time_ms(gSavedSettings, "RenderTextureGuardDownscaleTimeSliceMs", 1.f);
     static LLCachedControl<bool> distance_cap_log(gSavedSettings, "AYATextureDistanceCapLog", true);
-    static LLCachedControl<bool> priority_control_enabled(gSavedSettings, "AYALoadingPriorityControlEnabled", false);
     static LLCachedControl<bool> backpressure_enabled(gSavedSettings, "AYATextureCreateBackpressureEnabled", true);
     static LLCachedControl<U32> backpressure_queue_limit(gSavedSettings, "AYATextureCreateBackpressureQueueLimit", 4096);
     static LLCachedControl<U32> backpressure_hard_limit(gSavedSettings, "AYATextureCreateBackpressureHardLimit", 8192);
@@ -2192,6 +2553,8 @@ F32 LLViewerTextureList::updateImagesCreateTextures(F32 max_time)
     static LLCachedControl<F32> priority_camera_turn_dot(gSavedSettings, "AYATextureCreatePriorityCameraTurnDot", 0.985f);
     static LLCachedControl<U32> priority_camera_scan_multiplier(gSavedSettings, "AYATextureCreatePriorityCameraMotionScanMultiplier", 3);
     static LLCachedControl<bool> priority_log(gSavedSettings, "AYATextureCreatePriorityLog", false);
+    static LLCachedControl<U32> scene_min_creates_per_frame(gSavedSettings, "AYATextureCreateSceneMinCreatesPerFrame", 1);
+    static LLCachedControl<U32> scene_scan_ahead(gSavedSettings, "AYATextureCreateSceneScanAhead", 128);
     static LLTimer texture_work_log_timer;
     static LLTimer create_priority_timer;
     static U32 s_created_textures = 0;
@@ -2205,20 +2568,29 @@ F32 LLViewerTextureList::updateImagesCreateTextures(F32 max_time)
     static U32 s_priority_middle_probe_offset = 0;
     static U32 s_max_create_queue = 0;
     static U32 s_max_downscale_queue = 0;
+    static U32 s_scene_reserved_creates = 0;
+    static U32 s_avatar_related_creates = 0;
+    static U32 s_scene_promoted_creates = 0;
     static bool s_priority_camera_initialized = false;
     static LLVector3 s_priority_camera_pos;
     static LLVector3 s_priority_camera_at;
 
-    const F32 loading_fps_guard_target_fps = llclamp(loading_fps_guard_min_fps(), 30.f, 288.f);
-    const bool loading_fps_guard =
-        loading_fps_guard_enabled &&
-        gFPSClamped < loading_fps_guard_target_fps;
-    const U32 effective_max_create_per_frame = loading_fps_guard ? guard_max_create_per_frame() : max_create_per_frame();
-    const U32 configured_max_downscale_per_frame = loading_fps_guard ? guard_max_downscale_per_frame() : max_downscale_per_frame();
-    const U32 effective_max_downscale_per_frame = configured_max_downscale_per_frame == 0 ? 0 : llmax(configured_max_downscale_per_frame, (U32)4);
-    const F32 effective_max_create_time_ms = loading_fps_guard ? guard_max_create_time_ms() : max_create_time_ms();
-    const F32 configured_max_downscale_time_ms = loading_fps_guard ? guard_max_downscale_time_ms() : max_downscale_time_ms();
-    const F32 effective_max_downscale_time_ms = llmax(configured_max_downscale_time_ms, 2.f);
+    const bool loading_texture_management = aya_texture_management_enabled();
+    static LLCachedControl<U32> texture_create_backlog_threshold(gSavedSettings, "AYALoadingDynamicResolutionTextureCreateBacklogThreshold", 24);
+    const bool create_guard_budget_active =
+        loading_texture_management &&
+        texture_create_backlog_threshold() > 0 &&
+        mCreateTextureList.size() >= texture_create_backlog_threshold();
+    const bool downscale_guard_budget_active =
+        loading_texture_management &&
+        texture_create_backlog_threshold() > 0 &&
+        mDownScaleQueue.size() >= texture_create_backlog_threshold();
+    const U32 effective_max_create_per_frame = create_guard_budget_active ? guard_max_create_per_frame() : max_create_per_frame();
+    const U32 configured_max_downscale_per_frame = downscale_guard_budget_active ? guard_max_downscale_per_frame() : max_downscale_per_frame();
+    const U32 effective_max_downscale_per_frame = configured_max_downscale_per_frame;
+    const F32 effective_max_create_time_ms = create_guard_budget_active ? guard_max_create_time_ms() : max_create_time_ms();
+    const F32 configured_max_downscale_time_ms = downscale_guard_budget_active ? guard_max_downscale_time_ms() : max_downscale_time_ms();
+    const F32 effective_max_downscale_time_ms = llmax(configured_max_downscale_time_ms, 0.001f);
 
     //
     // Create GL textures for all textures that need them (images which have been
@@ -2228,10 +2600,9 @@ F32 LLViewerTextureList::updateImagesCreateTextures(F32 max_time)
     LLTimer create_timer;
     const F32 create_budget = llmin(max_time, llmax(0.001f, effective_max_create_time_ms * 0.001f));
     U32 create_count = 0;
+    U32 scene_create_count = 0;
 
-    const bool loading_priority_control = priority_control_enabled();
-
-    if (loading_priority_control && backpressure_enabled() && !mCreateTextureList.empty())
+    if (loading_texture_management && backpressure_enabled() && !mCreateTextureList.empty())
     {
         const U32 queue_limit = llmax((U32)1, backpressure_queue_limit());
         const U32 hard_limit = llmax(queue_limit, backpressure_hard_limit());
@@ -2260,11 +2631,11 @@ F32 LLViewerTextureList::updateImagesCreateTextures(F32 max_time)
             image_queue_t middle_queue;
 
             auto process_backpressure_candidate =
-                [&](LLViewerFetchedTexture* imagep,
+                [&](LLPointer<LLViewerFetchedTexture> imagep,
                     std::vector<LLPointer<LLViewerFetchedTexture> >& kept_window,
                     U32& scanned_window)
                 {
-                    if (!imagep)
+                    if (imagep.isNull())
                     {
                         return;
                     }
@@ -2282,7 +2653,7 @@ F32 LLViewerTextureList::updateImagesCreateTextures(F32 max_time)
                     AYAPendingCreateRelease release_reason = AYA_PENDING_CREATE_KEEP;
                     AYAQueuedTextureBucket release_bucket = AYA_QUEUE_BUCKET_PROTECTED;
                     if (aya_texture_can_release_pending_create(
-                            imagep,
+                            imagep.get(),
                             llmax(0.f, backpressure_min_unreferenced_seconds()),
                             allow_distance_defer,
                             &release_reason,
@@ -2311,16 +2682,16 @@ F32 LLViewerTextureList::updateImagesCreateTextures(F32 max_time)
 
             for (U32 i = 0; !mCreateTextureList.empty() && i < front_scan_limit; ++i)
             {
-                LLViewerFetchedTexture* imagep = mCreateTextureList.front();
+                LLPointer<LLViewerFetchedTexture> imagep = mCreateTextureList.front();
                 mCreateTextureList.pop();
                 process_backpressure_candidate(imagep, kept_front_window, scanned_front);
             }
 
             for (U32 i = 0; !mCreateTextureList.empty() && i < middle_keep_count; ++i)
             {
-                LLViewerFetchedTexture* imagep = mCreateTextureList.front();
+                LLPointer<LLViewerFetchedTexture> imagep = mCreateTextureList.front();
                 mCreateTextureList.pop();
-                if (imagep)
+                if (imagep.notNull())
                 {
                     middle_queue.push(imagep);
                 }
@@ -2328,7 +2699,7 @@ F32 LLViewerTextureList::updateImagesCreateTextures(F32 max_time)
 
             for (U32 i = 0; !mCreateTextureList.empty() && i < tail_scan_limit; ++i)
             {
-                LLViewerFetchedTexture* imagep = mCreateTextureList.front();
+                LLPointer<LLViewerFetchedTexture> imagep = mCreateTextureList.front();
                 mCreateTextureList.pop();
                 process_backpressure_candidate(imagep, kept_tail_window, scanned_tail);
             }
@@ -2388,7 +2759,7 @@ F32 LLViewerTextureList::updateImagesCreateTextures(F32 max_time)
     bool priority_camera_motion = false;
     bool priority_camera_valid = false;
     const bool priority_reorder_candidate =
-        loading_priority_control &&
+        loading_texture_management &&
         priority_enabled() &&
         mCreateTextureList.size() >= llmax((U32)1, priority_min_queue());
     if (priority_reorder_candidate)
@@ -2464,10 +2835,10 @@ F32 LLViewerTextureList::updateImagesCreateTextures(F32 max_time)
 
         for (U32 i = 0; !mCreateTextureList.empty() && i < front_scan_count; ++i)
         {
-            LLViewerFetchedTexture* imagep = mCreateTextureList.front();
+            LLPointer<LLViewerFetchedTexture> imagep = mCreateTextureList.front();
             mCreateTextureList.pop();
 
-            if (!imagep || !imagep->mCreatePending)
+            if (imagep.isNull() || !imagep->mCreatePending)
             {
                 continue;
             }
@@ -2475,7 +2846,7 @@ F32 LLViewerTextureList::updateImagesCreateTextures(F32 max_time)
             AYAQueuedCreateTexture item;
             item.mImage = imagep;
             item.mSequence = sequence++;
-            item.mScore = aya_texture_create_priority_score(imagep, &item.mBucket);
+            item.mScore = aya_texture_create_priority_score(imagep.get(), &item.mBucket);
             item.mSource = AYA_QUEUE_SOURCE_FRONT;
             queued.push_back(item);
             ++bucket_counts[item.mBucket];
@@ -2483,9 +2854,9 @@ F32 LLViewerTextureList::updateImagesCreateTextures(F32 max_time)
 
         for (U32 i = 0; !mCreateTextureList.empty() && i < middle_before_count; ++i)
         {
-            LLViewerFetchedTexture* imagep = mCreateTextureList.front();
+            LLPointer<LLViewerFetchedTexture> imagep = mCreateTextureList.front();
             mCreateTextureList.pop();
-            if (imagep && imagep->mCreatePending)
+            if (imagep.notNull() && imagep->mCreatePending)
             {
                 middle_before_queue.push(imagep);
             }
@@ -2493,10 +2864,10 @@ F32 LLViewerTextureList::updateImagesCreateTextures(F32 max_time)
 
         for (U32 i = 0; !mCreateTextureList.empty() && i < middle_scan_count; ++i)
         {
-            LLViewerFetchedTexture* imagep = mCreateTextureList.front();
+            LLPointer<LLViewerFetchedTexture> imagep = mCreateTextureList.front();
             mCreateTextureList.pop();
 
-            if (!imagep || !imagep->mCreatePending)
+            if (imagep.isNull() || !imagep->mCreatePending)
             {
                 continue;
             }
@@ -2504,7 +2875,7 @@ F32 LLViewerTextureList::updateImagesCreateTextures(F32 max_time)
             AYAQueuedCreateTexture item;
             item.mImage = imagep;
             item.mSequence = sequence++;
-            item.mScore = aya_texture_create_priority_score(imagep, &item.mBucket);
+            item.mScore = aya_texture_create_priority_score(imagep.get(), &item.mBucket);
             item.mSource = AYA_QUEUE_SOURCE_MIDDLE;
             queued.push_back(item);
             ++bucket_counts[item.mBucket];
@@ -2512,9 +2883,9 @@ F32 LLViewerTextureList::updateImagesCreateTextures(F32 max_time)
 
         for (U32 i = 0; !mCreateTextureList.empty() && i < middle_after_count; ++i)
         {
-            LLViewerFetchedTexture* imagep = mCreateTextureList.front();
+            LLPointer<LLViewerFetchedTexture> imagep = mCreateTextureList.front();
             mCreateTextureList.pop();
-            if (imagep && imagep->mCreatePending)
+            if (imagep.notNull() && imagep->mCreatePending)
             {
                 middle_after_queue.push(imagep);
             }
@@ -2522,10 +2893,10 @@ F32 LLViewerTextureList::updateImagesCreateTextures(F32 max_time)
 
         for (U32 i = 0; !mCreateTextureList.empty() && i < tail_scan_count; ++i)
         {
-            LLViewerFetchedTexture* imagep = mCreateTextureList.front();
+            LLPointer<LLViewerFetchedTexture> imagep = mCreateTextureList.front();
             mCreateTextureList.pop();
 
-            if (!imagep || !imagep->mCreatePending)
+            if (imagep.isNull() || !imagep->mCreatePending)
             {
                 continue;
             }
@@ -2533,7 +2904,7 @@ F32 LLViewerTextureList::updateImagesCreateTextures(F32 max_time)
             AYAQueuedCreateTexture item;
             item.mImage = imagep;
             item.mSequence = sequence++;
-            item.mScore = aya_texture_create_priority_score(imagep, &item.mBucket);
+            item.mScore = aya_texture_create_priority_score(imagep.get(), &item.mBucket);
             item.mSource = AYA_QUEUE_SOURCE_TAIL;
             queued.push_back(item);
             ++bucket_counts[item.mBucket];
@@ -2640,6 +3011,97 @@ F32 LLViewerTextureList::updateImagesCreateTextures(F32 max_time)
         }
     }
 
+    auto pop_create_candidate =
+        [&](AYAQueuedTextureBucket& create_bucket, bool& scene_candidate, bool& avatar_candidate)
+            -> LLPointer<LLViewerFetchedTexture>
+        {
+            create_bucket = AYA_QUEUE_BUCKET_UNREFERENCED;
+            scene_candidate = false;
+            avatar_candidate = false;
+
+            const U32 scene_min = loading_texture_management && effective_max_create_per_frame > 1 ?
+                llmin(scene_min_creates_per_frame(), effective_max_create_per_frame - 1) :
+                0;
+            const U32 remaining_slots = effective_max_create_per_frame > create_count ?
+                effective_max_create_per_frame - create_count :
+                0;
+            const U32 scene_needed = scene_min > scene_create_count ? scene_min - scene_create_count : 0;
+            const bool must_find_scene = scene_needed > 0 && remaining_slots <= scene_needed;
+            if (!must_find_scene)
+            {
+                LLPointer<LLViewerFetchedTexture> imagep = mCreateTextureList.front();
+                mCreateTextureList.pop();
+                if (imagep.notNull())
+                {
+                    aya_texture_create_priority_score(imagep.get(), &create_bucket);
+                    avatar_candidate = aya_texture_is_avatar_related_create_candidate(imagep.get());
+                    scene_candidate = !avatar_candidate && create_bucket != AYA_QUEUE_BUCKET_UNREFERENCED;
+                }
+                return imagep;
+            }
+
+            image_queue_t deferred_queue;
+            LLPointer<LLViewerFetchedTexture> selected;
+            AYAQueuedTextureBucket selected_bucket = AYA_QUEUE_BUCKET_UNREFERENCED;
+            const U32 scan_limit = llmin((U32)mCreateTextureList.size(), llclamp((S32)scene_scan_ahead(), 1, 1024));
+            for (U32 i = 0; !mCreateTextureList.empty() && i < scan_limit; ++i)
+            {
+                LLPointer<LLViewerFetchedTexture> imagep = mCreateTextureList.front();
+                mCreateTextureList.pop();
+                AYAQueuedTextureBucket bucket = AYA_QUEUE_BUCKET_UNREFERENCED;
+                if (imagep.notNull())
+                {
+                    aya_texture_create_priority_score(imagep.get(), &bucket);
+                }
+                const bool is_avatar = imagep.notNull() && aya_texture_is_avatar_related_create_candidate(imagep.get());
+                const bool is_scene = !is_avatar && bucket != AYA_QUEUE_BUCKET_UNREFERENCED;
+                if (imagep.notNull() && imagep->mCreatePending && is_scene)
+                {
+                    selected = imagep;
+                    selected_bucket = bucket;
+                    scene_candidate = true;
+                    avatar_candidate = false;
+                    ++s_scene_promoted_creates;
+                    break;
+                }
+                deferred_queue.push(imagep);
+            }
+
+            image_queue_t rebuilt_queue;
+            while (!deferred_queue.empty())
+            {
+                rebuilt_queue.push(deferred_queue.front());
+                deferred_queue.pop();
+            }
+            while (!mCreateTextureList.empty())
+            {
+                rebuilt_queue.push(mCreateTextureList.front());
+                mCreateTextureList.pop();
+            }
+            mCreateTextureList.swap(rebuilt_queue);
+
+            if (selected.notNull())
+            {
+                create_bucket = selected_bucket;
+                return selected;
+            }
+
+            if (mCreateTextureList.empty())
+            {
+                return LLPointer<LLViewerFetchedTexture>();
+            }
+
+            LLPointer<LLViewerFetchedTexture> imagep = mCreateTextureList.front();
+            mCreateTextureList.pop();
+            if (imagep.notNull())
+            {
+                aya_texture_create_priority_score(imagep.get(), &create_bucket);
+                avatar_candidate = aya_texture_is_avatar_related_create_candidate(imagep.get());
+                scene_candidate = !avatar_candidate && create_bucket != AYA_QUEUE_BUCKET_UNREFERENCED;
+            }
+            return imagep;
+        };
+
     while (!mCreateTextureList.empty())
     {
         s_max_create_queue = llmax(s_max_create_queue, (U32)mCreateTextureList.size());
@@ -2649,10 +3111,15 @@ F32 LLViewerTextureList::updateImagesCreateTextures(F32 max_time)
             break;
         }
 
-        LLViewerFetchedTexture* imagep = mCreateTextureList.front();
-        llassert(imagep->mCreatePending);
+        bool scene_candidate = false;
+        bool avatar_candidate = false;
         AYAQueuedTextureBucket create_bucket = AYA_QUEUE_BUCKET_UNREFERENCED;
-        aya_texture_create_priority_score(imagep, &create_bucket);
+        LLPointer<LLViewerFetchedTexture> imagep = pop_create_candidate(create_bucket, scene_candidate, avatar_candidate);
+        if (imagep.isNull() || !imagep->mCreatePending)
+        {
+            continue;
+        }
+        llassert(imagep->mCreatePending);
 
         // desired discard may change while an image is being decoded. If the texture in VRAM is sufficient
         // for the current desired discard level, skip the texture creation.  This happens more often than it probably
@@ -2672,9 +3139,22 @@ F32 LLViewerTextureList::updateImagesCreateTextures(F32 max_time)
         imagep->postCreateTexture();
         imagep->mCreatePending = false;
         ++s_priority_created[create_bucket];
+        if (scene_candidate)
+        {
+            ++scene_create_count;
+            ++s_scene_reserved_creates;
+        }
+        if (avatar_candidate)
+        {
+            ++s_avatar_related_creates;
+        }
 
         if (imagep->hasGLTexture() && imagep->getDiscardLevel() < imagep->getDesiredDiscardLevel() &&
-           (imagep->getDesiredDiscardLevel() <= MAX_DISCARD_LEVEL))
+            imagep->getDesiredDiscardLevel() <= MAX_DISCARD_LEVEL &&
+            !aya_texture_protected_fttype(imagep.get()) &&
+            !aya_texture_protected_boost(imagep.get()) &&
+            !imagep->hasCallbacks() &&
+            !imagep->needsToSaveRawImage())
         {
             // NOTE: this may happen if the desired discard reduces while a decode is in progress and does not
             // necessarily indicate a problem, but if log occurrences excede that of dsiplay_stats: FPS,
@@ -2683,7 +3163,6 @@ F32 LLViewerTextureList::updateImagesCreateTextures(F32 max_time)
             imagep->scaleDown();
         }
 
-        mCreateTextureList.pop();
         ++create_count;
 
         if (create_timer.getElapsedTimeF32() > create_budget)
@@ -2722,11 +3201,19 @@ F32 LLViewerTextureList::updateImagesCreateTextures(F32 max_time)
                 break;
             }
 
-            LLViewerFetchedTexture* image = mDownScaleQueue.front();
+            LLPointer<LLViewerFetchedTexture> image = mDownScaleQueue.front();
+            if (image.isNull())
+            {
+                mDownScaleQueue.pop();
+                continue;
+            }
             llassert(image->mDownScalePending);
 
             LLImageGL* img = image->getGLTexture();
-            if (img && img->getHasGLTexture())
+            if (img &&
+                img->getHasGLTexture() &&
+                !aya_texture_protected_fttype(image.get()) &&
+                !aya_texture_protected_boost(image.get()))
             {
                 img->scaleDown(image->getDesiredDiscardLevel());
             }
@@ -2761,6 +3248,9 @@ F32 LLViewerTextureList::updateImagesCreateTextures(F32 max_time)
             << " created_offscreen=" << s_priority_created[AYA_QUEUE_BUCKET_OFFSCREEN]
             << " created_unreferenced=" << s_priority_created[AYA_QUEUE_BUCKET_UNREFERENCED]
             << " created_protected=" << s_priority_created[AYA_QUEUE_BUCKET_PROTECTED]
+            << " created_scene_reserved=" << s_scene_reserved_creates
+            << " created_avatar_related=" << s_avatar_related_creates
+            << " scene_promoted=" << s_scene_promoted_creates
             << " queued_near=" << s_priority_queued[AYA_QUEUE_BUCKET_NEAR]
             << " queued_mid=" << s_priority_queued[AYA_QUEUE_BUCKET_MID]
             << " queued_far=" << s_priority_queued[AYA_QUEUE_BUCKET_FAR]
@@ -2771,7 +3261,7 @@ F32 LLViewerTextureList::updateImagesCreateTextures(F32 max_time)
             << " downscale_queue_max=" << s_max_downscale_queue
             << " create_queue_now=" << mCreateTextureList.size()
             << " downscale_queue_now=" << mDownScaleQueue.size()
-            << " guard=" << (loading_fps_guard ? "true" : "false")
+            << " texture_management=" << (loading_texture_management ? "true" : "false")
             << " downscale_limit=" << effective_max_downscale_per_frame
             << " downscale_time_ms=" << effective_max_downscale_time_ms
             << " fps=" << gFPSClamped
@@ -2789,6 +3279,9 @@ F32 LLViewerTextureList::updateImagesCreateTextures(F32 max_time)
         }
         s_max_create_queue = 0;
         s_max_downscale_queue = 0;
+        s_scene_reserved_creates = 0;
+        s_avatar_related_creates = 0;
+        s_scene_promoted_creates = 0;
         texture_work_log_timer.reset();
     }
 
@@ -2846,8 +3339,9 @@ F32 LLViewerTextureList::updateImagesFetchTextures(F32 max_time)
 
     typedef std::vector<LLPointer<LLViewerFetchedTexture> > entries_list_t;
     entries_list_t entries;
-    static LLCachedControl<F32> loading_fps_guard_min_fps(gSavedSettings, "AYALoadingFPSGuardMinFPS", 30.f);
-    static LLCachedControl<bool> memory_relief_enabled(gSavedSettings, "AYALoadingTextureMemoryReliefEnabled", false);
+    static LLCachedControl<F32> texture_downscale_strength(gSavedSettings, "AYALoadingTextureDownscaleStrength", 0.f);
+    static LLCachedControl<bool> distance_cap_enabled(gSavedSettings, "AYATextureDistanceCapEnabled", true);
+    static LLCachedControl<bool> offscreen_cap_enabled(gSavedSettings, "AYATextureOffscreenCapEnabled", true);
     static LLCachedControl<bool> memory_sweep_enabled(gSavedSettings, "AYATextureMemorySweepEnabled", true);
     static LLCachedControl<U32> memory_sweep_scan_per_frame(gSavedSettings, "AYATextureMemorySweepScanPerFrame", 256);
     static LLCachedControl<U32> memory_sweep_destroy_gl_per_frame(gSavedSettings, "AYATextureMemorySweepDestroyGLPerFrame", 16);
@@ -2856,7 +3350,6 @@ F32 LLViewerTextureList::updateImagesFetchTextures(F32 max_time)
     static LLCachedControl<bool> memory_sweep_destroy_far_offscreen_gl(gSavedSettings, "AYATextureMemorySweepDestroyFarOffscreenGLEnabled", false);
     static LLCachedControl<F32> memory_sweep_destroy_far_offscreen_min_seconds(gSavedSettings, "AYATextureMemorySweepDestroyFarOffscreenMinSeconds", 12.f);
     static LLCachedControl<F32> memory_sweep_min_unreferenced_seconds(gSavedSettings, "AYATextureMemorySweepMinUnreferencedSeconds", 8.f);
-    static LLCachedControl<F32> memory_sweep_fps_ratio(gSavedSettings, "AYATextureMemorySweepFPSRatio", 0.75f);
     static LLCachedControl<U32> memory_sweep_min_physical_mb(gSavedSettings, "AYATextureMemorySweepMinPhysicalMB", 7168);
     static LLCachedControl<bool> memory_sweep_log(gSavedSettings, "AYATextureMemorySweepLog", true);
     static LLTextureKey s_memory_sweep_last_key;
@@ -2869,6 +3362,13 @@ F32 LLViewerTextureList::updateImagesFetchTextures(F32 max_time)
     static U32 s_memory_sweep_unreferenced = 0;
     static U32 s_memory_sweep_offscreen = 0;
     static U32 s_memory_sweep_far = 0;
+    static U32 s_memory_sweep_cap_candidates = 0;
+    static S32 s_last_downscale_strength_level = -1;
+    static bool s_last_texture_management_active = false;
+    static bool s_force_strength_sweep = false;
+    static U32 s_force_strength_sweep_remaining = 0;
+    static U32 s_force_strength_sweep_retry_frames = 0;
+    static std::set<LLTextureKey> s_force_strength_sweep_retry_keys;
 
     // update N textures at beginning of mImageList
     U32 update_count = 0;
@@ -2932,66 +3432,232 @@ F32 LLViewerTextureList::updateImagesFetchTextures(F32 max_time)
         }
     }
 
-    const F32 loading_fps_guard_target_fps = llclamp(loading_fps_guard_min_fps(), 30.f, 288.f);
-    const F32 fps_ratio = loading_fps_guard_target_fps > 0.f ?
-        llclamp(gFPSClamped / loading_fps_guard_target_fps, 0.f, 1.f) :
-        1.f;
-    const bool fps_pressure =
-        gFPSClamped < loading_fps_guard_target_fps &&
-        fps_ratio <= llclamp(memory_sweep_fps_ratio(), 0.1f, 1.f);
     const U32 physical_mb = (U32)(LLMemory::getCurrentRSS() / (1024ULL * 1024ULL));
     const bool memory_pressure =
         memory_sweep_min_physical_mb() > 0 &&
         physical_mb >= memory_sweep_min_physical_mb();
+    const S32 downscale_strength_level = aya_texture_downscale_strength_level(texture_downscale_strength());
+    const bool texture_management_active =
+        aya_texture_management_enabled() &&
+        memory_sweep_enabled();
+    if (!texture_management_active)
+    {
+        s_force_strength_sweep = false;
+        s_force_strength_sweep_remaining = 0;
+        s_force_strength_sweep_retry_frames = 0;
+        s_force_strength_sweep_retry_keys.clear();
+    }
+    const bool texture_management_rising =
+        texture_management_active && !s_last_texture_management_active;
+    s_last_texture_management_active = texture_management_active;
+    if (s_last_downscale_strength_level < 0)
+    {
+        if (texture_management_active &&
+            downscale_strength_level > 0)
+        {
+            s_force_strength_sweep = true;
+            s_force_strength_sweep_remaining = (U32)mUUIDMap.size();
+            s_force_strength_sweep_retry_frames = 0;
+            s_force_strength_sweep_retry_keys.clear();
+            LL_INFOS("AYATextureCap")
+                << "memory_sweep event=strength_initial"
+                << " level=" << downscale_strength_level
+                << " sweep_remaining=" << s_force_strength_sweep_remaining
+                << LL_ENDL;
+        }
+        s_last_downscale_strength_level = downscale_strength_level;
+    }
+    else if (texture_management_rising &&
+             downscale_strength_level > 0)
+    {
+        s_force_strength_sweep = true;
+        s_force_strength_sweep_remaining = (U32)mUUIDMap.size();
+        s_force_strength_sweep_retry_frames = 0;
+        s_force_strength_sweep_retry_keys.clear();
+        LL_INFOS("AYATextureCap")
+            << "memory_sweep event=strength_enable"
+            << " level=" << downscale_strength_level
+            << " sweep_remaining=" << s_force_strength_sweep_remaining
+            << LL_ENDL;
+        s_last_downscale_strength_level = downscale_strength_level;
+    }
+    else if (texture_management_active &&
+             downscale_strength_level > s_last_downscale_strength_level)
+    {
+        s_force_strength_sweep = true;
+        s_force_strength_sweep_remaining = (U32)mUUIDMap.size();
+        s_force_strength_sweep_retry_frames = 0;
+        s_force_strength_sweep_retry_keys.clear();
+        LL_INFOS("AYATextureCap")
+            << "memory_sweep event=strength_increase"
+            << " from=" << s_last_downscale_strength_level
+            << " to=" << downscale_strength_level
+            << " sweep_remaining=" << s_force_strength_sweep_remaining
+            << LL_ENDL;
+        s_last_downscale_strength_level = downscale_strength_level;
+    }
+    else if (downscale_strength_level != s_last_downscale_strength_level)
+    {
+        s_last_downscale_strength_level = downscale_strength_level;
+    }
+    const bool cap_kill_switch_active = distance_cap_enabled() || offscreen_cap_enabled();
+    if (downscale_strength_level <= 0 ||
+        !cap_kill_switch_active ||
+        (s_force_strength_sweep_remaining == 0 && s_force_strength_sweep_retry_keys.empty()))
+    {
+        s_force_strength_sweep = false;
+        s_force_strength_sweep_remaining = 0;
+        s_force_strength_sweep_retry_frames = 0;
+        s_force_strength_sweep_retry_keys.clear();
+    }
+    const bool strength_change_pressure =
+        s_force_strength_sweep &&
+        downscale_strength_level > 0 &&
+        cap_kill_switch_active;
+    const bool cap_enforcement_pressure =
+        downscale_strength_level > 0 &&
+        cap_kill_switch_active &&
+        (memory_pressure || strength_change_pressure);
     const bool run_memory_sweep =
-        memory_relief_enabled() &&
+        aya_texture_management_enabled() &&
         memory_sweep_enabled() &&
-        (fps_pressure || memory_pressure) &&
+        (memory_pressure || strength_change_pressure || cap_enforcement_pressure) &&
         !mUUIDMap.empty();
 
     if (run_memory_sweep)
     {
-        const U32 scan_budget = llclamp((S32)memory_sweep_scan_per_frame(), 1, 8192);
-        const U32 gl_destroy_budget = llclamp((S32)memory_sweep_destroy_gl_per_frame(), 0, 1024);
-        const U32 raw_destroy_budget = llclamp((S32)memory_sweep_destroy_raw_per_frame(), 0, 4096);
-        const U32 scale_down_budget = llclamp((S32)memory_sweep_scale_down_per_frame(), 0, 4096);
+        const U32 force_multiplier = strength_change_pressure ? (U32)llclamp(downscale_strength_level, 1, 5) : 1;
+        const U32 scan_budget = strength_change_pressure ?
+            llclamp((S32)llmax(memory_sweep_scan_per_frame(), 512 * force_multiplier), 1, 8192) :
+            llclamp((S32)memory_sweep_scan_per_frame(), 1, 8192);
+        const U32 gl_destroy_budget = strength_change_pressure ?
+            llclamp((S32)llmax(memory_sweep_destroy_gl_per_frame(), 16 * force_multiplier), 0, 1024) :
+            llclamp((S32)memory_sweep_destroy_gl_per_frame(), 0, 1024);
+        const U32 raw_destroy_budget = strength_change_pressure ?
+            llclamp((S32)llmax(memory_sweep_destroy_raw_per_frame(), 128 * force_multiplier), 0, 4096) :
+            llclamp((S32)memory_sweep_destroy_raw_per_frame(), 0, 4096);
+        const U32 scale_down_budget = downscale_strength_level > 0 ?
+            (strength_change_pressure ?
+                llclamp((S32)memory_sweep_scale_down_per_frame(), 0, 4096) :
+                llclamp((S32)memory_sweep_scale_down_per_frame(), 0, 4096)) :
+            0;
         static LLCachedControl<F32> far_distance_m(gSavedSettings, "AYATextureDistanceCapFarMeters", 50.f);
+        static LLCachedControl<F32> near_distance_m(gSavedSettings, "AYATextureDistanceCapNearMeters", 10.f);
 
         U32 scanned = 0;
+        U32 primary_scanned = 0;
         U32 destroyed_gl = 0;
         U32 destroyed_raw = 0;
         U32 scaled_down = 0;
         U32 skipped = 0;
-        U32 bucket_counts[4] = {};
+        U32 deferred_strength = 0;
+        U32 bucket_counts[5] = {};
         uuid_map_t::iterator iter = mUUIDMap.upper_bound(s_memory_sweep_last_key);
+        const U32 retry_budget = strength_change_pressure ?
+            llmin((U32)s_force_strength_sweep_retry_keys.size(), llmax((U32)1, scan_budget / 4)) :
+            0;
         while (scanned < scan_budget && !mUUIDMap.empty())
         {
-            if (iter == mUUIDMap.end())
+            bool retry_entry = false;
+            LLTextureKey image_key;
+            LLPointer<LLViewerFetchedTexture> imagep;
+            if (strength_change_pressure &&
+                s_force_strength_sweep_remaining == 0 &&
+                scanned < retry_budget &&
+                !s_force_strength_sweep_retry_keys.empty())
             {
-                iter = mUUIDMap.begin();
+                std::set<LLTextureKey>::iterator retry_iter = s_force_strength_sweep_retry_keys.begin();
+                image_key = *retry_iter;
+                s_force_strength_sweep_retry_keys.erase(retry_iter);
+                uuid_map_t::iterator found = mUUIDMap.find(image_key);
+                if (found == mUUIDMap.end())
+                {
+                    ++scanned;
+                    continue;
+                }
+                imagep = found->second;
+                retry_entry = true;
+            }
+            else if (s_force_strength_sweep_remaining > 0 || !strength_change_pressure)
+            {
+                if (iter == mUUIDMap.end())
+                {
+                    iter = mUUIDMap.begin();
+                }
+
+                image_key = iter->first;
+                imagep = iter->second;
+                s_memory_sweep_last_key = image_key;
+                ++iter;
+                ++primary_scanned;
+            }
+            else
+            {
+                break;
             }
 
-            LLPointer<LLViewerFetchedTexture> imagep = iter->second;
-            s_memory_sweep_last_key = iter->first;
-            ++iter;
             ++scanned;
 
-            const AYAMemorySweepBucket bucket = aya_texture_memory_sweep_bucket(
+            AYAMemorySweepBucket bucket = aya_texture_memory_sweep_bucket(
                 imagep,
+                near_distance_m(),
                 far_distance_m(),
                 memory_sweep_min_unreferenced_seconds());
             if (bucket == AYA_MEMORY_SWEEP_KEEP)
             {
-                ++skipped;
-                continue;
+                if (cap_enforcement_pressure &&
+                    aya_texture_can_enter_strength_sweep(imagep))
+                {
+                    bucket = AYA_MEMORY_SWEEP_CAP_CANDIDATE;
+                }
+                else
+                {
+                    if (strength_change_pressure &&
+                        aya_texture_strength_sweep_should_retry_later(imagep))
+                    {
+                        ++deferred_strength;
+                        if (s_force_strength_sweep_retry_keys.size() < 8192)
+                        {
+                            s_force_strength_sweep_retry_keys.insert(image_key);
+                        }
+                    }
+                    ++skipped;
+                    continue;
+                }
             }
 
             ++bucket_counts[bucket];
 
-            if (imagep->hasSavedRawImage() && destroyed_raw < raw_destroy_budget)
+            auto destroy_raw_if_budget_allows =
+                [&]()
+                {
+                    bool destroyed_all_raw = true;
+                    if (imagep->hasSavedRawImage() &&
+                        destroyed_raw < raw_destroy_budget)
+                    {
+                        imagep->destroySavedRawImage();
+                        ++destroyed_raw;
+                    }
+                    if (imagep->hasSavedRawImage())
+                    {
+                        destroyed_all_raw = false;
+                    }
+                    if (imagep->getRawImage() &&
+                        destroyed_raw < raw_destroy_budget)
+                    {
+                        imagep->destroyRawImage();
+                        ++destroyed_raw;
+                    }
+                    if (imagep->getRawImage())
+                    {
+                        destroyed_all_raw = false;
+                    }
+                    return destroyed_all_raw;
+                };
+
+            if (bucket != AYA_MEMORY_SWEEP_CAP_CANDIDATE)
             {
-                imagep->destroySavedRawImage();
-                ++destroyed_raw;
+                destroy_raw_if_budget_allows();
             }
 
             if (bucket == AYA_MEMORY_SWEEP_UNREFERENCED &&
@@ -3020,14 +3686,38 @@ F32 LLViewerTextureList::updateImagesFetchTextures(F32 max_time)
                 continue;
             }
 
-            if ((bucket == AYA_MEMORY_SWEEP_OFFSCREEN || bucket == AYA_MEMORY_SWEEP_FAR) &&
+            if ((bucket == AYA_MEMORY_SWEEP_OFFSCREEN ||
+                 bucket == AYA_MEMORY_SWEEP_FAR ||
+                 bucket == AYA_MEMORY_SWEEP_CAP_CANDIDATE) &&
                 imagep->hasGLTexture() &&
                 imagep->getDiscardLevel() >= 0 &&
-                imagep->getDiscardLevel() < MAX_DISCARD_LEVEL &&
-                scaled_down < scale_down_budget)
+                imagep->getDiscardLevel() < MAX_DISCARD_LEVEL)
             {
+                if (scaled_down >= scale_down_budget)
+                {
+                    if (strength_change_pressure &&
+                        bucket == AYA_MEMORY_SWEEP_CAP_CANDIDATE &&
+                        s_force_strength_sweep_retry_keys.size() < 8192)
+                    {
+                        s_force_strength_sweep_retry_keys.insert(image_key);
+                        ++deferred_strength;
+                    }
+                    ++skipped;
+                    continue;
+                }
                 imagep->mMaxVirtualSize = 0.f;
-                imagep->processTextureStats();
+                if (bucket == AYA_MEMORY_SWEEP_CAP_CANDIDATE)
+                {
+                    updateImageDecodePriority(imagep, false, false);
+                    if (imagep->isDeleted() || !imagep->isInImageList())
+                    {
+                        continue;
+                    }
+                }
+                else
+                {
+                    imagep->processTextureStats();
+                }
                 if (imagep->scaleDown())
                 {
                     ++scaled_down;
@@ -3043,20 +3733,42 @@ F32 LLViewerTextureList::updateImagesFetchTextures(F32 max_time)
         s_memory_sweep_unreferenced += bucket_counts[AYA_MEMORY_SWEEP_UNREFERENCED];
         s_memory_sweep_offscreen += bucket_counts[AYA_MEMORY_SWEEP_OFFSCREEN];
         s_memory_sweep_far += bucket_counts[AYA_MEMORY_SWEEP_FAR];
+        s_memory_sweep_cap_candidates += bucket_counts[AYA_MEMORY_SWEEP_CAP_CANDIDATE];
+        if (strength_change_pressure)
+        {
+            const U32 consumed = primary_scanned >= s_force_strength_sweep_remaining ? s_force_strength_sweep_remaining : primary_scanned;
+            s_force_strength_sweep_remaining -= consumed;
+            if (!s_force_strength_sweep_retry_keys.empty() && s_force_strength_sweep_retry_frames < 60)
+            {
+                ++s_force_strength_sweep_retry_frames;
+            }
+            else if ((s_force_strength_sweep_remaining == 0 && s_force_strength_sweep_retry_keys.empty()) ||
+                     s_force_strength_sweep_retry_frames >= 60)
+            {
+                s_force_strength_sweep = false;
+                s_force_strength_sweep_remaining = 0;
+                s_force_strength_sweep_retry_frames = 0;
+                s_force_strength_sweep_retry_keys.clear();
+            }
+        }
     }
 
     if (memory_sweep_log() && s_memory_sweep_log_timer.getElapsedTimeF32() >= 10.f)
     {
         LL_INFOS("AYATextureCap")
             << "memory_sweep_stats"
-            << " master_enabled=" << (memory_relief_enabled() ? "true" : "false")
+            << " texture_management_enabled=" << (aya_texture_management_enabled() ? "true" : "false")
             << " enabled=" << (memory_sweep_enabled() ? "true" : "false")
             << " active=" << (run_memory_sweep ? "true" : "false")
-            << " fps_pressure=" << (fps_pressure ? "true" : "false")
             << " memory_pressure=" << (memory_pressure ? "true" : "false")
+            << " strength_change_pressure=" << (strength_change_pressure ? "true" : "false")
+            << " strength_sweep_remaining=" << s_force_strength_sweep_remaining
+            << " strength_sweep_retry_frames=" << s_force_strength_sweep_retry_frames
+            << " strength_sweep_retry_keys=" << s_force_strength_sweep_retry_keys.size()
+            << " cap_enforcement_pressure=" << (cap_enforcement_pressure ? "true" : "false")
             << " physical_mb=" << physical_mb
-            << " target_fps=" << loading_fps_guard_target_fps
             << " fps=" << gFPSClamped
+            << " downscale_strength_level=" << downscale_strength_level
             << " scanned=" << s_memory_sweep_scanned
             << " destroyed_gl=" << s_memory_sweep_destroyed_gl
             << " destroyed_raw=" << s_memory_sweep_destroyed_raw
@@ -3065,6 +3777,7 @@ F32 LLViewerTextureList::updateImagesFetchTextures(F32 max_time)
             << " unreferenced=" << s_memory_sweep_unreferenced
             << " offscreen=" << s_memory_sweep_offscreen
             << " far=" << s_memory_sweep_far
+            << " cap_candidates=" << s_memory_sweep_cap_candidates
             << " image_count=" << mUUIDMap.size()
             << LL_ENDL;
         s_memory_sweep_scanned = 0;
@@ -3075,6 +3788,7 @@ F32 LLViewerTextureList::updateImagesFetchTextures(F32 max_time)
         s_memory_sweep_unreferenced = 0;
         s_memory_sweep_offscreen = 0;
         s_memory_sweep_far = 0;
+        s_memory_sweep_cap_candidates = 0;
         s_memory_sweep_log_timer.reset();
     }
 
