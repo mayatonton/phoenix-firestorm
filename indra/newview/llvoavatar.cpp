@@ -1422,8 +1422,8 @@ void LLVOAvatar::initCloud()
 
 void LLVOAvatar::applyCloudColor()
 {
-    const auto start = gSavedSettings.getControl("FSCloudColorStart");
-    const auto end = gSavedSettings.getControl("FSCloudColorEnd");
+    auto start = gSavedSettings.getControl("FSCloudColorStart");
+    auto end = gSavedSettings.getControl("FSCloudColorEnd");
     auto& particles = sCloud.mPartData;
     particles.mStartColor = start->isDefault() ? sLoadedCloudStartColor : gSavedSettings.getColor4("FSCloudColorStart");
     particles.mEndColor = end->isDefault() ? sLoadedCloudEndColor : gSavedSettings.getColor4("FSCloudColorEnd");
