@@ -93,6 +93,7 @@
 #include "llviewerwindow.h"
 #include "llvoavatarself.h"
 #include "llwearablelist.h"
+#include "llwindow.h"
 // [RLVa:KB] - Checked: 2011-05-22 (RLVa-1.3.1a)
 #include "rlvactions.h"
 #include "rlvhandler.h"
@@ -3547,6 +3548,20 @@ void LLInventoryAction::doToSelected(LLInventoryModel* model, LLFolderView* root
             LLClipboard::instance().reset();
         }
 
+        return;
+    }
+
+    if (action == "copy_name")
+    {
+        if (selected_items.size() == 1)
+        {
+            const auto* item = dynamic_cast<const LLFolderViewModelItemInventory*>((*selected_items.begin())->getViewModelItem());
+            const LLInventoryObject* object = item ? model->getObject(item->getUUID()) : nullptr;
+            if (object)
+            {
+                gViewerWindow->getWindow()->copyTextToClipboard(utf8str_to_wstring(object->getName()));
+            }
+        }
         return;
     }
 

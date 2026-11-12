@@ -890,6 +890,10 @@ void LLInvFVBridge::getClipboardEntries(bool show_asset_id,
             items.push_back(std::string("Copy Separator"));
         }
         items.push_back(std::string("Copy"));
+        if (mRoot && mRoot->getSelectedCount() == 1)
+        {
+            items.push_back("Copy Name");
+        }
 // [SL:KB] - Patch: Inventory-Links | Checked: 2010-04-12 (Catznip-2.0)
         if (!isItemCopyable() && !isItemLinkable())
 // [/SL:KB]
@@ -5203,6 +5207,12 @@ void LLFolderBridge::buildContextMenuOptions(U32 flags, menuentry_vec_t&   items
         }
     }
 
+    if (mRoot && mRoot->getSelectedCount() == 1 && getCategory()
+        && std::find(items.begin(), items.end(), "Copy Name") == items.end())
+    {
+        items.push_back("Copy Name");
+    }
+
     // Preemptively disable system folder removal if more than one item selected.
     if ((flags & FIRST_SELECTED_ITEM) == 0)
     {
@@ -8981,6 +8991,10 @@ void LLLinkFolderBridge::buildContextMenu(LLMenuGL& menu, U32 flags)
         {
             items.push_back(std::string("Add to Favorites"));
         }
+    }
+    if ((flags & ITEM_IN_MULTI_SELECTION) == 0 && getItem())
+    {
+        items.push_back("Copy Name");
     }
     hide_context_entries(menu, items, disabled_items);
 }

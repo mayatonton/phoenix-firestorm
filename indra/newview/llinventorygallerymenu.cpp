@@ -133,6 +133,8 @@ LLContextMenu* LLInventoryGalleryContextMenu::createMenu()
 
 void LLInventoryGalleryContextMenu::doToSelected(const LLSD& userdata)
 {
+    if (mUUIDs.empty()) return;
+
     std::string action = userdata.asString();
     LLInventoryObject* obj = gInventory.getObject(mUUIDs.front());
     if(!obj) return;
@@ -186,6 +188,15 @@ void LLInventoryGalleryContextMenu::doToSelected(const LLSD& userdata)
             gViewerWindow->getWindow()->copyTextToClipboard(utf8str_to_wstring(buffer));
         }
     }
+    // <FS:MJR> [FIRE-36793] - Inventory Context Menu - Add "Copy Name"
+    else if ("copy_name" == action)
+    {
+        if (!mRootFolder && mUUIDs.size() == 1)
+        {
+            gViewerWindow->getWindow()->copyTextToClipboard(utf8str_to_wstring(obj->getName()));
+        }
+    }
+    // </FS:MJR> [FIRE-36793]
     else if ("purge" == action)
     {
         for (LLUUID& selected_id : mUUIDs)
@@ -598,6 +609,10 @@ void LLInventoryGalleryContextMenu::updateMenuItemsVisibility(LLContextMenu* men
 
     std::vector<std::string> items;
     std::vector<std::string> disabled_items;
+    if (!mRootFolder && mUUIDs.size() == 1)
+    {
+        items.push_back("Copy Name");
+    }
 
     bool is_agent_inventory = gInventory.isObjectDescendentOf(selected_id, gInventory.getRootFolderID());
     bool is_link = obj->getIsLinkType();
