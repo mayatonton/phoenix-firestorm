@@ -215,9 +215,9 @@ void FSFloaterWearableFavorites::draw()
     mRemoveItemBtn->setEnabled(mItemsList->numSelected() > 0);
     const auto* folder = getFavoriteSubfolder(mSelectedFolderID);
     mRenameFolderBtn->setEnabled(folder && (!RlvActions::isRlvEnabled() ||
-        gRlvFolderLocks.canRenameFolder(mSelectedFolderID)));
+        RlvFolderLocks::instance().canRenameFolder(mSelectedFolderID)));
     mDeleteFolderBtn->setEnabled(folder && !gInventory.getProtectedCategories().count(mSelectedFolderID) &&
-        (!RlvActions::isRlvEnabled() || gRlvFolderLocks.canRemoveFolder(mSelectedFolderID)));
+        (!RlvActions::isRlvEnabled() || RlvFolderLocks::instance().canRemoveFolder(mSelectedFolderID)));
 }
 
 //virtual
@@ -463,7 +463,7 @@ void FSFloaterWearableFavorites::assignFavoriteLinks(const LLUUID& folder_id, co
 {
     const LLUUID root = sFolderID;
     if (!(getFavoriteSubfolder(folder_id) || (folder_id == root && gInventory.getCategory(root))) ||
-        (RlvActions::isRlvEnabled() && gRlvFolderLocks.isLockedFolder(folder_id, RLV_LOCK_ADD)))
+        (RlvActions::isRlvEnabled() && RlvFolderLocks::instance().isLockedFolder(folder_id, RLV_LOCK_ADD)))
     {
         return;
     }
@@ -481,7 +481,7 @@ void FSFloaterWearableFavorites::assignFavoriteLinks(const LLUUID& folder_id, co
     {
         const auto* item = gInventory.getItem(id);
         if (!item || (move && (!is_favorite_link(item, root) || item->getParentUUID() == folder_id ||
-            pending->moves.count(id) || (RlvActions::isRlvEnabled() && !gRlvFolderLocks.canMoveItem(id, folder_id)))))
+            pending->moves.count(id) || (RlvActions::isRlvEnabled() && !RlvFolderLocks::instance().canMoveItem(id, folder_id)))))
         {
             continue;
         }
@@ -514,7 +514,7 @@ void FSFloaterWearableFavorites::assignFavoriteLinks(const LLUUID& folder_id, co
             if (sFolderID == root && getFavoriteSubfolder(folder_id) &&
                 is_favorite_link(source, root) && source->getParentUUID() == source_folder &&
                 source->getLinkedUUID() == linked_id && folder_contains_favorite(folder_id, linked_id) &&
-                (!RlvActions::isRlvEnabled() || gRlvFolderLocks.canMoveItem(id, folder_id)))
+                (!RlvActions::isRlvEnabled() || RlvFolderLocks::instance().canMoveItem(id, folder_id)))
             {
                 remove_inventory_item(id, move_completion);
             }
@@ -588,7 +588,7 @@ void FSFloaterWearableFavorites::handleRemove()
     for (const LLUUID& id : selected_ids)
     {
         if (is_favorite_link(gInventory.getItem(id), sFolderID) &&
-            (!RlvActions::isRlvEnabled() || gRlvFolderLocks.canRemoveItem(id)))
+            (!RlvActions::isRlvEnabled() || RlvFolderLocks::instance().canRemoveItem(id)))
         {
             remove_inventory_item(id, nullptr);
         }
@@ -642,7 +642,7 @@ void FSFloaterWearableFavorites::onNewFolder()
         {
             if (handle.isDead() || LLNotificationsUtil::getSelectedOption(notification, response) != 0 ||
                 sFolderID != root || !gInventory.getCategory(root) ||
-                (RlvActions::isRlvEnabled() && gRlvFolderLocks.isLockedFolder(root, RLV_LOCK_ADD)))
+                (RlvActions::isRlvEnabled() && RlvFolderLocks::instance().isLockedFolder(root, RLV_LOCK_ADD)))
             {
                 return false;
             }
@@ -668,7 +668,7 @@ void FSFloaterWearableFavorites::onRenameFolder()
 {
     const LLUUID id = mSelectedFolderID;
     const auto* folder = getFavoriteSubfolder(id);
-    if (!folder || (RlvActions::isRlvEnabled() && !gRlvFolderLocks.canRenameFolder(id)))
+    if (!folder || (RlvActions::isRlvEnabled() && !RlvFolderLocks::instance().canRenameFolder(id)))
     {
         return;
     }
@@ -680,7 +680,7 @@ void FSFloaterWearableFavorites::onRenameFolder()
         [id, handle](const LLSD& notification, const LLSD& response)
         {
             if (LLNotificationsUtil::getSelectedOption(notification, response) != 0 || !getFavoriteSubfolder(id) ||
-                (RlvActions::isRlvEnabled() && !gRlvFolderLocks.canRenameFolder(id)))
+                (RlvActions::isRlvEnabled() && !RlvFolderLocks::instance().canRenameFolder(id)))
             {
                 return false;
             }
@@ -706,7 +706,7 @@ static bool can_delete_favorite_folder(const LLUUID& id)
 {
     const auto& protected_folders = gInventory.getProtectedCategories();
     if (!gInventory.isCategoryComplete(id) || protected_folders.count(id) ||
-        (RlvActions::isRlvEnabled() && !gRlvFolderLocks.canRemoveFolder(id)))
+        (RlvActions::isRlvEnabled() && !RlvFolderLocks::instance().canRemoveFolder(id)))
     {
         return false;
     }
