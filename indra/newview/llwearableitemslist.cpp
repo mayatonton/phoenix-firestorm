@@ -28,6 +28,8 @@
 
 #include "llwearableitemslist.h"
 
+#include "fsfloaterwearablefavorites.h"
+
 #include "lliconctrl.h"
 #include "llmenugl.h" // for LLContextMenu
 
@@ -1130,6 +1132,34 @@ void LLWearableItemsList::ContextMenu::show(LLView* spawning_view, LLWearableTyp
     mParent = NULL; // to avoid dereferencing an invalid pointer
 }
 
+static void populate_favorite_folder_menu(LLContextMenu* menu, const char* name, const uuid_vec_t& ids, bool move)
+{
+    auto* branch = menu->findChild<LLContextMenuBranch>(name, false);
+    auto* submenu = branch ? branch->getBranch() : nullptr;
+    if (!submenu)
+    {
+        return;
+    }
+
+    if (!ids.empty())
+    {
+        for (const auto& folder : FSFloaterWearableFavorites::getFavoriteSubfolders())
+        {
+            const LLUUID id = folder->getUUID();
+            LLMenuItemCallGL::Params params;
+            params.name = id.asString();
+            params.label = folder->getName();
+            auto* entry = LLUICtrlFactory::create<LLMenuItemCallGL>(params);
+            entry->setCommitCallback([id, ids, move](LLUICtrl*, const LLSD&)
+            {
+                FSFloaterWearableFavorites::assignFavoriteLinks(id, ids, move);
+            });
+            submenu->addChild(entry);
+        }
+    }
+    branch->setVisible(submenu->getChildCount() != 0);
+}
+
 // virtual
 LLContextMenu* LLWearableItemsList::ContextMenu::createMenu()
 {
@@ -1167,6 +1197,17 @@ LLContextMenu* LLWearableItemsList::ContextMenu::createMenu()
 
     // Create the menu.
     LLContextMenu* menu = createFromFile("menu_wearable_list_item.xml");
+    if (menu)
+    {
+        populate_favorite_folder_menu(menu, "favorites_assign_folder", ids, false);
+        uuid_vec_t movable_ids;
+        if (dynamic_cast<FSWearableFavoritesItemsList*>(mParent))
+        {
+            std::copy_if(ids.begin(), ids.end(), std::back_inserter(movable_ids),
+                         FSFloaterWearableFavorites::canMoveFavoriteLink);
+        }
+        populate_favorite_folder_menu(menu, "favorites_move_folder", movable_ids, true);
+    }
 
     // Determine which items should be visible/enabled.
     updateItemsVisibility(menu);

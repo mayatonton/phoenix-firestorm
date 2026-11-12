@@ -29,11 +29,13 @@
 #define FS_FLOATERWEARABLEFAVORITES_H
 
 #include "llfloater.h"
+#include "llinventorymodel.h"
 #include "llviewerinventory.h"
 #include "llwearableitemslist.h"
 #include <optional>
 
 class LLButton;
+class LLComboBox;
 class LLFilterEditor;
 class LLMenuButton;
 class LLInventoryCategoriesObserver;
@@ -84,35 +86,48 @@ public:
 
     static void initCategory(inventory_func_type callback = no_op_inventory_func);
     static LLUUID getFavoritesFolder();
+    static LLInventoryModel::cat_array_t getFavoriteSubfolders();
+    static bool canMoveFavoriteLink(const LLUUID& id);
+    static void assignFavoriteLinks(const LLUUID& folder_id, const uuid_vec_t& ids, bool move);
 
     static LLUUID sFolderID;
 
 private:
     void initialize();
 
-    void updateList(const LLUUID& folder_id);
+    void updateList();
+    void refreshFolders();
 
     void onItemDAD(const LLUUID& item_id);
     void handleRemove();
     void onFilterEdit(const std::string& search_string);
     void onDoubleClick();
+    void onFolderChanged();
+    void onNewFolder();
+    void onRenameFolder();
+    void onDeleteFolder();
 
     void onOptionsMenuItemClicked(const LLSD& userdata);
     bool onOptionsMenuItemChecked(const LLSD& userdata);
 
     static std::optional<LLUUID> getWearableFavoritesFolderID();
+    static LLViewerInventoryCategory* getFavoriteSubfolder(const LLUUID& id);
 
-    bool mInitialized;
-
+    bool mInitialized = false;
+    bool mInventoryDirty = false;
+    uuid_set_t mObservedFolders;
+    LLUUID mSelectedFolderID;
     boost::signals2::connection mDADCallbackConnection;
 
-    LLInventoryCategoriesObserver*  mCategoriesObserver;
-
-    FSWearableFavoritesItemsList*   mItemsList;
-    LLButton*                       mRemoveItemBtn;
-    LLFilterEditor*                 mFilterEditor;
-    LLMenuButton*                   mOptionsButton;
-    LLHandle<LLView>                mOptionsMenuHandle;
+    LLInventoryCategoriesObserver* mCategoriesObserver;
+    FSWearableFavoritesItemsList* mItemsList = nullptr;
+    LLButton* mRemoveItemBtn = nullptr;
+    LLButton* mRenameFolderBtn = nullptr;
+    LLButton* mDeleteFolderBtn = nullptr;
+    LLComboBox* mFolderCombo = nullptr;
+    LLFilterEditor* mFilterEditor = nullptr;
+    LLMenuButton* mOptionsButton = nullptr;
+    LLHandle<LLView> mOptionsMenuHandle;
 };
 
 #endif // FS_FLOATERWEARABLEFAVORITES_H

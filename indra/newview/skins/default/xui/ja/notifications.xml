@@ -5877,4 +5877,37 @@ https://wiki.firestormviewer.org/antivirus_whitelisting
 		<usetemplate name="okbutton" yestext="OK"/>
 	</notification>
 
+
+	<notification name="FSWearableFavoritesNewFolder">
+		お気に入りフォルダーの名前を入力してください。
+		<form name="form">
+			<input name="message" type="text" default="true">New Folder</input>
+			<button default="true" index="0" name="OK" text="OK"/>
+			<button index="1" name="Cancel" text="キャンセル"/>
+		</form>
+	</notification>
+	<notification name="FSWearableFavoritesRenameFolder">
+		お気に入りフォルダー「[FOLDER_NAME]」の新しい名前を入力してください。
+		<form name="form">
+			<input name="message" type="text" default="true">[FOLDER_NAME]</input>
+			<button default="true" index="0" name="OK" text="OK"/>
+			<button index="1" name="Cancel" text="キャンセル"/>
+		</form>
+	</notification>
+	<notification name="FSWearableFavoritesDeleteFolder">
+		お気に入りフォルダー「[FOLDER_NAME]」と中のリンクを削除しますか？ 元の装着物は持ち物に残ります。
+		<form name="form">
+			<button default="true" index="0" name="Delete" text="削除"/>
+			<button index="1" name="Cancel" text="キャンセル"/>
+		</form>
+	</notification>
+	<notification name="FSWearableFavoritesFolderInvalidName">
+		フォルダー名には /、\、| を除く表示可能な半角英数字・記号を入力してください。
+		<usetemplate name="okbutton" yestext="OK"/>
+	</notification>
+	<notification name="FSWearableFavoritesFolderCannotDelete">
+		フォルダーの内容を読み込んでから、削除できるフォルダーとお気に入りリンクだけが入っていることを確認してください。
+		<usetemplate name="okbutton" yestext="OK"/>
+	</notification>
+
 </notifications>
