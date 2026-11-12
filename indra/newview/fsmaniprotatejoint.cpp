@@ -233,11 +233,11 @@ const std::vector<std::string_view> FSManipRotateJoint::sSelectableJoints =
     { "mAnkleRight" },
 };
 
-const std::unordered_map<FSManipRotateJoint::e_manip_part, FSManipRotateJoint::RingRenderParams> FSManipRotateJoint::sRingParams = 
-{ 
-    { LL_ROT_Z,   { LL_ROT_Z,   LLVector4(1.f, 1.f, SELECTED_MANIPULATOR_SCALE, 1.f), 0.f,             LLVector3(),              LLColor4(0.f,0.f,1.f,1.f), LLColor4(0.f,0.f,1.f,0.3f), 2 } },
-    { LL_ROT_Y,   { LL_ROT_Y,   LLVector4(1.f, SELECTED_MANIPULATOR_SCALE, 1.f, 1.f), 90.f,            LLVector3(1.f,0.f,0.f),     LLColor4(0.f,1.f,0.f,1.f), LLColor4(0.f,1.f,0.f,0.3f), 1 } },
-    { LL_ROT_X,   { LL_ROT_X,   LLVector4(SELECTED_MANIPULATOR_SCALE, 1.f, 1.f, 1.f), 90.f,            LLVector3(0.f,1.f,0.f),     LLColor4(1.f,0.f,0.f,1.f), LLColor4(1.f,0.f,0.f,0.3f), 0 } }
+const std::unordered_map<FSManipRotateJoint::e_manip_part, FSManipRotateJoint::RingRenderParams> FSManipRotateJoint::sRingParams =
+{
+    { LL_ROT_Z,   { LL_ROT_Z,   LLVector4(1.f, 1.f, SELECTED_MANIPULATOR_SCALE, 1.f), 0.f,  LLVector3(),            VZ } },
+    { LL_ROT_Y,   { LL_ROT_Y,   LLVector4(1.f, SELECTED_MANIPULATOR_SCALE, 1.f, 1.f), 90.f, LLVector3(1.f,0.f,0.f), VY } },
+    { LL_ROT_X,   { LL_ROT_X,   LLVector4(SELECTED_MANIPULATOR_SCALE, 1.f, 1.f, 1.f), 90.f, LLVector3(0.f,1.f,0.f), VX } }
 };
 
 // Helper function: Builds an alignment quaternion from the computed bone axes.
@@ -524,7 +524,7 @@ void FSManipRotateJoint::renderRingPass(const RingRenderParams& params, float ra
                 break;
         }
         gGL.scalef(scaleVal, scaleVal, scaleVal);
-        gl_ring(radius, width, params.primaryColor, params.secondaryColor, CIRCLE_STEPS, pass);
+        gl_ring(radius, width, getUserEditColor(params.scaleIndex), getUserEditColor(params.scaleIndex, 0.3f), CIRCLE_STEPS, pass);
     }
     gGL.popMatrix();
 }
@@ -776,7 +776,7 @@ void FSManipRotateJoint::renderAxes(const LLVector3& agent_space_center, F32 siz
 {
     LLGLEnable cull_face(GL_CULL_FACE);
     LLGLEnable clip_plane0(GL_CLIP_PLANE0);
-    LLGLDepthTest gls_depth(GL_FALSE);    
+    LLGLDepthTest gls_depth(GL_FALSE);
     gGL.pushMatrix();
     gGL.translatef(agent_space_center.mV[VX], agent_space_center.mV[VY], agent_space_center.mV[VZ]);
 
@@ -786,18 +786,21 @@ void FSManipRotateJoint::renderAxes(const LLVector3& agent_space_center, F32 siz
 
     gGL.begin(LLRender::LINES);
 
-    // X-axis (Red)
-    gGL.color4f(1.0f, 0.0f, 0.0f, 1.0f);
+    // X axis
+    LLColor4 color(getUserEditColor(VRED));
+    gGL.color4fv(color.mV);
     gGL.vertex3f(-size, 0.0f, 0.0f);
     gGL.vertex3f(size, 0.0f, 0.0f);
 
-    // Y-axis (Green)
-    gGL.color4f(0.0f, 1.0f, 0.0f, 1.0f);
+    // Y axis
+    color.setVec(getUserEditColor(VGREEN));
+    gGL.color4fv(color.mV);
     gGL.vertex3f(0.0f, -size, 0.0f);
     gGL.vertex3f(0.0f, size, 0.0f);
 
-    // Z-axis (Blue)
-    gGL.color4f(0.0f, 0.0f, 1.0f, 1.0f);
+    // Z axis
+    color.setVec(getUserEditColor(VBLUE));
+    gGL.color4fv(color.mV);
     gGL.vertex3f(0.0f, 0.0f, -size);
     gGL.vertex3f(0.0f, 0.0f, size);
 
@@ -892,14 +895,16 @@ void FSManipRotateJoint::renderNameXYZ(const LLQuaternion& rot)
         LLUIImagePtr imagep = LLUI::getUIImage("Rounded_Square");
         gViewerWindow->setup2DRender();
         const LLVector2& display_scale = gViewerWindow->getDisplayScale();
-        gGL.color4f(0.f, 0.f, 0.f, 0.7f);
+
+        const LLColor4 background_color = getUserEditTextBackgroundColor();
+        gGL.color4fv(background_color.mV);
 
         imagep->draw(
             (S32)((window_center_x - 150) * display_scale.mV[VX]),
             (S32)((window_center_y + vertical_offset - PAD) * display_scale.mV[VY]),
             (S32)(340 * display_scale.mV[VX]),
             (S32)((PAD * 2 + 10) * display_scale.mV[VY] * 2),
-            LLColor4(0.f, 0.f, 0.f, 0.7f) 
+            background_color
         );
 
         LLFontGL* font = LLFontGL::getFontSansSerif();
@@ -956,9 +961,9 @@ void FSManipRotateJoint::renderNameXYZ(const LLQuaternion& rot)
                 LLFontGL::NORMAL, LLFontGL::NO_SHADOW, S32_MAX, 1000, nullptr);
             };
 
-        renderTextWithShadow(current_eulerX_str, window_center_x - 122.f, base_y, LLColor4(1.f, 0.5f, 0.5f, 1.f));
-        renderTextWithShadow(current_eulerY_str, window_center_x - 47.f, base_y, LLColor4(0.5f, 1.f, 0.5f, 1.f));
-        renderTextWithShadow(current_eulerZ_str, window_center_x + 28.f, base_y, LLColor4(0.5f, 0.5f, 1.f, 1.f));
+        renderTextWithShadow(current_eulerX_str, window_center_x - 122.f, base_y, lerp(getUserEditColor(VRED), LLColor4::white, 0.5f));
+        renderTextWithShadow(current_eulerY_str, window_center_x - 47.f, base_y, lerp(getUserEditColor(VGREEN), LLColor4::white, 0.5f));
+        renderTextWithShadow(current_eulerZ_str, window_center_x + 28.f, base_y, lerp(getUserEditColor(VBLUE), LLColor4::white, 0.5f));
         renderTextWithShadow(current_angle_str, window_center_x + 103.f, base_y, LLColor4(1.f, 0.65f, 0.f, 1.f));
         base_y += 20.f;
         renderTextWithShadow(current_joint_str, window_center_x - 130.f, base_y, LLColor4(1.f, 0.1f, 1.f, 1.f));

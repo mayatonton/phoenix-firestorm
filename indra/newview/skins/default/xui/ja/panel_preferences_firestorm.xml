@@ -220,6 +220,13 @@
 			<check_box label="「装着先」メニューの装着スポットをアルファベット順に並べ替える（要再起動）" tool_tip="有効にすると、「装着先」メニューの装着物のスポットのリストがアルファベット順に並び替えられます。" name="FSSortAttachmentSpotsAlphabetically"/>
 			<check_box label="ツールフローターで新式の[APP_NAME]テクスチャパネルを使用する（要再起動）" tool_tip="有効にすると、テクスチャ編集ツールは改良されたＦＳワークフローを使用し、BlinnPhongの編集が可能になります。（要再起動）" name="FSUseNewTexturePanel"/>
 		</panel>
+		<panel label="編集色" name="EditColorsTab">
+			<text name="buildaxiscolors_label">編集ハンドルの軸と座標表示の色</text>
+			<color_swatch label="X軸" name="colorswatchXaxis" tool_tip="クリックして色を選択"/>
+			<color_swatch label="Y軸" name="colorswatchYaxis" tool_tip="クリックして色を選択"/>
+			<color_swatch label="Z軸" name="colorswatchZaxis" tool_tip="クリックして色を選択"/>
+			<color_swatch label="座標表示の背景" name="colorswatchEditTextBackgroundColor" tool_tip="クリックして色を選択"/>
+		</panel>
 		<panel label="スクリプトエディタ" name="BuildTabScriptEditor">
 			<text name="text_box_scripting_font">
 				スクリプトエディタのフォント：

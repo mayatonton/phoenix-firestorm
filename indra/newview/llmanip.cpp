@@ -459,9 +459,11 @@ void LLManip::renderGuidelines(bool draw_x, bool draw_y, bool draw_z)
         gGL.getTexUnit(0)->unbind(LLTexUnit::TT_TEXTURE);
         LLUI::setLineWidth(1.5f);
 
+        LLColor4 color;
         if (draw_x)
         {
-            gGL.color4f(1.f, 0.f, 0.f, LINE_ALPHA);
+            color.setVec(getUserEditColor(VRED, LINE_ALPHA));
+            gGL.color4fv(color.mV);
             gGL.begin(LLRender::LINES);
             gGL.vertex3f( -region_size, 0.f, 0.f );
             gGL.vertex3f(  region_size, 0.f, 0.f );
@@ -470,7 +472,8 @@ void LLManip::renderGuidelines(bool draw_x, bool draw_y, bool draw_z)
 
         if (draw_y)
         {
-            gGL.color4f(0.f, 1.f, 0.f, LINE_ALPHA);
+            color.setVec(getUserEditColor(VGREEN, LINE_ALPHA));
+            gGL.color4fv(color.mV);
             gGL.begin(LLRender::LINES);
             gGL.vertex3f( 0.f, -region_size, 0.f );
             gGL.vertex3f( 0.f,  region_size, 0.f );
@@ -479,7 +482,8 @@ void LLManip::renderGuidelines(bool draw_x, bool draw_y, bool draw_z)
 
         if (draw_z)
         {
-            gGL.color4f(0.f, 0.f, 1.f, LINE_ALPHA);
+            color.setVec(getUserEditColor(VBLUE, LINE_ALPHA));
+            gGL.color4fv(color.mV);
             gGL.begin(LLRender::LINES);
             gGL.vertex3f( 0.f, 0.f, -region_size );
             gGL.vertex3f( 0.f, 0.f,  region_size );
@@ -504,14 +508,15 @@ void LLManip::renderXYZ(const LLVector3 &vec)
         LLUIImagePtr imagep = LLUI::getUIImage("Rounded_Square");
         gViewerWindow->setup2DRender();
         const LLVector2& display_scale = gViewerWindow->getDisplayScale();
-        gGL.color4f(0.f, 0.f, 0.f, 0.7f);
+        const LLColor4 background_color = getUserEditTextBackgroundColor();
+        gGL.color4fv(background_color.mV);
 
         imagep->draw(
             (S32)((window_center_x - 115) * display_scale.mV[VX]),
             (S32)((window_center_y + vertical_offset - PAD) * display_scale.mV[VY]),
             (S32)(235 * display_scale.mV[VX]),
             (S32)((PAD * 2 + 10) * display_scale.mV[VY]),
-            LLColor4(0.f, 0.f, 0.f, 0.7f) );
+            background_color);
         LLFontGL* font = LLFontGL::getFontSansSerif();
         LLLocale locale(LLLocale::USER_LOCALE);
         LLGLDepthTest gls_depth(GL_FALSE);
@@ -574,15 +579,15 @@ void LLManip::renderXYZ(const LLVector3 &vec)
             LLFontGL::LEFT, LLFontGL::BASELINE,
             LLFontGL::NORMAL, LLFontGL::NO_SHADOW, S32_MAX, 1000, &right_x);
 
-        font->render(feedback_stringX, 0, window_center_x - 102.f, (F32)(window_center_y + vertical_offset), LLColor4(1.f, 0.5f, 0.5f, 1.f),
+        font->render(feedback_stringX, 0, window_center_x - 102.f, (F32)(window_center_y + vertical_offset), lerp(getUserEditColor(VRED), LLColor4::white, 0.5f),
             LLFontGL::LEFT, LLFontGL::BASELINE,
             LLFontGL::NORMAL, LLFontGL::NO_SHADOW, S32_MAX, 1000, &right_x);
 
-        font->render(feedback_stringY, 0, window_center_x - 27.f, (F32)(window_center_y + vertical_offset), LLColor4(0.5f, 1.f, 0.5f, 1.f),
+        font->render(feedback_stringY, 0, window_center_x - 27.f, (F32)(window_center_y + vertical_offset), lerp(getUserEditColor(VGREEN), LLColor4::white, 0.5f),
             LLFontGL::LEFT, LLFontGL::BASELINE,
             LLFontGL::NORMAL, LLFontGL::NO_SHADOW, S32_MAX, 1000, &right_x);
 
-        font->render(feedback_stringZ, 0, window_center_x + 48.f, (F32)(window_center_y + vertical_offset), LLColor4(0.5f, 0.5f, 1.f, 1.f),
+        font->render(feedback_stringZ, 0, window_center_x + 48.f, (F32)(window_center_y + vertical_offset), lerp(getUserEditColor(VBLUE), LLColor4::white, 0.5f),
             LLFontGL::LEFT, LLFontGL::BASELINE,
             LLFontGL::NORMAL, LLFontGL::NO_SHADOW, S32_MAX, 1000, &right_x);
         // </FS:Ansariel>
@@ -721,4 +726,40 @@ LLColor4 LLManip::setupSnapGuideRenderPass(S32 pass)
     }
 
     return line_color;
+}
+
+LLColor4 LLManip::getUserEditColor(U32 axis, F32 alpha)
+{
+    static LLCachedControl<LLColor4> sRedAxisColor(gSavedSettings, "FSBuildPrefs_RedAxisColor");
+    static LLCachedControl<LLColor4> sGreenAxisColor(gSavedSettings, "FSBuildPrefs_GreenAxisColor");
+    static LLCachedControl<LLColor4> sBlueAxisColor(gSavedSettings, "FSBuildPrefs_BlueAxisColor");
+
+    LLColor4 color;
+    switch (axis)
+    {
+        case VRED:
+            color = sRedAxisColor;
+            break;
+        case VGREEN:
+            color = sGreenAxisColor;
+            break;
+        case VBLUE:
+            color = sBlueAxisColor;
+            break;
+
+        default:
+            break;
+    }
+
+    color.mV[VALPHA] = alpha;
+
+    return color;
+}
+
+LLColor4 LLManip::getUserEditTextBackgroundColor()
+{
+    static LLCachedControl<LLColor4> background(gSavedSettings, "FSBuildPrefs_EditTextBackgroundColor");
+    LLColor4 color = background;
+    color.mV[VALPHA] = 0.7f;
+    return color;
 }

@@ -236,7 +236,7 @@ void LLManipRotate::render()
             {
                 // selected part
                 gGL.scalef(mManipulatorScales.mV[VZ], mManipulatorScales.mV[VZ], mManipulatorScales.mV[VZ]);
-                renderActiveRing( mRadiusMeters, width_meters, LLColor4( 0.f, 0.f, 1.f, 1.f) , LLColor4( 0.f, 0.f, 1.f, 0.3f ));
+                renderActiveRing(mRadiusMeters, width_meters, getUserEditColor(VBLUE), getUserEditColor(VBLUE, 0.3f));
             }
             gGL.popMatrix();
         }
@@ -247,7 +247,7 @@ void LLManipRotate::render()
             {
                 gGL.rotatef( 90.f, 1.f, 0.f, 0.f );
                 gGL.scalef(mManipulatorScales.mV[VY], mManipulatorScales.mV[VY], mManipulatorScales.mV[VY]);
-                renderActiveRing( mRadiusMeters, width_meters, LLColor4( 0.f, 1.f, 0.f, 1.f), LLColor4( 0.f, 1.f, 0.f, 0.3f));
+                renderActiveRing(mRadiusMeters, width_meters, getUserEditColor(VGREEN), getUserEditColor(VGREEN, 0.3f));
             }
             gGL.popMatrix();
         }
@@ -258,7 +258,7 @@ void LLManipRotate::render()
             {
                 gGL.rotatef( 90.f, 0.f, 1.f, 0.f );
                 gGL.scalef(mManipulatorScales.mV[VX], mManipulatorScales.mV[VX], mManipulatorScales.mV[VX]);
-                renderActiveRing( mRadiusMeters, width_meters, LLColor4( 1.f, 0.f, 0.f, 1.f), LLColor4( 1.f, 0.f, 0.f, 0.3f));
+                renderActiveRing(mRadiusMeters, width_meters, getUserEditColor(VRED), getUserEditColor(VRED, 0.3f));
             }
             gGL.popMatrix();
         }
@@ -289,12 +289,12 @@ void LLManipRotate::render()
                         mManipulatorScales = lerp(mManipulatorScales, LLVector4(1.f, 1.f, SELECTED_MANIPULATOR_SCALE, 1.f), LLSmoothInterpolation::getInterpolant(MANIPULATOR_SCALE_HALF_LIFE));
                         gGL.scalef(mManipulatorScales.mV[VZ], mManipulatorScales.mV[VZ], mManipulatorScales.mV[VZ]);
                         // hovering over part
-                        gl_ring( mRadiusMeters, width_meters, LLColor4( 0.f, 0.f, 1.f, 1.f ), LLColor4( 0.f, 0.f, 1.f, 0.5f ), CIRCLE_STEPS, i);
+                        gl_ring(mRadiusMeters, width_meters, getUserEditColor(VBLUE), getUserEditColor(VBLUE, 0.5f), CIRCLE_STEPS, i);
                     }
                     else
                     {
                         // default
-                        gl_ring( mRadiusMeters, width_meters, LLColor4( 0.f, 0.f, 0.8f, 0.8f ), LLColor4( 0.f, 0.f, 0.8f, 0.4f ), CIRCLE_STEPS, i);
+                        gl_ring(mRadiusMeters, width_meters, getUserEditColor(VBLUE, 0.8f) * 0.8f, getUserEditColor(VBLUE, 0.4f) * 0.8f, CIRCLE_STEPS, i);
                     }
                 }
                 gGL.popMatrix();
@@ -307,12 +307,12 @@ void LLManipRotate::render()
                         mManipulatorScales = lerp(mManipulatorScales, LLVector4(1.f, SELECTED_MANIPULATOR_SCALE, 1.f, 1.f), LLSmoothInterpolation::getInterpolant(MANIPULATOR_SCALE_HALF_LIFE));
                         gGL.scalef(mManipulatorScales.mV[VY], mManipulatorScales.mV[VY], mManipulatorScales.mV[VY]);
                         // hovering over part
-                        gl_ring( mRadiusMeters, width_meters, LLColor4( 0.f, 1.f, 0.f, 1.f ), LLColor4( 0.f, 1.f, 0.f, 0.5f ), CIRCLE_STEPS, i);
+                        gl_ring(mRadiusMeters, width_meters, getUserEditColor(VGREEN), getUserEditColor(VGREEN, 0.5f), CIRCLE_STEPS, i);
                     }
                     else
                     {
                         // default
-                        gl_ring( mRadiusMeters, width_meters, LLColor4( 0.f, 0.8f, 0.f, 0.8f ), LLColor4( 0.f, 0.8f, 0.f, 0.4f ), CIRCLE_STEPS, i);
+                        gl_ring(mRadiusMeters, width_meters, getUserEditColor(VGREEN, 0.8f) * 0.8f, getUserEditColor(VGREEN, 0.4f) * 0.8f, CIRCLE_STEPS, i);
                     }
                 }
                 gGL.popMatrix();
@@ -326,12 +326,12 @@ void LLManipRotate::render()
                         gGL.scalef(mManipulatorScales.mV[VX], mManipulatorScales.mV[VX], mManipulatorScales.mV[VX]);
 
                         // hovering over part
-                        gl_ring( mRadiusMeters, width_meters, LLColor4( 1.f, 0.f, 0.f, 1.f ), LLColor4( 1.f, 0.f, 0.f, 0.5f ), CIRCLE_STEPS, i);
+                        gl_ring(mRadiusMeters, width_meters, getUserEditColor(VRED), getUserEditColor(VRED, 0.5f), CIRCLE_STEPS, i);
                     }
                     else
                     {
                         // default
-                        gl_ring( mRadiusMeters, width_meters, LLColor4( 0.8f, 0.f, 0.f, 0.8f ), LLColor4( 0.8f, 0.f, 0.f, 0.4f ), CIRCLE_STEPS, i);
+                        gl_ring(mRadiusMeters, width_meters, getUserEditColor(VRED, 0.8f) * 0.8f, getUserEditColor(VRED, 0.4f) * 0.8f, CIRCLE_STEPS, i);
                     }
                 }
                 gGL.popMatrix();

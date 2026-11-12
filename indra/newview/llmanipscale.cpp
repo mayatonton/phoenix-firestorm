@@ -611,15 +611,14 @@ void LLManipScale::renderFaces( const LLBBox& bbox )
     LLColor4 highlight_color( 1.f, 1.f, 1.f, 0.5f);
     LLColor4 normal_color(  1.f, 1.f, 1.f, 0.3f);
 
-    LLColor4 x_highlight_color( 1.f, 0.2f, 0.2f, 1.0f);
-    LLColor4 x_normal_color(    0.6f, 0.f, 0.f, 0.4f);
+    const LLColor4 x_highlight_color = lerp(getUserEditColor(VRED), LLColor4::white, 0.2f);
+    const LLColor4 x_normal_color = getUserEditColor(VRED, 0.4f) * 0.6f;
 
-    LLColor4 y_highlight_color( 0.2f, 1.f, 0.2f, 1.0f);
-    LLColor4 y_normal_color(    0.f, 0.6f, 0.f, 0.4f);
+    const LLColor4 y_highlight_color = lerp(getUserEditColor(VGREEN), LLColor4::white, 0.2f);
+    const LLColor4 y_normal_color = getUserEditColor(VGREEN, 0.4f) * 0.6f;
 
-    LLColor4 z_highlight_color( 0.2f, 0.2f, 1.f, 1.0f);
-    LLColor4 z_normal_color(    0.f, 0.f, 0.6f, 0.4f);
-
+    const LLColor4 z_highlight_color = lerp(getUserEditColor(VBLUE), LLColor4::white, 0.2f);
+    const LLColor4 z_normal_color = getUserEditColor(VBLUE, 0.4f) * 0.6f;
     LLColor4 default_normal_color( 0.7f, 0.7f, 0.7f, 0.15f );
 
     const LLVector3& min = bbox.getMinLocal();

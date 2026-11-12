@@ -1731,6 +1731,74 @@ Add a [parcelhide:...] tag to About Land &gt; Description to enforce Parcel Hide
          control_name="FSUseNewTexturePanel"/>
     </panel>
 
+    <panel
+     top_pad="5"
+     bottom="-1"
+     left="1"
+     right="-1"
+     follows="all"
+     label="Edit Colors"
+     name="EditColorsTab">
+        <text
+         follows="left|top"
+         layout="topleft"
+         top="10"
+         left="10"
+         height="18"
+         width="420"
+         name="buildaxiscolors_label">
+            Axis and coordinate display colors
+        </text>
+        <color_swatch
+         can_apply_immediately="true"
+         follows="left|top"
+         height="50"
+         label="X Axis"
+         layout="topleft"
+         left="10"
+         name="colorswatchXaxis"
+         tool_tip="Click to open the color picker"
+         top="36"
+         width="64"
+         control_name="FSBuildPrefs_RedAxisColor"/>
+        <color_swatch
+         can_apply_immediately="true"
+         follows="left|top"
+         height="50"
+         label="Y Axis"
+         layout="topleft"
+         left="95"
+         name="colorswatchYaxis"
+         tool_tip="Click to open the color picker"
+         top="36"
+         width="64"
+         control_name="FSBuildPrefs_GreenAxisColor"/>
+        <color_swatch
+         can_apply_immediately="true"
+         follows="left|top"
+         height="50"
+         label="Z Axis"
+         layout="topleft"
+         left="180"
+         name="colorswatchZaxis"
+         tool_tip="Click to open the color picker"
+         top="36"
+         width="64"
+         control_name="FSBuildPrefs_BlueAxisColor"/>
+        <color_swatch
+         can_apply_immediately="true"
+         follows="left|top"
+         height="50"
+         label="Text Background"
+         layout="topleft"
+         left="265"
+         name="colorswatchEditTextBackgroundColor"
+         tool_tip="Click to open the color picker"
+         top="36"
+         width="100"
+         control_name="FSBuildPrefs_EditTextBackgroundColor"/>
+    </panel>
+
     <!--Script Editor-->
     <panel
      top_pad="5"
