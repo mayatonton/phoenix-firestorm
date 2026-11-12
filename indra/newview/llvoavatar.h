@@ -110,6 +110,8 @@ public:
     virtual void        initInstance(); // Called after construction to initialize the class.
 
 protected:
+    static void applyCloudColor();
+
     virtual             ~LLVOAvatar();
 
 /**                    Initialization

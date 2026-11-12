@@ -1356,11 +1356,20 @@ void LLVOAvatar::initClass()
 }
 
 
+// Retain the colors and opacity of the cloud.xml loaded for this account.
+static LLColor4 sLoadedCloudStartColor;
+static LLColor4 sLoadedCloudEndColor;
+static boost::signals2::connection sCloudColorStartConnection;
+static boost::signals2::connection sCloudColorEndConnection;
+
 void LLVOAvatar::cleanupClass()
 {
+    sCloudColorStartConnection.disconnect();
+    sCloudColorEndConnection.disconnect();
 }
 
 LLPartSysData LLVOAvatar::sCloud;
+
 void LLVOAvatar::initCloud()
 {
     // fancy particle cloud designed by Brent
@@ -1397,6 +1406,29 @@ void LLVOAvatar::initCloud()
     // llifstream in_file_muted(filename);
     llifstream in_file_muted(filename.c_str());
     // </FS:ND>
+
+    sLoadedCloudStartColor = sCloud.mPartData.mStartColor;
+    sLoadedCloudEndColor = sCloud.mPartData.mEndColor;
+    applyCloudColor();
+
+    // Reloading cloud.xml also reinitializes this template.
+    sCloudColorStartConnection.disconnect();
+    sCloudColorEndConnection.disconnect();
+    sCloudColorStartConnection = gSavedSettings.getControl("FSCloudColorStart")->getSignal()->connect(
+        boost::bind(&LLVOAvatar::applyCloudColor));
+    sCloudColorEndConnection = gSavedSettings.getControl("FSCloudColorEnd")->getSignal()->connect(
+        boost::bind(&LLVOAvatar::applyCloudColor));
+}
+
+void LLVOAvatar::applyCloudColor()
+{
+    const auto start = gSavedSettings.getControl("FSCloudColorStart");
+    const auto end = gSavedSettings.getControl("FSCloudColorEnd");
+    auto& particles = sCloud.mPartData;
+    particles.mStartColor = start->isDefault() ? sLoadedCloudStartColor : gSavedSettings.getColor4("FSCloudColorStart");
+    particles.mEndColor = end->isDefault() ? sLoadedCloudEndColor : gSavedSettings.getColor4("FSCloudColorEnd");
+    particles.mStartColor.mV[VALPHA] = sLoadedCloudStartColor.mV[VALPHA];
+    particles.mEndColor.mV[VALPHA] = sLoadedCloudEndColor.mV[VALPHA];
 }
 
 // virtual
