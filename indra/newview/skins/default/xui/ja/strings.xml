@@ -6611,4 +6611,5 @@ Rez時間：[OBJECT_REZ_TIME]
 
 	<string name="OmnifilterReplacement">包括フィルタ置き換え：[REPLACEMENT]</string>
 
+  <string name="FSMacOSNewViewerInstance">ビューアを別に起動</string>
 </strings>

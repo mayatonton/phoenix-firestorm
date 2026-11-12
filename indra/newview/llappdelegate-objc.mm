@@ -39,6 +39,12 @@
 #include "llappviewermacosx-for-objc.h"
 #include <Carbon/Carbon.h> // Used for Text Input Services ("Safe" API - it's supported)
 
+// <FS:TJ> Launch new instance option from macOS dock
+#include <unordered_map>
+#include "linden_common.h"
+#include "lltrans.h"
+// </FS:TJ>
+
 @implementation LLAppDelegate
 
 @synthesize window;
@@ -54,6 +60,11 @@
 
 - (void) applicationWillFinishLaunching:(NSNotification *)notification
 {
+    // <FS:TJ> Launch new instance option from macOS dock
+    [window orderOut:nil];
+    NSWindowCollectionBehavior behavior = [window collectionBehavior];
+    [window setCollectionBehavior:behavior | NSWindowCollectionBehaviorFullScreenDisallowsTiling];
+    // </FS:TJ>
     [[NSAppleEventManager sharedAppleEventManager] setEventHandler:self andSelector:@selector(handleGetURLEvent:withReplyEvent:) forEventClass:kInternetEventClass andEventID:kAEGetURL];
 }
 
@@ -99,6 +110,13 @@
         // until applicationShouldTerminate.
         frameTimer = [NSTimer scheduledTimerWithTimeInterval:0.0 target:self
                               selector:@selector(oneFrame) userInfo:nil repeats:YES];
+
+        // Restore normal window tiling after startup has placed the window.
+        dispatch_async(dispatch_get_main_queue(), ^{
+            [window setCollectionBehavior:
+                [window collectionBehavior] &
+                ~NSWindowCollectionBehaviorFullScreenDisallowsTiling];
+        });
     } else {
         exit(0);
     }
@@ -138,6 +156,50 @@
 {
     callWindowUnhide();
 }
+
+// <FS:TJ> Launch new instance option from macOS dock
+- (NSMenu *) applicationDockMenu:(NSApplication *)sender
+{
+    if (@available(macOS 10.15, *))
+    {
+        std::string label;
+        if (!LLTrans::findString(label, "FSMacOSNewViewerInstance"))
+        {
+            label = "New Viewer Instance";
+        }
+        NSMenu *dockMenu = [[[NSMenu alloc] init] autorelease];
+        NSMenuItem *newInstanceItem =
+            [[[NSMenuItem alloc] initWithTitle:[NSString stringWithUTF8String:label.c_str()]
+                                         action:@selector(launchNewInstance:)
+                                  keyEquivalent:@""] autorelease];
+
+        [newInstanceItem setTarget:self];
+        [dockMenu addItem:newInstanceItem];
+        return dockMenu;
+    }
+    return nil;
+}
+
+- (void) launchNewInstance:(id)sender
+{
+    if (@available(macOS 10.15, *))
+    {
+        NSWorkspaceOpenConfiguration *configuration = [NSWorkspaceOpenConfiguration configuration];
+        configuration.createsNewApplicationInstance = YES;
+
+        // The new process still uses the viewer's normal multiple-instance checks.
+        [[NSWorkspace sharedWorkspace]
+            openApplicationAtURL:[[NSBundle mainBundle] bundleURL]
+                    configuration:configuration
+                completionHandler:^(NSRunningApplication *application, NSError *error) {
+                    if (error)
+                    {
+                        NSLog(@"Could not launch a new viewer instance: %@", error);
+                    }
+                }];
+    }
+}
+// </FS:TJ>
 
 - (NSApplicationTerminateReply) applicationShouldTerminate:(NSApplication *)sender
 {
