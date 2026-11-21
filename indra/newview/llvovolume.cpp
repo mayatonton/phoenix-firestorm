@@ -201,7 +201,9 @@ namespace
         }
     };
 
-    std::unordered_map<U32, AYALoadingDenseLODCacheEntry> sAYALoadingDenseLODCache;
+    // Keyed by object UUID: LocalIDs are only unique per simulator, so
+    // neighbouring regions could otherwise thrash each other's hysteresis.
+    std::unordered_map<LLUUID, AYALoadingDenseLODCacheEntry> sAYALoadingDenseLODCache;
     AYALoadingDenseLODStats sAYALoadingDenseLODStats;
 
     S32 aya_loading_lod_strength_level(F32 strength)
@@ -327,7 +329,7 @@ namespace
 
     AYALoadingDenseLODCacheEntry& aya_loading_dense_world_cache_entry(LLVOVolume* objectp, S32 frame)
     {
-        AYALoadingDenseLODCacheEntry& entry = sAYALoadingDenseLODCache[objectp->getLocalID()];
+        AYALoadingDenseLODCacheEntry& entry = sAYALoadingDenseLODCache[objectp->getID()];
         if (entry.mObjectID != objectp->getID())
         {
             entry.resetForObject(objectp->getID(), frame);
@@ -359,10 +361,10 @@ namespace
         }
     }
 
-    S32 aya_loading_dense_world_apply_hysteresis(U32 local_id, const LLUUID& object_id, S32 raw_band, S32 interval_frames, S32 hysteresis_frames)
+    S32 aya_loading_dense_world_apply_hysteresis(const LLUUID& object_id, S32 raw_band, S32 interval_frames, S32 hysteresis_frames)
     {
         const S32 frame = LLFrameTimer::getFrameCount();
-        AYALoadingDenseLODCacheEntry& entry = sAYALoadingDenseLODCache[local_id];
+        AYALoadingDenseLODCacheEntry& entry = sAYALoadingDenseLODCache[object_id];
         if (entry.mObjectID != object_id)
         {
             entry.resetForObject(object_id, frame);
@@ -613,7 +615,6 @@ namespace
         }
 
         const S32 band = aya_loading_dense_world_apply_hysteresis(
-            objectp->getLocalID(),
             objectp->getID(),
             raw_band,
             llmax(1, static_cast<S32>(decision_interval)),

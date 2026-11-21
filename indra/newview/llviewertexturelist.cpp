@@ -31,8 +31,12 @@
 #include "llviewertexturelist.h"
 
 #include <algorithm>
+#include <cstdio>
 #include <set>
 #include <vector>
+#if LL_LINUX
+#include <unistd.h>
+#endif
 
 #include "llagent.h"
 #include "llface.h"
@@ -100,6 +104,45 @@ enum AYAQueuedTextureBucket
 };
 
 S32 aya_texture_create_priority_score(LLViewerFetchedTexture* imagep, AYAQueuedTextureBucket* bucketp = nullptr);
+
+// Resident set size right now, for memory-pressure decisions that must be able
+// to turn off again. LLMemory::getCurrentRSS() returns ru_maxrss (the peak) on
+// Linux, which would keep the sweep in "pressure" forever after one spike.
+static U64 aya_current_resident_bytes()
+{
+#if LL_LINUX
+    if (FILE* statm = fopen("/proc/self/statm", "r"))
+    {
+        unsigned long size_pages = 0;
+        unsigned long resident_pages = 0;
+        const int fields = fscanf(statm, "%lu %lu", &size_pages, &resident_pages);
+        fclose(statm);
+        const long page_size = sysconf(_SC_PAGESIZE);
+        if (fields == 2 && page_size > 0)
+        {
+            return (U64)resident_pages * (U64)page_size;
+        }
+    }
+#endif
+    return LLMemory::getCurrentRSS();
+}
+
+// The distance/offscreen caps are long-edge resolutions, but the discard
+// computation compares texel *area* (width * height). For a non-square image a
+// cap of cap*cap would leave the long edge above the cap (2048x256 capped at
+// 512 stayed at mip 0), so scale the area by the short/long aspect ratio.
+static F32 aya_texture_long_edge_cap_area(LLViewerFetchedTexture* imagep, F32 cap)
+{
+    const S32 width = imagep ? imagep->getFullWidth() : 0;
+    const S32 height = imagep ? imagep->getFullHeight() : 0;
+    if (width > 0 && height > 0 && width != height)
+    {
+        const F32 long_edge = (F32)llmax(width, height);
+        const F32 short_edge = (F32)llmin(width, height);
+        return cap * cap * (short_edge / long_edge);
+    }
+    return cap * cap;
+}
 
 bool aya_texture_management_enabled()
 {
@@ -565,6 +608,7 @@ bool aya_texture_can_enter_strength_sweep(LLViewerFetchedTexture* imagep)
         imagep->isInImageList() &&
         imagep->getType() == LLViewerTexture::LOD_TEXTURE &&
         !imagep->mCreatePending &&
+        !imagep->isCreateTextureInFlight() &&
         !imagep->mDownScalePending &&
         !aya_texture_strength_sweep_protected_fttype(imagep) &&
         !imagep->hasCallbacks() &&
@@ -626,6 +670,7 @@ bool aya_texture_strength_sweep_should_retry_later(LLViewerFetchedTexture* image
     }
 
     return imagep->mCreatePending ||
+        imagep->isCreateTextureInFlight() ||
         imagep->mDownScalePending ||
         imagep->hasCallbacks() ||
         imagep->isFetching() ||
@@ -853,6 +898,10 @@ AYAMemorySweepBucket aya_texture_memory_sweep_bucket(
         !imagep->isInImageList() ||
         imagep->getType() != LLViewerTexture::LOD_TEXTURE ||
         imagep->mCreatePending ||
+        // mCreatePending is only set for the main-thread create queue; with
+        // RenderGLMultiThreadedTextures the GL worker reads mRawImage while
+        // only mNeedsCreateTexture is set, so treat that as in-flight too.
+        imagep->isCreateTextureInFlight() ||
         imagep->mDownScalePending ||
         aya_texture_has_protected_work(imagep) ||
         imagep->isFetching() ||
@@ -1785,6 +1834,10 @@ void LLViewerTextureList::updateImages(F32 max_time)
         for (image_list_t::iterator iter = mCallbackList.begin();
              iter != mCallbackList.end(); ++iter)
         {
+            if (callback_timer.getElapsedTimeF32() > effective_callback_budget * 0.5f)
+            {
+                break; // keep the scan for priority entries from eating the whole slice
+            }
             LLViewerFetchedTexture* image = *iter;
             if (aya_texture_is_avatar_callback_priority(image))
             {
@@ -1802,8 +1855,10 @@ void LLViewerTextureList::updateImages(F32 max_time)
         for (std::vector<LLPointer<LLViewerFetchedTexture> >::iterator iter = priority_callbacks.begin();
              iter != priority_callbacks.end(); ++iter)
         {
+            // The time slice applies to every visited entry (not only ones that
+            // did work) so failure callbacks and long waiting runs stay bounded.
             if (priority_callback_count >= priority_callback_limit ||
-                (priority_callback_count > 0 && callback_timer.getElapsedTimeF32() > priority_callback_budget))
+                callback_timer.getElapsedTimeF32() > priority_callback_budget)
             {
                 break;
             }
@@ -1817,47 +1872,69 @@ void LLViewerTextureList::updateImages(F32 max_time)
             const bool callback_ran = image->doLoadedCallbacks();
             didone = callback_ran || didone;
             priority_callbacks_processed.insert(image);
-            ++priority_callback_count;
             if (callback_ran)
             {
+                // Only callbacks that did work consume the budget; paused or
+                // still-fetching entries must not starve the ones behind them.
+                ++priority_callback_count;
                 ++callback_count;
             }
         }
     }
 
-    for (image_list_t::iterator iter = mCallbackList.begin();
-        iter != mCallbackList.end(); )
+    // mCallbackList is an unordered_set. Walking it from begin() every frame
+    // with a budget meant the same leading entries (e.g. paused off-screen
+    // avatar bakes, or entries that keep the time slice busy) were the only
+    // ones ever visited. Resume from a cursor that advances each frame so
+    // every entry gets visited within a bounded number of frames.
+    static size_t s_callback_cursor = 0;
+    const size_t callback_list_size = mCallbackList.size();
+    size_t callback_visited = 0;
+    const size_t callback_start = callback_list_size ? (s_callback_cursor % callback_list_size) : 0;
+    image_list_t::iterator iter = mCallbackList.begin();
+    std::advance(iter, callback_start);
+    while (callback_visited < callback_list_size && !mCallbackList.empty())
     {
         if (callback_count >= effective_max_callbacks ||
-            (callback_count > 0 && callback_timer.getElapsedTimeF32() > effective_callback_budget))
+            callback_timer.getElapsedTimeF32() > effective_callback_budget)
         {
             break;
         }
+        if (iter == mCallbackList.end())
+        {
+            iter = mCallbackList.begin();
+        }
 
         //trigger loaded callbacks on local textures immediately
-        LLViewerFetchedTexture* image = *iter++;
-        if (priority_callbacks_processed.find(image) != priority_callbacks_processed.end())
+        LLPointer<LLViewerFetchedTexture> image = *iter++; // advance first: the callback may erase it
+        ++callback_visited;
+        if (priority_callbacks_processed.find(image.get()) != priority_callbacks_processed.end())
         {
             continue;
         }
+        // Count only callbacks that actually did work, so paused or
+        // still-fetching entries do not consume the per-frame count.
+        bool callback_ran = false;
         if (!image->getUrl().empty())
         {
             // Do stuff to handle callbacks, update priorities, etc.
-            didone = image->doLoadedCallbacks();
-            ++callback_count;
+            callback_ran = image->doLoadedCallbacks();
+            didone = callback_ran;
         }
         else if (!didone)
         {
             // Do stuff to handle callbacks, update priorities, etc.
-            didone = image->doLoadedCallbacks();
+            callback_ran = image->doLoadedCallbacks();
+            didone = callback_ran;
+        }
+        if (callback_ran)
+        {
             ++callback_count;
         }
-
-        if (callback_timer.getElapsedTimeF32() > effective_callback_budget)
-        {
-            break;
-        }
     }
+    // Always move on by at least one so a frame whose slice was used up before
+    // visiting anything does not pin the cursor in place.
+    s_callback_cursor = callback_start + llmax(callback_visited, (size_t)1);
 
     updateImagesUpdateStats();
 }
@@ -2035,6 +2112,8 @@ void LLViewerTextureList::processAYATeleportTextureSweep()
 
         if (imagep->getType() != LLViewerTexture::LOD_TEXTURE ||
             imagep->getBoostLevel() != LLGLTexture::BOOST_NONE ||
+            imagep->mCreatePending ||
+            imagep->isCreateTextureInFlight() || // GL create may be running on the worker thread
             imagep->hasCallbacks() ||
             imagep->needsToSaveRawImage() ||
             imagep->isFetching() ||
@@ -2327,7 +2406,7 @@ void LLViewerTextureList::updateImageDecodePriority(LLViewerFetchedTexture* imag
                         cap_resolution = aya_apply_texture_downscale_strength(cap_resolution, downscale_strength_level);
                         cap_resolution = aya_effective_texture_cap_resolution(imagep, cap_resolution);
                         const F32 cap = (F32)llclamp((S32)cap_resolution, 1, LLGLTexture::MAX_IMAGE_SIZE_DEFAULT);
-                        const F32 cap_area = cap * cap;
+                        const F32 cap_area = aya_texture_long_edge_cap_area(imagep, cap);
                         if (cap_stats_log_active)
                         {
                             ++s_cap_faces;
@@ -2354,7 +2433,7 @@ void LLViewerTextureList::updateImageDecodePriority(LLViewerFetchedTexture* imag
                         const U32 strengthened_cap_resolution = aya_apply_texture_downscale_strength(cap_resolution, downscale_strength_level);
                         const U32 effective_cap_resolution = aya_effective_texture_cap_resolution(imagep, strengthened_cap_resolution);
                         const F32 cap = (F32)llclamp((S32)effective_cap_resolution, 1, LLGLTexture::MAX_IMAGE_SIZE_DEFAULT);
-                        const F32 cap_area = cap * cap;
+                        const F32 cap_area = aya_texture_long_edge_cap_area(imagep, cap);
                         if (cap_stats_log_active)
                         {
                             ++s_cap_faces;
@@ -2423,6 +2502,28 @@ void LLViewerTextureList::updateImageDecodePriority(LLViewerFetchedTexture* imag
             }
         }
 
+        if ((distance_cap_active || (offscreen_cap_active && !on_screen)) &&
+            face_count > 0 && face_count <= max_faces_to_check &&
+            !has_protected_owner && !has_hud_owner &&
+            imagep->getType() == LLViewerTexture::LOD_TEXTURE &&
+            imagep->getBoostLevel() == LLViewerTexture::BOOST_NONE &&
+            max_vsize > 0.f && imagep->mMaxVirtualSize > max_vsize)
+        {
+            // addTextureStats() only raises the value, so a size recorded while
+            // the texture was near would otherwise outlive the distance/offscreen
+            // cap once it moves away. Lower it to the capped face demand.
+            // (Initial-fetch demands registered before any face exists, e.g.
+            // glTF 64x64, are untouched: this branch requires face_count > 0.)
+            imagep->mMaxVirtualSize = max_vsize;
+        }
+        else if (max_vsize <= 0.f && face_count > 0)
+        {
+            // Every face referencing this texture was culled or capped to
+            // zero: drop the stale size so the distance/offscreen cap can
+            // lower the desired discard. Faceless textures (terrain/minimap
+            // boosts) keep the stats their own producer set.
+            imagep->mMaxVirtualSize = 0.f;
+        }
         imagep->addTextureStats(max_vsize);
 
         if (cap_stats_log_active && distance_cap_log_timer.getElapsedTimeF32() >= 10.f)
@@ -2587,7 +2688,12 @@ F32 LLViewerTextureList::updateImagesCreateTextures(F32 max_time)
         mDownScaleQueue.size() >= texture_create_backlog_threshold();
     const U32 effective_max_create_per_frame = create_guard_budget_active ? guard_max_create_per_frame() : max_create_per_frame();
     const U32 configured_max_downscale_per_frame = downscale_guard_budget_active ? guard_max_downscale_per_frame() : max_downscale_per_frame();
-    const U32 effective_max_downscale_per_frame = configured_max_downscale_per_frame;
+    // Like the upstream "at least create_count/20 + 5" rule, let a large
+    // backlog raise the per-frame limit so memory is actually released under
+    // pressure. An explicit 0 still pauses downscaling.
+    const U32 effective_max_downscale_per_frame = configured_max_downscale_per_frame > 0 ?
+        llmax(configured_max_downscale_per_frame, llmin((U32)mDownScaleQueue.size() / 20U, 64U)) :
+        0;
     const F32 effective_max_create_time_ms = create_guard_budget_active ? guard_max_create_time_ms() : max_create_time_ms();
     const F32 configured_max_downscale_time_ms = downscale_guard_budget_active ? guard_max_downscale_time_ms() : max_downscale_time_ms();
     const F32 effective_max_downscale_time_ms = llmax(configured_max_downscale_time_ms, 0.001f);
@@ -2602,7 +2708,33 @@ F32 LLViewerTextureList::updateImagesCreateTextures(F32 max_time)
     U32 create_count = 0;
     U32 scene_create_count = 0;
 
-    if (loading_texture_management && backpressure_enabled() && !mCreateTextureList.empty())
+    // The backpressure pass pops and re-pushes the whole create queue. When a
+    // pass could not drop anything, the same windows are very unlikely to
+    // yield drops on the next frame, so back off instead of paying O(queue)
+    // every frame while the queue stays above the limit.
+    // The backoff is cancelled as soon as the queue grows noticeably or crosses
+    // the hard limit, so a burst of new work is re-evaluated immediately.
+    constexpr U32 BACKPRESSURE_IDLE_BACKOFF_FRAMES = 30;
+    static U32 s_backpressure_backoff_frames = 0;
+    static U32 s_backpressure_backoff_queue_size = 0;
+    if (s_backpressure_backoff_frames > 0)
+    {
+        const U32 current_size = (U32)mCreateTextureList.size();
+        const U32 hard_limit_now = llmax(llmax((U32)1, backpressure_queue_limit()), backpressure_hard_limit());
+        const bool crossed_hard_limit = s_backpressure_backoff_queue_size <= hard_limit_now && current_size > hard_limit_now;
+        const bool grew = current_size >= s_backpressure_backoff_queue_size + llmax((U32)1, s_backpressure_backoff_queue_size / 8);
+        // Track dips so a later re-crossing of the hard limit is detected too.
+        s_backpressure_backoff_queue_size = llmin(s_backpressure_backoff_queue_size, current_size);
+        if (crossed_hard_limit || grew)
+        {
+            s_backpressure_backoff_frames = 0;
+        }
+        else
+        {
+            --s_backpressure_backoff_frames;
+        }
+    }
+    if (s_backpressure_backoff_frames == 0 && loading_texture_management && backpressure_enabled() && !mCreateTextureList.empty())
     {
         const U32 queue_limit = llmax((U32)1, backpressure_queue_limit());
         const U32 hard_limit = llmax(queue_limit, backpressure_hard_limit());
@@ -2726,6 +2858,12 @@ F32 LLViewerTextureList::updateImagesCreateTextures(F32 max_time)
                 mCreateTextureList.pop();
             }
             mCreateTextureList.swap(rebuilt_queue);
+
+            if (dropped == 0)
+            {
+                s_backpressure_backoff_frames = BACKPRESSURE_IDLE_BACKOFF_FRAMES;
+                s_backpressure_backoff_queue_size = (U32)mCreateTextureList.size();
+            }
 
             s_backpressure_dropped_creates += dropped;
             s_backpressure_scanned_creates += scanned;
@@ -3210,16 +3348,33 @@ F32 LLViewerTextureList::updateImagesCreateTextures(F32 max_time)
             llassert(image->mDownScalePending);
 
             LLImageGL* img = image->getGLTexture();
+            // Entries whose discard no longer needs to drop (or that became
+            // protected) are retired for free; only real scale-downs consume
+            // the per-frame budget so no-op entries cannot stall the queue.
+            bool scaled = false;
             if (img &&
                 img->getHasGLTexture() &&
+                // Don't rewrite the LLImageGL while the GL worker may still be
+                // uploading into it; it is re-queued later if still needed.
+                !image->isCreateTextureInFlight() &&
+                image->getDiscardLevel() < image->getDesiredDiscardLevel() &&
                 !aya_texture_protected_fttype(image.get()) &&
                 !aya_texture_protected_boost(image.get()))
             {
-                img->scaleDown(image->getDesiredDiscardLevel());
+                scaled = img->scaleDown(image->getDesiredDiscardLevel());
             }
 
             image->mDownScalePending = false;
             mDownScaleQueue.pop();
+            if (!scaled)
+            {
+                // Retiring no-op entries is cheap, but keep the frame bounded.
+                if (create_timer.getElapsedTimeF32() > downscale_budget)
+                {
+                    break;
+                }
+                continue;
+            }
             ++downscale_count;
             ++s_downscaled_textures;
 
@@ -3432,7 +3587,7 @@ F32 LLViewerTextureList::updateImagesFetchTextures(F32 max_time)
         }
     }
 
-    const U32 physical_mb = (U32)(LLMemory::getCurrentRSS() / (1024ULL * 1024ULL));
+    const U32 physical_mb = (U32)(aya_current_resident_bytes() / (1024ULL * 1024ULL));
     const bool memory_pressure =
         memory_sweep_min_physical_mb() > 0 &&
         physical_mb >= memory_sweep_min_physical_mb();

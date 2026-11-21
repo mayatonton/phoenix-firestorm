@@ -1326,6 +1326,15 @@ void display(bool rebuild, F32 zoom_factor, int subfield, bool for_snapshot)
                         update_sun_shadow = (gFrameCount % interval) == 0;
                     }
 
+                    // On throttled frames keep the previous shadow maps but
+                    // re-bind them to the current camera view; otherwise the
+                    // shadows slide with every camera move until the next
+                    // generation. Generate anyway if no maps exist yet.
+                    if (!update_sun_shadow && !gPipeline.refreshSunShadowMatrices())
+                    {
+                        update_sun_shadow = true;
+                    }
+
                     if (update_sun_shadow)
                     {
                         gPipeline.generateSunShadow(*LLViewerCamera::getInstance());

@@ -32,6 +32,7 @@
 #include "lldrawpool.h"
 #include "llspatialpartition.h"
 #include "m4math.h"
+#include "v3dmath.h"
 #include "llpointer.h"
 #include "lldrawpoolalpha.h"
 #include "lldrawpoolmaterials.h"
@@ -404,6 +405,11 @@ public:
     void postDeferredGammaCorrect(LLRenderTarget* screen_target);
 
     void generateSunShadow(LLCamera& camera);
+    // Re-bind the shadow maps rendered by the last generateSunShadow() to the
+    // current camera view. Use on frames where shadow generation is skipped
+    // (low-FPS throttle) so world-space shadows stay put while the camera moves.
+    // Returns false if no shadow maps have been generated yet.
+    bool refreshSunShadowMatrices();
     LLRenderTarget* getSunShadowTarget(U32 i);
     LLRenderTarget* getSpotShadowTarget(U32 i);
 
@@ -985,6 +991,15 @@ public:
 
     LLVector4               mSunClipPlanes;
     LLVector4               mSunOrthoClipPlanes;
+
+    // Light-space matrices and split distances of the last *main view*
+    // generateSunShadow(). Reflection/hero probe passes overwrite the shared
+    // members above, so refreshSunShadowMatrices() rebuilds from these.
+    glm::mat4               mAYAMainShadowModelview[6];
+    glm::mat4               mAYAMainShadowProjection[6];
+    LLVector4               mAYAMainSunClipPlanes;
+    LLVector3d              mAYAMainShadowAgentOrigin; // global origin of the agent frame at generation
+    bool                    mAYAMainShadowStateValid = false;
     LLVector2               mScreenScale;
 
     //water distortion texture (refraction)

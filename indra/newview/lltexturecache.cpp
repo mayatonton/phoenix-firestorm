@@ -1206,7 +1206,9 @@ S32 LLTextureCache::openAndReadEntry(const LLUUID& id, Entry& entry, bool create
 }
 
 //mHeaderMutex is locked before calling this.
-void LLTextureCache::writeEntryToHeaderImmediately(S32& idx, Entry& entry, bool write_header)
+// Returns false only if the header file could not be opened (idx is set to -1
+// and nothing was written); callers may then roll back in-memory bookkeeping.
+bool LLTextureCache::writeEntryToHeaderImmediately(S32& idx, Entry& entry, bool write_header)
 {
     LLAPRFile* aprfile ;
     S32 bytes_written ;
@@ -1217,14 +1219,14 @@ void LLTextureCache::writeEntryToHeaderImmediately(S32& idx, Entry& entry, bool 
         if (!aprfile)
         {
             idx = -1;
-            return;
+            return false;
         }
         bytes_written = aprfile->write((U8*)&mHeaderEntriesInfo, sizeof(EntriesInfo)) ;
         if(bytes_written != sizeof(EntriesInfo))
         {
             clearCorruptedCache() ; //clear the cache.
             idx = -1 ;//mark the idx invalid.
-            return ;
+            return true;
         }
 
         mHeaderAPRFile->seek(APR_SET, offset);
@@ -1235,7 +1237,7 @@ void LLTextureCache::writeEntryToHeaderImmediately(S32& idx, Entry& entry, bool 
         if (!aprfile)
         {
             idx = -1;
-            return;
+            return false;
         }
     }
     bytes_written = aprfile->write((void*)&entry, (S32)sizeof(Entry));
@@ -1244,11 +1246,12 @@ void LLTextureCache::writeEntryToHeaderImmediately(S32& idx, Entry& entry, bool 
         clearCorruptedCache() ; //clear the cache.
         idx = -1 ;//mark the idx invalid.
 
-        return ;
+        return true;
     }
 
     closeHeaderEntriesFile();
     mUpdatedEntryMap.erase(idx) ;
+    return true;
 }
 
 //mHeaderMutex is locked before calling this.
@@ -1309,6 +1312,8 @@ bool LLTextureCache::updateEntry(S32& idx, Entry& entry, S32 new_image_size, S32
         lockHeaders() ;
 
         bool update_header = false ;
+        const Entry previous_entry = entry;
+        const S32 previous_idx = idx;
         if(entry.mImageSize < 0) //is a brand-new entry
         {
             mHeaderIDMap[entry.mID] = idx;
@@ -1329,7 +1334,38 @@ bool LLTextureCache::updateEntry(S32& idx, Entry& entry, S32 new_image_size, S32
         entry.mImageSize = new_image_size ;
         entry.mBodySize = new_body_size ;
 
-        writeEntryToHeaderImmediately(idx, entry, update_header) ;
+        if (!writeEntryToHeaderImmediately(idx, entry, update_header))
+        {
+            // Header could not be opened: nothing reached disk, so undo the
+            // in-memory bookkeeping instead of leaving an index/size entry
+            // that has no header record.
+            if (previous_entry.mImageSize < 0)
+            {
+                mHeaderIDMap.erase(previous_entry.mID);
+                mTexturesSizeMap.erase(previous_entry.mID);
+                mTexturesSizeTotal -= new_body_size;
+                // Give the slot reserved by openAndReadEntry() back, so the
+                // entry count written later never covers a missing record.
+                if (previous_idx >= 0)
+                {
+                    if ((U32)previous_idx + 1 == mHeaderEntriesInfo.mEntries)
+                    {
+                        --mHeaderEntriesInfo.mEntries;
+                    }
+                    else
+                    {
+                        mFreeList.insert(previous_idx);
+                    }
+                }
+            }
+            else if (previous_entry.mBodySize != new_body_size)
+            {
+                mTexturesSizeMap[previous_entry.mID] = previous_entry.mBodySize;
+                mTexturesSizeTotal -= new_body_size;
+                mTexturesSizeTotal += previous_entry.mBodySize;
+            }
+            entry = previous_entry;
+        }
 
         if (mTexturesSizeTotal > sCacheMaxTexturesSize)
         {
@@ -1351,11 +1387,8 @@ U32 LLTextureCache::openAndReadEntries(std::vector<Entry>& entries)
 {
     U32 num_entries = mHeaderEntriesInfo.mEntries;
 
-    mHeaderIDMap.clear();
-    mTexturesSizeMap.clear();
-    mFreeList.clear();
-    mTexturesSizeTotal = 0;
-
+    // Open first: if the header cannot be opened, keep the current in-memory
+    // index instead of wiping it (which would orphan entries still on disk).
     LLAPRFile* aprfile = NULL;
     if(mUpdatedEntryMap.empty())
     {
@@ -1368,13 +1401,24 @@ U32 LLTextureCache::openAndReadEntries(std::vector<Entry>& entries)
     else //update the header file first.
     {
         aprfile = openHeaderEntriesFile(false, 0);
-        updatedHeaderEntriesFile() ;
         if(!aprfile)
         {
             return 0;
         }
+        updatedHeaderEntriesFile() ;
+        if (!mHeaderAPRFile)
+        {
+            // A short write made updatedHeaderEntriesFile() call
+            // clearCorruptedCache(), which closed (and freed) aprfile.
+            return 0;
+        }
         aprfile->seek(APR_SET, (S32)sizeof(EntriesInfo));
     }
+
+    mHeaderIDMap.clear();
+    mTexturesSizeMap.clear();
+    mFreeList.clear();
+    mTexturesSizeTotal = 0;
     for (U32 idx=0; idx<num_entries; idx++)
     {
         try

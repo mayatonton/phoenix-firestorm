@@ -951,9 +951,12 @@ void LLViewerTexture::addTextureStats(F32 virtual_size, bool needs_gltexture) co
         mNeedsGLTexture = true;
     }
 
+    // Keep max aggregation: a zero/negative sample must not wipe stats that
+    // another producer (e.g. minimap/terrain boost, which has no LLFace
+    // references) added this frame. Callers that need a reset do it
+    // explicitly (see LLViewerTextureList::updateImageDecodePriority).
     if (virtual_size <= 0.f)
     {
-        mMaxVirtualSize = 0.f;
         return;
     }
 
@@ -3894,7 +3897,7 @@ F32 LLViewerMediaTexture::getMaxVirtualSize()
 
     if(!mMaxVirtualSizeResetCounter)
     {
-        addTextureStats(0.f, false);//reset
+        mMaxVirtualSize = 0.f; // reset (addTextureStats(0) only aggregates by max)
     }
 
     if(mIsPlaying) //media is playing

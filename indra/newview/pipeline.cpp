@@ -1360,6 +1360,12 @@ inline U32 BlurHappySize(U32 x, F32 scale) { return U32( x * scale + 16.0f) & ~0
 bool LLPipeline::allocateShadowBuffer(U32 resX, U32 resY)
 {
     LL_PROFILE_ZONE_SCOPED_CATEGORY_DISPLAY;
+    if (!gCubeSnapshot)
+    {
+        // Main-view shadow maps are being reallocated: the saved main-view
+        // matrices no longer describe their contents.
+        mAYAMainShadowStateValid = false;
+    }
     S32 shadow_detail = RenderShadowDetail;
 
     F32 scale = gCubeSnapshot ? 1.0f : llmax(0.f, RenderShadowResolutionScale); // Don't scale probe shadow maps
@@ -1750,6 +1756,7 @@ void LLPipeline::releaseLUTBuffers()
 
 void LLPipeline::releaseShadowBuffers()
 {
+    mAYAMainShadowStateValid = false;
     releaseSunShadowTargets();
     releaseSpotShadowTargets();
 }
@@ -12925,6 +12932,50 @@ public:
     }
 };
 
+namespace
+{
+    const glm::mat4 AYA_SHADOW_NDC_TO_TEXCOORD(0.5f, 0.0f, 0.0f, 0.0f,
+                                               0.0f, 0.5f, 0.0f, 0.0f,
+                                               0.0f, 0.0f, 0.5f, 0.0f,
+                                               0.5f, 0.5f, 0.5f, 1.0f);
+}
+
+bool LLPipeline::refreshSunShadowMatrices()
+{
+    if (!sRenderDeferred || RenderShadowDetail <= 0)
+    {
+        return true; // nothing to refresh, and nothing to force-generate
+    }
+    if (!mAYAMainShadowStateValid)
+    {
+        return false;
+    }
+
+    // The saved light-space matrices are in agent coordinates. After a region
+    // crossing the agent frame origin moves, so they no longer line up with
+    // the current camera: regenerate instead.
+    const LLVector3d agent_origin = gAgent.getPositionGlobal() - LLVector3d(gAgent.getPositionAgent());
+    if ((agent_origin - mAYAMainShadowAgentOrigin).magVecSquared() > 0.01)
+    {
+        return false;
+    }
+
+    // mSunShadowMatrix = trans * proj * view * inverse(camera view at generation time).
+    // The shadow maps themselves are in light space, so only the trailing
+    // inverse camera view has to follow the current camera. Use the saved
+    // main-view state: probe passes since the last main generation may have
+    // overwritten mShadowModelview/mShadowProjection/mSunClipPlanes.
+    const glm::mat4 inv_view = glm::inverse(get_current_modelview());
+    for (U32 i = 0; i < 6; ++i)
+    {
+        mShadowModelview[i] = mAYAMainShadowModelview[i];
+        mShadowProjection[i] = mAYAMainShadowProjection[i];
+        mSunShadowMatrix[i] = AYA_SHADOW_NDC_TO_TEXCOORD * mAYAMainShadowProjection[i] * mAYAMainShadowModelview[i] * inv_view;
+    }
+    mSunClipPlanes = mAYAMainSunClipPlanes;
+    return true;
+}
+
 void LLPipeline::generateSunShadow(LLCamera& camera)
 {
     if (!sRenderDeferred || RenderShadowDetail <= 0)
@@ -13737,6 +13788,20 @@ void LLPipeline::generateSunShadow(LLCamera& camera)
 
     set_last_modelview(last_modelview);
     set_last_projection(last_projection);
+
+    if (!gCubeSnapshot)
+    {
+        // Snapshot the main-view light-space state for throttled frames
+        // (see refreshSunShadowMatrices()).
+        for (U32 i = 0; i < 6; ++i)
+        {
+            mAYAMainShadowModelview[i] = mShadowModelview[i];
+            mAYAMainShadowProjection[i] = mShadowProjection[i];
+        }
+        mAYAMainSunClipPlanes = mSunClipPlanes;
+        mAYAMainShadowAgentOrigin = gAgent.getPositionGlobal() - LLVector3d(gAgent.getPositionAgent());
+        mAYAMainShadowStateValid = true;
+    }
 
     popRenderTypeMask();
 

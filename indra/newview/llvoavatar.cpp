@@ -12442,7 +12442,13 @@ void LLVOAvatar::updateImpostors()
             && avatar->isImpostor()
             && avatar->needsImpostorUpdate())
         {
-            if (throttle_existing_refresh && avatar->mImpostor.isComplete())
+            // Under low FPS, skip refreshing complete impostors, but only up to
+            // a bounded age: otherwise a crowd that keeps FPS low would never
+            // show outfit/pose/visibility changes.
+            constexpr F32 LOW_FPS_IMPOSTOR_MAX_AGE_SECONDS = 8.f;
+            if (throttle_existing_refresh &&
+                avatar->mImpostor.isComplete() &&
+                (gFrameTimeSeconds - avatar->mLastImpostorUpdateFrameTime) < LOW_FPS_IMPOSTOR_MAX_AGE_SECONDS)
             {
                 continue;
             }

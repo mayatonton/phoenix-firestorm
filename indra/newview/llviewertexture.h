@@ -443,6 +443,10 @@ public:
     void        loadFromFastCache();
     void        setInFastCacheList(bool in_list) { mInFastCacheList = in_list; }
     bool        isInFastCacheList() { return mInFastCacheList; }
+    // True while a GL texture creation is scheduled or running (main-thread
+    // queue or LLImageGL worker); mRawImage must not be released meanwhile.
+    // (non-const: LLAtomicBool's read operator is not const)
+    bool        isCreateTextureInFlight() { return mCreatePending || mNeedsCreateTexture; }
 
     /*virtual*/bool  isActiveFetching() override; //is actively in fetching by the fetching pipeline.
 

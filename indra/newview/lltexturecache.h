@@ -176,7 +176,7 @@ private:
     U32 openAndReadEntries(std::vector<Entry>& entries);
     void writeEntriesAndClose(const std::vector<Entry>& entries);
     void readEntryFromHeaderImmediately(S32& idx, Entry& entry) ;
-    void writeEntryToHeaderImmediately(S32& idx, Entry& entry, bool write_header = false) ;
+    bool writeEntryToHeaderImmediately(S32& idx, Entry& entry, bool write_header = false) ;
     void removeEntry(S32 idx, Entry& entry, std::string& filename);
     void removeCachedTexture(const LLUUID& id) ;
     S32 getHeaderCacheEntry(const LLUUID& id, Entry& entry);
