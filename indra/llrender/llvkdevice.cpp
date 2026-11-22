@@ -653,7 +653,20 @@ namespace LLVKLoaderInternal
         present_id_features_enable.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_PRESENT_ID_FEATURES_KHR;
         VkPhysicalDevicePresentWaitFeaturesKHR present_wait_features_enable = {};
         present_wait_features_enable.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_PRESENT_WAIT_FEATURES_KHR;
-        if (present_id_supported && present_wait_supported)
+#if LL_DARWIN
+        // MoltenVK completes a present wait when the Metal command buffer that
+        // presents the drawable completes, not when the drawable is shown, and
+        // FIFO already sleeps inside -[CAMetalLayer nextDrawable] instead of
+        // busy-waiting. Waiting on the PresentEngine worker would only hold
+        // back the next frame's submits until the GPU finished this one.
+        // Display completion is measured with VK_GOOGLE_display_timing instead.
+        const bool use_present_wait = false;
+        (void)present_id_supported;
+        (void)present_wait_supported;
+#else
+        const bool use_present_wait = present_id_supported && present_wait_supported;
+#endif
+        if (use_present_wait)
         {
             VkPhysicalDevicePresentIdFeaturesKHR pid_query = {};
             pid_query.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_PRESENT_ID_FEATURES_KHR;

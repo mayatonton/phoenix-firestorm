@@ -499,10 +499,10 @@ namespace
                 //     VK_KHR_present_wait — confirm it is enabled (device-creation block in
                 //     initVulkan) and that the present thread stops spinning; add a Win32
                 //     fallback (e.g. driver knob / waitable swapchain) if the driver still spins.
-                //   * macOS (MoltenVK) maintainer: VK_KHR_present_wait support is
-                //     MoltenVK-version dependent. If unsupported, keep the no-op fallback and
-                //     add a Metal-side present-pacing (CAMetalLayer / MTLDrawable) sleep so
-                //     macOS does not busy-wait either.
+                //   * macOS (MoltenVK): not used. FIFO already sleeps in
+                //     -[CAMetalLayer nextDrawable], and MoltenVK completes the wait when the
+                //     present command buffer completes, so waiting here would serialize the
+                //     next frame's submits behind the GPU (createDevice leaves it disabled).
                 // Do NOT ship a platform that busy-waits vsync — return the core.
                 // ============================================================================
                 const bool prs_aux = (t.swapchain != sSwapchain);

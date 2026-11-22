@@ -98,7 +98,10 @@ wait_attempts=... wait_timeout=... wait_error=...
 - `acq_fps`: main swapchain image を取得できた回数。compositor が image を再利用可能にした cadence の近似値。
 - `present_call_fps`: `vkQueuePresentKHR()` 呼び出し回数。
 - `present_ok_fps`: WSI が present を受理した回数。
-- `present_wait_avail`: `VK_KHR_present_wait` を利用可能として初期化できたか。
+- `present_wait_avail`: `VK_KHR_present_wait` を利用可能として初期化できたか。macOS では常に `0` になる。
+  MoltenVK はこの待機を Metal のコマンドバッファ完了で解除し、表示完了を示さない。present を担当する
+  ワーカーで待つと、次のフレームの submit が GPU 完了まで止まるため、Darwin では device 作成時に有効化しない。
+  表示完了は `VK_GOOGLE_display_timing` で測る。
 - `present_wait_used` と `wait_attempts`: この観測区間で実際に `vkWaitForPresentKHR()` を呼んだか・呼んだ回数。
 - `present_done_fps`: 呼び出しを行った区間（`present_wait_used=1`）だけで有効な present 完了回数。
 - `present_wait_avail=0` または `present_wait_used=0` かつ `present_done_fps=n/a`: 物理的な走査線への表示回数は
