@@ -4,8 +4,11 @@
 #
 #   scripts/bench/launch_bench_viewer.sh <AYAstorm.app> [viewer args...]
 #
-# e.g. scripts/bench/launch_bench_viewer.sh \
+# e.g. AYASTORM_PERF_LOG=5 scripts/bench/launch_bench_viewer.sh \
 #        build-darwin-dev/newview/Release/AYAstorm.app --set RenderMirrors 1
+#
+# AYASTORM_PERF_LOG and AYASTORM_VKC, when set, are passed to the viewer
+# (the #VkPerf# summary of the validation guide).
 #
 # The OpenSim build of the viewer selects the grid with --grid; --loginuri is
 # not read, and without --grid it logs into Second Life. The bench account
@@ -48,7 +51,15 @@ quit_viewer() {
 }
 
 login() {
-  open -n -g "$APP" --args --grid "$GRID" --login "$first" "$last" "$password" --url "$START" "$@"
+  # apps started by open(1) do not inherit this shell's environment: pass the
+  # measurement switches (AYASTORM_PERF_LOG, AYASTORM_VKC) explicitly
+  local -a envs=()
+  local v
+  for v in AYASTORM_PERF_LOG AYASTORM_VKC; do
+    [[ -n ${(P)v:-} ]] && envs+=(--env "$v=${(P)v}")
+  done
+  # --url is a last_option in cmd_line.xml: extra viewer args must come first
+  open -n -g "${envs[@]}" "$APP" --args --grid "$GRID" --login "$first" "$last" "$password" "$@" --url "$START"
   sleep 5  # the viewer starts a fresh log
   for i in {1..180}; do
     if grep -q "STATE_STARTED" "$LOG" 2>/dev/null; then echo started; return; fi
