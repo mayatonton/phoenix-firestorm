@@ -6666,8 +6666,11 @@ bool LLViewerWindow::simpleSnapshot(LLImageRaw* raw, S32 image_width, S32 image_
 
     LLRect window_rect = getWorldViewRectRaw();
 
-    S32 original_width = LLPipelineFrameContext::getInstance().isRenderingDeferred() ? LLPipelineFrameContext::getInstance().getActiveRT()->deferredScreen.getWidth() : gViewerWindow->getWorldViewWidthRaw();
-    S32 original_height = LLPipelineFrameContext::getInstance().isRenderingDeferred() ? LLPipelineFrameContext::getInstance().getActiveRT()->deferredScreen.getHeight() : gViewerWindow->getWorldViewHeightRaw();
+    // RenderTargetPack::width/height retain the unscaled source extent.  Do
+    // not restore from deferredScreen: it is already divided and would apply
+    // RenderResolutionDivisor a second time during allocateScreenBuffer().
+    S32 original_width = LLPipelineFrameContext::getInstance().isRenderingDeferred() ? LLPipelineFrameContext::getInstance().getActiveRT()->width : gViewerWindow->getWorldViewWidthRaw();
+    S32 original_height = LLPipelineFrameContext::getInstance().isRenderingDeferred() ? LLPipelineFrameContext::getInstance().getActiveRT()->height : gViewerWindow->getWorldViewHeightRaw();
 
     if (gPipeline.allocateScreenBuffer(image_width, image_height))
     {

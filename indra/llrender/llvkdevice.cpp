@@ -579,6 +579,20 @@ namespace LLVKLoaderInternal
         bool checkpoints_supported = false;
         bool present_id_supported = false;
         bool present_wait_supported = false;
+        bool display_timing_supported = false;
+        const bool display_timing_requested = []() -> bool {
+            const char* vkc = getenv("AYASTORM_VKC");
+            const char* perf = getenv("AYASTORM_PERF_LOG");
+            if (vkc == nullptr || std::strcmp(vkc, "1") != 0 || perf == nullptr)
+            {
+                return false;
+            }
+            char* end = nullptr;
+            const F64 interval = strtod(perf, &end);
+            return end != perf && end != nullptr && *end == '\0' && interval > 0.0;
+        }();
+        sDisplayTimingRequested = display_timing_requested;
+        sDisplayTimingEnabled = false;
         {
             U32 ext_count = 0;
             vkEnumerateDeviceExtensionProperties(sPhysicalDevice, nullptr, &ext_count, nullptr);
@@ -605,6 +619,10 @@ namespace LLVKLoaderInternal
                 else if (std::strcmp(e.extensionName, "VK_KHR_present_wait") == 0)
                 {
                     present_wait_supported = true;
+                }
+                else if (std::strcmp(e.extensionName, VK_GOOGLE_DISPLAY_TIMING_EXTENSION_NAME) == 0)
+                {
+                    display_timing_supported = true;
                 }
             }
         }
@@ -654,6 +672,11 @@ namespace LLVKLoaderInternal
                 present_wait_features_enable.presentWait = VK_TRUE;
                 sPresentWaitEnabled = true;
             }
+        }
+        if (display_timing_requested && display_timing_supported)
+        {
+            device_extensions.push_back(VK_GOOGLE_DISPLAY_TIMING_EXTENSION_NAME);
+            sDisplayTimingEnabled = true;
         }
 
         VkPhysicalDeviceProvokingVertexFeaturesEXT pv_features_enable = {};
@@ -871,9 +894,20 @@ namespace LLVKLoaderInternal
         {
             sDeviceFaultEnabled = false;
         }
+        if (sDisplayTimingEnabled && vkGetPastPresentationTimingGOOGLE == nullptr)
+        {
+            LL_WARNS("Vulkan") << "display_timing extension was enabled but vkGetPastPresentationTimingGOOGLE is unavailable; disabling diagnostic" << LL_ENDL;
+            sDisplayTimingEnabled = false;
+        }
         LL_INFOS("Vulkan") << "GPU breadcrumb checkpoints enabled=" << (sCheckpointsEnabled ? 1 : 0)
                            << " device_fault enabled=" << (sDeviceFaultEnabled ? 1 : 0) << LL_ENDL;
         LL_INFOS("Vulkan") << "present_wait (vsync sleep) enabled=" << (sPresentWaitEnabled ? 1 : 0) << LL_ENDL;
+        if (display_timing_requested)
+        {
+            LL_INFOS("Vulkan") << "display_timing diagnostic requested=1"
+                               << " extension=" << (display_timing_supported ? 1 : 0)
+                               << " enabled=" << (sDisplayTimingEnabled ? 1 : 0) << LL_ENDL;
+        }
         vkGetDeviceQueue(sDevice, sGraphicsQueueFamily, 0, &sGraphicsQueue);
 
 

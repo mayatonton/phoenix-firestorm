@@ -59,6 +59,9 @@ namespace LLVKLoader
     bool asyncShouldRenderScene();
     void setAsyncFrameEngaged(bool on);
     bool asyncFrameEngaged();
+    // Diagnostic-only scene generation tag. A new value denotes a completed
+    // async scene becoming the front image, not a UI-only consumer frame.
+    void noteAsyncSceneFrontPresented();
     bool isSwapchainImageAcquired();
     void asyncProducerBeginScene(U32 back_index);
     void setProducerPresentActive(bool on);
