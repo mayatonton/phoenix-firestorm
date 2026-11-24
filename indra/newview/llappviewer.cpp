@@ -101,6 +101,10 @@
 #include "llviewermenufile.h"
 #include "llvoicechannel.h"
 #include "llvoavatarself.h"
+#include "llface.h"
+#include "lldrawable.h"
+#include "llspatialpartition.h"
+#include "llviewerjointattachment.h"
 #include "llurlmatch.h"
 #include "lltextutil.h"
 #include "lllogininstance.h"
@@ -549,6 +553,147 @@ void idle_afk_check()
         }
     }
 }
+
+// <AYA:AttachCensus> Per-avatar attachment render-stage census. For every other
+// avatar whose attachment prims are not all present in their group's draw map,
+// logs where each prim is stuck (no drawable / mesh asset / skin info / group /
+// dirty group / face buffers / missing from draw map), so an avatar shown as a
+// bare BOM body can be traced to the stage that dropped its mesh attachments.
+static void aya_attachment_census_prim(LLViewerObject* obj, U32* c)
+{
+    if (obj == nullptr || obj->isDead())
+    {
+        return;
+    }
+    // c: 0 prims, 1 nodraw, 2 invis, 3 mesh_wait, 4 skin_wait, 5 nogroup,
+    //    6 gdirty, 7 face_novb, 8 indraw, 9 notindraw, 10 rigged
+    if (obj->getPCode() == LL_PCODE_VOLUME)
+    {
+        ++c[0];
+        LLVOVolume* vobj = (LLVOVolume*)obj;
+        LLDrawable* d = vobj->mDrawable.get();
+        if (d == nullptr || d->isDead())
+        {
+            ++c[1];
+        }
+        else if (d->isState(LLDrawable::FORCE_INVISIBLE))
+        {
+            ++c[2];
+        }
+        else if (vobj->isMesh() && vobj->getVolume() != nullptr && !vobj->getVolume()->isMeshAssetLoaded())
+        {
+            ++c[3];
+        }
+        else if (vobj->isMesh() && vobj->getSkinInfo() == nullptr && !vobj->isSkinInfoUnavaliable())
+        {
+            ++c[4];
+        }
+        else
+        {
+            if (vobj->isRiggedMesh())
+            {
+                ++c[10];
+            }
+            LLSpatialGroup* g = d->getSpatialGroup();
+            if (g == nullptr)
+            {
+                ++c[5];
+            }
+            else
+            {
+                if (g->hasState(LLSpatialGroup::GEOM_DIRTY))
+                {
+                    ++c[6];
+                }
+                for (S32 i = 0; i < d->getNumFaces(); ++i)
+                {
+                    LLFace* f = d->getFace(i);
+                    if (f != nullptr && f->getIndicesCount() > 0 && f->getVertexBuffer() == nullptr)
+                    {
+                        ++c[7];
+                        break;
+                    }
+                }
+                bool found = false;
+                for (auto& pass : g->mDrawMap)
+                {
+                    for (const LLPointer<LLDrawInfo>& info : pass.second)
+                    {
+                        if (info.notNull() && info->mSrcDrawable.get() == d)
+                        {
+                            found = true;
+                            break;
+                        }
+                    }
+                    if (found)
+                    {
+                        break;
+                    }
+                }
+                ++c[found ? 8 : 9];
+            }
+        }
+    }
+    for (LLViewerObject* child : obj->getChildren())
+    {
+        aya_attachment_census_prim(child, c);
+    }
+}
+
+static void aya_attachment_census()
+{
+    static F64 s_next = 0.0;
+    const F64 now = LLFrameTimer::getTotalSeconds();
+    if (now < s_next)
+    {
+        return;
+    }
+    s_next = now + 30.0;
+    U32 logged = 0;
+    for (LLCharacter* character : LLCharacter::sInstances)
+    {
+        LLVOAvatar* av = (LLVOAvatar*)character;
+        if (av == nullptr || av->isDead() || av->isSelf() || av->isControlAvatar() || av->isUIAvatar())
+        {
+            continue;
+        }
+        U32 c[11] = {};
+        U32 att_objs = 0;
+        for (auto& ap : av->mAttachmentPoints)
+        {
+            LLViewerJointAttachment* att = ap.second;
+            if (att == nullptr)
+            {
+                continue;
+            }
+            for (const LLPointer<LLViewerObject>& o : att->mAttachedObjects)
+            {
+                ++att_objs;
+                aya_attachment_census_prim(o.get(), c);
+            }
+        }
+        const U32 bad = c[1] + c[3] + c[4] + c[5] + c[9];
+        if (bad == 0 && att_objs > 0)
+        {
+            continue;
+        }
+        if (++logged > 40)
+        {
+            break;
+        }
+        LL_WARNS("AttachCensus") << "avatar='" << av->getFullname() << "' id=" << av->getID()
+                                 << " att_objs=" << att_objs << " prims=" << c[0]
+                                 << " rigged=" << c[10] << " indraw=" << c[8] << " notindraw=" << c[9]
+                                 << " nodraw=" << c[1] << " invis=" << c[2]
+                                 << " mesh_wait=" << c[3] << " skin_wait=" << c[4]
+                                 << " nogroup=" << c[5] << " gdirty=" << c[6] << " face_novb=" << c[7]
+                                 << " muted=" << (av->isVisuallyMuted() ? 1 : 0)
+                                 << " too_complex=" << (av->isTooComplex() ? 1 : 0)
+                                 << " appearance=" << (S32)av->getOverallAppearance()
+                                 << " fully_loaded=" << (av->isFullyLoaded() ? 1 : 0) << LL_ENDL;
+    }
+}
+// </AYA:AttachCensus>
 
 // A callback set in LLAppViewer::init()
 static void ui_audio_callback(const LLUUID& uuid)
@@ -2017,6 +2162,7 @@ bool LLAppViewer::doFrame()
                     s_backstop_window.reset();
                 }
             }
+            aya_attachment_census(); // <AYA:AttachCensus/>
             {
                 static LLTimer s_asset_oracle_timer;
                 static F64     s_wear_nonzero_since = 0.0;

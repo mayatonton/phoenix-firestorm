@@ -7119,7 +7119,37 @@ void LLVolumeGeometryManager::rebuildGeom(LLSpatialGroup* group)
     }
 
     ++group->mVkGeoGen;
-    applyGeoStaged(group, staged);
+    if (!applyGeoStaged(group, staged))
+    {
+        // The group was already marked built above. If the staged result was
+        // rejected (a staged drawable died, moved group, or its face changed while
+        // staging) the draw map was left untouched; without a re-dirty the group
+        // stays "clean" with no draw infos and its objects (often a whole avatar's
+        // rigged attachments) never render. Re-queue it so the next frame rebuilds.
+        group->setState(LLSpatialGroup::GEOM_DIRTY);
+        gPipeline.markRebuild(group);
+        static U32 s_reject_logged = 0;
+        if (s_reject_logged < 64)
+        {
+            ++s_reject_logged;
+            std::string av_name;
+            for (const LLGeoFaceApply& e : staged.mFaces)
+            {
+                LLDrawable* d = e.mDrawable.get();
+                LLVOVolume* v = (d != nullptr && !d->isDead()) ? d->getVOVolume() : nullptr;
+                LLVOAvatar* av = (v != nullptr) ? v->getAvatar() : nullptr;
+                if (av != nullptr)
+                {
+                    av_name = av->getFullname();
+                    break;
+                }
+            }
+            LL_WARNS("AssetStuck") << "geo staged apply rejected; group re-queued faces="
+                                   << staged.mFaces.size()
+                                   << " bridge=" << ((group->getSpatialPartition() && group->getSpatialPartition()->asBridge()) ? 1 : 0)
+                                   << " avatar='" << av_name << "'" << LL_ENDL;
+        }
+    }
     ++LLVKLoader::gVkPerf.geo_inl;
 }
 
