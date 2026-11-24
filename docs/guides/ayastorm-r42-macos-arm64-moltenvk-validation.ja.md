@@ -111,6 +111,11 @@ wait_attempts=... wait_timeout=... wait_error=...
 表示系の cadence が乖離している。UI scene async が有効な run では、併せて
 `uiscene consumer_fps` / `producer_fps` も記録する。
 
+右上の FPS は `AYAStatusBarShowVisibleFPS` が有効（既定）の場合、新しい 3D scene の表示回数を
+秒あたりで示す。表示タイミングを利用できない環境では、main swapchain が受理した新しい scene の回数を
+推定値として示す。ツールチップで計測方法と従来のレンダーループ FPS を確認できる。
+従来の FPS 表示に戻すには `AYAStatusBarShowVisibleFPS` を無効にする。
+
 ## 4. `shsite` による shadow 経路判定
 
 `#VkPerf#` 行に含まれる `shsite` 欄を、最低 1 行以上そのまま記録する。判定は次の通り。

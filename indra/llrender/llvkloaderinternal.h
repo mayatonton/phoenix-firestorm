@@ -462,6 +462,9 @@ void dumpDeviceFaultOnDeviceLost();
         U64 actual_interval_count = 0;
         U64 actual_interval_ns = 0;
         U64 fresh_count = 0;
+        // <AYA:VisibleFPS>
+        U64 fresh_capped_count = 0;
+        // </AYA:VisibleFPS>
         U64 fresh_interval_count = 0;
         U64 fresh_interval_ns = 0;
         U64 duplicate_count = 0;
@@ -545,6 +548,10 @@ extern VkPresentModeKHR sActivePresentMode;
 extern std::atomic<bool> sVsyncEnabled;
 U64 currentDisplayTimingSceneId();
 void advanceDisplayTimingSceneId();
+// <AYA:VisibleFPS>
+void setDisplayTimingRefreshDurationNs(U64 refresh_ns);
+U64 getDisplayTimingRefreshDurationNs();
+// </AYA:VisibleFPS>
 void resetDisplayTimingHistory();
 DisplayTimingIntervalStats collectDisplayTimingIntervalStats();
 uint64_t gpuTimelineValue();

@@ -686,11 +686,13 @@ namespace LLVKLoaderInternal
                 sPresentWaitEnabled = true;
             }
         }
-        if (display_timing_requested && display_timing_supported)
+        // <AYA:VisibleFPS>
+        if (display_timing_supported)
         {
             device_extensions.push_back(VK_GOOGLE_DISPLAY_TIMING_EXTENSION_NAME);
             sDisplayTimingEnabled = true;
         }
+        // </AYA:VisibleFPS>
 
         VkPhysicalDeviceProvokingVertexFeaturesEXT pv_features_enable = {};
         pv_features_enable.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_PROVOKING_VERTEX_FEATURES_EXT;
@@ -907,11 +909,14 @@ namespace LLVKLoaderInternal
         {
             sDeviceFaultEnabled = false;
         }
+        // <AYA:VisibleFPS>
         if (sDisplayTimingEnabled && vkGetPastPresentationTimingGOOGLE == nullptr)
         {
-            LL_WARNS("Vulkan") << "display_timing extension was enabled but vkGetPastPresentationTimingGOOGLE is unavailable; disabling diagnostic" << LL_ENDL;
+            LL_WARNS("Vulkan") << "vkGetPastPresentationTimingGOOGLE is unavailable. Disabling display timing." << LL_ENDL;
             sDisplayTimingEnabled = false;
         }
+        LL_INFOS("Vulkan") << "display_timing enabled=" << (sDisplayTimingEnabled ? 1 : 0) << LL_ENDL;
+        // </AYA:VisibleFPS>
         LL_INFOS("Vulkan") << "GPU breadcrumb checkpoints enabled=" << (sCheckpointsEnabled ? 1 : 0)
                            << " device_fault enabled=" << (sDeviceFaultEnabled ? 1 : 0) << LL_ENDL;
         LL_INFOS("Vulkan") << "present_wait (vsync sleep) enabled=" << (sPresentWaitEnabled ? 1 : 0) << LL_ENDL;

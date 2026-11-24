@@ -88,7 +88,7 @@ AYAstorm 側から直接 `addPresentedHandler` を登録する設計にはしな
 AYAstorm は次の正式な Vulkan 境界を使用する。
 
 1. device extension 列挙で `VK_GOOGLE_display_timing` の利用可否を確認する。
-2. 利用可能な診断起動でのみ extension を有効化する。
+2. device が対応していれば通常起動でも extension を有効にする。履歴照会の関数を取得できない場合は使用しない。
 3. main swapchain の各 Present に一意な `presentID` を付ける。
 4. `vkGetPastPresentationTimingGOOGLE()` から `actualPresentTime` を回収する。
 5. `presentID` と、その Present が使用した `scene_id` を対応付ける。
@@ -100,8 +100,8 @@ MoltenVK の改造や private API への依存は必要ない。
 Metal の表示完了回数だけを数えても、3D scene の滑らかさは証明できない。同じ front image を 30 回表示した場合も、
 drawable の表示完了は 30 回になるためである。
 
-新しい async Producer が GPU 完了し、front の scene render target が切り替わった時だけ、単調増加する
-`scene_id` を更新する。各 Present は使用した `scene_id` を保持する。
+非同期では Producer の GPU 完了で front が切り替わるときに、同期分割では描画した back を次の front にするときに、
+単調増加する `scene_id` を更新する。各 Present は使用した `scene_id` を保持する。
 
 表示完了履歴を回収したとき、直前に表示完了した `scene_id` と比較する。
 
@@ -120,6 +120,7 @@ display_timing_available
 display_timing_source
 actual_display_fps
 fresh_scene_display_fps
+fresh_capped
 duplicate_scene_count
 duplicate_ratio
 unknown_present_count
@@ -149,16 +150,17 @@ Vulkan API は保証しないためである。
 
 ## 8. 診断の有効条件
 
-表示完了診断は通常動作へ影響させない。次の両方が指定された起動だけで有効化する。
+表示完了の `VkPerf` 診断ログは、次の両方が指定された起動で出力する。
 
 ```text
 AYASTORM_VKC=1
 AYASTORM_PERF_LOG=<正の秒数>
 ```
 
-通常起動では、表示 timing extension の有効化、Present ID 対応表、履歴照会、追加ログ出力を行わない。
+extension の利用可否は起動時に `Vulkan` ログへ記録する。Present ID の対応付けと履歴照会は、
+extension が有効なら診断ログの指定にかかわらず行う。
 
-この条件が制御するのは、今回追加する**表示完了診断**である。`AYASTORM_PERF_LOG` だけで既に出ている
+この条件が制御するのは、**表示完了の診断ログ**である。`AYASTORM_PERF_LOG` だけで既に出ている
 従来の性能ログまで `AYASTORM_VKC` 必須へ変更するものではない。両方を指定した診断 run では、
 表示完了の集計も通常の Viewer ログである `AYAstorm.log` へ記録する。
 
@@ -170,7 +172,11 @@ actual_display_fps=n/a
 fresh_scene_display_fps=n/a
 ```
 
-`vkQueuePresentKHR()` の成功回数から実表示完了を推定してはならない。
+診断ログの実表示 FPS には表示完了履歴を使用する。ステータスバーは履歴を使えない環境で、
+`vkQueuePresentKHR()` が受理した新しい 3D scene の回数を推定値として表示する。
+
+履歴とリフレッシュ周期を取得できる場合、ステータスバーの 2 件目以降の計数には前回の計数から周期の 75% 以上の時刻差を求める。
+`fresh_capped` はこの条件で除外した履歴の件数を示す。既存の診断用 FPS はすべての fresh 履歴から算出する。
 
 ## 9. 実装上の不変条件
 

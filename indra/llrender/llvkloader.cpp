@@ -401,11 +401,16 @@ namespace LLVKLoaderInternal
 namespace
 {
     std::atomic<U32>        sProdCheckFirstReady{0};
+    U64                     sAsyncGateWaitUs = 0;
+    U32                     sAsyncGateWaitCount = 0;
     std::atomic<U32>        sProdCheckTotalReady{0};
     std::atomic<U32>        sProdChecksSinceSubmit{0};
     // Starts at one so the initial scene has a stable tag before the first
     // asynchronous front flip. This tag is read by the PE thread.
     std::atomic<U64>        sDisplayTimingSceneId{1};
+    // <AYA:AsyncScene>
+    U64                     sConsumerDisplayTimingSceneId = 0;
+    // </AYA:AsyncScene>
 } // namespace
 
 namespace LLVKLoaderInternal
@@ -1092,6 +1097,10 @@ static void refreshCompletedWatermark()
     {
         if (sFrameTimelineValue[i] != 0 &&
             cur >= sFrameTimelineValue[i] &&
+            // <AYA:AsyncScene>
+            // In sync split mode the scene's resources stay live through pjob.
+            (!sProducerFencePending[i] || asyncSceneDecoupled() || cur >= sProducerTimelineValue[i]) &&
+            // </AYA:AsyncScene>
             sFrameSubmittedMonotonic[i] > sLastCompletedMonotonic)
         {
             sLastCompletedMonotonic = sFrameSubmittedMonotonic[i];
@@ -1146,6 +1155,28 @@ bool isUISceneAsync()
     return sUISceneSplit && sUISceneAsync;
 }
 
+// <AYA:AsyncScene>
+// Experimental: AYASTORM_ASYNC_SCENE=0 renders the scene every frame through
+// the producer command buffer (sync split) instead of the async producer.
+bool asyncSceneDecoupled()
+{
+    static const bool s_on = [] {
+        const char* e = getenv("AYASTORM_ASYNC_SCENE");
+        return e == nullptr || e[0] != '0';
+    }();
+    return s_on;
+}
+// </AYA:AsyncScene>
+
+static bool asyncSceneGateEnabled()
+{
+    static const bool s_on = [] {
+        const char* e = getenv("AYASTORM_ASYNC_SCENE_GATE");
+        return e != nullptr && e[0] == '1';
+    }();
+    return s_on;
+}
+
 bool asyncProducerTryComplete()
 {
     if (sAsyncProducerFlipPending)
@@ -1198,10 +1229,9 @@ bool asyncFrameEngaged()
 
 void noteAsyncSceneFrontPresented()
 {
-    if (sDisplayTimingEnabled)
-    {
-        advanceDisplayTimingSceneId();
-    }
+    // <AYA:VisibleFPS>
+    advanceDisplayTimingSceneId();
+    // </AYA:VisibleFPS>
 }
 
 bool isSwapchainImageAcquired()
@@ -1243,6 +1273,15 @@ void recordToConsumer(bool on)
     {
         tRecordCmdOverride     = sConsumerCommandBuffers[sFrameIndex];
         sConsumerActiveThisFrame = true;
+        // <AYA:AsyncScene>
+        // <AYA:VisibleFPS>
+        if (!asyncSceneDecoupled())
+        {
+            // The consumer blits this front before render_ui flips it.
+            sConsumerDisplayTimingSceneId = currentDisplayTimingSceneId();
+        }
+        // </AYA:VisibleFPS>
+        // </AYA:AsyncScene>
     }
     else
     {
@@ -1334,6 +1373,17 @@ bool beginFrame(bool acquire_swapchain)
     if (sAsyncProducerInFlight && sAsyncProducerRecordSlot == sFrameIndex)
     {
         waitTimeline(sAsyncTimelineValue);
+    }
+    else if (sAsyncProducerInFlight && sAsyncFrameEngaged && asyncSceneGateEnabled())
+    {
+        // Experimental (AYASTORM_ASYNC_SCENE_GATE=1): the scene and the UI-only
+        // frames share one in-order queue, so a UI-only frame recorded while the
+        // scene is still on the GPU only presents the previous scene after it.
+        // Wait for the scene instead, and record the next one in this frame.
+        const U64 t0 = vkMonoUs();
+        waitTimeline(sAsyncTimelineValue);
+        sAsyncGateWaitUs += vkMonoUs() - t0;
+        ++sAsyncGateWaitCount;
     }
     sPESlotState[sFrameIndex].store(PE_SLOT_IDLE);
     vbUploadFrameReset();
@@ -1509,7 +1559,11 @@ bool endFrame()
                                        << " pw_aux=" << ((F64)sPEPwAuxUs.exchange(0) / 1000.0)
                                        << " auxfw=" << ((F64)sAuxBeginFenceUs.exchange(0) / 1000.0)
                                        << " auxacq=" << ((F64)sAuxBeginAcqUs.exchange(0) / 1000.0)
+                                       << " gate_wait_ms=" << ((F64)sAsyncGateWaitUs / 1000.0)
+                                       << "/" << sAsyncGateWaitCount
                                        << LL_ENDL;
+                    sAsyncGateWaitUs    = 0;
+                    sAsyncGateWaitCount = 0;
                 }
                 const U64 draws = gVkPerf.desc_bind.load() + gVkPerf.desc_skip.load();
                 LL_INFOS("VkPerf") << "frames=" << frames
@@ -1880,6 +1934,9 @@ bool endFrame()
                                        << " actual_display_fps=" << actual_display_fps
                                        << " fresh_scene_display_count=" << display_timing.fresh_count
                                        << " fresh_scene_display_fps=" << fresh_scene_display_fps
+                                       // <AYA:VisibleFPS>
+                                       << " fresh_capped=" << display_timing.fresh_capped_count
+                                       // </AYA:VisibleFPS>
                                        << " duplicate_scene_count=" << display_timing.duplicate_count
                                        << " unknown_present_count=" << display_timing.unknown_scene_count
                                        << " duplicate_ratio=" << duplicate_ratio
@@ -2013,10 +2070,12 @@ bool endFrame()
                 target.swapchain      = sSwapchain;
                 target.image_index    = sAcquiredImageIndex;
                 target.wait_semaphore = sRenderFinishedSemaphores[sFrameIndex];
-                if (sDisplayTimingEnabled)
-                {
-                    target.scene_id = currentDisplayTimingSceneId();
-                }
+                // <AYA:AsyncScene>
+                // <AYA:VisibleFPS>
+                target.scene_id = asyncSceneDecoupled() ? currentDisplayTimingSceneId()
+                                                       : sConsumerDisplayTimingSceneId;
+                // </AYA:VisibleFPS>
+                // </AYA:AsyncScene>
                 cjob.presents.push_back(target);
             }
         }
@@ -2063,10 +2122,9 @@ bool endFrame()
                 target.swapchain      = sSwapchain;
                 target.image_index    = sAcquiredImageIndex;
                 target.wait_semaphore = sRenderFinishedSemaphores[sFrameIndex];
-                if (sDisplayTimingEnabled)
-                {
-                    target.scene_id = currentDisplayTimingSceneId();
-                }
+                // <AYA:VisibleFPS>
+                target.scene_id = currentDisplayTimingSceneId();
+                // </AYA:VisibleFPS>
                 job.presents.push_back(target);
             }
         }

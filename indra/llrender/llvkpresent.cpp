@@ -41,7 +41,9 @@
 #include <list>
 #include <limits>
 #include <memory>
-#include <unordered_map>
+// <AYA:VisibleFPS>
+#include <map>
+// </AYA:VisibleFPS>
 #include <unordered_set>
 #include <atomic>
 #include <chrono>
@@ -122,7 +124,9 @@ namespace
     };
 
     std::mutex sDisplayTimingMutex;
-    std::unordered_map<U32, DisplayTimingPresentMapping> sDisplayTimingMappings;
+    // <AYA:VisibleFPS>
+    std::map<U32, DisplayTimingPresentMapping> sDisplayTimingMappings;
+    // </AYA:VisibleFPS>
     std::unordered_set<U32> sDisplayTimingCompletedIds;
     U64 sDisplayTimingLastActualTime = 0;
     U64 sDisplayTimingLastFreshTime = 0;
@@ -130,6 +134,12 @@ namespace
     bool sDisplayTimingLastSceneValid = false;
     bool sDisplayTimingIdExhausted = false;
     LLVKLoaderInternal::DisplayTimingIntervalStats sDisplayTimingIntervalStats;
+    // <AYA:VisibleFPS>
+    std::atomic<U64> sDisplayedFreshSceneCount{0};
+    std::atomic<U64> sSubmittedFreshSceneCount{0};
+    std::atomic<U64> sDisplayTimingRefreshDurationNs{0};
+    U64 sDisplayTimingLastCountedTime = 0; // Guarded by sDisplayTimingMutex.
+    // </AYA:VisibleFPS>
 
     U32 nextDisplayTimingPresentId()
     {
@@ -152,12 +162,18 @@ namespace
     void rememberDisplayTimingPresent(U32 present_id, U64 scene_id)
     {
         std::lock_guard<std::mutex> guard(sDisplayTimingMutex);
-        if (sDisplayTimingMappings.size() >= DISPLAY_TIMING_MAPPING_LIMIT ||
-            sDisplayTimingMappings.find(present_id) != sDisplayTimingMappings.end())
+        // <AYA:VisibleFPS>
+        if (sDisplayTimingMappings.find(present_id) != sDisplayTimingMappings.end())
         {
             ++sDisplayTimingIntervalStats.mapping_dropped;
             return;
         }
+        if (sDisplayTimingMappings.size() >= DISPLAY_TIMING_MAPPING_LIMIT)
+        {
+            sDisplayTimingMappings.erase(sDisplayTimingMappings.begin());
+            ++sDisplayTimingIntervalStats.mapping_dropped;
+        }
+        // </AYA:VisibleFPS>
         sDisplayTimingMappings.emplace(present_id, DisplayTimingPresentMapping{scene_id});
     }
 
@@ -192,14 +208,22 @@ namespace
         {
             return;
         }
-        std::vector<VkPastPresentationTimingGOOGLE> timings(count);
+        // <AYA:VisibleFPS>
+        // The caller holds sSwapchainAccessMutex while querying and using this buffer.
+        static std::vector<VkPastPresentationTimingGOOGLE> timings;
+        timings.resize(count);
         result = vkGetPastPresentationTimingGOOGLE(sDevice, swapchain, &count, timings.data());
-        if (result != VK_SUCCESS)
+        if (result != VK_SUCCESS && result != VK_INCOMPLETE)
         {
             noteDisplayTimingQueryError(result);
             return;
         }
+        // </AYA:VisibleFPS>
         std::lock_guard<std::mutex> guard(sDisplayTimingMutex);
+        // <AYA:VisibleFPS>
+        const U64 refresh_ns = getDisplayTimingRefreshDurationNs();
+        const U64 min_interval_ns = (refresh_ns / 4) * 3 + (refresh_ns % 4) * 3 / 4;
+        // </AYA:VisibleFPS>
         for (U32 i = 0; i < count; ++i)
         {
             const VkPastPresentationTimingGOOGLE& timing = timings[i];
@@ -217,7 +241,13 @@ namespace
             }
 
             ++sDisplayTimingIntervalStats.actual_count;
-            sDisplayTimingIntervalStats.present_margin_ns.push_back(timing.presentMargin);
+            // <AYA:VisibleFPS>
+            // Only the diagnostic log uses these margin samples.
+            if (sDisplayTimingRequested)
+            {
+                sDisplayTimingIntervalStats.present_margin_ns.push_back(timing.presentMargin);
+            }
+            // </AYA:VisibleFPS>
             if (sDisplayTimingLastActualTime != 0 && timing.actualPresentTime > sDisplayTimingLastActualTime)
             {
                 ++sDisplayTimingIntervalStats.actual_interval_count;
@@ -250,6 +280,23 @@ namespace
                 continue;
             }
             ++sDisplayTimingIntervalStats.fresh_count;
+            // <AYA:VisibleFPS>
+            // MoltenVK 1.4.2 substitutes the current time when Metal reports
+            // presentedTime == 0 for a drawable that was never shown. Use the
+            // panel refresh period to limit the visible count only.
+            const U64 actual_time = timing.actualPresentTime;
+            if (refresh_ns == 0 || sDisplayTimingLastCountedTime == 0 ||
+                (actual_time >= sDisplayTimingLastCountedTime &&
+                 actual_time - sDisplayTimingLastCountedTime >= min_interval_ns))
+            {
+                sDisplayedFreshSceneCount.fetch_add(1, std::memory_order_relaxed);
+                sDisplayTimingLastCountedTime = actual_time;
+            }
+            else
+            {
+                ++sDisplayTimingIntervalStats.fresh_capped_count;
+            }
+            // </AYA:VisibleFPS>
             if (sDisplayTimingLastFreshTime != 0 && timing.actualPresentTime > sDisplayTimingLastFreshTime)
             {
                 ++sDisplayTimingIntervalStats.fresh_interval_count;
@@ -265,8 +312,36 @@ namespace
 
 } // namespace
 
+// <AYA:VisibleFPS>
+U64 visibleSceneCount(bool* from_display_timing)
+{
+    const bool use_display_timing = sDisplayTimingEnabled;
+    if (from_display_timing)
+    {
+        *from_display_timing = use_display_timing;
+    }
+    return (use_display_timing ? sDisplayedFreshSceneCount : sSubmittedFreshSceneCount)
+        .load(std::memory_order_relaxed);
+}
+// </AYA:VisibleFPS>
+
 namespace LLVKLoaderInternal
 {
+    // <AYA:VisibleFPS>
+    void setDisplayTimingRefreshDurationNs(U64 refresh_ns)
+    {
+        if (sDisplayTimingRefreshDurationNs.exchange(refresh_ns, std::memory_order_relaxed) != refresh_ns)
+        {
+            LL_INFOS("Vulkan") << "display_timing refresh_duration_ns=" << refresh_ns << LL_ENDL;
+        }
+    }
+
+    U64 getDisplayTimingRefreshDurationNs()
+    {
+        return sDisplayTimingRefreshDurationNs.load(std::memory_order_relaxed);
+    }
+    // </AYA:VisibleFPS>
+
     void resetDisplayTimingHistory()
     {
         std::lock_guard<std::mutex> guard(sDisplayTimingMutex);
@@ -274,6 +349,9 @@ namespace LLVKLoaderInternal
         sDisplayTimingCompletedIds.clear();
         sDisplayTimingLastActualTime = 0;
         sDisplayTimingLastFreshTime = 0;
+        // <AYA:VisibleFPS>
+        sDisplayTimingLastCountedTime = 0;
+        // </AYA:VisibleFPS>
         sDisplayTimingLastSceneId = 0;
         sDisplayTimingLastSceneValid = false;
         sDisplayTimingIntervalStats = DisplayTimingIntervalStats{};
@@ -581,6 +659,16 @@ namespace
                     if (pr == VK_SUCCESS || pr == VK_SUBOPTIMAL_KHR)
                     {
                         sMainPresentAcceptedCount.fetch_add(1, std::memory_order_relaxed);
+                        // <AYA:VisibleFPS>
+                        static thread_local bool have_last_scene = false;
+                        static thread_local U64 last_scene_id = 0;
+                        if (have_last_scene && t.scene_id != last_scene_id)
+                        {
+                            sSubmittedFreshSceneCount.fetch_add(1, std::memory_order_relaxed);
+                        }
+                        last_scene_id = t.scene_id;
+                        have_last_scene = true;
+                        // </AYA:VisibleFPS>
                     }
                 }
                 if (pr == VK_ERROR_OUT_OF_DATE_KHR || pr == VK_SUBOPTIMAL_KHR)

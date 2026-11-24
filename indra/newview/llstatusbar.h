@@ -277,6 +277,9 @@ private:
 
     // <FS:Ansariel> FIRE-14482: Show FPS in status bar
     void onShowFPSChanged(const LLSD& newvalue);
+    // <AYA:VisibleFPS>
+    void resetVisibleFPSSampling();
+    // </AYA:VisibleFPS>
 
     /**
      * Updates parcel panel pos (mParcelPanel).
@@ -340,6 +343,15 @@ private:
     // </FS:Ansariel> Script debug
     LLFrameTimer    mClockUpdateTimer;
     LLFrameTimer    mFPSUpdateTimer; // <FS:Ansariel> FIRE-14482: Show FPS in status bar
+    // <AYA:VisibleFPS>
+    LLTimer         mVisibleFPSTimer;
+    F64             mVisibleFPSLastTime = -1.0;
+    U64             mVisibleFPSLastCount = 0;
+    F64             mVisibleFPS = -1.0;
+    bool            mVisibleFPSFromDisplayTiming = false;
+    std::string     mOriginalFPSToolTip;
+    boost::signals2::scoped_connection mVisibleFPSSettingConnection;
+    // </AYA:VisibleFPS>
     LLFrameTimer    mNetStatUpdateTimer; // <FS:Ansariel> Less frequent update of net stats
 
     S32             mVolumeIconsWidth; // <FS:PP> Option to hide volume controls (sounds, media, stream) in upper right

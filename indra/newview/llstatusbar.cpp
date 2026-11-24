@@ -88,6 +88,9 @@
 #include "message.h"
 #include "llsearchableui.h"
 #include "llsearcheditor.h"
+// <AYA:VisibleFPS>
+#include "llvkloader.h"
+// </AYA:VisibleFPS>
 
 // system includes
 #include <iomanip>
@@ -495,6 +498,12 @@ bool LLStatusBar::postBuild()
     // <FS:Beq> Make FPS a clickable button with contextual colour
     // mFPSText = getChild<LLButton>("FPSText");
     mFPSText = getChild<LLTextBox>("FPSText");
+    // <AYA:VisibleFPS>
+    mOriginalFPSToolTip = mFPSText->getToolTip();
+    mVisibleFPSSettingConnection = gSavedSettings.getControl("AYAStatusBarShowVisibleFPS")->getSignal()->connect(
+        boost::bind(&LLStatusBar::resetVisibleFPSSampling, this));
+    resetVisibleFPSSampling();
+    // </AYA:VisibleFPS>
     mFPSText->setClickedCallback(std::bind(&LLUrlAction::executeSLURL, "secondlife:///app/openfloater/preferences?search=LimitFramerate", true));
     // </FS:Beq>
     mVolumeIconsWidth = mBtnVolume->getRect().mRight - mStreamToggle->getRect().mLeft;
@@ -624,8 +633,53 @@ void LLStatusBar::refresh()
         static auto       current_fps_color         = fps_uncapped_color;
 
         mFPSUpdateTimer.reset();
-        const auto fps = LLTrace::get_frame_recording().getPeriodMedianPerSec(LLStatViewer::FPS);
-        mFPSText->setText(llformat("%.1f", fps));
+        // <AYA:VisibleFPS>
+        const F64 render_fps = LLTrace::get_frame_recording().getPeriodMedianPerSec(LLStatViewer::FPS);
+        static LLCachedControl<bool> show_visible_fps(gSavedSettings, "AYAStatusBarShowVisibleFPS");
+        if (show_visible_fps && LLVKLoader::shouldUseVulkanRender())
+        {
+            bool from_display_timing = false;
+            const U64 count = LLVKLoader::visibleSceneCount(&from_display_timing);
+            const F64 now = mVisibleFPSTimer.getElapsedTimeF64();
+            const F64 elapsed = now - mVisibleFPSLastTime;
+            if (mVisibleFPSLastTime >= 0.0 && elapsed > 0.0 &&
+                from_display_timing == mVisibleFPSFromDisplayTiming)
+            {
+                const F64 sample = (count - mVisibleFPSLastCount) / elapsed;
+                // Smooth active samples and clear the rate after a full idle interval.
+                mVisibleFPS = (sample > 0.0 && mVisibleFPS > 0.0)
+                    ? 0.75 * sample + 0.25 * mVisibleFPS
+                    : sample;
+            }
+            else
+            {
+                mVisibleFPS = -1.0;
+            }
+            mVisibleFPSLastTime = now;
+            mVisibleFPSLastCount = count;
+            mVisibleFPSFromDisplayTiming = from_display_timing;
+            if (mVisibleFPS >= 0.0)
+            {
+                mFPSText->setText(llformat("%.1f", mVisibleFPS));
+                mFPSText->setToolTip(mOriginalFPSToolTip + "\n" + llformat(from_display_timing
+                    ? "Visible: new 3D frames shown per second (render loop: %.1f fps)"
+                    : "Visible estimate: new 3D frames accepted for presentation per second (render loop: %.1f fps)",
+                    render_fps));
+            }
+            else
+            {
+                mFPSText->setText(LLStringExplicit("--"));
+                mFPSText->setToolTip(mOriginalFPSToolTip);
+            }
+        }
+        else
+        {
+            mVisibleFPSLastTime = -1.0;
+            mVisibleFPS = -1.0;
+            mFPSText->setText(llformat("%.1f", render_fps));
+            mFPSText->setToolTip(mOriginalFPSToolTip);
+        }
+        // </AYA:VisibleFPS>
 
         auto fps_color{ fps_uncapped_color };
         if (fsStatusBarShowFPSColors)
@@ -646,12 +700,16 @@ void LLStatusBar::refresh()
 
                 if (limit_fps_enabled && max_fps > 0)
                 {
-                    fps_color = (fps >= max_fps - 1) ? fps_limit_reached_color : fps_below_limit_color;
+                    // <AYA:VisibleFPS>
+                    fps_color = (render_fps >= max_fps - 1) ? fps_limit_reached_color : fps_below_limit_color;
+                    // </AYA:VisibleFPS>
                 }
                 // use vsync if enabled and the freq is lower than the max_fps
                 if (vsync_enabled && vsync_freq > 0 && (!limit_fps_enabled || vsync_freq < (S32)max_fps))
                 {
-                    fps_color = (fps >= vsync_freq - 1) ? vsync_limit_reached_color : fps_below_limit_color;
+                    // <AYA:VisibleFPS>
+                    fps_color = (render_fps >= vsync_freq - 1) ? vsync_limit_reached_color : fps_below_limit_color;
+                    // </AYA:VisibleFPS>
                 }
             }
         }
@@ -1836,6 +1894,16 @@ void LLStatusBar::updateVolumeControlsVisibility(const LLSD& data)
     update();
 }
 
+// <AYA:VisibleFPS>
+void LLStatusBar::resetVisibleFPSSampling()
+{
+    mVisibleFPSLastTime = -1.0;
+    mVisibleFPS = -1.0;
+    // Refresh the FPS text on the next draw.
+    mFPSUpdateTimer.setAge(2.0);
+}
+// </AYA:VisibleFPS>
+
 void LLStatusBar::onShowFPSChanged(const LLSD& newvalue)
 {
     const S32 text_width = mFPSText->getRect().getWidth() + 4; // left_pad = 4
@@ -1843,6 +1911,9 @@ void LLStatusBar::onShowFPSChanged(const LLSD& newvalue)
     S32 translateFactor = (show_fps ? -1 : 1);
 
     mFPSText->setVisible(show_fps);
+    // <AYA:VisibleFPS>
+    resetVisibleFPSSampling();
+    // </AYA:VisibleFPS>
 
     LLRect rect = mTimeMediaPanel->getRect();
     rect.translate(text_width * translateFactor, 0);

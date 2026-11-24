@@ -571,7 +571,10 @@ void display(bool rebuild, F32 zoom_factor, int subfield, bool for_snapshot)
 
     const bool aya_async_frame = LLVKLoader::isUISceneAsync() && !gSnapshot
                                  && (LLStartUp::getStartupState() == STATE_STARTED);
-    const bool aya_async_engaged = aya_async_frame && !gDisconnected && !LLApp::isExiting();
+    // <AYA:AsyncScene>
+    const bool aya_async_engaged = aya_async_frame && LLVKLoader::asyncSceneDecoupled()
+                                   && !gDisconnected && !LLApp::isExiting();
+    // </AYA:AsyncScene>
     LLVKLoader::setAsyncFrameEngaged(aya_async_engaged);
     if (aya_async_frame && LLVKLoader::asyncProducerTryComplete())
     {
@@ -1829,6 +1832,12 @@ void render_ui(F32 zoom_factor, int subfield)
         if (!aya_async)
         {
             gPipeline.mScenePresentFront = 1 - gPipeline.mScenePresentFront;
+            // <AYA:AsyncScene>
+            if (!LLVKLoader::asyncSceneDecoupled())
+            {
+                LLVKLoader::noteAsyncSceneFrontPresented();
+            }
+            // </AYA:AsyncScene>
         }
         if (swapchain_ready)
         {

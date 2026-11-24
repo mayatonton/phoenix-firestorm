@@ -419,6 +419,19 @@ namespace
                                      sSwapchainDepthView,
                                      sSwapchainDepthAlloc);
 
+        // <AYA:VisibleFPS>
+        U64 refresh_ns = 0;
+        if (sDisplayTimingEnabled && vkGetRefreshCycleDurationGOOGLE != nullptr)
+        {
+            VkRefreshCycleDurationGOOGLE refresh = {};
+            if (vkGetRefreshCycleDurationGOOGLE(sDevice, sSwapchain, &refresh) == VK_SUCCESS)
+            {
+                refresh_ns = refresh.refreshDuration;
+            }
+        }
+        setDisplayTimingRefreshDurationNs(refresh_ns);
+        // </AYA:VisibleFPS>
+
         return true;
     }
 } // namespace
@@ -429,6 +442,9 @@ namespace LLVKLoaderInternal
     void destroySwapchain()
     {
         resetDisplayTimingHistory();
+        // <AYA:VisibleFPS>
+        setDisplayTimingRefreshDurationNs(0);
+        // </AYA:VisibleFPS>
         if (sDevice == VK_NULL_HANDLE)
         {
             sSwapchainImageViews.clear();
@@ -523,6 +539,9 @@ namespace LLVKLoaderInternal
         }
         else
         {
+            // <AYA:VisibleFPS>
+            setDisplayTimingRefreshDurationNs(0);
+            // </AYA:VisibleFPS>
             sSwapchainRecreatePending = true;
             LL_WARNS("Vulkan") << "recreateSwapchain failed; re-arming pending recreate" << LL_ENDL;
         }

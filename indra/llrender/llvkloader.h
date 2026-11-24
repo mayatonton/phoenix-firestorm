@@ -53,15 +53,21 @@ namespace LLVKLoader
     void finalizeConsumerSwapchain();
     bool isUISceneSplit();
     bool isUISceneAsync();
+    // <AYA:AsyncScene>
+    bool asyncSceneDecoupled();
+    // </AYA:AsyncScene>
     bool asyncProducerTryComplete();
     bool isAsyncProducerInFlight();
     U32  asyncProducerBackIndex();
     bool asyncShouldRenderScene();
     void setAsyncFrameEngaged(bool on);
     bool asyncFrameEngaged();
-    // Diagnostic-only scene generation tag. A new value denotes a completed
-    // async scene becoming the front image, not a UI-only consumer frame.
+    // <AYA:VisibleFPS>
+    // Advance the scene generation when a new 3D scene becomes the front image.
     void noteAsyncSceneFrontPresented();
+    // Count main-swapchain scene changes using display history when available.
+    U64 visibleSceneCount(bool* from_display_timing);
+    // </AYA:VisibleFPS>
     bool isSwapchainImageAcquired();
     void asyncProducerBeginScene(U32 back_index);
     void setProducerPresentActive(bool on);
