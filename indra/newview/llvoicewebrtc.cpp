@@ -33,6 +33,9 @@
 #include "llvoavatarself.h"
 #include "llbufferstream.h"
 #include "llfile.h"
+// <AYA:Voice>
+#include "llgl.h" // for gNonInteractive
+// </AYA:Voice>
 #include "llmenugl.h"
 #ifdef LL_USESYSTEMLIBS
 # include "expat.h"
@@ -83,6 +86,13 @@
 const std::string WEBRTC_VOICE_SERVER_TYPE = "webrtc";
 
 const F32 STATS_TIMER_DELAY = 2.0;
+
+// <AYA:Voice>
+static bool webrtcDisabledForSession()
+{
+    return gSavedSettings.getBOOL("CmdLineDisableVoice") || gNonInteractive;
+}
+// </AYA:Voice>
 
 // <FS:minerjr> [FIRE-36022] - Removing my USB headset crashes entire viewer
 using namespace std::chrono_literals; // Needed for shared timed mutex to use time
@@ -285,6 +295,14 @@ void LLWebRTCVoiceClient::init(LLPumpIO* pump)
 
 void LLWebRTCVoiceClient::initWebRTC()
 {
+    // <AYA:Voice>
+    if (webrtcDisabledForSession())
+    {
+        return;
+    }
+    sShuttingDown = false;
+    // </AYA:Voice>
+
     llwebrtc::init(this);
 
     mWebRTCDeviceInterface = llwebrtc::getDeviceInterface();
@@ -1492,6 +1510,13 @@ bool LLWebRTCVoiceClient::startParcelSession(const std::string &channelID, S32 p
 
 bool LLWebRTCVoiceClient::startAdHocSession(const LLSD& channelInfo, bool notify_on_first_join, bool hangup_on_last_leave)
 {
+    // <AYA:Voice>
+    if (webrtcDisabledForSession())
+    {
+        return false;
+    }
+    // </AYA:Voice>
+
     leaveChannel(false);
     LL_WARNS("Voice") << "Start AdHoc Session " << channelInfo << LL_ENDL;
     std::string channelID = channelInfo["channel_uri"];
@@ -1932,7 +1957,6 @@ void LLWebRTCVoiceClient::userAuthorized(const std::string& user_id, const LLUUI
 {
     if (sShuttingDown)
     {
-        sShuttingDown = false; // was terminated, restart
         initWebRTC();
     }
 }

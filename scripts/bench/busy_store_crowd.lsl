@@ -16,7 +16,8 @@
 // Chat on channel 7 (owner only): "crowd" recreates the crowd, "clear"
 // removes it, "appearance" saves the owner's current appearance again.
 //
-// Needs the OpenSim defaults: NPCs enabled (at most 40 per region) and
+// Needs NPCs enabled with room for 40 per region ([NPC] MaxNumberNPCsPerScene
+// of the bench guide) and
 // osNpcCreate, osOwnerSaveAppearance, osGetNotecard and osMakeNotecard
 // allowed for the estate owner.
 
@@ -34,6 +35,10 @@ vector ORIGIN = <122.4, 110.0, 23.0>;
 float DX = 1.6;
 float DY = 2.4;
 float BAKE_WAIT = 30.0;  // seconds after the owner arrives
+// One avatar at a time: each new NPC reads the appearance notecard and rezzes
+// eight attachments from the asset store. Creating all 40 in the same instant
+// crashed OpenSim's standalone SQLite store (SIGSEGV in sqlite3Prepare).
+float SPAWN_INTERVAL = 0.5;
 
 integer gOwnerSeenAt = 0;
 
@@ -57,6 +62,7 @@ makeCrowd()
         vector pos = ORIGIN + <(i % COLS) * DX + (row % 2) * DX / 2.0, row * DY, 0.0>;
         key npc = osNpcCreate("Crowd", (string)(i + 1), pos, APPEARANCE, OS_NPC_CREATOR_OWNED);
         osNpcSetRot(npc, facing);
+        llSleep(SPAWN_INTERVAL);
     }
     llOwnerSay("bench crowd: " + (string)n + " avatars");
 }
@@ -96,6 +102,7 @@ saveAppearance()
     if (llGetInventoryType(APPEARANCE) == INVENTORY_NOTECARD)
         llRemoveInventory(APPEARANCE);
     osMakeNotecard(APPEARANCE, head + tail);
+    llSleep(2.0);  // let the notecard asset be stored before the NPCs read it
     llOwnerSay("bench crowd: saved the owner's appearance with the wearables");
 }
 
@@ -109,6 +116,13 @@ default
     }
 
     on_rez(integer p) { llResetScript(); }
+
+    // NPCs do not persist, but the script state does: after an OpenSim
+    // restart the timer is already off and no crowd would be made.
+    changed(integer change)
+    {
+        if (change & CHANGED_REGION_START) llResetScript();
+    }
 
     timer()
     {

@@ -1819,6 +1819,18 @@ LLPluginClassMedia* LLViewerMediaImpl::newSourceFromMediaType(std::string media_
         return NULL;
     }
 
+#if LL_DARWIN
+    // <AYA:NoAudio> CEF and VLC open CoreAudio devices on their own, apart from
+    // the viewer audio engine. When the default output device also has inputs
+    // (an aggregate device), that makes macOS ask for microphone access.
+    // --noaudio therefore starts no media plugin on macOS.
+    if (gSavedSettings.getBOOL("NoAudio"))
+    {
+        return NULL;
+    }
+    // </AYA:NoAudio>
+#endif
+
     std::string plugin_basename = LLMIMETypes::implType(media_type);
     LLPluginClassMedia* media_source = NULL;
 

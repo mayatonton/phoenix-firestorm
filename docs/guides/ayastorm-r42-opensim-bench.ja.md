@@ -34,6 +34,8 @@ AYAstorm のビルド同士を同じ条件で比べるための固定シーン�
 | ミラーが実際に映り込むこと（`RenderMirrors 1`） | OPEN | 表示は暗い板のみ。映り込みは未確認 |
 | Agent Pilot による経路の記録と再生 | OPEN | 未着手 |
 | 計測手順（設定・ウィンドウサイズ・読み取る値） | OPEN | 未確定 |
+| NPC 40 体を同時に作ると OpenSim が落ちる | 対処済み（原因は OPEN） | 2026-11-23。`libsqlite3` の `sqlite3Prepare` で SIGSEGV（`OPENSIM_EXIT=139`）。0.5 秒間隔で作るように変えた後は 40 体そろい、落ちていない |
+| 開発 app の再署名で、macOS の許可が再ビルド後も保たれる | CLAIMED | 署名後の designated requirement が証明書に固定されることは確認済み。再ビルド後に許可ダイアログが出ないことは未確認 |
 
 上の確認は、`build-darwin-universal/newview/Release/AYAstorm.app`（2026-08-14 ビルド、arm64、
 `OPENSIM=ON`）で行った。現在の HEAD の `build-darwin-dev` ビルドでは未確認である。
@@ -90,6 +92,33 @@ ln -sf /opt/homebrew/lib/libgdiplus.dylib "$B/opensim/bin/libgdiplus.dylib"
 4. `OpenSim.ini` の `[NPC]` に `MaxNumberNPCsPerScene = 64` を追加する。既定の 40
    ちょうどでは、40 体目が作られないことがあった。
 
+### 1.4 開発 app の署名
+
+ビルドツリーの app はアドホック署名で、designated requirement が cdhash になる。macOS の
+プライバシー許可（TCC）はこれに結び付くため、再ビルドのたびに別の app として許可を求められる。
+ビルドツリーの app は checkout の `indra/newview/skins` を読む（`lldir_mac.cpp`）ので、
+checkout が `~/Desktop` の下にあると「デスクトップ」フォルダへのアクセス許可を求められ、
+ビューワーは起動途中で止まる。
+
+`scripts/bench/sign_dev_app.sh` は、ローカル専用の自己署名証明書で app を署名し直す。
+初回は `$B/signing/` に専用のキーチェーンと証明書を作る。login キーチェーンと信頼設定は変えない。
+証明書はシステムに信頼されておらず、開発ビルド専用である（配布用の署名は
+`docs/build/building_ayastorm_macos.md`）。
+
+`codesign` は、ユーザーのキーチェーン検索リストにあるキーチェーンからしか秘密鍵を探さない。
+検索リストへの追加はキーチェーン設定の変更なので、スクリプトは行わず、実行するコマンドを表示して止まる。
+一度だけ自分で実行する（既存の項目を残して追加する）。
+
+```bash
+scripts/bench/sign_dev_app.sh build-darwin-dev/newview/Release/AYAstorm.app
+# 表示された security list-keychains -d user -s ... を実行してから、もう一度実行する
+```
+
+ビルドのたびに、起動前にこのスクリプトを実行する。同じ証明書で署名する限り、一度与えた許可は
+引き続き有効になるはずである（上の状態表のとおり、再ビルド後の確認はまだ）。
+
+### 1.5 アカウント情報
+
 アカウント情報は `$B/bench-credentials.txt`（パーミッション 600）に置く。
 `launch_bench_viewer.sh` はここから読み込む。
 
@@ -119,8 +148,22 @@ scripts/bench/launch_bench_viewer.sh build-darwin-dev/newview/Release/AYAstorm.a
 - `launch_bench_viewer.sh` はグリッドを `--grid http://127.0.0.1:9000/` で指定し、
   開始位置（`secondlife://BenchRegion/128/92/23`）でログインして in-world まで待つ。
   第 2 引数以降はビューワーにそのまま渡す（例: `--set RenderMirrors 1`）。
+- ビューワーは前面で開き、`--set BackgroundYieldTime 0` を付ける。フォーカスのないビューワーは
+  毎フレーム `BackgroundYieldTime`（既定 40 ms）眠るため、ほかのアプリを操作すると fps が
+  計測にならない。ウィンドウはほかのウィンドウに隠さない（macOS が隠れたウィンドウを抑制する）。
+  `BENCH_BACKGROUND=1` で背面に開けるが、ログインできるかの確認にだけ使う。
+- ベンチは描画だけを測るため、`--novoice --noaudio` を付ける。`--novoice` では WebRTC を初期化せず、
+  macOS の `--noaudio` では音声エンジン（FMOD）と CEF・VLC のメディアプラグインも起動しない。
+  これらはそれぞれ音声デバイスを開く。既定の出力デバイスが入力も持つ集約デバイスだと、
+  macOS がマイクの許可を求め、`STATE_AUDIO_INIT` で起動が止まるか、ログイン後にダイアログが重なる。
+  このため、ベンチでは埋め込みブラウザーと区画・オブジェクトのメディアを使えない。
+- グリッドが応答しないときはすぐに終了する。ログイン中に起動状態（`STATE_*`）が
+  `BENCH_STALL_SECONDS`（既定 90 秒）変わらないときも、止まった状態を表示して終了する
+  （ビューワーは残す）。macOS の許可ダイアログが出ていないかを画面で確認する。
+- `AYASTORM_PERF_LOG`、`AYASTORM_VKC`、`AYASTORM_ASYNC_SCENE_GATE` が設定されていれば、
+  ビューワーに渡す（`open` で開く app はシェルの環境変数を受け継がない）。
 - 群衆はログイン後に作られる。群衆スクリプトはオーナーがリージョンに入ってから 30 秒待ち、
-  外見を保存したうえで NPC 40 体を作る。進み具合は `opensim-console.log` の
+  外見を保存したうえで NPC 40 体を 0.5 秒間隔で作る（約 20 秒）。進み具合は `opensim-console.log` の
   `Complete movement of Crowd N` で確認できる。
 
 停止は次のとおり。
@@ -169,8 +212,13 @@ NPC はこのノートカードから作られ、OpenSim が asset から装着�
 - ビューワーや OpenSim を強制終了した直後のログインは、古いセッション（`reason: presence`）を
   理由に 1 回だけ拒否される。OpenSim はこの拒否で古いセッションを片付けるので、
   `launch_bench_viewer.sh` は 1 回だけ再試行する。
-- ローカルグリッドには音声サーバーがない。ログインのたびに `SLVoice` のクラッシュレポートが
-  `~/Library/Logs/DiagnosticReports/` に残る。原因は未確認（OPEN）。
+- ローカルグリッドには音声サーバーがない。音声を有効にしてログインすると、そのたびに
+  `SLVoice` のクラッシュレポートが `~/Library/Logs/DiagnosticReports/` に残った。原因は未確認（OPEN）。
+  `launch_bench_viewer.sh` は `--novoice` を付ける。
+- NPC 40 体を同時に作ったとき、OpenSim が SQLite の中（`sqlite3Prepare`）で SIGSEGV で落ちた。
+  ログインは `get_grid_info` に接続できず、`STATE_LOGIN_PROCESS_RESPONSE` で止まる。
+  `opensim-console.log` の末尾に `OPENSIM_EXIT=139` が出ていれば、`opensim_bench.sh start` と
+  `load` からやり直す。
 - ログイン直後に通貨ポータルの案内ダイアログが出る。計測の前に閉じる。
 - `RenderMirrors` の既定値は 0。featuretable でも、オンになるのは最上位のグラフィック設定だけである。
   ミラーを含めて計測するときは、使った設定を記録する。

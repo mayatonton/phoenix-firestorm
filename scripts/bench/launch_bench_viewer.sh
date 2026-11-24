@@ -13,8 +13,19 @@
 # The OpenSim build of the viewer selects the grid with --grid; --loginuri is
 # not read, and without --grid it logs into Second Life. The bench account
 # comes from $OPENSIM_BENCH_DIR/bench-credentials.txt (first=, last=,
-# password=). The app opens in the background (-g) and a build-tree app uses
-# the AYAstorm-dev profile, apart from installed releases.
+# password=). A build-tree app uses the AYAstorm-dev profile, apart from
+# installed releases.
+#
+# An unfocused viewer sleeps BackgroundYieldTime (40 ms by default) every
+# frame, so the launcher sets it to 0: the frame rates then do not depend on
+# which app has focus. The app still opens in the foreground and must stay
+# visible (an occluded window is throttled by macOS); BENCH_BACKGROUND=1 opens
+# it behind other windows, only for checking that the login works.
+#
+# Voice and audio are off (--novoice --noaudio): the bench measures rendering
+# only. WebRTC voice and FMOD both open audio devices at startup, and when the
+# default output device also has inputs (an aggregate device) macOS asks for
+# microphone access, which holds the viewer at STATE_AUDIO_INIT.
 #
 # A login right after an unclean exit is refused once with reason
 # "presence" (the grid still lists the old session and clears it on that
@@ -41,6 +52,10 @@ first=$(sed -n 's/^first=//p' $creds); last=$(sed -n 's/^last=//p' $creds)
 password=$(sed -n 's/^password=//p' $creds)
 [[ -n $first && -n $last && -n $password ]] || { echo "incomplete $creds" >&2; exit 1; }
 
+STALL=${BENCH_STALL_SECONDS:-90}
+
+grid_up() { curl -sf -m 3 -o /dev/null "${GRID%/}/get_grid_info"; }
+
 quit_viewer() {
   local pid=$(pgrep -f "^$EXE")
   [[ -z $pid ]] && return 0
@@ -55,23 +70,31 @@ login() {
   # measurement switches (AYASTORM_PERF_LOG, AYASTORM_VKC) explicitly
   local -a envs=()
   local v
-  for v in AYASTORM_PERF_LOG AYASTORM_VKC; do
+  for v in AYASTORM_PERF_LOG AYASTORM_VKC AYASTORM_ASYNC_SCENE_GATE AYASTORM_ASYNC_SCENE; do
     [[ -n ${(P)v:-} ]] && envs+=(--env "$v=${(P)v}")
   done
+  [[ ${BENCH_BACKGROUND:-0} == 1 ]] && envs+=(-g)
   # --url is a last_option in cmd_line.xml: extra viewer args must come first
-  open -n -g "${envs[@]}" "$APP" --args --grid "$GRID" --login "$first" "$last" "$password" "$@" --url "$START"
+  open -n "${envs[@]}" "$APP" --args --grid "$GRID" --login "$first" "$last" "$password" --novoice --noaudio --set BackgroundYieldTime 0 "$@" --url "$START"
   sleep 5  # the viewer starts a fresh log
-  for i in {1..180}; do
+  # Fail fast instead of waiting out the whole timeout: stop when the grid
+  # goes away or the startup state has not changed for $STALL seconds.
+  local state= prev= since=$SECONDS
+  while (( SECONDS - since < STALL )); do
     if grep -q "STATE_STARTED" "$LOG" 2>/dev/null; then echo started; return; fi
     if grep -q "'reason':'presence'" "$LOG" 2>/dev/null; then echo presence; return; fi
-    if grep -q "ERROR_MESSAGE" "$LOG" 2>/dev/null; then echo failed; return; fi
+    if grep -qE "ERROR_MESSAGE|No connect for you" "$LOG" 2>/dev/null; then echo failed; return; fi
     pgrep -f "^$EXE" >/dev/null || { echo exited; return; }
-    sleep 1
+    grid_up || { echo "grid-down"; return; }
+    state=$(grep -o 'setStartupState : .* --> STATE_[A-Z_]*' "$LOG" 2>/dev/null | tail -1 | sed 's/.*--> //')
+    [[ $state != $prev ]] && { prev=$state; since=$SECONDS; }
+    sleep 2
   done
-  echo timeout
+  echo "stalled at ${prev:-startup}"
 }
 
 pgrep -f "^$EXE" >/dev/null && { echo "this app is already running; quit it first" >&2; exit 1; }
+grid_up || { echo "the grid at $GRID does not answer; start it with scripts/bench/opensim_bench.sh start" >&2; exit 1; }
 result=$(login "$@")
 if [[ $result == presence ]]; then
   echo "login refused (stale session), retrying once"
@@ -79,5 +102,7 @@ if [[ $result == presence ]]; then
 fi
 case $result in
   started) echo "in-world: pid $(pgrep -f "^$EXE"), log $LOG" ;;
+  grid-down) echo "the grid stopped answering during login (see $B/opensim-console.log); the viewer is left running" >&2; exit 1 ;;
+  stalled*) echo "login $result for ${STALL}s (a modal dialog, e.g. a macOS permission prompt, can hold STATE_AUDIO_INIT); the viewer is left running, see $LOG" >&2; exit 1 ;;
   *) echo "login did not complete ($result), see $LOG" >&2; exit 1 ;;
 esac
