@@ -102,7 +102,7 @@ namespace
         VkFormat                 format = VK_FORMAT_UNDEFINED;
         VkExtent2D               extent = {0, 0};
         VkSemaphore     imageAvailable[FRAMES_IN_FLIGHT] = { VK_NULL_HANDLE, VK_NULL_HANDLE, VK_NULL_HANDLE };
-        VkSemaphore     renderFinished[FRAMES_IN_FLIGHT] = { VK_NULL_HANDLE, VK_NULL_HANDLE, VK_NULL_HANDLE };
+        VkSemaphore     renderFinished[PRESENT_SEMAPHORE_SLOTS] = {}; // indexed by acquired image
         VkFence         fences[FRAMES_IN_FLIGHT]         = { VK_NULL_HANDLE, VK_NULL_HANDLE, VK_NULL_HANDLE };
         VkCommandBuffer cbs[FRAMES_IN_FLIGHT]            = { VK_NULL_HANDLE, VK_NULL_HANDLE, VK_NULL_HANDLE };
         bool            fenceInFlight[FRAMES_IN_FLIGHT]  = { false, false, false };
@@ -131,37 +131,34 @@ namespace LLVKLoaderInternal
         VkSemaphoreCreateInfo sem_info = {};
         sem_info.sType = VK_STRUCTURE_TYPE_SEMAPHORE_CREATE_INFO;
 
-        for (U32 i = 0; i < FRAMES_IN_FLIGHT; ++i)
+        bool ok = true;
+        for (U32 i = 0; ok && i < FRAMES_IN_FLIGHT; ++i)
         {
-            VkResult ia_res = vkCreateSemaphore(sDevice, &sem_info, nullptr,
-                                                &sImageAvailableSemaphores[i]);
-            if (ia_res != VK_SUCCESS)
+            ok = vkCreateSemaphore(sDevice, &sem_info, nullptr, &sImageAvailableSemaphores[i]) == VK_SUCCESS;
+        }
+        for (U32 i = 0; ok && i < PRESENT_SEMAPHORE_SLOTS; ++i)
+        {
+            ok = vkCreateSemaphore(sDevice, &sem_info, nullptr, &sRenderFinishedSemaphores[i]) == VK_SUCCESS;
+        }
+        if (!ok)
+        {
+            for (U32 i = 0; i < FRAMES_IN_FLIGHT; ++i)
             {
-                for (U32 j = 0; j < i; ++j)
+                if (sImageAvailableSemaphores[i] != VK_NULL_HANDLE)
                 {
-                    vkDestroySemaphore(sDevice, sImageAvailableSemaphores[j], nullptr);
-                    sImageAvailableSemaphores[j] = VK_NULL_HANDLE;
-                    vkDestroySemaphore(sDevice, sRenderFinishedSemaphores[j], nullptr);
-                    sRenderFinishedSemaphores[j] = VK_NULL_HANDLE;
+                    vkDestroySemaphore(sDevice, sImageAvailableSemaphores[i], nullptr);
+                    sImageAvailableSemaphores[i] = VK_NULL_HANDLE;
                 }
-                return false;
             }
-
-            VkResult rf_res = vkCreateSemaphore(sDevice, &sem_info, nullptr,
-                                                &sRenderFinishedSemaphores[i]);
-            if (rf_res != VK_SUCCESS)
+            for (U32 i = 0; i < PRESENT_SEMAPHORE_SLOTS; ++i)
             {
-                vkDestroySemaphore(sDevice, sImageAvailableSemaphores[i], nullptr);
-                sImageAvailableSemaphores[i] = VK_NULL_HANDLE;
-                for (U32 j = 0; j < i; ++j)
+                if (sRenderFinishedSemaphores[i] != VK_NULL_HANDLE)
                 {
-                    vkDestroySemaphore(sDevice, sImageAvailableSemaphores[j], nullptr);
-                    sImageAvailableSemaphores[j] = VK_NULL_HANDLE;
-                    vkDestroySemaphore(sDevice, sRenderFinishedSemaphores[j], nullptr);
-                    sRenderFinishedSemaphores[j] = VK_NULL_HANDLE;
+                    vkDestroySemaphore(sDevice, sRenderFinishedSemaphores[i], nullptr);
+                    sRenderFinishedSemaphores[i] = VK_NULL_HANDLE;
                 }
-                return false;
             }
+            return false;
         }
 
         return true;
@@ -183,6 +180,9 @@ namespace LLVKLoaderInternal
                 vkDestroySemaphore(sDevice, sImageAvailableSemaphores[i], nullptr);
                 sImageAvailableSemaphores[i] = VK_NULL_HANDLE;
             }
+        }
+        for (U32 i = 0; i < PRESENT_SEMAPHORE_SLOTS; ++i)
+        {
             if (sRenderFinishedSemaphores[i] != VK_NULL_HANDLE)
             {
                 vkDestroySemaphore(sDevice, sRenderFinishedSemaphores[i], nullptr);
@@ -368,6 +368,15 @@ namespace
 
         U32 actual_image_count = 0;
         vkGetSwapchainImagesKHR(sDevice, sSwapchain, &actual_image_count, nullptr);
+        if (actual_image_count > PRESENT_SEMAPHORE_SLOTS)
+        {
+            // present semaphores are indexed by image; refuse rather than overrun
+            LL_WARNS("Vulkan") << "swapchain has " << actual_image_count << " images, more than "
+                               << PRESENT_SEMAPHORE_SLOTS << " present semaphores" << LL_ENDL;
+            vkDestroySwapchainKHR(sDevice, sSwapchain, nullptr);
+            sSwapchain = VK_NULL_HANDLE;
+            return false;
+        }
         sSwapchainImages.assign(actual_image_count, VK_NULL_HANDLE);
         vkGetSwapchainImagesKHR(sDevice, sSwapchain, &actual_image_count,
                                 sSwapchainImages.data());
@@ -781,6 +790,14 @@ static bool auxCreateSwapchain()
 
     U32 actual = 0;
     vkGetSwapchainImagesKHR(sDevice, aw.swapchain, &actual, nullptr);
+    if (actual > PRESENT_SEMAPHORE_SLOTS)
+    {
+        LL_WARNS("Vulkan") << "aux swapchain has " << actual << " images, more than "
+                           << PRESENT_SEMAPHORE_SLOTS << " present semaphores" << LL_ENDL;
+        vkDestroySwapchainKHR(sDevice, aw.swapchain, nullptr);
+        aw.swapchain = VK_NULL_HANDLE;
+        return false;
+    }
     aw.images.assign(actual, VK_NULL_HANDLE);
     vkGetSwapchainImagesKHR(sDevice, aw.swapchain, &actual, aw.images.data());
     aw.views.assign(actual, VK_NULL_HANDLE);
@@ -884,8 +901,11 @@ bool auxWindowInitVk(void* native_display, void* native_window)
     for (U32 i = 0; ok && i < FRAMES_IN_FLIGHT; ++i)
     {
         ok = ok && vkCreateSemaphore(sDevice, &si, nullptr, &sAuxWindow.imageAvailable[i]) == VK_SUCCESS;
-        ok = ok && vkCreateSemaphore(sDevice, &si, nullptr, &sAuxWindow.renderFinished[i]) == VK_SUCCESS;
         ok = ok && vkCreateFence(sDevice, &fi, nullptr, &sAuxWindow.fences[i]) == VK_SUCCESS;
+    }
+    for (U32 i = 0; ok && i < PRESENT_SEMAPHORE_SLOTS; ++i)
+    {
+        ok = vkCreateSemaphore(sDevice, &si, nullptr, &sAuxWindow.renderFinished[i]) == VK_SUCCESS;
     }
     if (!ok)
     {
@@ -905,12 +925,15 @@ void auxWindowShutdownVk()
         for (U32 i = 0; i < FRAMES_IN_FLIGHT; ++i)
         {
             if (aw.imageAvailable[i] != VK_NULL_HANDLE) vkDestroySemaphore(sDevice, aw.imageAvailable[i], nullptr);
-            if (aw.renderFinished[i] != VK_NULL_HANDLE) vkDestroySemaphore(sDevice, aw.renderFinished[i], nullptr);
             if (aw.fences[i] != VK_NULL_HANDLE)         vkDestroyFence(sDevice, aw.fences[i], nullptr);
             aw.imageAvailable[i] = VK_NULL_HANDLE;
-            aw.renderFinished[i] = VK_NULL_HANDLE;
             aw.fences[i]         = VK_NULL_HANDLE;
             aw.fenceInFlight[i]  = false;
+        }
+        for (U32 i = 0; i < PRESENT_SEMAPHORE_SLOTS; ++i)
+        {
+            if (aw.renderFinished[i] != VK_NULL_HANDLE) vkDestroySemaphore(sDevice, aw.renderFinished[i], nullptr);
+            aw.renderFinished[i] = VK_NULL_HANDLE;
         }
         if (aw.cbs[0] != VK_NULL_HANDLE)
         {
@@ -1207,11 +1230,11 @@ bool auxWindowEndUIFrameVk()
     job.cmd              = cmd;
     job.fence            = aw.fences[slot];
     job.wait_semaphore   = aw.imageAvailable[slot];
-    job.signal_semaphore = aw.renderFinished[slot];
+    job.signal_semaphore = aw.renderFinished[image_index];
     PEPresentTarget target;
     target.swapchain      = aw.swapchain;
     target.image_index    = image_index;
-    target.wait_semaphore = aw.renderFinished[slot];
+    target.wait_semaphore = aw.renderFinished[image_index];
     // <AYA:PresentOwnership>
     target.owner = PRESENT_OWNER_AUX;
     job.presents.push_back(target);

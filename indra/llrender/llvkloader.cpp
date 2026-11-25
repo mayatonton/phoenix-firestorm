@@ -303,9 +303,7 @@ namespace LLVKLoaderInternal
     VkSemaphore sImageAvailableSemaphores[FRAMES_IN_FLIGHT] = {
         VK_NULL_HANDLE, VK_NULL_HANDLE, VK_NULL_HANDLE
     };
-    VkSemaphore sRenderFinishedSemaphores[FRAMES_IN_FLIGHT] = {
-        VK_NULL_HANDLE, VK_NULL_HANDLE, VK_NULL_HANDLE
-    };
+    VkSemaphore sRenderFinishedSemaphores[PRESENT_SEMAPHORE_SLOTS] = {};
 } // namespace LLVKLoaderInternal
 
 namespace
@@ -2071,13 +2069,13 @@ bool endFrame()
         if (sImageAcquired)
         {
             cjob.wait_semaphore   = sImageAvailableSemaphores[sFrameIndex];
-            cjob.signal_semaphore = sRenderFinishedSemaphores[sFrameIndex];
+            cjob.signal_semaphore = sRenderFinishedSemaphores[sAcquiredImageIndex];
             if (sSwapchain != VK_NULL_HANDLE)
             {
                 PEPresentTarget target;
                 target.swapchain      = sSwapchain;
                 target.image_index    = sAcquiredImageIndex;
-                target.wait_semaphore = sRenderFinishedSemaphores[sFrameIndex];
+                target.wait_semaphore = sRenderFinishedSemaphores[sAcquiredImageIndex];
                 // <AYA:AsyncScene>
                 // <AYA:VisibleFPS>
                 target.scene_id = asyncSceneDecoupled() ? currentDisplayTimingSceneId()
@@ -2127,13 +2125,13 @@ bool endFrame()
         if (sImageAcquired)
         {
             job.wait_semaphore   = sImageAvailableSemaphores[sFrameIndex];
-            job.signal_semaphore = sRenderFinishedSemaphores[sFrameIndex];
+            job.signal_semaphore = sRenderFinishedSemaphores[sAcquiredImageIndex];
             if (sSwapchain != VK_NULL_HANDLE)
             {
                 PEPresentTarget target;
                 target.swapchain      = sSwapchain;
                 target.image_index    = sAcquiredImageIndex;
-                target.wait_semaphore = sRenderFinishedSemaphores[sFrameIndex];
+                target.wait_semaphore = sRenderFinishedSemaphores[sAcquiredImageIndex];
                 // <AYA:VisibleFPS>
                 target.scene_id = currentDisplayTimingSceneId();
                 // </AYA:VisibleFPS>

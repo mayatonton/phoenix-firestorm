@@ -369,7 +369,13 @@ extern bool sAsyncProducerInFlight;
 extern bool sProducerFencePending[FRAMES_IN_FLIGHT];
 extern VkSemaphore sGpuTimeline;
 extern VkSemaphore sImageAvailableSemaphores[FRAMES_IN_FLIGHT];
-extern VkSemaphore sRenderFinishedSemaphores[FRAMES_IN_FLIGHT];
+// Present-wait semaphores are indexed by the acquired swapchain image, not by the
+// frame slot: a binary semaphore may only be signalled again once the present
+// that waits on it has consumed the wait, and only re-acquiring the same image
+// guarantees that (Khronos "swapchain semaphore reuse"). Swapchains are created
+// with at most this many images.
+constexpr U32 PRESENT_SEMAPHORE_SLOTS = 8;
+extern VkSemaphore sRenderFinishedSemaphores[PRESENT_SEMAPHORE_SLOTS];
 extern VkImage sSwapchainDepthImage;
 extern VkImageView sSwapchainDepthView;
 extern VkImageLayout sSwapchainDepthLayout;
