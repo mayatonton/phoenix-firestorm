@@ -1,0 +1,214 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>AYAstorm r31 メニュー探索図</title>
+<style>
+:root { color-scheme: light dark; font-family: -apple-system, BlinkMacSystemFont, "Hiragino Kaku Gothic ProN", "Noto Sans JP", sans-serif; --bg:#f7f9fc; --fg:#192438; --sub:#536378; --panel:#fff; --line:#dce3ed; --accent:#0062b8; --chip:#e7f0f9; }
+@media (prefers-color-scheme:dark) { :root { --bg:#111820; --fg:#e8edf3; --sub:#a5b2c1; --panel:#19232e; --line:#364457; --accent:#79bcff; --chip:#253d52; } }
+* { box-sizing:border-box; }
+body { margin:0; background:var(--bg); color:var(--fg); line-height:1.55; }
+header { padding:22px clamp(16px,3vw,38px) 14px; border-bottom:1px solid var(--line); }
+h1 { margin:0; font-size:1.55rem; }
+h2 { margin:0 0 12px; font-size:1.08rem; }
+p { margin:6px 0; }
+.sub { color:var(--sub); font-size:.89rem; }
+a { color:var(--accent); }
+.controls { display:flex; flex-wrap:wrap; align-items:end; gap:12px; margin-top:16px; }
+.field { display:flex; flex-direction:column; gap:4px; font-size:.85rem; }
+input, select { font:inherit; border:1px solid var(--line); background:var(--panel); color:var(--fg); border-radius:7px; padding:9px 11px; min-height:39px; }
+input[type=search] { min-width:min(350px,85vw); }
+label.toggle { display:flex; align-items:center; gap:6px; min-height:39px; }
+label.toggle input { min-height:auto; }
+main { display:grid; grid-template-columns:minmax(330px,1.1fr) minmax(285px,.9fr); gap:0; min-height:calc(100vh - 170px); }
+.list { padding:20px clamp(16px,3vw,38px); border-right:1px solid var(--line); min-width:0; }
+.detail { padding:20px clamp(16px,3vw,38px); min-width:0; position:sticky; top:0; align-self:start; max-height:100vh; overflow:auto; }
+@media (max-width:800px) { main { display:block; } .list { border-right:0; border-bottom:1px solid var(--line); } .detail { position:static; max-height:none; } }
+ul { list-style:none; margin:0; padding-left:18px; border-left:1px solid var(--line); }
+.root-list { padding-left:0; border:0; }
+li { margin:2px 0; }
+summary { list-style:none; }
+summary::-webkit-details-marker { display:none; }
+summary::before { content:"▸"; display:inline-block; width:1em; color:var(--sub); }
+details[open] > summary::before { content:"▾"; }
+.node { display:inline; background:none; border:0; padding:4px 5px; text-align:left; font:inherit; color:var(--fg); border-radius:4px; }
+.node:hover, .node:focus-visible, .node[aria-current=true] { background:var(--chip); outline:none; }
+.node[aria-current=true] { color:var(--accent); font-weight:650; }
+.badge { display:inline-block; margin-left:5px; border-radius:99px; padding:1px 7px; background:var(--chip); color:var(--sub); font-size:.73rem; white-space:nowrap; }
+.count { font-size:.82rem; color:var(--sub); margin-bottom:12px; }
+.result { display:block; width:100%; border:0; border-bottom:1px solid var(--line); padding:9px 2px; text-align:left; background:transparent; color:var(--fg); font:inherit; }
+.result:hover, .result:focus-visible { color:var(--accent); }
+.result small { display:block; color:var(--sub); }
+.more { margin-top:12px; border:1px solid var(--line); border-radius:7px; padding:8px 15px; background:var(--panel); color:var(--fg); font:inherit; }
+dl { margin:0; display:grid; grid-template-columns:112px 1fr; column-gap:12px; }
+dt, dd { padding:9px 0; border-bottom:1px solid var(--line); overflow-wrap:anywhere; }
+dt { color:var(--sub); font-size:.85rem; }
+dd { margin:0; }
+code { font-size:.86em; }
+.links { margin-top:16px; }
+</style>
+</head>
+<body>
+<header>
+  <h1>AYAstorm r31 メニュー探索図</h1>
+  <p class="sub">公開版 v7.2.4-ayastorm-r31-bugfix-2 · XML 156定義 / 構造2,719ノード · 整理先は現行経路からの仮分類</p>
+  <div class="controls">
+    <label class="field">対象メニュー<select id="surface"></select></label>
+    <label class="field">仮の整理先<select id="bucket"></select></label>
+    <label class="field">項目・経路・処理名を検索<input id="query" type="search" placeholder="例：撮影、Upload、Floater.Toggle"></label>
+    <label class="toggle"><input id="show-hidden" type="checkbox" checked> 初期非表示も表示</label>
+  </div>
+</header>
+<main>
+  <section class="list" aria-label="メニュー階層">
+    <h2 id="list-title">メニュー階層</h2>
+    <div id="count" class="count"></div>
+    <div id="tree"></div>
+  </section>
+  <aside class="detail" aria-label="項目の詳細">
+    <h2>選択項目</h2>
+    <div id="detail"></div>
+    <p class="links"><a href="ayaviewer-ui-ia-working-map-r31.ja.md">機能整理とAYAviewerへの移行検討表</a> · <a href="ayaviewer-ui-menu-tree-r31.ja.md">全階層テキスト</a></p>
+  </aside>
+</main>
+<script>
+const DATA = /*MENU_DATA*/;
+const TAG = "v7.2.4-ayastorm-r31-bugfix-2";
+const byId = id => document.getElementById(id);
+const surface = byId("surface"), bucket = byId("bucket"), query = byId("query"), showHidden = byId("show-hidden");
+const tree = byId("tree"), detail = byId("detail"), count = byId("count");
+let selected = -1, matches = [], shown = 0;
+const children = new Map();
+DATA.forEach((row, idx) => {
+  if (!children.has(row.parent)) children.set(row.parent, []);
+  children.get(row.parent).push(idx);
+});
+const files = [...new Set(DATA.map(r => r.s))];
+const opt = (value, label) => { const o=document.createElement("option"); o.value=value; o.textContent=label; return o; };
+surface.append(opt("menu_viewer.xml","通常画面：上部メニュー"));
+surface.append(opt("menu_login.xml","ログイン画面"));
+surface.append(opt("*","すべての定義"));
+for (const file of files) if (!["menu_viewer.xml","menu_login.xml"].includes(file)) surface.append(opt(file,file));
+bucket.append(opt("*","すべて"));
+for(const name of [...new Set(DATA.map(r=>r.bucket))].sort((a,b)=>a.localeCompare(b,"ja"))) bucket.append(opt(name,name));
+function visible(row) { return showHidden.checked || !row.hidden; }
+function badge(parent, text) { const span=document.createElement("span"); span.className="badge"; span.textContent=text; parent.append(span); }
+function selectRow(idx) {
+  selected=idx;
+  const row=DATA[idx];
+  const dl=document.createElement("dl");
+  const field=(name, value) => {
+    const dt=document.createElement("dt"), dd=document.createElement("dd");
+    dt.textContent=name; dd.textContent=value || "—"; dl.append(dt,dd);
+  };
+  field("日本語経路", row.p);
+  field("英語経路", row.pe);
+  field("XML名", row.pn);
+  field("整理先（仮）", row.bucket);
+  field("項目種別", row.k);
+  field("初期表示", row.v==="false" ? "この項目が非表示" : row.hp ? "親が非表示" : "XML上は非表示指定なし");
+  field("表示条件", row.vis);
+  field("有効条件", row.ena);
+  field("クリック処理", row.act);
+  field("ショートカット", row.key);
+  field("定義ファイル", row.s + " / ノード " + row.i);
+  field("コード参照", row.refs.length ? row.refs.join(" / ") : "ファイル名の直接参照は未検出");
+  detail.replaceChildren(dl);
+  const link=document.createElement("a");
+  link.href="https://github.com/mayatonton/phoenix-firestorm/blob/"+TAG+"/"+row.src;
+  link.textContent="固定タグのXMLを開く";
+  link.target="_blank"; link.rel="noopener noreferrer";
+  detail.append(link);
+  if(row.refs.length) {
+    const list=document.createElement("p");
+    list.textContent="参照箇所: ";
+    row.refs.slice(0,8).forEach((ref,j)=>{
+      if(j) list.append(" · ");
+      const cut=ref.lastIndexOf(":"), path=ref.slice(0,cut), line=ref.slice(cut+1);
+      const a=document.createElement("a");
+      a.href="https://github.com/mayatonton/phoenix-firestorm/blob/"+TAG+"/"+path+"#L"+line;
+      a.textContent=path.split("/").pop()+":"+line;
+      a.target="_blank"; a.rel="noopener noreferrer"; list.append(a);
+    });
+    detail.append(list);
+  }
+  document.querySelectorAll(".node[aria-current=true]").forEach(e=>e.removeAttribute("aria-current"));
+  document.querySelectorAll(".node[data-index='"+idx+"']").forEach(e=>e.setAttribute("aria-current","true"));
+}
+function makeButton(idx) {
+  const row=DATA[idx], button=document.createElement("button");
+  button.type="button"; button.className="node"; button.dataset.index=idx;
+  button.textContent=row.ja;
+  if (row.ja!==row.en) button.setAttribute("aria-label",row.ja+" / "+row.en);
+  button.addEventListener("click",()=>selectRow(idx));
+  return button;
+}
+function node(idx, depth=0) {
+  const row=DATA[idx], li=document.createElement("li");
+  const kids=(children.get(idx)||[]).filter(i=>visible(DATA[i]));
+  if (kids.length) {
+    const details=document.createElement("details");
+    details.open=depth===0;
+    const summary=document.createElement("summary");
+    summary.append(makeButton(idx));
+    if (row.v==="false") badge(summary,"初期非表示");
+    details.append(summary);
+    const ul=document.createElement("ul");
+    kids.forEach(i=>ul.append(node(i,depth+1)));
+    details.append(ul); li.append(details);
+  } else {
+    li.append(makeButton(idx));
+    if (row.v==="false") badge(li,"初期非表示");
+  }
+  return li;
+}
+function renderMore() {
+  const old=byId("more"); if(old) old.remove();
+  const limit=Math.min(shown+100,matches.length);
+  for(let n=shown;n<limit;n++){
+    const idx=matches[n], row=DATA[idx], btn=document.createElement("button");
+    btn.className="result"; btn.type="button";
+    const label=document.createElement("span"), path=document.createElement("small");
+    label.textContent=row.ja; path.textContent=row.p + " [" + row.s + "]";
+    btn.append(label,path); btn.addEventListener("click",()=>selectRow(idx)); tree.append(btn);
+  }
+  shown=limit;
+  if(shown<matches.length) {
+    const more=document.createElement("button"); more.id="more"; more.className="more"; more.type="button";
+    more.textContent="さらに100件表示"; more.addEventListener("click",renderMore); tree.append(more);
+  }
+}
+function render() {
+  tree.replaceChildren();
+  const file=surface.value, group=bucket.value, q=query.value.trim().toLocaleLowerCase();
+  const scope=(row)=> (file==="*" || row.s===file) && (group==="*" || row.bucket===group) && visible(row);
+  if(q || group!=="*") {
+    matches=DATA.map((row,i)=>({row,i})).filter(({row})=>scope(row) &&
+      [row.p,row.pe,row.pn,row.act].some(x=>x.toLocaleLowerCase().includes(q))).map(x=>x.i);
+    count.textContent=matches.length+"件一致（100件ずつ表示）";
+    shown=0; renderMore();
+  } else if(file==="*") {
+    matches=DATA.map((row,i)=>({row,i})).filter(({row})=>scope(row)&&row.parent===-1).map(x=>x.i);
+    count.textContent=files.length+"定義。対象メニューを選ぶと階層を展開できます。";
+    for(const idx of matches) {
+      const btn=document.createElement("button"); btn.type="button"; btn.className="result";
+      btn.textContent=DATA[idx].s; btn.addEventListener("click",()=>{surface.value=DATA[idx].s;render();});
+      tree.append(btn);
+    }
+  } else {
+    const roots=DATA.map((row,i)=>({row,i})).filter(({row})=>scope(row)&&row.parent===-1);
+    count.textContent=DATA.filter(row=>scope(row)).length+"ノード。項目を選ぶと処理と表示条件を確認できます。";
+    const ul=document.createElement("ul"); ul.className="root-list";
+    roots.forEach(({i})=>ul.append(node(i))); tree.append(ul);
+  }
+}
+surface.addEventListener("change",render);
+bucket.addEventListener("change",render);
+query.addEventListener("input",render);
+showHidden.addEventListener("change",render);
+render();
+selectRow(DATA.findIndex(row=>row.s==="menu_viewer.xml" && row.parent===-1));
+</script>
+</body>
+</html>
