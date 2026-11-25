@@ -75,6 +75,9 @@ extern U32 sTimestampValidBits;
 extern std::queue<uint32_t> sTimestampPairFree;
 extern VkSwapchainKHR sSwapchain;
 extern std::vector<VkImage> sSwapchainImages;
+// <AYA:PresentOwnership>
+extern U32 sSwapchainMinImageCount;
+// </AYA:PresentOwnership>
 extern std::vector<VkImageView> sSwapchainImageViews;
 extern VkExtent2D sSwapchainExtent;
 extern VkImage sDefaultFallbackImage;
@@ -453,6 +456,10 @@ void dumpDeviceFaultOnDeviceLost();
         // Captured when the consumer command buffer is queued, rather than
         // when the PE thread eventually calls vkQueuePresentKHR.
         U64            scene_id       = 0;
+        // <AYA:PresentOwnership>
+        // 0 = not counted, 1 = main swapchain, 2 = aux window swapchain.
+        U8 owner = 0;
+        // </AYA:PresentOwnership>
     };
 
     struct DisplayTimingIntervalStats
@@ -556,6 +563,12 @@ void resetDisplayTimingHistory();
 DisplayTimingIntervalStats collectDisplayTimingIntervalStats();
 uint64_t gpuTimelineValue();
 void waitTimeline(uint64_t v);
+// <AYA:PresentOwnership>
+constexpr U8 PRESENT_OWNER_MAIN = 1;
+constexpr U8 PRESENT_OWNER_AUX = 2;
+void notePresentQueued(U8 owner);
+void waitForPresentOwnership(U8 owner, U32 max_unpresented);
+// </AYA:PresentOwnership>
 uint64_t peEnqueue(PEJob&& job);
 VkResult peSubmitBlocking(VkCommandBuffer cmd, VkFence fence, bool wait_idle);
 void peDrain();

@@ -100,10 +100,77 @@ namespace
     std::mutex              sPEAbandonedMutex;
     std::vector<uint64_t>   sPEAbandonedTimelineValues;   // 非 device-lost で submit 失敗した frame/producer/async の値(永久未 signal・waitTimeline 脱出用)
     void                    recordAbandonedTimelineValue(uint64_t v);   // 定義は gpuTimelineValue 後
+
+    // <AYA:PresentOwnership>
+    std::atomic<U32> sUnpresentedCounts[PRESENT_OWNER_AUX + 1]{};
+    std::mutex sPresentOwnershipMutex;
+    std::condition_variable sPresentOwnershipCv;
+    U64 sPresentOwnershipWaitCount = 0;
+
+    void notePresentHandled(U8 owner)
+    {
+        if (owner == 0 || owner > PRESENT_OWNER_AUX)
+        {
+            return;
+        }
+        {
+            std::lock_guard<std::mutex> lk(sPresentOwnershipMutex);
+            auto& count = sUnpresentedCounts[owner];
+            if (count.load(std::memory_order_relaxed) != 0)
+            {
+                count.fetch_sub(1, std::memory_order_relaxed);
+            }
+        }
+        sPresentOwnershipCv.notify_all();
+    }
+    // </AYA:PresentOwnership>
 } // namespace
 
 namespace LLVKLoaderInternal
 {
+
+    // <AYA:PresentOwnership>
+    void notePresentQueued(U8 owner)
+    {
+        if (owner == 0 || owner > PRESENT_OWNER_AUX)
+        {
+            return;
+        }
+
+        std::lock_guard<std::mutex> lk(sPresentOwnershipMutex);
+        sUnpresentedCounts[owner].fetch_add(1, std::memory_order_relaxed);
+    }
+
+    void waitForPresentOwnership(U8 owner, U32 max_unpresented)
+    {
+        if (owner == 0 || owner > PRESENT_OWNER_AUX)
+        {
+            return;
+        }
+
+        std::unique_lock<std::mutex> lk(sPresentOwnershipMutex);
+        const auto ready = [owner, max_unpresented]
+        {
+            return sVkDeviceLost.load(std::memory_order_acquire) ||
+                   sUnpresentedCounts[owner].load(std::memory_order_relaxed) <= max_unpresented;
+        };
+        if (ready())
+        {
+            return;
+        }
+
+        if (++sPresentOwnershipWaitCount == 1)
+        {
+            LL_INFOS("Vulkan") << "Waiting for swapchain present ownership (owner="
+                               << (U32)owner << ", limit=" << max_unpresented << ")" << LL_ENDL;
+        }
+        do
+        {
+            sPresentOwnershipCv.wait_for(lk, std::chrono::milliseconds(50));
+        }
+        while (!ready());
+    }
+    // </AYA:PresentOwnership>
 
     U64 vkMonoUs()
     {
@@ -441,6 +508,12 @@ namespace
         PEJobReleaser rel(job);
         if (sVkDeviceLost.load(std::memory_order_acquire))
         {
+            // <AYA:PresentOwnership>
+            for (const PEPresentTarget& t : job.presents)
+            {
+                notePresentHandled(t.owner);
+            }
+            // </AYA:PresentOwnership>
             rel.finishSlot(PE_SLOT_FAILED);
             rel.failOneshotFence();
             static bool s_lost_skip_logged = false;
@@ -545,6 +618,12 @@ namespace
 #endif
                 sVkDeviceLost.store(true, std::memory_order_release);
             }
+            // <AYA:PresentOwnership>
+            for (const PEPresentTarget& t : job.presents)
+            {
+                notePresentHandled(t.owner);
+            }
+            // </AYA:PresentOwnership>
             LL_WARNS("Vulkan") << "PresentEngine submit failed sr=" << (S32)sr
                                << " frame=" << (job.is_frame ? 1 : 0) << LL_ENDL;
         }
@@ -554,6 +633,9 @@ namespace
             {
                 if (t.swapchain == VK_NULL_HANDLE)
                 {
+                    // <AYA:PresentOwnership>
+                    notePresentHandled(t.owner);
+                    // </AYA:PresentOwnership>
                     continue;
                 }
                 VkPresentInfoKHR present_info = {};
@@ -651,6 +733,9 @@ namespace
                         (U64)std::chrono::duration_cast<std::chrono::microseconds>(
                             std::chrono::steady_clock::now() - p1).count();
                 }
+                // <AYA:PresentOwnership>
+                notePresentHandled(t.owner);
+                // </AYA:PresentOwnership>
                 sPEPresentUs += (U64)std::chrono::duration_cast<std::chrono::microseconds>(
                     std::chrono::steady_clock::now() - p0).count();
                 if (!prs_aux)

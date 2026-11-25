@@ -95,6 +95,9 @@ namespace
         VkSurfaceKHR             surface   = VK_NULL_HANDLE;
         VkSwapchainKHR           swapchain = VK_NULL_HANDLE;
         std::vector<VkImage>     images;
+        // <AYA:PresentOwnership>
+        U32 minImageCount = 0;
+        // </AYA:PresentOwnership>
         std::vector<VkImageView> views;
         VkFormat                 format = VK_FORMAT_UNDEFINED;
         VkExtent2D               extent = {0, 0};
@@ -111,6 +114,10 @@ namespace
 
 namespace LLVKLoaderInternal
 {
+
+    // <AYA:PresentOwnership>
+    U32 sSwapchainMinImageCount = 0;
+    // </AYA:PresentOwnership>
 
     bool createSyncObjects()
     {
@@ -322,6 +329,9 @@ namespace
         }
 #endif
 
+        // <AYA:PresentOwnership>
+        sSwapchainMinImageCount = caps.minImageCount;
+        // </AYA:PresentOwnership>
         U32 image_count = caps.minImageCount + FRAMES_IN_FLIGHT - 1;
         if (caps.maxImageCount > 0 && image_count > caps.maxImageCount)
         {
@@ -737,6 +747,9 @@ static bool auxCreateSwapchain()
         return false;
     }
 
+    // <AYA:PresentOwnership>
+    aw.minImageCount = caps.minImageCount;
+    // </AYA:PresentOwnership>
     U32 image_count = caps.minImageCount + FRAMES_IN_FLIGHT - 1;
     if (caps.maxImageCount > 0 && image_count > caps.maxImageCount)
     {
@@ -1021,6 +1034,11 @@ bool auxWindowBeginUIFrameVk()
     U32 image_index = 0;
     VkResult ar;
     {
+        // <AYA:PresentOwnership>
+        const U32 images = (U32)aw.images.size();
+        const U32 limit = images > aw.minImageCount ? images - aw.minImageCount : 0;
+        waitForPresentOwnership(PRESENT_OWNER_AUX, limit);
+        // </AYA:PresentOwnership>
         const U64 a0 = vkMonoUs();
         std::lock_guard<std::mutex> lk(sSwapchainAccessMutex);
         ar = vkAcquireNextImageKHR(sDevice, aw.swapchain, UINT64_MAX,
@@ -1194,7 +1212,11 @@ bool auxWindowEndUIFrameVk()
     target.swapchain      = aw.swapchain;
     target.image_index    = image_index;
     target.wait_semaphore = aw.renderFinished[slot];
+    // <AYA:PresentOwnership>
+    target.owner = PRESENT_OWNER_AUX;
     job.presents.push_back(target);
+    notePresentQueued(PRESENT_OWNER_AUX);
+    // </AYA:PresentOwnership>
     peEnqueue(std::move(job));
     aw.fenceInFlight[slot] = true;
     return true;

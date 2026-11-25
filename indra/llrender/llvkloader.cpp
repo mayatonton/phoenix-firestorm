@@ -1404,6 +1404,14 @@ bool beginFrame(bool acquire_swapchain)
         VkPerfMainScope mlp_acq(2);
         VkResult acquire_res;
         {
+            // <AYA:PresentOwnership>
+            // Vulkan requires at most imageCount - minImageCount images already
+            // acquired before another acquire. Over that limit, MoltenVK can
+            // return an image the app still owns instead of blocking.
+            const U32 images = (U32)sSwapchainImages.size();
+            const U32 limit = images > sSwapchainMinImageCount ? images - sSwapchainMinImageCount : 0;
+            waitForPresentOwnership(PRESENT_OWNER_MAIN, limit);
+            // </AYA:PresentOwnership>
             std::lock_guard<std::mutex> lk(sSwapchainAccessMutex);
             acquire_res = vkAcquireNextImageKHR(sDevice, sSwapchain, UINT64_MAX,
                                                 sImageAvailableSemaphores[sFrameIndex],
@@ -2076,7 +2084,11 @@ bool endFrame()
                                                        : sConsumerDisplayTimingSceneId;
                 // </AYA:VisibleFPS>
                 // </AYA:AsyncScene>
+                // <AYA:PresentOwnership>
+                target.owner = PRESENT_OWNER_MAIN;
                 cjob.presents.push_back(target);
+                notePresentQueued(PRESENT_OWNER_MAIN);
+                // </AYA:PresentOwnership>
             }
         }
         sFrameSubmittedMonotonic[sFrameIndex] = sMonotonicFrameCount;
@@ -2125,7 +2137,11 @@ bool endFrame()
                 // <AYA:VisibleFPS>
                 target.scene_id = currentDisplayTimingSceneId();
                 // </AYA:VisibleFPS>
+                // <AYA:PresentOwnership>
+                target.owner = PRESENT_OWNER_MAIN;
                 job.presents.push_back(target);
+                notePresentQueued(PRESENT_OWNER_MAIN);
+                // </AYA:PresentOwnership>
             }
         }
         sFrameSubmittedMonotonic[sFrameIndex] = sMonotonicFrameCount;
