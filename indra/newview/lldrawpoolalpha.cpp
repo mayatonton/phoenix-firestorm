@@ -191,6 +191,16 @@ void LLDrawPoolAlpha::renderPostDeferred(const LLRecordPassContext& ctx, S32 pas
     LLGLSLShader* materialShader = gDeferredMaterialProgram;
     for (int i = 0; i < LLMaterial::SHADER_COUNT; ++i)
     {
+        // <AYA:AlphaMaterialPrep> Alpha-pass draws always use the blend variant
+        // (LLVOVolume registers them with DIFFUSE_ALPHA_MODE_BLEND). The other
+        // variants write four G-buffer outputs; binding them to this single
+        // color target fails pipeline creation under MoltenVK (Metal rejects the
+        // outputs that have no attachment).
+        if ((i & 0x3) != LLMaterial::DIFFUSE_ALPHA_MODE_BLEND)
+        {
+            continue;
+        }
+        // </AYA:AlphaMaterialPrep>
         prepare_alpha_shader(ctx, &materialShader[i], true, water_sign);
     }
 
