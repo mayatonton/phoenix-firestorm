@@ -60,6 +60,9 @@
 #include <sstream>
 #include <tuple>
 #include <unordered_set>
+#if LL_DARWIN || LL_LINUX
+#include <execinfo.h>
+#endif
 
 #include "llcontrol.h"
 
@@ -4487,6 +4490,41 @@ VkPipeline LLGLSLShader::getOrCreateVkPipelineForBoundRT(U32 mode)
     if (!LLVKLoader::compileGraphicsPipeline(ci, pipeline))
     {
         mVkPipelineCache[key] = VK_NULL_HANDLE;
+        // <AYA:PipeFailLog> A failed pipeline is cached as null and every draw that
+        // needs it is skipped silently; name the shader and the bound target so the
+        // dropped draws can be traced (first 64 failures).
+        static U32 s_pipe_fail_logged = 0;
+        if (s_pipe_fail_logged < 64)
+        {
+            ++s_pipe_fail_logged;
+            LL_WARNS("Vulkan") << "pipeline create failed shader='" << mName
+                               << "' color_count=" << color_count
+                               << " swapchain=" << (U32)key.is_swapchain_path
+                               << " depth=" << (U32)key.depth_present
+                               << " view_mask=" << (U32)key.view_mask
+                               << " mode=" << (U32)key.mode
+                               << " rt=" << (rt != nullptr ? rt->getWidth() : 0) << "x" << (rt != nullptr ? rt->getHeight() : 0)
+                               << LL_ENDL;
+#if LL_DARWIN || LL_LINUX
+            if (s_pipe_fail_logged <= 8)
+            {
+                void* frames[16];
+                const int n = backtrace(frames, 16);
+                char** syms = backtrace_symbols(frames, n);
+                if (syms != nullptr)
+                {
+                    std::ostringstream bt;
+                    for (int i = 1; i < n; ++i)
+                    {
+                        bt << "\n    " << syms[i];
+                    }
+                    free(syms);
+                    LL_WARNS("Vulkan") << "pipeline create failed callstack:" << bt.str() << LL_ENDL;
+                }
+            }
+#endif
+        }
+        // </AYA:PipeFailLog>
         return VK_NULL_HANDLE;
     }
 
