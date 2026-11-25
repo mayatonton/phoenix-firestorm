@@ -687,7 +687,11 @@ namespace LLVKLoaderInternal
             }
         }
         // <AYA:VisibleFPS>
-        if (display_timing_supported)
+        // AYASTORM_DISPLAY_TIMING=0 keeps VK_GOOGLE_display_timing off (A/B switch
+        // for the macOS GPU timeout investigation; the status bar then shows the
+        // estimated visible FPS).
+        const char* dt_env = getenv("AYASTORM_DISPLAY_TIMING");
+        if (display_timing_supported && !(dt_env != nullptr && dt_env[0] == '0'))
         {
             device_extensions.push_back(VK_GOOGLE_DISPLAY_TIMING_EXTENSION_NAME);
             sDisplayTimingEnabled = true;
