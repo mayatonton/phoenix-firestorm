@@ -81,28 +81,41 @@ namespace
     {
         out_read = false;
 
-        // Coordinate conversion. mObjectIDBuffer is allocated at WorldViewRectRaw
-        // dimensions (pipeline.cpp resizeScreenTexture), so its (0,0) corresponds
-        // to the world view rect's bottom-left in raw pixels. LLCoordGL mouse
-        // coords are window-relative scaled (logical) pixels.
+        // Coordinate conversion. mObjectIDBuffer is allocated at the active
+        // render target size, which may be smaller than WorldViewRectRaw when
+        // RenderResolutionMultiplier or AYA render relief is active. Its (0,0)
+        // still corresponds to the world view rect's bottom-left, but raw world
+        // pixels must be scaled into the buffer's actual resolution before
+        // glReadPixels().
+        //
+        // LLCoordGL mouse coords are window-relative scaled (logical) pixels.
         //   1) scaled -> raw via DisplayScale (mWindowRectRaw / mWindowRectScaled)
         //   2) subtract WorldViewRectRaw's mLeft/mBottom origin -> buffer-local
-        // Missing either step (raw mismatch on HiDPI / UI-chrome offset) reads
-        // the wrong pixel — typically id=0.
+        //   3) raw world pixel -> active ObjectID buffer pixel
+        // Missing any step reads the wrong pixel, typically id=0.
         const LLRect wv_raw = gViewerWindow->getWorldViewRectRaw();
         const F32 sx = (F32)gViewerWindow->getWindowWidthRaw()  / (F32)gViewerWindow->getWindowWidthScaled();
         const F32 sy = (F32)gViewerWindow->getWindowHeightRaw() / (F32)gViewerWindow->getWindowHeightScaled();
         const S32 mx_win_raw = (S32)llround((F32)mouse_x * sx);
         const S32 my_win_raw = (S32)llround((F32)mouse_y * sy);
-        const S32 mx_buf = mx_win_raw - wv_raw.mLeft;
-        const S32 my_buf = my_win_raw - wv_raw.mBottom;
+        const S32 mx_world_raw = mx_win_raw - wv_raw.mLeft;
+        const S32 my_world_raw = my_win_raw - wv_raw.mBottom;
 
-        if (mx_buf < 0 || my_buf < 0 ||
-            mx_buf >= (S32)gPipeline.mObjectIDBuffer.getWidth() ||
-            my_buf >= (S32)gPipeline.mObjectIDBuffer.getHeight())
+        const S32 world_width_raw = wv_raw.getWidth();
+        const S32 world_height_raw = wv_raw.getHeight();
+        const S32 buffer_width = (S32)gPipeline.mObjectIDBuffer.getWidth();
+        const S32 buffer_height = (S32)gPipeline.mObjectIDBuffer.getHeight();
+        if (world_width_raw <= 0 || world_height_raw <= 0 ||
+            buffer_width <= 0 || buffer_height <= 0 ||
+            mx_world_raw < 0 || my_world_raw < 0 ||
+            mx_world_raw >= world_width_raw || my_world_raw >= world_height_raw)
         {
             return 0;
         }
+        const F32 buffer_scale_x = (F32)buffer_width / (F32)world_width_raw;
+        const F32 buffer_scale_y = (F32)buffer_height / (F32)world_height_raw;
+        const S32 mx_buf = llclamp((S32)((F32)mx_world_raw * buffer_scale_x), 0, buffer_width - 1);
+        const S32 my_buf = llclamp((S32)((F32)my_world_raw * buffer_scale_y), 0, buffer_height - 1);
 
         GLubyte rgba[4] = {0, 0, 0, 0};
         gPipeline.mObjectIDBuffer.bindTarget();

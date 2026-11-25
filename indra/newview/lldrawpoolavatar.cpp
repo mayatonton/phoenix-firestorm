@@ -52,6 +52,7 @@
 #include "llviewerpartsim.h"
 #include "llviewercontrol.h" // for gSavedSettings
 #include "llviewertexturelist.h"
+#include "llstartup.h"
 
 // <FS:Zi> Add avatar hitbox debug
 #include "llviewercontrol.h"
@@ -74,6 +75,64 @@ static bool is_deferred_render = false;
 static bool is_post_deferred_render = false;
 
 extern bool gUseGLPick;
+
+static bool aya_should_protect_avatar_visual_fallback(const LLVOAvatar* avatarp)
+{
+    return avatarp && avatarp->ayaShouldUseSimpleAvatarFallback();
+}
+
+static bool aya_should_render_unloaded_avatar_fallback(const LLVOAvatar* avatarp)
+{
+    return avatarp &&
+        avatarp->getRezzedStatus() >= 1 &&
+        !avatarp->isFullyLoaded() &&
+        avatarp->ayaShouldUseSimpleAvatarFallback();
+}
+
+static void aya_log_avatar_draw_state(LLVOAvatar* avatarp,
+                                      const char* event,
+                                      S32 pass,
+                                      LLVOAvatar::AvatarOverallAppearance overall_appearance,
+                                      bool aya_visual_fallback,
+                                      bool aya_simple_fallback,
+                                      bool aya_render_unloaded_fallback,
+                                      bool impostor,
+                                      bool render_avatar_as_impostor,
+                                      bool suppress_body_passes)
+{
+    static LLCachedControl<bool> texture_management_enabled(gSavedSettings, "AYALoadingTextureManagementEnabled", false);
+    if (!avatarp ||
+        avatarp->isSelf() ||
+        !texture_management_enabled() ||
+        LLStartUp::getStartupState() < STATE_STARTED ||
+        pass > 1 ||
+        (gFrameCount % 300) != 0)
+    {
+        return;
+    }
+
+    LL_INFOS("Avatar")
+        << "AYA avatar_draw_state"
+        << " event=" << event
+        << " id=" << avatarp->getID()
+        << " name=\"" << avatarp->getFullname() << "\""
+        << " pass=" << pass
+        << " overall=" << (S32)overall_appearance
+        << " rez_status=" << avatarp->getRezzedStatus()
+        << " fully_loaded=" << (avatarp->isFullyLoaded() ? "true" : "false")
+        << " visible=" << (avatarp->isVisible() ? "true" : "false")
+        << " too_complex=" << (avatarp->isTooComplex() ? "true" : "false")
+        << " too_slow_no_shadows=" << (avatarp->isTooSlowWithoutShadows() ? "true" : "false")
+        << " aya_visual_fallback=" << (aya_visual_fallback ? "true" : "false")
+        << " aya_simple_fallback=" << (aya_simple_fallback ? "true" : "false")
+        << " aya_render_unloaded_fallback=" << (aya_render_unloaded_fallback ? "true" : "false")
+        << " impostor=" << (impostor ? "true" : "false")
+        << " impostor_complete=" << (avatarp->mImpostor.isComplete() ? "true" : "false")
+        << " needs_impostor_update=" << (avatarp->needsImpostorUpdate() ? "true" : "false")
+        << " render_as_impostor=" << (render_avatar_as_impostor ? "true" : "false")
+        << " suppress_body=" << (suppress_body_passes ? "true" : "false")
+        << LL_ENDL;
+}
 
 F32 CLOTHING_GRAVITY_EFFECT = 0.7f;
 F32 CLOTHING_ACCEL_FORCE_FACTOR = 0.2f;
@@ -791,12 +850,38 @@ void LLDrawPoolAvatar::renderAvatars(LLVOAvatar* single_avatar, S32 pass)
         }
     }
     // </FS:Zi>
+    const bool aya_avatar_visual_fallback = aya_should_protect_avatar_visual_fallback(avatarp);
+    const bool aya_simple_avatar_fallback = !single_avatar && avatarp->ayaShouldUseSimpleAvatarFallback();
+    const LLVOAvatar::AvatarOverallAppearance overall_appearance = avatarp->getOverallAppearance();
+    if (!single_avatar && overall_appearance == LLVOAvatar::AOA_INVISIBLE)
+    {
+        aya_log_avatar_draw_state(avatarp, "aoa_invisible", pass, overall_appearance,
+            aya_avatar_visual_fallback, aya_simple_avatar_fallback, false,
+            false, false, true);
+        return;
+    }
+    if (!single_avatar && avatarp->isExplicitlyDoNotRender())
+    {
+        aya_log_avatar_draw_state(avatarp, "explicit_do_not_render", pass, overall_appearance,
+            aya_avatar_visual_fallback, aya_simple_avatar_fallback, false,
+            false, false, true);
+        return;
+    }
+    const bool aya_render_unloaded_fallback =
+        aya_avatar_visual_fallback &&
+        overall_appearance == LLVOAvatar::AOA_NORMAL &&
+        !avatarp->isVisuallyMuted() &&
+        aya_should_render_unloaded_avatar_fallback(avatarp);
+
 // <FS:Beq> rendertime Tracy annotations
 {
     LL_PROFILE_ZONE_NAMED_CATEGORY_AVATAR("check fully_loaded");
 // </FS:Beq>
-    if (!single_avatar && !avatarp->isFullyLoaded() )
+    if (!single_avatar && !avatarp->isFullyLoaded() && !aya_render_unloaded_fallback)
     {
+        aya_log_avatar_draw_state(avatarp, "not_loaded_no_fallback", pass, overall_appearance,
+            aya_avatar_visual_fallback, aya_simple_avatar_fallback, aya_render_unloaded_fallback,
+            false, false, true);
         LL_PROFILE_ZONE_NAMED_CATEGORY_AVATAR("avatar not loaded"); // <FS:Beq/> Tracy markup
         if (pass==0 && (!gPipeline.hasRenderType(LLPipeline::RENDER_TYPE_PARTICLES) || LLViewerPartSim::getMaxPartCount() <= 0))
         {
@@ -830,20 +915,28 @@ void LLDrawPoolAvatar::renderAvatars(LLVOAvatar* single_avatar, S32 pass)
         && !avatarp->isSelf()
         && !avatarp->isBuddy())
     {
+        aya_log_avatar_draw_state(avatarp, "friends_only_hidden", pass, overall_appearance,
+            aya_avatar_visual_fallback, aya_simple_avatar_fallback, aya_render_unloaded_fallback,
+            false, false, true);
         return;
     }
 
     bool impostor = !LLPipeline::sImpostorRender && avatarp->isImpostor() && !single_avatar;
+    const bool render_avatar_as_impostor =
+        (impostor && !(aya_render_unloaded_fallback && !avatarp->mImpostor.isComplete())) ||
+        (LLVOAvatar::AOA_NORMAL != overall_appearance && !avatarp->needsImpostorUpdate());
 
 // <FS:Beq> rendertime Tracy annotations
 {
     LL_PROFILE_ZONE_NAMED_CATEGORY_AVATAR("check appearance");
 // </FS:Beq>
     if (( /*avatarp->isInMuteList() // <FS:Ansariel> Partially undo MAINT-5700: Draw imposter for muted avatars
-          ||*/ impostor
-          || (LLVOAvatar::AOA_NORMAL != avatarp->getOverallAppearance() && !avatarp->needsImpostorUpdate()) ) && pass != 0)
+          ||*/ render_avatar_as_impostor ) && pass != 0)
 //        || (LLVOAvatar::AV_DO_NOT_RENDER == avatarp->getVisualMuteSettings() && !avatarp->needsImpostorUpdate()) ) && pass != 0)
     { //don't draw anything but the impostor for impostored avatars
+        aya_log_avatar_draw_state(avatarp, "suppress_body_pass", pass, overall_appearance,
+            aya_avatar_visual_fallback, aya_simple_avatar_fallback, aya_render_unloaded_fallback,
+            impostor, render_avatar_as_impostor, render_avatar_as_impostor);
         return;
     }
 }// <FS:Beq/> rendertime Tracy annotations
@@ -869,8 +962,11 @@ void LLDrawPoolAvatar::renderAvatars(LLVOAvatar* single_avatar, S32 pass)
         }
 
 //      if (impostor || (LLVOAvatar::AV_DO_NOT_RENDER == avatarp->getVisualMuteSettings() && !avatarp->needsImpostorUpdate()))
-        if (impostor || (LLVOAvatar::AOA_NORMAL != avatarp->getOverallAppearance() && !avatarp->needsImpostorUpdate()))
+        if (render_avatar_as_impostor)
         {
+            aya_log_avatar_draw_state(avatarp, "render_impostor", pass, overall_appearance,
+                aya_avatar_visual_fallback, aya_simple_avatar_fallback, aya_render_unloaded_fallback,
+                impostor, render_avatar_as_impostor, render_avatar_as_impostor);
             LL_PROFILE_ZONE_NAMED_CATEGORY_AVATAR("render impostor"); // <FS:Beq/> Tracy markup
             if (LLPipeline::sRenderDeferred && !LLPipeline::sReflectionRender && avatarp->mImpostor.isComplete())
             {
@@ -891,6 +987,12 @@ void LLDrawPoolAvatar::renderAvatars(LLVOAvatar* single_avatar, S32 pass)
                 }
             }
             avatarp->renderImpostor(avatarp->getMutedAVColor(), sDiffuseChannel);
+        }
+        else if (aya_render_unloaded_fallback)
+        {
+            aya_log_avatar_draw_state(avatarp, "allow_body_fallback", pass, overall_appearance,
+                aya_avatar_visual_fallback, aya_simple_avatar_fallback, aya_render_unloaded_fallback,
+                impostor, render_avatar_as_impostor, render_avatar_as_impostor);
         }
         return;
     }
@@ -1106,5 +1208,3 @@ void LLDrawPoolAvatar::renderMotionBlur(S32 pass)
     avatarp->renderSkinned();
 }
 // </AYAstorm r30 P2>
-
-

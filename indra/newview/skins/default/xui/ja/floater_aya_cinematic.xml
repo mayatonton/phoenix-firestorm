@@ -25,23 +25,35 @@
 
             <text name="T_GeneralLoadingPerf">読み込み最適化</text>
             <check_box name="cb_LoadingFPSGuard" label="FPS安定化"
-                       tool_tip="読み込み中に FPS が基準値を下回る場合、描画負荷を一時的に下げます。"/>
+                       tool_tip="in-world 中に固定の描画軽量化 profile を適用します。下の強度スライダーで 3D 解像度と non-avatar world LOD を別々に制御します。"/>
             <button name="d_LoadingFPSGuard" tool_tip="デフォルトに戻す"/>
-            <text name="T_LoadingTargetFPS">目標 FPS</text>
-            <slider_bar name="sb_LoadingTargetFPS"
-                        tool_tip="読み込み時ガードの目標 FPS。低いほど介入は控えめ、高いほど応答性優先で強く介入します。"/>
-            <spinner name="s_LoadingTargetFPS"
-                     tool_tip="読み込み時ガードの目標 FPS。低いほど介入は控えめ、高いほど応答性優先で強く介入します。"/>
-            <button name="d_LoadingTargetFPS" tool_tip="デフォルトに戻す"/>
-            <check_box name="cb_LoadingPriorityControl" label="読み込み優先制御"
-                       tool_tip="近距離、画面内、アバター、保護対象のテクスチャ処理を優先し、読み込み中は遠距離や視野外の解像度上限を下げる場合があります。"/>
-            <button name="d_LoadingPriorityControl" tool_tip="デフォルトに戻す"/>
-            <check_box name="cb_LoadingTextureMemoryRelief" label="テクスチャメモリ整理"
-                       tool_tip="不要になったテクスチャを段階的に縮小または解放する sweep を許可します。"/>
-            <button name="d_LoadingTextureMemoryRelief" tool_tip="デフォルトに戻す"/>
+            <text name="T_ResolutionReliefStrength">3D 解像度低下の強度</text>
+            <slider_bar name="sb_ResolutionReliefStrength"
+                        tool_tip="0 は dynamic resolution を無効化。1-5 は固定の in-world render target profile を適用し、値が大きいほど 3D 解像度を下げます。"/>
+            <spinner name="s_ResolutionReliefStrength"
+                     tool_tip="0 は dynamic resolution を無効化。1-5 は固定の in-world render target profile を適用し、値が大きいほど 3D 解像度を下げます。"/>
+            <button name="d_ResolutionReliefStrength" tool_tip="デフォルトに戻す"/>
+            <text name="T_LODReliefStrength">World LOD 低下の強度</text>
+            <slider_bar name="sb_LODReliefStrength"
+                        tool_tip="0 は world LOD relief を無効化。1-5 は non-avatar world object の固定 LOD profile を適用します。アバター、アタッチメント、HUD、選択中オブジェクトは world-object LOD 低下の対象外です。"/>
+            <spinner name="s_LODReliefStrength"
+                     tool_tip="0 は world LOD relief を無効化。1-5 は non-avatar world object の固定 LOD profile を適用します。アバター、アタッチメント、HUD、選択中オブジェクトは world-object LOD 低下の対象外です。"/>
+            <button name="d_LODReliefStrength" tool_tip="デフォルトに戻す"/>
+            <check_box name="cb_LoadingTextureManagement" label="テクスチャ読み込み・メモリ管理"
+                       tool_tip="近距離、画面内、アバター、HUD、保護対象のテクスチャ処理を優先し、texture callback/create/downscale の保護予算を適用し、不要テクスチャの整理を安全装置付きで許可します。"/>
+            <button name="d_LoadingTextureManagement" tool_tip="デフォルトに戻す"/>
+            <text name="T_TextureDownscaleStrength">テクスチャ低解像度化の強度</text>
+            <slider_bar name="sb_TextureDownscaleStrength"
+                        tool_tip="0 は通常解像度のまま。1-4 は cap 対象の解像度上限を段階的に下げ、対応する discard level に丸めます。5 は cap 対象の非保護テクスチャを対応可能な最大 discard へ寄せ、memory sweep 有効時に bounded cleanup sweep を要求します。"/>
+            <spinner name="s_TextureDownscaleStrength"
+                     tool_tip="0 は通常解像度のまま。1-4 は cap 対象の解像度上限を段階的に下げ、対応する discard level に丸めます。5 は cap 対象の非保護テクスチャを対応可能な最大 discard へ寄せ、memory sweep 有効時に bounded cleanup sweep を要求します。"/>
+            <button name="d_TextureDownscaleStrength" tool_tip="デフォルトに戻す"/>
+            <check_box name="cb_DisableAvatarLoadingCloudParticles" label="アバター読み込み cloud particle を非表示"
+                       tool_tip="独立した debug/UX 設定です。アバター読み込み cloud particle だけを非表示にし、avatar loading、impostor、texture management policy は変更しません。"/>
+            <button name="d_DisableAvatarLoadingCloudParticles" tool_tip="デフォルトに戻す"/>
 
             <text name="T_GeneralNote">
-                ヒント: 表示モードは 環境設定 → グラフィック で切り替えます。切替後はビューア再起動で適用されます。
+                View Mode の変更は引き続き再起動が必要です。上の読み込み最適化設定は in-world で即時適用され、View Mode には依存しません。
             </text>
         </panel>
 

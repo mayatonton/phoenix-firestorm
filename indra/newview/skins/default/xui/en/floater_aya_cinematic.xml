@@ -1,11 +1,13 @@
 <?xml version="1.0" encoding="utf-8" standalone="yes" ?>
 <!--
   AYAstorm r30 P4 — Cinematic Controls floater (tabbed).
-  Cinematic mode の唯一の cvar 編集 UI (BD Machinima sidebar 路線は撤去済、
+  Cinematic mode の主要 cvar 編集 UI (BD Machinima sidebar 路線は撤去済、
   Phase 3.9 spec §0 参照)。
-  All controls here only produce visible effects when View Mode (Graphics tab)
-  is set to "Cinematic" (AYAVisualRealismEnabled=2). View Mode change requires
-  restart; sliders here apply live.
+  Most rendering controls here only produce visible effects when View Mode
+  (Graphics tab) is set to "Cinematic" (AYAVisualRealismEnabled=2). Loading
+  optimization controls on the General tab are global and are not gated by
+  AYAVisualRealismEnabled. View Mode change requires restart; sliders here
+  apply live.
 
   D button: <button.commit_callback function="AYAResetCinematic" parameter="<cvar>"/>
   Restores the cvar to AYAstorm Cinematic recommended value via
@@ -71,22 +73,32 @@
 
             <text       follows="left|top" layout="topleft" name="T_GeneralLoadingPerf"  top="186" left="8"   width="472" height="18" font="SansSerif">Loading optimization</text>
 
-            <check_box  follows="left|top" layout="topleft" name="cb_LoadingFPSGuard"    control_name="AYALoadingFPSGuardEnabled" top="210" left="36" width="406" height="20" label="FPS stabilization" tool_tip="Temporarily lowers render cost while loading and FPS is below the configured threshold."/>
+            <check_box  follows="left|top" layout="topleft" name="cb_LoadingFPSGuard"    control_name="AYALoadingFPSGuardEnabled" top="210" left="36" width="406" height="20" label="FPS stabilization" tool_tip="Applies fixed in-world render relief profiles. The strength sliders below control 3D resolution and non-avatar world LOD separately."/>
             <button     follows="left|top" layout="topleft" name="d_LoadingFPSGuard"     top="210" left="12" width="20" height="20" label="D" tool_tip="Reset to default"><button.commit_callback function="AYAResetCinematic" parameter="AYALoadingFPSGuardEnabled"/></button>
 
-            <text       follows="left|top" layout="topleft" name="T_LoadingTargetFPS"    top="238" left="12"  width="160" height="20">Target FPS</text>
-            <slider_bar follows="left|top" layout="topleft" name="sb_LoadingTargetFPS"   top="240" left="176" width="195" height="16" enabled_control="AYALoadingFPSGuardEnabled" control_name="AYALoadingFPSGuardMinFPS" min_val="30" max_val="288" increment="1" tool_tip="Guard target while loading. Lower values intervene less often; higher values preserve responsiveness more aggressively."/>
-            <spinner    follows="left|top" layout="topleft" name="s_LoadingTargetFPS"    top="238" left="376" width="65"  height="20" enabled_control="AYALoadingFPSGuardEnabled" control_name="AYALoadingFPSGuardMinFPS" min_val="30" max_val="288" increment="1" decimal_digits="0" label_width="0" tool_tip="Guard target while loading. Lower values intervene less often; higher values preserve responsiveness more aggressively."/>
-            <button     follows="left|top" layout="topleft" name="d_LoadingTargetFPS"    top="238" left="445" width="20"  height="20" label="D" tool_tip="Reset to default"><button.commit_callback function="AYAResetCinematic" parameter="AYALoadingFPSGuardMinFPS"/></button>
+            <text       follows="left|top" layout="topleft" name="T_ResolutionReliefStrength" top="238" left="12"  width="160" height="20">3D resolution strength</text>
+            <slider_bar follows="left|top" layout="topleft" name="sb_ResolutionReliefStrength" top="240" left="176" width="195" height="16" enabled_control="AYALoadingFPSGuardEnabled" control_name="AYALoadingResolutionReliefStrength" min_val="0" max_val="5" increment="1" tool_tip="0 disables internal 3D resolution reduction. 1-5 apply fixed in-world render target profiles; higher values trade more 3D detail for lower pixel cost."/>
+            <spinner    follows="left|top" layout="topleft" name="s_ResolutionReliefStrength" top="238" left="376" width="65"  height="20" enabled_control="AYALoadingFPSGuardEnabled" control_name="AYALoadingResolutionReliefStrength" min_val="0" max_val="5" increment="1" decimal_digits="0" label_width="0" tool_tip="0 disables internal 3D resolution reduction. 1-5 apply fixed in-world render target profiles; higher values trade more 3D detail for lower pixel cost."/>
+            <button     follows="left|top" layout="topleft" name="d_ResolutionReliefStrength" top="238" left="445" width="20"  height="20" label="D" tool_tip="Reset to default"><button.commit_callback function="AYAResetCinematic" parameter="AYALoadingResolutionReliefStrength"/></button>
 
-            <check_box  follows="left|top" layout="topleft" name="cb_LoadingPriorityControl" control_name="AYALoadingPriorityControlEnabled" top="270" left="36" width="406" height="20" label="Loading priority control" tool_tip="Prioritizes nearby, visible, avatar, and protected texture work, and may cap distant or offscreen texture resolution while loading."/>
-            <button     follows="left|top" layout="topleft" name="d_LoadingPriorityControl" top="270" left="12" width="20" height="20" label="D" tool_tip="Reset to default"><button.commit_callback function="AYAResetCinematic" parameter="AYALoadingPriorityControlEnabled"/></button>
+            <text       follows="left|top" layout="topleft" name="T_LODReliefStrength" top="266" left="12"  width="160" height="20">World LOD strength</text>
+            <slider_bar follows="left|top" layout="topleft" name="sb_LODReliefStrength" top="268" left="176" width="195" height="16" enabled_control="AYALoadingFPSGuardEnabled" control_name="AYALoadingLODReliefStrength" min_val="0" max_val="5" increment="1" tool_tip="0 disables world LOD relief. 1-5 apply fixed non-avatar world LOD profiles. Avatars, attachments, HUDs, and selected objects are excluded from world-object LOD reduction."/>
+            <spinner    follows="left|top" layout="topleft" name="s_LODReliefStrength" top="266" left="376" width="65"  height="20" enabled_control="AYALoadingFPSGuardEnabled" control_name="AYALoadingLODReliefStrength" min_val="0" max_val="5" increment="1" decimal_digits="0" label_width="0" tool_tip="0 disables world LOD relief. 1-5 apply fixed non-avatar world LOD profiles. Avatars, attachments, HUDs, and selected objects are excluded from world-object LOD reduction."/>
+            <button     follows="left|top" layout="topleft" name="d_LODReliefStrength" top="266" left="445" width="20"  height="20" label="D" tool_tip="Reset to default"><button.commit_callback function="AYAResetCinematic" parameter="AYALoadingLODReliefStrength"/></button>
 
-            <check_box  follows="left|top" layout="topleft" name="cb_LoadingTextureMemoryRelief" control_name="AYALoadingTextureMemoryReliefEnabled" top="294" left="36" width="406" height="20" label="Texture memory cleanup" tool_tip="Allows teleport and memory sweeps to downscale or release stale unreferenced textures under safeguards."/>
-            <button     follows="left|top" layout="topleft" name="d_LoadingTextureMemoryRelief" top="294" left="12" width="20" height="20" label="D" tool_tip="Reset to default"><button.commit_callback function="AYAResetCinematic" parameter="AYALoadingTextureMemoryReliefEnabled"/></button>
+            <check_box  follows="left|top" layout="topleft" name="cb_LoadingTextureManagement" control_name="AYALoadingTextureManagementEnabled" top="298" left="36" width="406" height="20" label="Texture loading and memory management" tool_tip="Prioritizes nearby, visible, avatar, HUD, and protected texture work, applies guarded texture callback/create/downscale budgets, and allows texture memory cleanup under safeguards."/>
+            <button     follows="left|top" layout="topleft" name="d_LoadingTextureManagement" top="298" left="12" width="20" height="20" label="D" tool_tip="Reset to default"><button.commit_callback function="AYAResetCinematic" parameter="AYALoadingTextureManagementEnabled"/></button>
 
-            <text       follows="left|top|right" layout="topleft" name="T_GeneralNote"   top="330" left="8"   width="472" height="54" font="SansSerifSmall" word_wrap="true" text_color="White_50">
-                Tip: change View Mode in Preferences → Graphics. Restart the viewer after switching to apply.
+            <text       follows="left|top" layout="topleft" name="T_TextureDownscaleStrength" top="326" left="12"  width="160" height="20">Texture downscale strength</text>
+            <slider_bar follows="left|top" layout="topleft" name="sb_TextureDownscaleStrength" top="328" left="176" width="195" height="16" enabled_control="AYALoadingTextureManagementEnabled" control_name="AYALoadingTextureDownscaleStrength" min_val="0" max_val="5" increment="1" tool_tip="0 keeps normal texture resolution. 1-4 progressively lower capped texture limits, rounded to supported discard levels. 5 pushes capped non-protected textures toward their maximum supported discard and requests a bounded cleanup sweep when memory sweep is enabled."/>
+            <spinner    follows="left|top" layout="topleft" name="s_TextureDownscaleStrength" top="326" left="376" width="65"  height="20" enabled_control="AYALoadingTextureManagementEnabled" control_name="AYALoadingTextureDownscaleStrength" min_val="0" max_val="5" increment="1" decimal_digits="0" label_width="0" tool_tip="0 keeps normal texture resolution. 1-4 progressively lower capped texture limits, rounded to supported discard levels. 5 pushes capped non-protected textures toward their maximum supported discard and requests a bounded cleanup sweep when memory sweep is enabled."/>
+            <button     follows="left|top" layout="topleft" name="d_TextureDownscaleStrength" top="326" left="445" width="20"  height="20" label="D" tool_tip="Reset to default"><button.commit_callback function="AYAResetCinematic" parameter="AYALoadingTextureDownscaleStrength"/></button>
+
+            <check_box  follows="left|top" layout="topleft" name="cb_DisableAvatarLoadingCloudParticles" control_name="AYADisableAvatarLoadingCloudParticles" top="356" left="36" width="406" height="20" label="Hide avatar loading cloud particles" tool_tip="Independent debug/UX option. It only hides avatar loading cloud particles and does not change avatar loading, impostor, or texture management policy."/>
+            <button     follows="left|top" layout="topleft" name="d_DisableAvatarLoadingCloudParticles" top="356" left="12" width="20" height="20" label="D" tool_tip="Reset to default"><button.commit_callback function="AYAResetCinematic" parameter="AYADisableAvatarLoadingCloudParticles"/></button>
+
+            <text       follows="left|top|right" layout="topleft" name="T_GeneralNote"   top="388" left="8"   width="472" height="34" font="SansSerifSmall" word_wrap="true" text_color="White_50">
+                View Mode changes still require restart. Loading optimization controls above apply live in world and do not depend on View Mode.
             </text>
         </panel>
 

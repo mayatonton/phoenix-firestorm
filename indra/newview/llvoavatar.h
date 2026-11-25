@@ -410,6 +410,8 @@ public:
 
     inline bool     isTooSlowWithoutShadows() const {return mTooSlowWithoutShadows;};
     bool    isTooSlow() const;
+    bool    ayaShouldUseSimpleAvatarFallback() const;
+    bool    ayaShouldDeferSlowImpostor() const;
 
     void            updateTooSlow();
 
@@ -532,6 +534,7 @@ public:
         AV_ALWAYS_RENDER   = 2
     };
     void        setVisualMuteSettings(VisualMuteSettings set);
+    bool        isExplicitlyDoNotRender() const { return mVisuallyMuteSetting == AV_DO_NOT_RENDER; }
 protected:
     // If you think you need to access this outside LLVOAvatar, you probably want getOverallAppearance()
     VisualMuteSettings  getVisualMuteSettings()                        { return mVisuallyMuteSetting;    };
@@ -701,8 +704,6 @@ private:
     F32         mImpostorPixelArea;
     LLVector3   mLastAnimExtents[2];
     LLVector3   mLastAnimBasePos;
-
-    LLCachedControl<bool> mRenderUnloadedAvatar;
 
     //--------------------------------------------------------------------
     // Wind rippling in clothes
@@ -1335,4 +1336,3 @@ void dump_sequential_xml(const std::string outprefix, const LLSD& content);
 void dump_visual_param(apr_file_t* file, LLVisualParam* viewer_param, F32 value);
 
 #endif // LL_VOAVATAR_H
-

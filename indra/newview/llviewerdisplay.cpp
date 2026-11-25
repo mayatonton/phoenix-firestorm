@@ -291,6 +291,7 @@ bool sAYADynamicResolutionStartupSeen = false;
 bool sAYADynamicResolutionPostTeleportSeen = false;
 U32 sAYADynamicResolutionEnterCount = 0;
 U32 sAYADynamicResolutionExitCount = 0;
+S32 sAYADynamicResolutionLastStrengthLevel = -1;
 LLTimer sAYADynamicResolutionStartupTimer;
 LLTimer sAYADynamicResolutionPostTeleportTimer;
 LLTimer sAYADynamicResolutionActiveTimer;
@@ -303,6 +304,24 @@ constexpr const char* AYA_RENDER_RESOLUTION_MULTIPLIER = "RenderResolutionMultip
 F32 aya_get_render_resolution_multiplier_setting()
 {
     return gSavedSettings.getF32(AYA_RENDER_RESOLUTION_MULTIPLIER);
+}
+
+bool aya_is_startup_or_login_ui_active(EStartupState startup_state)
+{
+    if (startup_state < STATE_STARTED)
+    {
+        return true;
+    }
+
+    if (!gViewerWindow)
+    {
+        return true;
+    }
+
+    LLView* login_holder = gViewerWindow->getLoginPanelHolder();
+    return login_holder &&
+           login_holder->getVisible() &&
+           login_holder->getChildCount() > 0;
 }
 
 F32 aya_get_dynamic_resolution_target(F32 requested_multiplier)
@@ -329,17 +348,15 @@ F32 aya_quantize_dynamic_resolution_multiplier(F32 multiplier)
     return selected;
 }
 
-F32 aya_get_adaptive_dynamic_resolution_multiplier(F32 current_fps, F32 target_fps, F32 min_multiplier)
+S32 aya_loading_strength_level(F32 strength)
 {
-    if (!(target_fps > 0.f))
-    {
-        return 1.f;
-    }
+    return llclamp((S32)llround(strength), 0, 5);
+}
 
-    const F32 adaptive_floor = llclamp(min_multiplier, 0.25f, 1.f);
-    const F32 fps_ratio = llclamp(current_fps / target_fps, 0.01f, 1.f);
-    const F32 estimated_multiplier = (F32)std::sqrt((F64)fps_ratio);
-    return llclamp(aya_quantize_dynamic_resolution_multiplier(llclamp(estimated_multiplier, adaptive_floor, 1.f)), adaptive_floor, 1.f);
+F32 aya_loading_resolution_profile_multiplier(S32 strength_level)
+{
+    static constexpr F32 MULTIPLIER_BY_STRENGTH[] = {1.f, 0.85f, 0.75f, 0.66f, 0.50f, 0.25f};
+    return MULTIPLIER_BY_STRENGTH[llclamp(strength_level, 0, 5)];
 }
 
 void aya_apply_dynamic_resolution_multiplier(F32 requested_multiplier)
@@ -370,13 +387,10 @@ void aya_restore_dynamic_resolution_multiplier()
 void aya_log_dynamic_resolution_guard(const char* event,
                                       const char* reason,
                                       F32 multiplier,
-                                      F32 target_fps,
-                                      F32 adaptive_floor,
-                                      bool loading_window,
-                                      bool startup_window,
-                                      bool teleport_window,
-                                      bool texture_backlog_window,
-                                      LLAgent::ETeleportState teleport_state)
+                                      S32 strength_level,
+                                      LLAgent::ETeleportState teleport_state,
+                                      bool in_world,
+                                      bool safety_excluded)
 {
     static LLCachedControl<bool> log_enabled(gSavedSettings, "AYALoadingDynamicResolutionLog", true);
     if (!log_enabled)
@@ -389,16 +403,14 @@ void aya_log_dynamic_resolution_guard(const char* event,
         << " reason=" << reason
         << " active=" << (sAYADynamicResolutionActive ? "true" : "false")
         << " fps=" << llformat("%.2f", gFPSClamped)
-        << " target_fps=" << llformat("%.2f", target_fps)
+        << " profile_id=" << strength_level
+        << " profile_multiplier=" << llformat("%.2f", multiplier)
         << " multiplier=" << llformat("%.2f", multiplier)
-        << " adaptive_floor=" << llformat("%.2f", adaptive_floor)
         << " render_resolution_multiplier_setting=" << llformat("%.2f", aya_get_render_resolution_multiplier_setting())
         << " ayastorm_dynamic_multiplier=" << llformat("%.2f", LLPipeline::getAYADynamicRenderResolutionMultiplier())
         << " cached_render_resolution_multiplier=" << llformat("%.2f", LLPipeline::getEffectiveRenderResolutionMultiplier())
-        << " loading_window=" << (loading_window ? "true" : "false")
-        << " startup_window=" << (startup_window ? "true" : "false")
-        << " teleport_window=" << (teleport_window ? "true" : "false")
-        << " texture_backlog_window=" << (texture_backlog_window ? "true" : "false")
+        << " in_world=" << (in_world ? "true" : "false")
+        << " safety_excluded=" << (safety_excluded ? "true" : "false")
         << " texture_create_queue=" << gTextureList.mCreateTextureList.size()
         << " texture_downscale_queue=" << gTextureList.mDownScaleQueue.size()
         << " texture_callback_queue=" << gTextureList.mCallbackList.size()
@@ -409,30 +421,36 @@ void aya_log_dynamic_resolution_guard(const char* event,
         << LL_ENDL;
 }
 
-void aya_update_dynamic_resolution_guard()
+void aya_update_dynamic_resolution_guard(bool for_snapshot)
 {
     static LLCachedControl<bool> loading_fps_guard_enabled(gSavedSettings, "AYALoadingFPSGuardEnabled", false);
-    static LLCachedControl<F32> loading_fps_guard_min_fps(gSavedSettings, "AYALoadingFPSGuardMinFPS", 30.f);
+    static LLCachedControl<F32> resolution_relief_strength(gSavedSettings, "AYALoadingResolutionReliefStrength", 3.f);
     static LLCachedControl<bool> dynamic_resolution_enabled(gSavedSettings, "AYALoadingDynamicResolutionEnabled", true);
-    static LLCachedControl<bool> dynamic_resolution_low_fps_enabled(gSavedSettings, "AYALoadingDynamicResolutionLowFPSEnabled", false);
     static LLCachedControl<F32> dynamic_resolution_min_multiplier(gSavedSettings, "AYALoadingDynamicResolutionMinMultiplier", 0.25f);
-    static LLCachedControl<F32> restore_fps(gSavedSettings, "AYALoadingDynamicResolutionRestoreFPS", 30.f);
-    static LLCachedControl<F32> startup_window_seconds(gSavedSettings, "AYALoadingDynamicResolutionStartupWindowSeconds", 20.f);
-    static LLCachedControl<F32> teleport_window_seconds(gSavedSettings, "AYALoadingDynamicResolutionTeleportWindowSeconds", 20.f);
-    static LLCachedControl<F32> min_hold_seconds(gSavedSettings, "AYALoadingDynamicResolutionMinHoldSeconds", 8.f);
-    static LLCachedControl<U32> texture_create_backlog_threshold(gSavedSettings, "AYALoadingDynamicResolutionTextureCreateBacklogThreshold", 24);
-    static LLCachedControl<U32> texture_callback_backlog_threshold(gSavedSettings, "AYALoadingDynamicResolutionTextureCallbackBacklogThreshold", 24);
 
     const LLAgent::ETeleportState teleport_state = gAgent.getTeleportState();
     const EStartupState startup_state = LLStartUp::getStartupState();
-    if (startup_state < STATE_STARTED)
+    if (for_snapshot)
     {
         if (sAYADynamicResolutionActive)
         {
             sAYADynamicResolutionActive = false;
             ++sAYADynamicResolutionExitCount;
             aya_restore_dynamic_resolution_multiplier();
-            aya_log_dynamic_resolution_guard("exit", "startup_not_started", 1.f, 0.f, 0.f, false, false, false, false, teleport_state);
+            aya_log_dynamic_resolution_guard("exit", "snapshot", 1.f, 0, teleport_state, false, true);
+        }
+        return;
+    }
+
+    if (aya_is_startup_or_login_ui_active(startup_state))
+    {
+        sAYADynamicResolutionStartupSeen = false;
+        if (sAYADynamicResolutionActive)
+        {
+            sAYADynamicResolutionActive = false;
+            ++sAYADynamicResolutionExitCount;
+            aya_restore_dynamic_resolution_multiplier();
+            aya_log_dynamic_resolution_guard("exit", "startup_login_ui", 1.f, 0, teleport_state, false, true);
         }
         return;
     }
@@ -450,123 +468,56 @@ void aya_update_dynamic_resolution_guard()
     }
     sAYADynamicResolutionLastTeleportState = teleport_state;
 
-    if (!loading_fps_guard_enabled || !dynamic_resolution_enabled)
+    const S32 resolution_strength_level = aya_loading_strength_level(resolution_relief_strength());
+    const bool resolution_strength_changed =
+        sAYADynamicResolutionLastStrengthLevel >= 0 &&
+        sAYADynamicResolutionLastStrengthLevel != resolution_strength_level;
+    sAYADynamicResolutionLastStrengthLevel = resolution_strength_level;
+    if (!loading_fps_guard_enabled || !dynamic_resolution_enabled || resolution_strength_level <= 0)
     {
         if (sAYADynamicResolutionActive)
         {
             sAYADynamicResolutionActive = false;
             ++sAYADynamicResolutionExitCount;
             aya_restore_dynamic_resolution_multiplier();
-            aya_log_dynamic_resolution_guard("exit", "disabled", 1.f, 0.f, 0.f, false, false, false, false, teleport_state);
+            aya_log_dynamic_resolution_guard("exit", "disabled", 1.f, resolution_strength_level, teleport_state, true, false);
         }
         return;
     }
 
-    const bool startup_window =
-        sAYADynamicResolutionStartupSeen &&
-        startup_window_seconds() > 0.f &&
-        sAYADynamicResolutionStartupTimer.getElapsedTimeF32() < startup_window_seconds();
-    const bool teleport_window =
-        gTeleportDisplay ||
-        teleport_state != LLAgent::TELEPORT_NONE ||
-        (sAYADynamicResolutionPostTeleportSeen &&
-         teleport_window_seconds() > 0.f &&
-         sAYADynamicResolutionPostTeleportTimer.getElapsedTimeF32() < teleport_window_seconds());
-    const bool texture_backlog_window =
-        (texture_create_backlog_threshold() > 0 &&
-         (gTextureList.mCreateTextureList.size() >= texture_create_backlog_threshold() ||
-          gTextureList.mDownScaleQueue.size() >= texture_create_backlog_threshold())) ||
-        (texture_callback_backlog_threshold() > 0 &&
-         gTextureList.mCallbackList.size() >= texture_callback_backlog_threshold());
-    const bool loading_window = startup_window || teleport_window || texture_backlog_window;
-    const F32 loading_fps_guard_target_fps = llclamp(loading_fps_guard_min_fps(), 30.f, 288.f);
-    const bool low_fps = gFPSClamped < loading_fps_guard_target_fps;
-    const bool loading_low_fps_dynamic = loading_window && low_fps;
-    const bool low_fps_dynamic = dynamic_resolution_low_fps_enabled() && low_fps;
-    const bool should_reduce_resolution = loading_low_fps_dynamic || low_fps_dynamic;
-    const F32 adaptive_floor = llclamp(dynamic_resolution_min_multiplier(), 0.25f, 1.f);
-    const F32 requested_multiplier =
-        aya_get_adaptive_dynamic_resolution_multiplier(gFPSClamped, loading_fps_guard_target_fps, adaptive_floor);
+    const F32 profile_multiplier = llclamp(aya_loading_resolution_profile_multiplier(resolution_strength_level),
+                                           llclamp(dynamic_resolution_min_multiplier(), 0.25f, 1.f),
+                                           1.f);
+    const F32 requested_multiplier = aya_quantize_dynamic_resolution_multiplier(profile_multiplier);
 
-    if (!sAYADynamicResolutionActive && should_reduce_resolution)
+    if (!sAYADynamicResolutionActive)
     {
         sAYADynamicResolutionActive = true;
         ++sAYADynamicResolutionEnterCount;
         sAYADynamicResolutionActiveTimer.reset();
         sAYADynamicResolutionAdjustTimer.reset();
         aya_apply_dynamic_resolution_multiplier(requested_multiplier);
-        aya_log_dynamic_resolution_guard("enter",
-                                         loading_low_fps_dynamic ? "loading_low_fps" : "low_fps",
-                                         requested_multiplier,
-                                         loading_fps_guard_target_fps,
-                                         adaptive_floor,
-                                         loading_window,
-                                         startup_window,
-                                         teleport_window,
-                                         texture_backlog_window,
-                                         teleport_state);
+        aya_log_dynamic_resolution_guard("enter", "profile_active", requested_multiplier, resolution_strength_level, teleport_state, true, false);
         return;
     }
 
     if (sAYADynamicResolutionActive)
     {
-        const bool held_long_enough =
-            min_hold_seconds() <= 0.f ||
-            sAYADynamicResolutionActiveTimer.getElapsedTimeF32() >= min_hold_seconds();
-        const bool fps_recovered =
-            restore_fps() <= 0.f ||
-            gFPSClamped >= restore_fps();
-
-        if (!loading_window && low_fps_dynamic && held_long_enough && fps_recovered)
-        {
-            sAYADynamicResolutionActive = false;
-            ++sAYADynamicResolutionExitCount;
-            aya_restore_dynamic_resolution_multiplier();
-            aya_log_dynamic_resolution_guard("exit", "recovered", 1.f, loading_fps_guard_target_fps, adaptive_floor, loading_window, startup_window, teleport_window, texture_backlog_window, teleport_state);
-            return;
-        }
-
-        if (!loading_window && !low_fps_dynamic && held_long_enough)
-        {
-            sAYADynamicResolutionActive = false;
-            ++sAYADynamicResolutionExitCount;
-            aya_restore_dynamic_resolution_multiplier();
-            aya_log_dynamic_resolution_guard("exit", "loading_window_closed", 1.f, loading_fps_guard_target_fps, adaptive_floor, loading_window, startup_window, teleport_window, texture_backlog_window, teleport_state);
-            return;
-        }
-
-        constexpr F32 DOWN_ADJUST_INTERVAL = 3.f;
-        constexpr F32 UP_ADJUST_INTERVAL = 10.f;
         constexpr F32 MULTIPLIER_EPSILON = 0.01f;
         const F32 current_multiplier = LLPipeline::getAYADynamicRenderResolutionMultiplier();
         const F32 target_multiplier = aya_get_dynamic_resolution_target(requested_multiplier);
-        const bool should_decrease_multiplier = target_multiplier < current_multiplier - MULTIPLIER_EPSILON;
-        const bool should_increase_multiplier = target_multiplier > current_multiplier + MULTIPLIER_EPSILON;
-        const F32 adjust_elapsed = sAYADynamicResolutionAdjustTimer.getElapsedTimeF32();
-        const bool can_adjust =
-            (should_decrease_multiplier && adjust_elapsed >= DOWN_ADJUST_INTERVAL) ||
-            (should_increase_multiplier && adjust_elapsed >= UP_ADJUST_INTERVAL);
-
-        if (can_adjust)
+        if (resolution_strength_changed ||
+            llabs(target_multiplier - current_multiplier) > MULTIPLIER_EPSILON)
         {
             aya_apply_dynamic_resolution_multiplier(target_multiplier);
             sAYADynamicResolutionAdjustTimer.reset();
-            aya_log_dynamic_resolution_guard(should_decrease_multiplier ? "adjust_down" : "adjust_up",
-                                             "adaptive_bucket",
-                                             target_multiplier,
-                                             loading_fps_guard_target_fps,
-                                             adaptive_floor,
-                                             loading_window,
-                                             startup_window,
-                                             teleport_window,
-                                             texture_backlog_window,
-                                             teleport_state);
+            aya_log_dynamic_resolution_guard("profile_change", "resolution_strength_changed", target_multiplier, resolution_strength_level, teleport_state, true, false);
         }
 
         constexpr F32 LOG_INTERVAL = 10.f;
         if (sAYADynamicResolutionLogTimer.getElapsedTimeF32() >= LOG_INTERVAL)
         {
-            aya_log_dynamic_resolution_guard("active", "hold", requested_multiplier, loading_fps_guard_target_fps, adaptive_floor, loading_window, startup_window, teleport_window, texture_backlog_window, teleport_state);
+            aya_log_dynamic_resolution_guard("active", "profile_active", requested_multiplier, resolution_strength_level, teleport_state, true, false);
             sAYADynamicResolutionLogTimer.reset();
         }
     }
@@ -897,7 +848,7 @@ void display(bool rebuild, F32 zoom_factor, int subfield, bool for_snapshot)
     LL_PROFILE_ZONE_NAMED_CATEGORY_DISPLAY("Render");
     LL_PROFILE_GPU_ZONE("Render");
     AYADisplayPerfFrame aya_display_perf_frame;
-    aya_update_dynamic_resolution_guard();
+    aya_update_dynamic_resolution_guard(for_snapshot);
 
     LLPerfStats::RecordSceneTime T (LLPerfStats::StatType_t::RENDER_DISPLAY); // render time capture - This is the main stat for overall rendering.
 
@@ -1354,17 +1305,20 @@ void display(bool rebuild, F32 zoom_factor, int subfield, bool for_snapshot)
                 static LLCachedControl<F32> sun_shadow_min_update_fps(gSavedSettings, "RenderSunShadowMinUpdateFPS", 18.f);
                 static LLCachedControl<U32> sun_shadow_low_fps_interval(gSavedSettings, "RenderSunShadowLowFPSFrameInterval", 6);
                 static LLCachedControl<bool> loading_fps_guard_enabled(gSavedSettings, "AYALoadingFPSGuardEnabled", false);
-                static LLCachedControl<F32> loading_fps_guard_min_fps(gSavedSettings, "AYALoadingFPSGuardMinFPS", 30.f);
+                static LLCachedControl<F32> lod_relief_strength(gSavedSettings, "AYALoadingLODReliefStrength", 3.f);
+                static LLCachedControl<bool> loading_sun_shadow_throttle_enabled(gSavedSettings, "AYALoadingSunShadowThrottleEnabled", false);
                 static LLCachedControl<U32> sun_shadow_guard_interval(gSavedSettings, "RenderSunShadowGuardFrameInterval", 30);
 
                 if (gFrameCount > 1 && !for_snapshot)
                 { //for some reason, ATI 4800 series will error out if you
                   //try to generate a shadow before the first frame is through
                     bool update_sun_shadow = true;
-                    const F32 loading_fps_guard_target_fps = llclamp(loading_fps_guard_min_fps(), 30.f, 288.f);
+                    const S32 render_relief_strength_level =
+                        llclamp((S32)llround(lod_relief_strength()), 0, 5);
                     const bool loading_fps_guard =
+                        loading_sun_shadow_throttle_enabled &&
                         loading_fps_guard_enabled &&
-                        gFPSClamped < loading_fps_guard_target_fps;
+                        render_relief_strength_level > 0;
                     if (loading_fps_guard ||
                         (sun_shadow_min_update_fps > 0.f && gFPSClamped < sun_shadow_min_update_fps))
                     {
